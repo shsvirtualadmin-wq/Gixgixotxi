@@ -90,13 +90,54 @@ service cloud.firestore {
       );
     }
 
+    // Validates that any updated avatar / avatarId / equippedAvatar is either in the free system avatar allowlist or in the user's owned items
+    function isFreeSystemAvatar(avatarVal) {
+      return avatarVal == null || avatarVal == '' || avatarVal == 'none' || avatarVal in [
+        'skull-01', 'skull-02',
+        'robot-01', 'robot-02', 'robot-03',
+        'animal-01', 'animal-02', 'animal-03',
+        'flame-01', 'flame-02',
+        'bolt-01', 'bolt-02',
+        'star-01', 'star-02',
+        'shield-01', 'shield-02',
+        'crown-01', 'crown-02',
+        'planet-01', 'planet-02',
+        'science-01', 'science-02',
+        'glyph-01', 'glyph-02', 'glyph-03', 'glyph-04', 'glyph-05', 'glyph-06'
+      ];
+    }
+
+    function isAllowedUserAvatar(uid, avatarVal) {
+      return isFreeSystemAvatar(avatarVal) ||
+        (
+          exists(/databases/$(database)/documents/wallets/$(uid)) &&
+          'owned' in get(/databases/$(database)/documents/wallets/$(uid)).data &&
+          avatarVal in get(/databases/$(database)/documents/wallets/$(uid)).data.owned
+        ) ||
+        (
+          exists(/databases/$(database)/documents/users/$(uid)) &&
+          'ownedCosmetics' in get(/databases/$(database)/documents/users/$(uid)).data &&
+          avatarVal in get(/databases/$(database)/documents/users/$(uid)).data.ownedCosmetics
+        ) ||
+        exists(/databases/$(database)/documents/users/$(uid)/unlocked/$(avatarVal));
+    }
+
+    function validAvatarFieldsForUser(uid, data) {
+      return (!('avatar' in data) || isAllowedUserAvatar(uid, data.avatar)) &&
+        (!('avatarId' in data) || isAllowedUserAvatar(uid, data.avatarId)) &&
+        (!('equippedAvatar' in data) || isAllowedUserAvatar(uid, data.equippedAvatar)) &&
+        (!('equipped' in data) || !(data.equipped is map) || !('avatar' in data.equipped) || isAllowedUserAvatar(uid, data.equipped.avatar));
+    }
+
     // =========================================================================
     // 1. USERS & USER SUBCOLLECTIONS
     // =========================================================================
     match /users/{userId} {
       allow read: if signedIn();
-      allow create: if isAdmin() || (isOwner(userId) && ownerCreatesOnlySafeUserFields());
-      allow update: if isAdmin() || (isOwner(userId) && ownerUpdatesOnlySafeUserFields());
+      allow create: if isAdmin() || (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data));
+      allow update: if isAdmin() ||
+        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data)) ||
+        (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']));
       allow delete: if isAdmin();
 
       // Inventory & Unlocked Cosmetics: owner or admin read, server/admin write only
@@ -319,11 +360,13 @@ service cloud.firestore {
       allow create: if isAdmin() || (
         isOwner(userId) &&
         (!('balance' in request.resource.data) || request.resource.data.balance == 0) &&
-        (!('owned' in request.resource.data) || request.resource.data.owned.size() == 0)
+        (!('owned' in request.resource.data) || request.resource.data.owned.size() == 0) &&
+        validAvatarFieldsForUser(userId, request.resource.data)
       );
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt']) &&
+        validAvatarFieldsForUser(userId, request.resource.data)
       );
       allow delete: if isAdmin();
 
@@ -535,6 +578,7 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid ||
           request.resource.data.uid == request.auth.uid ||
           request.resource.data.actorId == request.auth.uid ||
+          request.resource.data.authorId == request.auth.uid ||
           request.resource.data.senderId == request.auth.uid
         )
       );
@@ -552,12 +596,32 @@ service cloud.firestore {
     // =========================================================================
     match /publicProfiles/{userId} {
       allow read: if true;
-      allow create, update: if isAdmin() || (
+      allow create: if isAdmin() || (
         isOwner(userId) &&
         (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
-        (!('plan' in request.resource.data) || request.resource.data.plan == 'free')
+        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
+        validAvatarFieldsForUser(userId, request.resource.data)
+      );
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
+        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
+        validAvatarFieldsForUser(userId, request.resource.data)
+      ) || (
+        signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])
       );
       allow delete: if isAdmin();
+
+      match /followers/{followerUid} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || isOwner(followerUid) || isOwner(userId);
+      }
+
+      match /following/{targetUid} {
+        allow read: if true;
+        allow create, update, delete: if isAdmin() || isOwner(userId);
+      }
     }
 
     match /usernames/{usernameLower} {

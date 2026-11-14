@@ -278,8 +278,11 @@ export interface CaptainAdminSummary {
  */
 export async function getAllCaptainsAdminData(): Promise<CaptainAdminSummary[]> {
   try {
-    // 1. Fetch all captains from users collection
-    const usersSnap = await getDocs(collection(db, 'users'));
+    // 1 & 2. Fetch captains and referrals in parallel
+    const [usersSnap, refsSnap] = await Promise.all([
+      getDocs(collection(db, 'users')),
+      getDocs(collection(db, 'referrals')),
+    ]);
     const captainMap = new Map<string, CaptainAdminSummary>();
 
     usersSnap.docs.forEach((d) => {
@@ -308,8 +311,6 @@ export async function getAllCaptainsAdminData(): Promise<CaptainAdminSummary[]> 
       }
     });
 
-    // 2. Query all referrals from referrals collection
-    const refsSnap = await getDocs(collection(db, 'referrals'));
     refsSnap.docs.forEach((d) => {
       const data = d.data();
       const referrerUid = data.referrerUid as string | undefined;

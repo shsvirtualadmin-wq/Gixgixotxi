@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 
 /**
  * Automatically scrolls the window to the top on route changes, unless
@@ -10,6 +11,8 @@ export function ScrollToTop() {
   const { pathname, search, hash } = useLocation();
 
   useEffect(() => {
+    safetyCleanupScrollLocks();
+
     if (hash) {
       const id = decodeURIComponent(hash.replace(/^#/, ''));
       if (id === 'checkin' || id === 'milestones' || id === 'invite' || id === 'faq') {
@@ -41,3 +44,4 @@ export function ScrollToTop() {
 }
 
 export default ScrollToTop;
+

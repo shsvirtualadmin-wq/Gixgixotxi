@@ -530,7 +530,7 @@ export async function prefetchUserChats(uid?: string | null): Promise<void> {
           lastMessageText: lastMsg,
           lastMessageSenderId: lastSender,
           lastMessageAt: lastMsgAt,
-          lastMessageAtMs,
+          lastMessageAtMs: lastMsgAtMs,
           lastSenderId: lastSender,
           createdAt: data.createdAt || null,
           updatedAt: data.updatedAt || null,

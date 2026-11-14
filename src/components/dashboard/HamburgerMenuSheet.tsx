@@ -44,6 +44,7 @@ import { useSecurityStatus, clearSecurityStatusCache } from '@/hooks/useSecurity
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { clearCachedRewardsState, prefetchRewardsSummary } from '@/services/rewardsService';
 import { markRewardsTapStart } from '@/lib/navStore';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -1342,14 +1343,13 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   const pushedHistoryRef = useRef<boolean>(false);
 
   // Lock body scroll while full-screen menu is open
+  useBodyScrollLock(isOpen, 'hamburger-menu');
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (isOpen) {
-      const prevOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
       document.body.setAttribute('data-hamburger-sheet-open', 'true');
       return () => {
-        document.body.style.overflow = prevOverflow;
         document.body.removeAttribute('data-hamburger-sheet-open');
       };
     } else {

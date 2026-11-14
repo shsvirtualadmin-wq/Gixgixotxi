@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 
 export const BUBBLE_LOADER_MESSAGES: readonly string[] = [
   'Preparing your study material, please wait...',
@@ -108,8 +109,8 @@ export function useBubbleLoader(options: UseBubbleLoaderOptions = {}) {
 
   const releaseBodyLocks = useCallback(() => {
     if (typeof document !== 'undefined' && document.body) {
-      document.body.style.overflow = '';
       document.body.style.pointerEvents = '';
+      safetyCleanupScrollLocks();
     }
   }, []);
 

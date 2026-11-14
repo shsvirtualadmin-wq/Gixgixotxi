@@ -80,7 +80,14 @@ import {
   BankHealthData,
 } from '../../services/universityMcqService';
 import { MathText, validateMath } from '../../components/ui/MathText';
-import { LineLoader, ButtonLineLoader } from '../../components/ui/LineLoader';
+import { ButtonLineLoader } from '../../components/ui/LineLoader';
+import { AdminQuestionsPageSkeleton, AdminQuestionsMcqListSkeleton } from '../../components/ui/Skeleton';
+import {
+  getCachedAdminQuestionsInit,
+  fetchAdminQuestionsInitSWR,
+  getCachedAdminUniversityMcqs,
+  fetchAdminUniversityMcqsSWR,
+} from '../../services/adminTabCache';
 import { useAuth } from '../../contexts/AuthContext';
 
 type ActiveTab = 'questions' | 'health' | 'reports';
@@ -238,18 +245,39 @@ export const AdminQuestionsPage: React.FC = () => {
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const overflowMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Core Data State
-  const [universities, setUniversities] = useState<D1UniversityRow[]>([]);
-  const [selectedUniId, setSelectedUniId] = useState<string>('uni_fast-nuces');
-  const [mcqs, setMcqs] = useState<D1McqRow[]>([]);
-  const [totalMcqsForFilter, setTotalMcqsForFilter] = useState<number>(0);
-  const [mcqPageOffset, setMcqPageOffset] = useState<number>(0);
+  // Core Data State (hydrated from SWR cache if available)
+  const cachedInit = useMemo(() => getCachedAdminQuestionsInit(), []);
+  const initialUniId = useMemo(
+    () => cachedInit?.universities?.[0]?.id || 'uni_fast-nuces',
+    [cachedInit]
+  );
+  const cachedInitialMcqs = useMemo(
+    () =>
+      getCachedAdminUniversityMcqs({
+        university_id: initialUniId,
+        limit: 20,
+        offset: 0,
+      }),
+    [initialUniId]
+  );
+
+  const [universities, setUniversities] = useState<D1UniversityRow[]>(
+    () => cachedInit?.universities ?? []
+  );
+  const [selectedUniId, setSelectedUniId] = useState<string>(initialUniId);
+  const [mcqs, setMcqs] = useState<D1McqRow[]>(() => cachedInitialMcqs?.mcqs ?? []);
+  const [totalMcqsForFilter, setTotalMcqsForFilter] = useState<number>(
+    () => cachedInitialMcqs?.total ?? 0
+  );
+  const [mcqPageOffset, setMcqPageOffset] = useState<number>(
+    () => cachedInitialMcqs?.mcqs?.length ?? 0
+  );
   const [loadingMoreMcqs, setLoadingMoreMcqs] = useState(false);
   const [uniTopics, setUniTopics] = useState<
     Array<{ subject: string; total: number; topics: Array<{ topic: string; count: number }> }>
-  >([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [mcqsLoading, setMcqsLoading] = useState<boolean>(false);
+  >(() => cachedInitialMcqs?.subjects ?? []);
+  const [loading, setLoading] = useState<boolean>(() => !cachedInit);
+  const [mcqsLoading, setMcqsLoading] = useState<boolean>(() => !cachedInitialMcqs);
 
   // Filters & Search (Collapsed by default)
   const [filterSubject, setFilterSubject] = useState<string>('all');
@@ -327,9 +355,11 @@ export const AdminQuestionsPage: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Bank Health & Reports State
-  const [healthData, setHealthData] = useState<BankHealthData | null>(null);
+  const [healthData, setHealthData] = useState<BankHealthData | null>(
+    () => cachedInit?.health ?? null
+  );
   const [fixingHealthKey, setFixingHealthKey] = useState<string | null>(null);
-  const [reports, setReports] = useState<D1McqReportRow[]>([]);
+  const [reports, setReports] = useState<D1McqReportRow[]>(() => cachedInit?.reports ?? []);
   const [reportFilter, setReportFilter] = useState<'all' | 'open' | 'resolved' | 'ignored'>('all');
 
   // Swipe-to-close tracking for Bottom Sheets
@@ -385,68 +415,130 @@ export const AdminQuestionsPage: React.FC = () => {
     [universities, bulkTargetUniId, selectedUniversity]
   );
 
-  // Load Universities, Health & Reports
-  const loadInitialData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [unis, health, reps] = await Promise.all([
-        fetchUniversities(),
-        fetchBankHealth(),
-        fetchMcqReports(),
-      ]);
-      setUniversities(unis);
-      setHealthData(health);
-      setReports(reps);
-      if (unis.length > 0 && !unis.some((u) => u.id === selectedUniId)) {
-        setSelectedUniId(unis[0].id);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Load Universities, Health & Reports (SWR)
+  const loadInitialData = useCallback(
+    async (forceRefresh = false) => {
+      const existing = getCachedAdminQuestionsInit();
+      if (existing && !forceRefresh) {
+        setUniversities(existing.universities);
+        setHealthData(existing.health);
+        setReports(existing.reports);
+        setLoading(false);
+      } else if (!existing) {
+        setLoading(true);
       }
-    } catch (err: any) {
-      showBanner('error', err?.message || 'Failed to load question bank');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedUniId, showBanner]);
+      try {
+        const fresh = await fetchAdminQuestionsInitSWR((updated) => {
+          if (!isMountedRef.current) return;
+          setUniversities(updated.universities);
+          setHealthData(updated.health);
+          setReports(updated.reports);
+        }, forceRefresh);
+        if (!isMountedRef.current) return;
+        setUniversities(fresh.universities);
+        setHealthData(fresh.health);
+        setReports(fresh.reports);
+        if (fresh.universities.length > 0 && !fresh.universities.some((u) => u.id === selectedUniId)) {
+          setSelectedUniId(fresh.universities[0].id);
+        }
+      } catch (err: any) {
+        if (isMountedRef.current) {
+          showBanner('error', err?.message || 'Failed to load question bank');
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [selectedUniId, showBanner]
+  );
 
   useEffect(() => {
     if (isAdmin) {
-      loadInitialData();
+      loadInitialData(false);
     }
   }, [isAdmin, loadInitialData]);
 
-  // Load MCQs & Topics for Selected University
+  // Load MCQs & Topics for Selected University (SWR, initial page size 20)
   const loadUniversityMcqs = useCallback(
-    async (resetOffset = true) => {
+    async (resetOffset = true, forceRefresh = false) => {
       if (!selectedUniId) return;
-      setMcqsLoading(true);
+      const nextOffset = resetOffset ? 0 : mcqPageOffset;
+      const queryParams = {
+        university_id: selectedUniId,
+        subject: filterSubject !== 'all' ? filterSubject : undefined,
+        topic: filterTopic !== 'all' ? filterTopic : undefined,
+        difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
+        search: searchQuery.trim() || undefined,
+        limit: 20,
+        offset: nextOffset,
+      };
+
+      if (resetOffset) {
+        const cached = getCachedAdminUniversityMcqs(queryParams);
+        if (cached && !forceRefresh) {
+          setMcqs(cached.mcqs);
+          setMcqPageOffset(cached.mcqs.length);
+          setTotalMcqsForFilter(cached.total);
+          setUniTopics(cached.subjects || []);
+          setMcqsLoading(false);
+        } else if (!cached) {
+          setMcqsLoading(true);
+        }
+      } else {
+        setMcqsLoading(true);
+      }
+
       try {
-        const nextOffset = resetOffset ? 0 : mcqPageOffset;
-        const [mcqRes, topicsRes] = await Promise.all([
-          fetchMcqs({
-            university_id: selectedUniId,
-            subject: filterSubject !== 'all' ? filterSubject : undefined,
-            topic: filterTopic !== 'all' ? filterTopic : undefined,
-            difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
-            search: searchQuery.trim() || undefined,
-            limit: 50,
-            offset: nextOffset,
-            include_answers: true,
-          }),
-          fetchUniversityTopics(selectedUniId),
-        ]);
         if (resetOffset) {
-          setMcqs(mcqRes.mcqs);
-          setMcqPageOffset(mcqRes.mcqs.length);
+          const fresh = await fetchAdminUniversityMcqsSWR(
+            queryParams,
+            (updated) => {
+              if (!isMountedRef.current) return;
+              setMcqs(updated.mcqs);
+              setMcqPageOffset(updated.mcqs.length);
+              setTotalMcqsForFilter(updated.total);
+              setUniTopics(updated.subjects || []);
+            },
+            forceRefresh
+          );
+          if (!isMountedRef.current) return;
+          setMcqs(fresh.mcqs);
+          setMcqPageOffset(fresh.mcqs.length);
           setSelectedMcqIds(new Set());
+          setTotalMcqsForFilter(fresh.total);
+          setUniTopics(fresh.subjects || []);
         } else {
+          const [mcqRes, topicsRes] = await Promise.all([
+            fetchMcqs({
+              ...queryParams,
+              include_answers: true,
+            }),
+            fetchUniversityTopics(selectedUniId),
+          ]);
+          if (!isMountedRef.current) return;
           setMcqs((prev) => [...prev, ...mcqRes.mcqs]);
           setMcqPageOffset((prev) => prev + mcqRes.mcqs.length);
+          setTotalMcqsForFilter(mcqRes.total);
+          setUniTopics(topicsRes.subjects || []);
         }
-        setTotalMcqsForFilter(mcqRes.total);
-        setUniTopics(topicsRes.subjects || []);
       } catch (err: any) {
-        showBanner('error', err?.message || 'Failed to load university MCQs');
+        if (isMountedRef.current) {
+          showBanner('error', err?.message || 'Failed to load university MCQs');
+        }
       } finally {
-        setMcqsLoading(false);
+        if (isMountedRef.current) {
+          setMcqsLoading(false);
+        }
       }
     },
     [selectedUniId, filterSubject, filterTopic, filterDifficulty, searchQuery, mcqPageOffset, showBanner]
@@ -454,7 +546,7 @@ export const AdminQuestionsPage: React.FC = () => {
 
   useEffect(() => {
     if (isAdmin && selectedUniId) {
-      loadUniversityMcqs(true);
+      loadUniversityMcqs(true, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, selectedUniId, filterSubject, filterTopic, filterDifficulty, searchQuery]);
@@ -469,7 +561,7 @@ export const AdminQuestionsPage: React.FC = () => {
         topic: filterTopic !== 'all' ? filterTopic : undefined,
         difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
         search: searchQuery.trim() || undefined,
-        limit: 50,
+        limit: 20,
         offset: mcqs.length,
         include_answers: true,
       });
@@ -1113,10 +1205,12 @@ export const AdminQuestionsPage: React.FC = () => {
   );
 
   // Strict Role Guard: Confirm admin role first, never flash admin UI to others
-  if (profileLoading) {
+  if (profileLoading || (loading && universities.length === 0)) {
     return (
       <div className="aqb-page-shell">
-        <LineLoader className="w-full" />
+        <div className="aqb-container">
+          <AdminQuestionsPageSkeleton />
+        </div>
       </div>
     );
   }
@@ -1132,13 +1226,6 @@ export const AdminQuestionsPage: React.FC = () => {
         <div className="aqb-blob aqb-blob--top" />
         <div className="aqb-blob aqb-blob--bottom" />
       </div>
-
-      {/* Top LineLoader when refreshing */}
-      {(loading || mcqsLoading) && (
-        <div className="fixed top-0 left-0 right-0 z-50">
-          <LineLoader />
-        </div>
-      )}
 
       <div className="aqb-container">
         {/* Status Toast Banner */}
@@ -1224,14 +1311,14 @@ export const AdminQuestionsPage: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              loadInitialData();
-              loadUniversityMcqs(true);
+              loadInitialData(true);
+              loadUniversityMcqs(true, true);
             }}
             aria-label="Refresh question bank"
             title="Refresh question bank"
             className="aqb-icon-btn"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${loading || mcqsLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
@@ -1341,8 +1428,8 @@ export const AdminQuestionsPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setOverflowMenuOpen(false);
-                    loadInitialData();
-                    loadUniversityMcqs(true);
+                    loadInitialData(true);
+                    loadUniversityMcqs(true, true);
                   }}
                   className="aqb-dropdown-item"
                 >
@@ -1568,8 +1655,10 @@ export const AdminQuestionsPage: React.FC = () => {
               )}
             </div>
 
-            {/* 7. MCQ List as Glass Cards (or Glass Empty State) */}
-            {mcqs.length === 0 && !mcqsLoading ? (
+            {/* 7. MCQ List as Glass Cards (or Glass Empty State / Skeleton) */}
+            {mcqsLoading && mcqs.length === 0 ? (
+              <AdminQuestionsMcqListSkeleton count={4} />
+            ) : mcqs.length === 0 ? (
               <div className="aqb-glass-card p-8 text-center flex flex-col items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/12 text-[var(--accent)] flex items-center justify-center">
                   <Sparkles className="w-6 h-6" />

@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, memo, lazy, Suspense } from 'react';
-import { Link } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import {
@@ -121,9 +123,20 @@ function mapD1McqToAttemptQuestion(q: D1McqRow, verified?: { correctAnswer: stri
 }
 
 export function OverviewPage() {
+  const location = useLocation();
+  const isOverviewRouteActive =
+    location.pathname === '/dashboard' ||
+    location.pathname === '/dashboard/' ||
+    location.pathname === '/menu' ||
+    location.pathname === '/dashboard/menu';
   const { user, profile, streak } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
+
+  // Safety cleanup on mount to remove any leftover scroll lock on body/html
+  useEffect(() => {
+    safetyCleanupScrollLocks();
+  }, []);
 
   // ── Universities State ──
   const initialCachedUnis = useMemo(() => {
@@ -236,18 +249,31 @@ export function OverviewPage() {
   } | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
 
-  // Lock body scroll whenever the full-screen test view is open
+  // Close non-running test setup popup if user navigates away while OverviewPage stays in KeepAlive
   useEffect(() => {
-    if (!activeUni) return;
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevBodyOverflow;
-      document.documentElement.style.overflow = prevHtmlOverflow;
-    };
-  }, [activeUni]);
+    if (!isOverviewRouteActive && activeUni && testStage !== 'running') {
+      setActiveUni(null);
+    }
+  }, [isOverviewRouteActive, activeUni, testStage]);
+
+  // Lock body scroll ONLY while the full-screen test popup is actually open and active
+  const isTestPopupOpen = Boolean(activeUni && isOverviewRouteActive);
+  useBodyScrollLock(isTestPopupOpen, 'overview-test-popup');
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (isTestPopupOpen) {
+      document.body.setAttribute('data-fullscreen-modal-open', 'true');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+      return () => {
+        document.body.removeAttribute('data-fullscreen-modal-open');
+        window.dispatchEvent(new Event('boardly:modal-change'));
+      };
+    } else {
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    }
+  }, [isTestPopupOpen]);
 
   // Intercept Browser Back and beforeunload while a test is actively running
   useEffect(() => {
@@ -295,7 +321,7 @@ export function OverviewPage() {
 
   const openUniversityBubble = useCallback(
     async (uni: D1UniversityRow, prefillSubject?: string, prefillTopic?: string) => {
-      if (!uni || Number(uni.mcq_count || 0) <= 0) return;
+      if (!uni || (Number(uni.mcq_count || 0) <= 0 && Number(uni.is_live || 0) <= 0)) return;
       setActiveUni(uni);
       setSelectedSubject(prefillSubject || 'all');
       setSelectedTopic(prefillTopic || 'all');
@@ -324,7 +350,7 @@ export function OverviewPage() {
 
   const startUniversityD1Test = useCallback(
     async (uni: D1UniversityRow, subjectFilter: string, topicFilter: string) => {
-      if (!uni || Number(uni.mcq_count || 0) <= 0) return;
+      if (!uni || (Number(uni.mcq_count || 0) <= 0 && Number(uni.is_live || 0) <= 0)) return;
       if (!isPro && d1Stats.todayTestsCount >= FREE_DAILY_TESTS) {
         setTestError('Daily test limit reached on Free plan. Upgrade to Pro for unlimited tests.');
         return;
@@ -589,7 +615,10 @@ export function OverviewPage() {
   );
 
   const liveCount = useMemo(
-    () => universities.filter((u) => Number(u.mcq_count || 0) > 0).length,
+    () =>
+      universities.filter(
+        (u) => Number(u.mcq_count || 0) > 0 || Number(u.is_live || 0) > 0
+      ).length,
     [universities]
   );
 
@@ -693,7 +722,7 @@ export function OverviewPage() {
           <div className="cockpit-uni-grid">
             {universities.map((uni) => {
               const mcqCount = Number(uni.mcq_count || 0);
-              const isLive = mcqCount > 0;
+              const isLive = mcqCount > 0 || Number(uni.is_live || 0) > 0;
               const initials = getUniversityInitials(uni.name);
 
               return (
@@ -914,13 +943,19 @@ export function OverviewPage() {
       </div>
 
       {/* ── FULL-SCREEN UNIVERSITY TEST RUNNER (Apple × Nothing OS 100dvh layout) ── */}
-      {activeUni && (
-        <div
-          className="fixed inset-0 z-[100] nt-quiz-shell select-none"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${activeUni.name} Test Runner`}
-        >
+      {isTestPopupOpen &&
+        activeUni &&
+        typeof document !== 'undefined' &&
+        document.body &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[1100] nt-quiz-shell select-none"
+            style={{ position: 'fixed', inset: 0, zIndex: 1100 }}
+            data-fullscreen-modal="true"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${activeUni.name} Test Runner`}
+          >
           {testStage === 'running' || testStage === 'loading' ? (
             <>
               {/* 1–4. CENTERED MAIN COLUMN (max-w 760px, fits 100dvh with no scrolling) */}
@@ -1646,8 +1681,9 @@ export function OverviewPage() {
               </div>
             </div>
           )}
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

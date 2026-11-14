@@ -9,8 +9,8 @@ import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { reportQuestion } from './testEngine';
 import type { AttemptQuestion } from '@/types/index';
 
-export const BOARDY_AI_MODEL = 'gemini-3.8-flash';
-export const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
+export const BOARDY_AI_MODEL = 'gemini-4-hydrogen';
+export const BOARDY_AI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 export const FREE_DAILY_AI_TOKENS = 5;
 
 // In-memory cache to guarantee successful explanations are never re-fetched

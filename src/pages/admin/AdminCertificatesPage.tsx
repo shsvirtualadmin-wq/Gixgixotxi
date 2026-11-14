@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Award,
@@ -16,7 +16,6 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import {
-  fetchAdminCertificates,
   downloadCertificateFile,
   regenerateCertificateById,
   regenerateAllCertificates,
@@ -27,9 +26,17 @@ import {
   type AdminSignatureRecord,
   type AdminMockSummary,
 } from '../../services/certificateService';
+import {
+  getCachedAdminCertificates,
+  fetchAdminCertificatesSWR,
+  invalidateAdminCertificatesCache,
+} from '../../services/adminTabCache';
+import { AdminCertificatesSkeleton } from '../../components/ui/Skeleton';
 import { SignatureUploader } from '../../components/certificates/SignatureUploader';
 import { ThemePicker } from '../../components/certificates/ThemePicker';
 import { formatCertificateDate } from '../../lib/certificateRenderer';
+
+const CERTIFICATES_PAGE_SIZE = 20;
 
 /**
  * Super-Admin Certificates & Signature Management Page (`/admin/certificates` & `/admin/signatures`).
@@ -48,20 +55,31 @@ export const AdminCertificatesPage: React.FC = () => {
       ? 'themes'
       : 'certificates';
 
+  const initialCertsCache = getCachedAdminCertificates();
   const [activeTab, setActiveTab] = useState<'certificates' | 'themes' | 'signature'>(
     initialTab
   );
-  const [loading, setLoading] = useState(true);
-  const [hasActiveSignature, setHasActiveSignature] = useState(false);
-  const [activeSignature, setActiveSignature] = useState<AdminSignatureRecord | null>(
-    null
+  const [loading, setLoading] = useState<boolean>(() => !initialCertsCache);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState<boolean>(() => Boolean(initialCertsCache));
+  const [visibleCount, setVisibleCount] = useState<number>(CERTIFICATES_PAGE_SIZE);
+  const [hasActiveSignature, setHasActiveSignature] = useState<boolean>(
+    () => Boolean(initialCertsCache?.hasActiveSignature)
   );
-  const [certificates, setCertificates] = useState<StudentCertificateRecord[]>([]);
-  const [mocks, setMocks] = useState<AdminMockSummary[]>([]);
+  const [activeSignature, setActiveSignature] = useState<AdminSignatureRecord | null>(
+    () => initialCertsCache?.activeSignature ?? null
+  );
+  const [certificates, setCertificates] = useState<StudentCertificateRecord[]>(
+    () => initialCertsCache?.certificates ?? []
+  );
+  const [mocks, setMocks] = useState<AdminMockSummary[]>(
+    () => initialCertsCache?.mocks ?? []
+  );
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
-  const [selectedMockId, setSelectedMockId] = useState<string>('');
+  const [selectedMockId, setSelectedMockId] = useState<string>(
+    () => initialCertsCache?.mocks?.[0]?.id || ''
+  );
   const [defaultPreviewThemeId, setDefaultPreviewThemeId] = useState<string | null>('default');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [regeneratingAll, setRegeneratingAll] = useState(false);
@@ -69,18 +87,28 @@ export const AdminCertificatesPage: React.FC = () => {
     null
   );
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const handleSignatureChanged = useCallback((sig: AdminSignatureRecord | null) => {
     setHasActiveSignature(Boolean(sig));
     setActiveSignature(sig);
+    invalidateAdminCertificatesCache();
   }, []);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetchAdminCertificates({
-        search: searchQuery || undefined,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-      });
+  const applyCertsData = useCallback(
+    (res: {
+      hasActiveSignature: boolean;
+      activeSignature: AdminSignatureRecord | null;
+      certificates: StudentCertificateRecord[];
+      mocks: AdminMockSummary[];
+    }) => {
+      if (!isMountedRef.current) return;
       setHasActiveSignature(Boolean(res.hasActiveSignature));
       setActiveSignature(res.activeSignature || null);
       setCertificates(Array.isArray(res.certificates) ? res.certificates : []);
@@ -89,18 +117,48 @@ export const AdminCertificatesPage: React.FC = () => {
       if (mockList.length > 0) {
         setSelectedMockId((prev) => prev || mockList[0].id);
       }
-    } catch (err: any) {
-      setNotice({
-        type: 'error',
-        text: err?.message || 'Failed to load certificates from Cloudflare D1.',
+      setHasLoadedOnce(true);
+    },
+    []
+  );
+
+  const loadData = useCallback(
+    async (force = false) => {
+      const cached = getCachedAdminCertificates({
+        search: searchQuery || undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
       });
-    } finally {
-      setLoading(false);
-    }
-  }, [searchQuery, statusFilter]);
+      if (!cached) {
+        setLoading(true);
+      }
+      if (force) {
+        invalidateAdminCertificatesCache();
+      }
+      try {
+        const res = await fetchAdminCertificatesSWR({
+          search: searchQuery || undefined,
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          force,
+          onUpdate: applyCertsData,
+        });
+        applyCertsData(res);
+      } catch (err: any) {
+        if (!isMountedRef.current) return;
+        setNotice({
+          type: 'error',
+          text: err?.message || 'Failed to load certificates from Cloudflare D1.',
+        });
+      } finally {
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [searchQuery, statusFilter, applyCertsData]
+  );
 
   useEffect(() => {
-    void loadData();
+    void loadData(false);
   }, [loadData]);
 
   const switchTab = (tab: 'certificates' | 'themes' | 'signature') => {
@@ -376,7 +434,7 @@ export const AdminCertificatesPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => void loadData()}
+                onClick={() => void loadData(true)}
                 className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
@@ -386,10 +444,8 @@ export const AdminCertificatesPage: React.FC = () => {
           </div>
 
           {/* Certificates Table / Cards */}
-          {loading ? (
-            <div className="p-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-center font-mono text-xs text-[var(--text-muted)]">
-              Loading certificates...
-            </div>
+          {loading && !hasLoadedOnce && certificates.length === 0 ? (
+            <AdminCertificatesSkeleton count={4} />
           ) : certificates.length === 0 ? (
             <div className="p-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-center space-y-2">
               <div className="text-sm font-bold text-[var(--text)]">
@@ -401,7 +457,7 @@ export const AdminCertificatesPage: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {certificates.map((cert) => {
+              {certificates.slice(0, visibleCount).map((cert) => {
                 const isBusy = busyId === cert.id;
                 return (
                   <div
@@ -531,6 +587,19 @@ export const AdminCertificatesPage: React.FC = () => {
                   </div>
                 );
               })}
+              {certificates.length > visibleCount && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCount((prev) => prev + CERTIFICATES_PAGE_SIZE)
+                    }
+                    className="min-h-[40px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] cursor-pointer"
+                  >
+                    Load more certificates ({certificates.length - visibleCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

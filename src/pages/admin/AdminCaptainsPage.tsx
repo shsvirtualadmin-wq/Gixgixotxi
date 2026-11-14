@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -14,11 +14,14 @@ import {
   X,
   Eye,
 } from 'lucide-react';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import { AdminCaptainsSkeleton } from '@/components/ui/Skeleton';
+import { type CaptainAdminSummary } from '@/services/referralService';
 import {
-  getAllCaptainsAdminData,
-  type CaptainAdminSummary,
-} from '@/services/referralService';
+  getCachedAdminCaptains,
+  fetchAdminCaptainsSWR,
+  patchCachedCaptainAllotment,
+} from '@/services/adminTabCache';
 import { NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import {
   getCaptainAllotmentStatus,
@@ -29,12 +32,18 @@ import {
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
 
+const CAPTAINS_PAGE_SIZE = 20;
+
 export function AdminCaptainsPage() {
   const { user } = useAuth();
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
+  const initialCaptainsCache = getCachedAdminCaptains();
 
-  const [captains, setCaptains] = useState<CaptainAdminSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [captains, setCaptains] = useState<CaptainAdminSummary[]>(
+    () => initialCaptainsCache?.captains ?? []
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCaptainsCache);
+  const [visibleCount, setVisibleCount] = useState<number>(CAPTAINS_PAGE_SIZE);
   const [search, setSearch] = useState('');
   const [selectedCaptain, setSelectedCaptain] = useState<CaptainAdminSummary | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -42,38 +51,52 @@ export function AdminCaptainsPage() {
   // Allotment status state map
   const [allotmentStatuses, setAllotmentStatuses] = useState<
     Record<string, { granted: boolean; date: Date | null; monthLabel: string }>
-  >({});
+  >(() => initialCaptainsCache?.allotmentStatuses ?? {});
   const [grantingId, setGrantingId] = useState<string | null>(null);
   const [grantAllModalOpen, setGrantAllModalOpen] = useState(false);
   const [grantingAll, setGrantingAll] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const { label: currentMonthLabel } = getCurrentPktMonth();
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (force = false) => {
+    const cached = getCachedAdminCaptains();
+    if (!cached) {
+      setLoading(true);
+    }
     try {
-      const data = await getAllCaptainsAdminData();
-      setCaptains(data);
-
-      // Load allotment status for all captains
-      const statusMap: Record<string, { granted: boolean; date: Date | null; monthLabel: string }> = {};
-      await Promise.all(
-        data.map(async (c) => {
-          const st = await getCaptainAllotmentStatus(c.captainUid);
-          statusMap[c.captainUid] = st;
-        })
-      );
-      setAllotmentStatuses(statusMap);
+      const res = await fetchAdminCaptainsSWR({
+        force,
+        onUpdate: (updated) => {
+          if (isMountedRef.current) {
+            setCaptains(updated.captains);
+            setAllotmentStatuses(updated.allotmentStatuses);
+          }
+        },
+      });
+      if (isMountedRef.current) {
+        setCaptains(res.captains);
+        setAllotmentStatuses(res.allotmentStatuses);
+      }
     } catch (err) {
       console.warn('Failed to load captains:', err);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    loadData();
+    void loadData(false);
   }, [loadData]);
 
   const handleCopy = (id: string, text: string) => {
@@ -92,6 +115,7 @@ export function AdminCaptainsPage() {
         c.captainEmail
       );
       const updated = await getCaptainAllotmentStatus(c.captainUid);
+      patchCachedCaptainAllotment(c.captainUid, updated);
       setAllotmentStatuses((prev) => ({ ...prev, [c.captainUid]: updated }));
       setBannerNotice(`Granted 5,000 Kobans to ${c.captainName} for ${currentMonthLabel}.`);
       setTimeout(() => setBannerNotice(null), 3500);
@@ -178,7 +202,7 @@ export function AdminCaptainsPage() {
           </Link>
 
           <button
-            onClick={loadData}
+            onClick={() => void loadData(true)}
             disabled={loading}
             className="p-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Refresh Data"
@@ -246,8 +270,8 @@ export function AdminCaptainsPage() {
       </div>
 
       {/* Captains Table / List */}
-      {loading ? (
-        <LineLoader context="admin" message="Loading Nakama Captains..." />
+      {loading && captains.length === 0 ? (
+        <AdminCaptainsSkeleton count={4} />
       ) : filteredCaptains.length === 0 ? (
         <div className="p-8 sm:p-10 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
           <Award size={32} className="mx-auto text-[var(--muted)]" />
@@ -267,7 +291,7 @@ export function AdminCaptainsPage() {
         <div>
           {/* Mobile Stacked Cards Layout (< md) */}
           <div className="block md:hidden space-y-3">
-            {filteredCaptains.map((c) => {
+            {filteredCaptains.slice(0, visibleCount).map((c) => {
               const st = allotmentStatuses[c.captainUid];
               const isGranted = Boolean(st?.granted);
               return (
@@ -358,7 +382,7 @@ export function AdminCaptainsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {filteredCaptains.map((c) => {
+                {filteredCaptains.slice(0, visibleCount).map((c) => {
                   const st = allotmentStatuses[c.captainUid];
                   const isGranted = Boolean(st?.granted);
 
@@ -460,6 +484,18 @@ export function AdminCaptainsPage() {
             </table>
           </div>
         </div>
+
+        {filteredCaptains.length > visibleCount && (
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => prev + 20)}
+              className="px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-xs font-semibold text-[var(--text)] transition-colors cursor-pointer"
+            >
+              Load more captains ({filteredCaptains.length - visibleCount} remaining)
+            </button>
+          </div>
+        )}
       </div>
       )}
 

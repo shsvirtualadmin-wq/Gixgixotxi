@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 interface CommonsImageViewerModalProps {
   isOpen: boolean;
@@ -21,17 +22,13 @@ export const CommonsImageViewerModal: React.FC<CommonsImageViewerModalProps> = (
   const initialTouchDistanceRef = useRef<number | null>(null);
   const initialTouchScaleRef = useRef(1);
 
+  useBodyScrollLock(isOpen && Boolean(imageUrl), 'commons-image-viewer');
+
   // Reset zoom & pan when image changes or closes
   useEffect(() => {
     if (isOpen) {
       setScale(1);
       setPosition({ x: 0, y: 0 });
-      // Lock background scroll
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
     }
   }, [isOpen, imageUrl]);
 

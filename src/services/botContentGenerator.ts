@@ -25,8 +25,8 @@ export interface GeneratedBotComment {
  * Primary: 'gemini-2.5-flash' (Google's current GA stable Flash model on generativelanguage.googleapis.com)
  * Fallback: 'gemini-2.5-flash-lite' (Google's current GA stable Flash-Lite model)
  */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-lite';
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
+export const DEFAULT_GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 
 export type BotKeyStatusType = 'available' | 'cooling_down' | 'daily_quota_hit';
 

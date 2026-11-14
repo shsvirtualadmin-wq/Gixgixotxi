@@ -36,17 +36,13 @@ export const MatrixAvatar: React.FC<MatrixAvatarProps> = ({
   const hasUserSeed = Boolean(userSeed);
   const deterministic = getDefaultAvatar(hasUserSeed ? userSeed : avatarKey);
 
-  const resolvedKey = hasUserSeed
-    ? deterministic.key
-    : avatarKey && MATRIX_AVATARS.some((a) => a.key === avatarKey)
-      ? avatarKey
-      : deterministic.key;
+  const hasExplicitKey = Boolean(avatarKey && MATRIX_AVATARS.some((a) => a.key === avatarKey));
+  const resolvedKey = hasExplicitKey ? avatarKey! : deterministic.key;
 
-  const resolvedVariant: MatrixAvatarVariant = hasUserSeed
-    ? deterministic.variant
-    : variant && MATRIX_VARIANTS[variant as MatrixAvatarVariant]
-      ? (variant as MatrixAvatarVariant)
-      : deterministic.variant;
+  const hasExplicitVariant = Boolean(variant && MATRIX_VARIANTS[variant as MatrixAvatarVariant]);
+  const resolvedVariant: MatrixAvatarVariant = hasExplicitVariant
+    ? (variant as MatrixAvatarVariant)
+    : deterministic.variant;
 
   const avatarDef = MATRIX_AVATARS.find((a) => a.key === resolvedKey) || MATRIX_AVATARS[0];
   const palette = MATRIX_VARIANTS[resolvedVariant] || MATRIX_VARIANTS['red-on-black'];

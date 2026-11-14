@@ -13,7 +13,10 @@ import {
   limit,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { notifyUserOfNewFollower } from '@/services/notificationService';
+import {
+  notifyUserOfNewFollower,
+  updateNotificationStoreFollowingIds,
+} from '@/services/notificationService';
 import {
   getPublicProfiles,
   invalidatePublicProfileCache,
@@ -210,7 +213,7 @@ async function performFollowStateChange(
 
   let fsSucceeded = false;
 
-  // 1. Atomic writeBatch on subcollections + existing profile docs
+  // 1. Atomic writeBatch on subcollections + top-level follows doc + existing profile docs
   try {
     const batch = writeBatch(db);
 
@@ -219,6 +222,7 @@ async function performFollowStateChange(
       batch.delete(userFollowerRef);
       batch.delete(pubFollowingRef);
       batch.delete(pubFollowerRef);
+      batch.delete(followDocRef);
     } else {
       const payloadTarget = {
         uid: targetUserId,
@@ -239,6 +243,14 @@ async function performFollowStateChange(
       batch.set(userFollowerRef, payloadFollower);
       batch.set(pubFollowingRef, payloadTarget);
       batch.set(pubFollowerRef, payloadFollower);
+      batch.set(followDocRef, {
+        followerId: currentUserId,
+        followingId: targetUserId,
+        followerName: resolvedFollowerName,
+        followerAvatar: resolvedFollowerAvatar,
+        followerFrame: resolvedFollowerFrame,
+        createdAt: serverTimestamp(),
+      });
     }
 
     // Only update parent docs that exist so Firestore update rules (`affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])`) always pass
@@ -317,27 +329,29 @@ async function performFollowStateChange(
     }
   }
 
-  // 2. Also sync top-level `follows/{currentUserId}_{targetUserId}` record
-  if (nextFollowing) {
-    await setDoc(followDocRef, {
-      followerId: currentUserId,
-      followingId: targetUserId,
-      followerName: resolvedFollowerName,
-      followerAvatar: resolvedFollowerAvatar,
-      followerFrame: resolvedFollowerFrame,
-      createdAt: serverTimestamp(),
-    })
-      .then(() => {
-        fsSucceeded = true;
-      })
-      .catch(() => {});
-  } else {
-    await deleteDoc(followDocRef)
-      .then(() => {
-        fsSucceeded = true;
-      })
-      .catch(() => {});
-  }
+  // 2. Also sync D1 /api/follows so D1 follower notifications stay 100% consistent with Firestore
+  void (async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken(false).catch(() => null);
+      await fetch('/api/follows', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          followerUid: currentUserId,
+          followingUid: targetUserId,
+          action: nextFollowing ? 'follow' : 'unfollow',
+          followerName: resolvedFollowerName,
+          followerAvatar: resolvedFollowerAvatar,
+          followerFrame: resolvedFollowerFrame,
+        }),
+      }).catch(() => {});
+    } catch {
+      // Ignore D1 mirror error
+    }
+  })();
 
   // Update in-memory caches immediately so UI and subsequent profile visits reflect the new state
   isFollowingMemoryCache.set(`${currentUserId}_${targetUserId}`, {
@@ -361,6 +375,13 @@ async function performFollowStateChange(
 
   invalidatePublicProfileCache(targetUserId);
   invalidatePublicProfileCache(currentUserId);
+
+  // Immediately refresh the Following tab & notification store cache
+  updateNotificationStoreFollowingIds(
+    currentUserId,
+    nextCurrentFollowingSet,
+    !nextFollowing ? targetUserId : undefined
+  );
 
   if (nextFollowing) {
     void notifyUserOfNewFollower({
@@ -656,6 +677,10 @@ export async function getFollowCounts(
           followingCount,
         }).catch(() => {});
       }
+    }
+
+    if (subcollectionReadSucceeded) {
+      updateNotificationStoreFollowingIds(userId, followingIds);
     }
 
     followCountsMemoryCache.set(userId, {

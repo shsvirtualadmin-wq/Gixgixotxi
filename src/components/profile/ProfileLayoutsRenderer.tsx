@@ -19,6 +19,7 @@ import {
   Disc,
   Tag,
   Wand2,
+  Camera,
 } from 'lucide-react';
 import type { ProfileLayoutId, SharedProfileData } from '@/lib/profileLayouts';
 import { normalizeProfileLayout } from '@/lib/profileLayouts';
@@ -56,6 +57,7 @@ export interface ProfileLayoutHeaderProps {
   onPreviewAsPublic?: () => void;
   /** Action callbacks */
   onEditProfile?: () => void;
+  onChangeAvatar?: () => void;
   onOpenStore?: (category?: string) => void;
   onOpenSettings?: () => void;
   onOpenWallet?: () => void;
@@ -203,6 +205,13 @@ const AlwaysVisibleNameplate: React.FC<{
   );
 };
 
+const AvatarEditContext = React.createContext<{
+  canEditAvatar: boolean;
+  onChangeAvatar?: () => void;
+}>({
+  canEditAvatar: false,
+});
+
 /**
  * Always renders Avatar + Avatar Frame/Ring with guaranteed z-index and overflow visibility.
  */
@@ -213,14 +222,43 @@ const AvatarWithGuaranteedRing: React.FC<{
   squarePixel?: boolean;
   className?: string;
 }> = ({ data, size, showLevelBadge = true, squarePixel = false, className = '' }) => {
+  const { canEditAvatar, onChangeAvatar } = React.useContext(AvatarEditContext);
   const hasEquippedFrame = Boolean(data.frame && data.frame !== 'none');
+  const interactive = Boolean(canEditAvatar && onChangeAvatar);
+
   return (
     <div
-      className={`relative z-30 inline-flex items-center justify-center shrink-0 overflow-visible ${className}`}
+      className={`relative z-30 inline-flex items-center justify-center shrink-0 overflow-visible ${
+        interactive ? 'cursor-pointer group' : ''
+      } ${className}`}
       data-store-item="avatar-and-frame"
+      onClick={
+        interactive
+          ? (e) => {
+              e.stopPropagation();
+              onChangeAvatar?.();
+            }
+          : undefined
+      }
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? 'Change profile picture' : undefined}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                onChangeAvatar?.();
+              }
+            }
+          : undefined
+      }
     >
       <div
-        className={`relative inline-flex items-center justify-center overflow-visible ${
+        className={`relative inline-flex items-center justify-center overflow-visible transition-transform ${
+          interactive ? 'group-hover:scale-[1.02]' : ''
+        } ${
           squarePixel
             ? 'p-1 bg-[#18181b] border-2 border-emerald-400 shadow-[3px_3px_0px_#10b981]'
             : hasEquippedFrame
@@ -238,7 +276,9 @@ const AvatarWithGuaranteedRing: React.FC<{
       </div>
       {showLevelBadge && (
         <div
-          className={`dark-surface-preserve absolute -bottom-1 -right-1 z-40 px-2 py-0.5 ${
+          className={`dark-surface-preserve absolute -bottom-1 ${
+            interactive ? '-left-1' : '-right-1'
+          } z-40 px-2 py-0.5 ${
             squarePixel
               ? 'rounded-none border border-emerald-300 bg-emerald-700'
               : 'rounded-full border-2 border-[#121216] bg-gradient-to-r from-amber-600 to-amber-500'
@@ -251,6 +291,22 @@ const AvatarWithGuaranteedRing: React.FC<{
           </span>
           <span style={{ color: '#FFFFFF' }}>{data.level}</span>
         </div>
+      )}
+      {interactive && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onChangeAvatar?.();
+          }}
+          className="dark-surface-preserve absolute -bottom-1 -right-1 z-40 w-7 h-7 rounded-full border-2 border-[#121216] bg-[#D71921] hover:bg-[#b51219] text-white shadow-md flex items-center justify-center transition-colors cursor-pointer"
+          style={{ color: '#FFFFFF' }}
+          title="Change profile picture"
+          aria-label="Change profile picture"
+          data-testid="avatar-edit-badge"
+        >
+          <Camera size={13} />
+        </button>
       )}
     </div>
   );
@@ -655,7 +711,7 @@ const TopBannerOverlayControls: React.FC<{
   </>
 );
 
-export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props) => {
+const ProfileLayoutsRendererInner: React.FC<ProfileLayoutHeaderProps> = (props) => {
   const {
     layout: rawLayout,
     data,
@@ -664,6 +720,7 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
     shortId: propShortId,
     onClose,
     onPreviewAsPublic,
+    onChangeAvatar,
     onOpenStore,
     onOpenWallet,
     onOpenFollowers,
@@ -2140,7 +2197,13 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
               </div>
               <button
                 type="button"
-                onClick={() => onOpenStore?.(slot.key)}
+                onClick={() => {
+                  if (slot.key === 'avatar' && !isPublicMode && !previewMode && onChangeAvatar) {
+                    onChangeAvatar();
+                  } else {
+                    onOpenStore?.(slot.key);
+                  }
+                }}
                 className="px-2.5 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] hover:border-[#D71921] text-[11px] font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer shrink-0"
               >
                 Change
@@ -2153,5 +2216,14 @@ export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props
         <ProfileActionButtonsRow props={props} />
       </div>
     </div>
+  );
+};
+
+export const ProfileLayoutsRenderer: React.FC<ProfileLayoutHeaderProps> = (props) => {
+  const canEditAvatar = Boolean(!props.isPublicMode && !props.previewMode && props.onChangeAvatar);
+  return (
+    <AvatarEditContext.Provider value={{ canEditAvatar, onChangeAvatar: props.onChangeAvatar }}>
+      <ProfileLayoutsRendererInner {...props} />
+    </AvatarEditContext.Provider>
   );
 };

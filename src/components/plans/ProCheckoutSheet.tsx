@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import {
   X,
   Zap,
@@ -196,15 +197,13 @@ export function ProCheckoutSheet({
   };
 
   // Lock body scroll & hide floating bottom nav while ProCheckoutSheet is open
+  useBodyScrollLock(open && !isGuest, 'pro-checkout-sheet');
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (open) {
       document.body.setAttribute('data-pro-checkout-open', 'true');
-      const prevOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
       return () => {
         document.body.removeAttribute('data-pro-checkout-open');
-        document.body.style.overflow = prevOverflow;
       };
     } else {
       document.body.removeAttribute('data-pro-checkout-open');

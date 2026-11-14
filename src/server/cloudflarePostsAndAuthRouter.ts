@@ -507,6 +507,133 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
     }
   }
 
+  // Seed starter MCQs when store.mcqs is empty so live test cards work out of the box
+  if (store.mcqs.length === 0) {
+    const starterMcqs: D1McqRow[] = [
+      {
+        id: 'mcq_seed_fast_1',
+        university_id: 'uni_fast_nuces',
+        university_slug: 'fast-nuces',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Mathematics',
+        topic: 'Calculus & Limits',
+        question: 'Evaluate the derivative of f(x) = 3x^2 - 5x + 7 with respect to x.',
+        option_a: '6x - 5',
+        option_b: '3x - 5',
+        option_c: '6x + 7',
+        option_d: '6x^2 - 5',
+        correct_answer: 'A',
+        explanation: 'Using the power rule d/dx(x^n) = nx^(n-1), d/dx(3x^2 - 5x + 7) = 6x - 5.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_fast_2',
+        university_id: 'uni_fast_nuces',
+        university_slug: 'fast-nuces',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Analytical Reasoning',
+        topic: 'Number Sequences',
+        question: 'Find the next number in the sequence: 2, 6, 12, 20, 30, ?',
+        option_a: '38',
+        option_b: '40',
+        option_c: '42',
+        option_d: '44',
+        correct_answer: 'C',
+        explanation: 'Differences are +4, +6, +8, +10, so the next difference is +12: 30 + 12 = 42.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_nust_1',
+        university_id: 'uni_nust_net',
+        university_slug: 'nust-net',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Physics',
+        topic: 'Kinematics',
+        question: 'A projectile is launched at 45 degrees with initial speed v. Ignoring air resistance, at the highest point of its trajectory its acceleration is:',
+        option_a: 'Zero',
+        option_b: 'g downward',
+        option_c: 'g upward',
+        option_d: 'g / sqrt(2)',
+        correct_answer: 'B',
+        explanation: 'Gravity acts continuously downward with magnitude g throughout projectile motion.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_mdcat_1',
+        university_id: 'uni_mdcat',
+        university_slug: 'mdcat',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Biology',
+        topic: 'Cell Biology',
+        question: 'Which organelle is primarily responsible for ATP synthesis via oxidative phosphorylation in eukaryotic cells?',
+        option_a: 'Golgi apparatus',
+        option_b: 'Ribosome',
+        option_c: 'Mitochondrion',
+        option_d: 'Lysosome',
+        correct_answer: 'C',
+        explanation: 'Mitochondria house the electron transport chain and ATP synthase on the inner membrane.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_sat_1',
+        university_id: 'uni_sat',
+        university_slug: 'sat',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Mathematics',
+        topic: 'Linear Equations',
+        question: 'If 4x + 8 = 28, what is the value of 2x + 3?',
+        option_a: '10',
+        option_b: '13',
+        option_c: '15',
+        option_d: '17',
+        correct_answer: 'B',
+        explanation: '4x = 20 => x = 5. Substituting x = 5 gives 2(5) + 3 = 13.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_ca_1',
+        university_id: 'uni_ca',
+        university_slug: 'ca',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Quantitative Methods',
+        topic: 'Financial Mathematics',
+        question: 'In double-entry bookkeeping, an increase in an asset account is recorded as a:',
+        option_a: 'Debit',
+        option_b: 'Credit',
+        option_c: 'Liability',
+        option_d: 'Contra equity',
+        correct_answer: 'A',
+        explanation: 'Assets have a normal debit balance, so increases are debited.',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+      {
+        id: 'mcq_seed_acca_1',
+        university_id: 'uni_acca',
+        university_slug: 'acca',
+        import_batch_id: 'seed_batch_1',
+        subject: 'Financial Accounting',
+        topic: 'Accounting Equation',
+        question: 'Which of the following represents the fundamental accounting equation?',
+        option_a: 'Assets = Liabilities + Equity',
+        option_b: 'Assets + Liabilities = Equity',
+        option_c: 'Equity = Assets + Liabilities',
+        option_d: 'Liabilities = Assets + Equity',
+        correct_answer: 'A',
+        explanation: 'Resources owned by a business (Assets) equal claims against those resources (Liabilities + Equity).',
+        difficulty: 'easy',
+        created_at: new Date(basePastMs).toISOString(),
+      },
+    ];
+    store.mcqs.push(...starterMcqs);
+    mutated = true;
+  }
+
   // Ensure every MCQ has university_slug synced with its university_id and import_batch_id initialized
   const uniById = new Map<string, D1UniversityRow>();
   for (const u of store.universities) {
@@ -3980,6 +4107,20 @@ ${entries
       if (existingIdx !== -1) {
         store.follows.splice(existingIdx, 1);
       }
+      // Remove any post notifications from the unfollowed author in this user's feed
+      store.notifications = store.notifications.filter((n) => {
+        if (n.user_id !== followerUid) return true;
+        const isPost =
+          n.type === 'following_post' ||
+          n.type === 'new_post' ||
+          n.type === 'post' ||
+          Boolean(n.post_id) ||
+          /\bposted:\s*/i.test(String(n.title || ''));
+        if (isPost && n.author_id === followingUid) {
+          return false;
+        }
+        return true;
+      });
       following = false;
     } else {
       if (existingIdx === -1) {
@@ -4020,7 +4161,8 @@ ${entries
 
     saveD1Store(store);
     const followersCount = store.follows.filter((f) => f.following_uid === followingUid).length;
-    return res.status(200).json({ success: true, following, followersCount });
+    const followingCount = store.follows.filter((f) => f.follower_uid === followerUid).length;
+    return res.status(200).json({ success: true, following, followersCount, followingCount });
   });
 
   app.get('/api/notifications', async (req, res) => {
@@ -4030,14 +4172,95 @@ ${entries
       return res.status(400).json({ success: false, error: 'Missing userId.' });
     }
 
+    const followingKnown = String(req.query.followingKnown || '') === '1';
+    const followingIdsParam = String(req.query.followingIds || '').trim();
+    const clientFollowingSet = followingKnown
+      ? new Set(
+          followingIdsParam
+            .split(',')
+            .map((s) => s.trim())
+            .filter((s) => Boolean(s) && s !== userId)
+        )
+      : null;
+
     const store = loadD1Store();
     if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.follows)) store.follows = [];
     if (!Array.isArray(store.userReadAnnouncements)) store.userReadAnnouncements = [];
     if (!Array.isArray(store.userWelcomeStatus)) store.userWelcomeStatus = [];
 
+    // Reconcile D1 store.follows and purge unfollowed post notifications when client passes authoritative followingIds
+    if (clientFollowingSet !== null) {
+      let mutated = false;
+      const beforeFollowsLen = store.follows.length;
+      store.follows = store.follows.filter(
+        (f) => f.follower_uid !== userId || clientFollowingSet.has(f.following_uid)
+      );
+      if (store.follows.length !== beforeFollowsLen) {
+        mutated = true;
+      }
+      for (const targetUid of clientFollowingSet) {
+        if (
+          !store.follows.some(
+            (f) => f.follower_uid === userId && f.following_uid === targetUid
+          )
+        ) {
+          store.follows.push({
+            follower_uid: userId,
+            following_uid: targetUid,
+            created_at: Date.now(),
+          });
+          mutated = true;
+        }
+      }
+
+      const beforeNotifsLen = store.notifications.length;
+      store.notifications = store.notifications.filter((n) => {
+        if (n.user_id !== userId) return true;
+        const isPost =
+          n.type === 'following_post' ||
+          n.type === 'new_post' ||
+          n.type === 'post' ||
+          Boolean(n.post_id) ||
+          /\bposted:\s*/i.test(String(n.title || ''));
+        if (!isPost) return true;
+        const authorUid = String(n.author_id || '').trim();
+        return Boolean(authorUid && authorUid !== userId && clientFollowingSet.has(authorUid));
+      });
+      if (store.notifications.length !== beforeNotifsLen) {
+        mutated = true;
+      }
+      if (mutated) {
+        saveD1Store(store);
+      }
+    }
+
+    const d1FollowingSet =
+      clientFollowingSet ??
+      new Set(
+        store.follows
+          .filter((f) => f.follower_uid === userId && f.following_uid && f.following_uid !== userId)
+          .map((f) => f.following_uid)
+      );
+
     const seenKeys = new Set<string>();
     const filteredNotifs = store.notifications
-      .filter((n) => n.user_id === userId)
+      .filter((n) => {
+        if (n.user_id !== userId) return false;
+        const isPost =
+          n.type === 'following_post' ||
+          n.type === 'new_post' ||
+          n.type === 'post' ||
+          Boolean(n.post_id) ||
+          /\bposted:\s*/i.test(String(n.title || ''));
+        if (isPost) {
+          const authorUid = String(n.author_id || '').trim();
+          if (!authorUid || authorUid === userId || !d1FollowingSet.has(authorUid)) {
+            return false;
+          }
+        }
+        return true;
+      })
       .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0))
       .filter((n) => {
         const cleanTitle = String(n.title || '')
@@ -4132,6 +4355,65 @@ ${entries
     });
   });
 
+  app.post('/api/notifications/cleanup-unfollowed', async (req, res) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
+    const body = req.body || {};
+    const userId = String(user?.uid || body.userId || '').trim();
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'Missing userId.' });
+    }
+    const followingIds: string[] = Array.isArray(body.followingIds)
+      ? body.followingIds.map((id: unknown) => String(id || '').trim()).filter((id: string) => Boolean(id) && id !== userId)
+      : [];
+    const followingSet = new Set<string>(followingIds);
+
+    const store = loadD1Store();
+    if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.follows)) store.follows = [];
+
+    const beforeNotifs = store.notifications.length;
+    store.notifications = store.notifications.filter((n) => {
+      if (n.user_id !== userId) return true;
+      const isPost =
+        n.type === 'following_post' ||
+        n.type === 'new_post' ||
+        n.type === 'post' ||
+        Boolean(n.post_id) ||
+        /\bposted:\s*/i.test(String(n.title || ''));
+      if (!isPost) return true;
+      const authorUid = String(n.author_id || '').trim();
+      return Boolean(authorUid && authorUid !== userId && followingSet.has(authorUid));
+    });
+    const deletedCount = beforeNotifs - store.notifications.length;
+
+    // Also sync store.follows for this user so D1 follows matches Firestore
+    const beforeFollows = store.follows.length;
+    store.follows = store.follows.filter(
+      (f) => f.follower_uid !== userId || followingSet.has(f.following_uid)
+    );
+    let followsMutated = store.follows.length !== beforeFollows;
+    for (const targetUid of followingSet) {
+      if (
+        !store.follows.some(
+          (f) => f.follower_uid === userId && f.following_uid === targetUid
+        )
+      ) {
+        store.follows.push({
+          follower_uid: userId,
+          following_uid: targetUid,
+          created_at: Date.now(),
+        });
+        followsMutated = true;
+      }
+    }
+
+    if (deletedCount > 0 || followsMutated) {
+      saveD1Store(store);
+    }
+
+    return res.status(200).json({ success: true, deletedCount });
+  });
+
   app.post('/api/notifications', async (req, res) => {
     const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
     const body = req.body || {};
@@ -4147,6 +4429,7 @@ ${entries
 
     const store = loadD1Store();
     if (!Array.isArray(store.notifications)) store.notifications = [];
+    if (!Array.isArray(store.follows)) store.follows = [];
     const now = Date.now();
     let created = 0;
 
@@ -4155,6 +4438,19 @@ ${entries
       const authorId = item.authorId ? String(item.authorId).trim() : user?.uid || null;
       if (!targetUserId || (authorId && targetUserId === authorId)) continue;
       if (item.isAnonymous) continue;
+
+      const notifType = String(item.type || 'following_post');
+      const isPostNotif =
+        notifType === 'following_post' ||
+        notifType === 'new_post' ||
+        notifType === 'post' ||
+        Boolean(item.postId) ||
+        /\bposted:\s*/i.test(String(item.title || ''));
+
+      // Post notifications must always have an authorId != targetUserId
+      if (isPostNotif && (!authorId || authorId === targetUserId)) {
+        continue;
+      }
 
       const id = String(
         item.id ||
@@ -4187,7 +4483,7 @@ ${entries
       store.notifications.unshift({
         id,
         user_id: targetUserId,
-        type: String(item.type || 'following_post'),
+        type: notifType,
         title: cleanTitle,
         message: cleanMessage,
         link: item.link ? String(item.link) : null,

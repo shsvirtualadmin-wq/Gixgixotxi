@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, lazy } from 'react';
 import { createPortal } from 'react-dom';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 const LazyProfileView = lazy(() =>
   import('@/components/profile/ProfileView').then((m) => ({ default: m.ProfileView }))
@@ -57,16 +58,7 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [isOpen]);
 
   // Lock body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
+  useBodyScrollLock(isOpen, 'profile-modal');
 
   const contextValue = useMemo(
     () => ({ openProfile, closeProfile, isOpen, activeUid }),

@@ -8111,6 +8111,7 @@ html:not(.dark) .zenryu-stage--active {
 
 .fsm-page--closed {
   transform: translate3d(100%, 0, 0);
+  pointer-events: none;
 }
 
 .fsm-scroll-area {
@@ -11275,6 +11276,12 @@ html.smooth-mode .stg-shell .fsm-back-btn,
   font-family: var(--nt-sys-font);
   box-sizing: border-box;
   position: relative;
+}
+
+.nt-quiz-shell.fixed {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1100;
 }
 
 :is(.dark, [data-theme="dark"]) .nt-quiz-shell,

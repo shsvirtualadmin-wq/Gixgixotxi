@@ -419,8 +419,8 @@ function aiTutorPlugin() {
           req.on('end', async () => {
             try {
               const body = JSON.parse(rawBody || '{}');
-              const BOARDY_AI_MODEL = 'gemini-3.8-flash';
-              const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
+              const BOARDY_AI_MODEL = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
+              const BOARDY_AI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.1-flash-lite';
 
               // If structured MCQ derivation request
               const isMcqDerivation = body.mode === 'mcq_derivation' || body.questionText;
@@ -519,7 +519,12 @@ Provide the step-by-step solution following your exact output format.`;
                 };
 
                 try {
-                  const replyText = await callGemini(BOARDY_AI_MODEL);
+                  let replyText = await callGemini(BOARDY_AI_MODEL).catch(async (primaryErr: any) => {
+                    if (BOARDY_AI_FALLBACK_MODEL && BOARDY_AI_FALLBACK_MODEL !== BOARDY_AI_MODEL) {
+                      return await callGemini(BOARDY_AI_FALLBACK_MODEL);
+                    }
+                    throw primaryErr;
+                  });
                   if (replyText) {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ reply: replyText, timestamp: new Date().toISOString() }));
@@ -617,7 +622,7 @@ Provide the step-by-step solution following your exact output format.`;
               }
 
               const mode = body.mode || 'generate';
-              const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+              const model = process.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 
               if (mode === 'generate') {
                 const count = Math.min(Math.max(Number(body.count) || 5, 1), 30);
@@ -796,19 +801,6 @@ RULES:
 
         res.writeHead(405, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Method not allowed' }));
-      });
-
-      // ─── CREW API (LEADERBOARDS, MODERATION, PAYMENTS) ───────────────────
-      server.middlewares.use('/api/crews', async (req: any, res: any) => {
-        console.log('[DEBUG] /api/crews hit! url:', req.url);
-        try {
-          const { handleCrewApi } = await import('./src/server/crewApiHandler.ts');
-          await handleCrewApi(req, res);
-        } catch (err: any) {
-          console.error('[ViteMiddleware] Crew API error:', err);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: err?.message || 'Server error' }));
-        }
       });
 
       // ─── PDF DOWNLOAD RATE LIMIT API (1 DOWNLOAD PER HOUR PER USER) ──────

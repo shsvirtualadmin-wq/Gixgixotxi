@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import { InAppLeaderboard } from '@/components/crew/InAppLeaderboard';
 import {
   CrewGlassSlider,
@@ -151,6 +153,11 @@ export function CrewDashboardPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [selectedNewLeader, setSelectedNewLeader] = useState<string>('');
   const [transferLoading, setTransferLoading] = useState(false);
+
+  useBodyScrollLock(
+    leaveConfirmOpen || renameModalOpen || transferModalOpen,
+    'crew-dashboard-dialog'
+  );
 
   // Trigger Create Crew modal in Browse view
   const [createCrewTrigger, setCreateCrewTrigger] = useState(0);
@@ -1169,211 +1176,247 @@ export function CrewDashboardPage() {
       </div>
 
       {/* ─── DIALOG: LEAVE CREW (Radius 32px Glass Card over Blurred Backdrop) ─ */}
-      {leaveConfirmOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="leave-crew-dialog-title"
-          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
-        >
-          <div className="cw-dialog-card w-full max-w-sm text-center space-y-4">
-            {/* Red circular icon on top */}
-            <div
-              className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
-              style={{
-                backgroundColor: 'color-mix(in srgb, var(--cw-red) 24%, transparent)',
-                boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 50%, transparent)',
-                color: '#ffffff',
-              }}
-            >
-              <LogOut size={20} strokeWidth={2.2} />
-            </div>
-
-            <div className="space-y-1.5">
-              <h3
-                id="leave-crew-dialog-title"
-                className="cw-font-doto text-xl font-extrabold"
-                style={{ color: 'var(--cw-text)' }}
+      {leaveConfirmOpen &&
+        typeof document !== 'undefined' &&
+        document.body &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-crew-dialog-title"
+            className="cw-dialog-backdrop fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              width: '100vw',
+              height: '100dvh',
+              zIndex: 1200,
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <div className="cw-dialog-card w-full max-w-sm text-center space-y-4">
+              {/* Red circular icon on top */}
+              <div
+                className="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--cw-red) 24%, transparent)',
+                  boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--cw-red) 50%, transparent)',
+                  color: '#ffffff',
+                }}
               >
-                Leave this crew?
-              </h3>
-              <p className="text-xs sm:text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
-                Leave this squad? You can rejoin with the invite code.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setLeaveConfirmOpen(false)}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-btn-glass w-full"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmLeave}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-btn-red w-full"
-              >
-                Leave
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── DIALOG: RENAME CREW (Leader Only) ──────────────────────────── */}
-      {renameModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="rename-crew-dialog-title"
-          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
-        >
-          <div className="cw-dialog-card w-full max-w-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3
-                id="rename-crew-dialog-title"
-                className="cw-font-doto text-lg font-extrabold"
-                style={{ color: 'var(--cw-text)' }}
-              >
-                Edit Crew Name
-              </h3>
-              <button
-                type="button"
-                onClick={() => setRenameModalOpen(false)}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleRenameSubmit} className="space-y-4">
-              <div>
-                <label
-                  className="block text-xs font-semibold mb-1.5"
-                  style={{ color: 'var(--cw-muted)' }}
-                >
-                  Crew Name (2–50 characters)
-                </label>
-                <input
-                  type="text"
-                  required
-                  maxLength={50}
-                  value={newSquadName}
-                  onChange={(e) => setNewSquadName(e.target.value)}
-                  placeholder="e.g. Apex Scholars"
-                  className="cw-pill-input w-full h-11 px-4 text-sm font-medium"
-                />
+                <LogOut size={20} strokeWidth={2.2} />
               </div>
 
-              {renameError && (
-                <div
-                  className="cw-lb-row-me text-xs font-semibold"
-                  style={{ color: 'var(--cw-red-text)' }}
+              <div className="space-y-1.5">
+                <h3
+                  id="leave-crew-dialog-title"
+                  className="cw-font-doto text-xl font-extrabold"
+                  style={{ color: 'var(--cw-text)' }}
                 >
-                  {renameError}
-                </div>
-              )}
+                  Leave this crew?
+                </h3>
+                <p className="text-xs sm:text-sm leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
+                  Leave this squad? You can rejoin with the invite code.
+                </p>
+              </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setRenameModalOpen(false)}
+                  onClick={() => setLeaveConfirmOpen(false)}
                   {...getCrewBtnHandlers()}
                   className="cw-btn cw-btn-glass w-full"
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
-                  disabled={renameLoading || !newSquadName.trim()}
-                  {...getCrewBtnHandlers(renameLoading || !newSquadName.trim())}
+                  type="button"
+                  onClick={handleConfirmLeave}
+                  {...getCrewBtnHandlers()}
                   className="cw-btn cw-btn-red w-full"
                 >
-                  <span>{renameLoading ? 'Saving...' : 'Save Name'}</span>
-                  {renameLoading && <ButtonLineLoader />}
+                  Leave
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ─── DIALOG: RENAME CREW (Leader Only) ──────────────────────────── */}
+      {renameModalOpen &&
+        typeof document !== 'undefined' &&
+        document.body &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-crew-dialog-title"
+            className="cw-dialog-backdrop fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              width: '100vw',
+              height: '100dvh',
+              zIndex: 1200,
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <div className="cw-dialog-card w-full max-w-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3
+                  id="rename-crew-dialog-title"
+                  className="cw-font-doto text-lg font-extrabold"
+                  style={{ color: 'var(--cw-text)' }}
+                >
+                  Edit Crew Name
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setRenameModalOpen(false)}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <form onSubmit={handleRenameSubmit} className="space-y-4">
+                <div>
+                  <label
+                    className="block text-xs font-semibold mb-1.5"
+                    style={{ color: 'var(--cw-muted)' }}
+                  >
+                    Crew Name (2–50 characters)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={50}
+                    value={newSquadName}
+                    onChange={(e) => setNewSquadName(e.target.value)}
+                    placeholder="e.g. Apex Scholars"
+                    className="cw-pill-input w-full h-11 px-4 text-sm font-medium"
+                  />
+                </div>
+
+                {renameError && (
+                  <div
+                    className="cw-lb-row-me text-xs font-semibold"
+                    style={{ color: 'var(--cw-red-text)' }}
+                  >
+                    {renameError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setRenameModalOpen(false)}
+                    {...getCrewBtnHandlers()}
+                    className="cw-btn cw-btn-glass w-full"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={renameLoading || !newSquadName.trim()}
+                    {...getCrewBtnHandlers(renameLoading || !newSquadName.trim())}
+                    className="cw-btn cw-btn-red w-full"
+                  >
+                    <span>{renameLoading ? 'Saving...' : 'Save Name'}</span>
+                    {renameLoading && <ButtonLineLoader />}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* ─── DIALOG: TRANSFER LEADERSHIP (Leader Only) ──────────────────── */}
-      {transferModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="transfer-leader-dialog-title"
-          className="cw-dialog-backdrop fixed inset-0 z-[120] flex items-center justify-center p-4"
-        >
-          <div className="cw-dialog-card w-full max-w-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h3
-                id="transfer-leader-dialog-title"
-                className="cw-font-doto text-lg font-extrabold"
-                style={{ color: 'var(--cw-text)' }}
+      {transferModalOpen &&
+        typeof document !== 'undefined' &&
+        document.body &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="transfer-leader-dialog-title"
+            className="cw-dialog-backdrop fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              width: '100vw',
+              height: '100dvh',
+              zIndex: 1200,
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            <div className="cw-dialog-card w-full max-w-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3
+                  id="transfer-leader-dialog-title"
+                  className="cw-font-doto text-lg font-extrabold"
+                  style={{ color: 'var(--cw-text)' }}
+                >
+                  Transfer Leadership
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setTransferModalOpen(false)}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
+                Select a crew member to become the new leader.
+              </p>
+
+              <select
+                value={selectedNewLeader}
+                onChange={(e) => setSelectedNewLeader(e.target.value)}
+                className="cw-pill-input w-full h-11 px-4 text-xs font-semibold"
               >
-                Transfer Leadership
-              </h3>
-              <button
-                type="button"
-                onClick={() => setTransferModalOpen(false)}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-icon-btn cw-btn-glass !w-9 !h-9 !min-w-[36px] !min-h-[36px]"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
+                <option value="">Select a member...</option>
+                {members
+                  .filter((m) => user && m.uid !== user.uid)
+                  .map((m) => (
+                    <option key={m.uid} value={m.uid}>
+                      {sanitizeStudentDisplayName(m.displayName, m.uid)}
+                    </option>
+                  ))}
+              </select>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTransferModalOpen(false)}
+                  {...getCrewBtnHandlers()}
+                  className="cw-btn cw-btn-glass w-full"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={transferLoading || !selectedNewLeader}
+                  onClick={handleConfirmTransfer}
+                  {...getCrewBtnHandlers(transferLoading || !selectedNewLeader)}
+                  className="cw-btn cw-btn-red w-full"
+                >
+                  <span>{transferLoading ? 'Transferring...' : 'Confirm'}</span>
+                  {transferLoading && <ButtonLineLoader />}
+                </button>
+              </div>
             </div>
-
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--cw-muted)' }}>
-              Select a crew member to become the new leader.
-            </p>
-
-            <select
-              value={selectedNewLeader}
-              onChange={(e) => setSelectedNewLeader(e.target.value)}
-              className="cw-pill-input w-full h-11 px-4 text-xs font-semibold"
-            >
-              <option value="">Select a member...</option>
-              {members
-                .filter((m) => user && m.uid !== user.uid)
-                .map((m) => (
-                  <option key={m.uid} value={m.uid}>
-                    {sanitizeStudentDisplayName(m.displayName, m.uid)}
-                  </option>
-                ))}
-            </select>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => setTransferModalOpen(false)}
-                {...getCrewBtnHandlers()}
-                className="cw-btn cw-btn-glass w-full"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={transferLoading || !selectedNewLeader}
-                onClick={handleConfirmTransfer}
-                {...getCrewBtnHandlers(transferLoading || !selectedNewLeader)}
-                className="cw-btn cw-btn-red w-full"
-              >
-                <span>{transferLoading ? 'Transferring...' : 'Confirm'}</span>
-                {transferLoading && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

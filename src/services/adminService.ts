@@ -575,7 +575,7 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
     const attemptsCol = collection(db, 'attempts');
     const crewsCol = collection(db, 'crews');
 
-    const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 4000): Promise<T> =>
+    const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 2000): Promise<T> =>
       Promise.race([
         p,
         new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
@@ -587,7 +587,7 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
         let snap = await withTimeout(getCountFromServer(targetQuery), null);
         if (!snap && auth?.currentUser) {
           await ensureAdminAuthToken(true);
-          snap = await withTimeout(getCountFromServer(targetQuery), null, 3500);
+          snap = await withTimeout(getCountFromServer(targetQuery), null, 1800);
         }
         if (snap && typeof snap.data === 'function') {
           return snap.data().count;
@@ -597,7 +597,7 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
       } catch (err) {
         try {
           await ensureAdminAuthToken(true);
-          const retrySnap = await withTimeout(getCountFromServer(targetQuery), null, 3500);
+          const retrySnap = await withTimeout(getCountFromServer(targetQuery), null, 1800);
           if (retrySnap && typeof retrySnap.data === 'function') {
             return retrySnap.data().count;
           }

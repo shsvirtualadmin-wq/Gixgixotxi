@@ -497,7 +497,7 @@ export async function fetchAdminCertificates(params?: {
     ) {
       const dataUrl = await fetchSignatureImageAsDataUrl(
         activeSignature.imageUrl || activeSignature.id,
-        PREVIEW_REQUEST_TIMEOUT_MS
+        1500
       );
       if (dataUrl) {
         activeSignature = { ...activeSignature, previewDataUrl: dataUrl };

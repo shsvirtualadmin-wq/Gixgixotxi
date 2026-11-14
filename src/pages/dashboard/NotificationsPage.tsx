@@ -426,23 +426,51 @@ export function NotificationsPage() {
     }
   }, [user?.uid, loadingMore, lastDoc]);
 
-  // Combine store notifications + extra paginated items, deduplicate, and sort newest-first by real createdAt
+  const isNotificationFromFollowedAuthor = useCallback(
+    (notif: AppNotification): boolean => {
+      if (!storeSnapshot.followingLoaded || storeSnapshot.followingIds.size === 0) {
+        return false;
+      }
+      const actorUid = resolveDirectActorUid(notif);
+      if (!actorUid || (user?.uid && actorUid === user.uid)) {
+        return false;
+      }
+      return storeSnapshot.followingIds.has(actorUid);
+    },
+    [storeSnapshot.followingLoaded, storeSnapshot.followingIds, user?.uid]
+  );
+
+  // Combine store notifications + extra paginated items, filter post notifications by currentUser.following, deduplicate, and sort newest-first by real createdAt
   const allNotifications = useMemo<AppNotification[]>(() => {
     const byId = new Map<string, AppNotification>();
+    const shouldInclude = (item: AppNotification): boolean => {
+      if (dismissedIds.has(item.id)) return false;
+      const cat = resolveDisplayCategory(item);
+      if (cat === 'post') {
+        return isNotificationFromFollowedAuthor(item);
+      }
+      return true;
+    };
+
     for (const item of storeSnapshot.notifications) {
-      if (!dismissedIds.has(item.id)) {
+      if (shouldInclude(item)) {
         byId.set(item.id, item);
       }
     }
     for (const extra of extraNotifications) {
-      if (!dismissedIds.has(extra.id) && !byId.has(extra.id)) {
+      if (!byId.has(extra.id) && shouldInclude(extra)) {
         byId.set(extra.id, extra);
       }
     }
     return Array.from(byId.values()).sort(
       (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
     );
-  }, [storeSnapshot.notifications, extraNotifications, dismissedIds]);
+  }, [
+    storeSnapshot.notifications,
+    extraNotifications,
+    dismissedIds,
+    isNotificationFromFollowedAuthor,
+  ]);
 
   // Per-UID cached actor profiles for follower and post notifications
   const [actorProfilesByUid, setActorProfilesByUid] = useState<Map<string, PublicProfile>>(
@@ -586,7 +614,7 @@ export function NotificationsPage() {
     if (filter === 'following') {
       return allNotifications.filter((n) => {
         const cat = resolveDisplayCategory(n);
-        return cat === 'follower' || cat === 'post';
+        return (cat === 'follower' || cat === 'post') && isNotificationFromFollowedAuthor(n);
       });
     }
     if (filter === 'rewards') {
@@ -596,7 +624,7 @@ export function NotificationsPage() {
       });
     }
     return allNotifications;
-  }, [allNotifications, filter]);
+  }, [allNotifications, filter, isNotificationFromFollowedAuthor]);
 
   const displayedNotifications = useMemo(
     () => filteredNotifications.slice(0, visibleCount),
@@ -672,8 +700,11 @@ export function NotificationsPage() {
     for (const n of allNotifications) {
       const cat = resolveDisplayCategory(n);
       if (cat === 'announcement') announcementsCount++;
-      else if (cat === 'follower' || cat === 'post') followingCount++;
-      else if (cat === 'reward' || cat === 'crew') rewardsCount++;
+      else if ((cat === 'follower' || cat === 'post') && isNotificationFromFollowedAuthor(n)) {
+        followingCount++;
+      } else if (cat === 'reward' || cat === 'crew') {
+        rewardsCount++;
+      }
     }
 
     return {
@@ -682,7 +713,7 @@ export function NotificationsPage() {
       announcements: announcementsCount,
       rewards: rewardsCount,
     };
-  }, [allNotifications]);
+  }, [allNotifications, isNotificationFromFollowedAuthor]);
 
   const handleMarkOneRead = useCallback(
     async (notif: AppNotification) => {

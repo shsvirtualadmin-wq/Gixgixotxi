@@ -11,6 +11,7 @@ import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
+import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { UserPlus, X } from 'lucide-react';
 
 const GuestUpgradeModal = React.lazy(() =>
@@ -87,6 +88,11 @@ export function DashboardShell() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+
+  // Safety cleanup on dashboard mount & route change to clear any leftover scroll lock
+  useEffect(() => {
+    safetyCleanupScrollLocks();
+  }, [location.pathname]);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
   const isSettingsRoute =

@@ -307,13 +307,195 @@ export const CertificatesSectionSkeleton: React.FC = React.memo(() => (
 ));
 
 /**
+ * Admin Study Crews List Skeleton — matches <AdminCrewsPage /> single-column rows (44px square avatar + metadata + right stats).
+ */
+export const AdminCrewsSkeleton: React.FC<{ count?: number }> = React.memo(({ count = 5 }) => (
+  <div role="status" aria-busy="true" aria-label="Loading study crews" className="space-y-2 w-full">
+    {Array.from({ length: count }).map((_, idx) => (
+      <div
+        key={idx}
+        aria-hidden="true"
+        className="p-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] flex items-center justify-between gap-3 min-h-[72px]"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-[44px] h-[44px] rounded-xl skeleton shrink-0" />
+          <div className="space-y-2 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-36 max-w-[55%] rounded-md skeleton" />
+              <div className="h-4 w-14 rounded skeleton opacity-75" />
+            </div>
+            <div className="h-3 w-48 max-w-[75%] rounded-md skeleton opacity-70" />
+          </div>
+        </div>
+        <div className="space-y-1.5 text-right shrink-0">
+          <div className="h-3.5 w-12 rounded skeleton ml-auto" />
+          <div className="h-2.5 w-16 rounded skeleton opacity-70" />
+        </div>
+      </div>
+    ))}
+  </div>
+));
+
+/**
+ * Admin Certificates List Skeleton — matches <AdminCertificatesPage /> certificate rows.
+ */
+export const AdminCertificatesSkeleton: React.FC<{ count?: number }> = React.memo(({ count = 4 }) => (
+  <div role="status" aria-busy="true" aria-label="Loading certificates" className="space-y-3 w-full">
+    {Array.from({ length: count }).map((_, idx) => (
+      <div
+        key={idx}
+        aria-hidden="true"
+        className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 min-h-[104px]"
+      >
+        <div className="space-y-2 flex-1 min-w-0 w-full">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-32 rounded skeleton" />
+            <div className="h-4 w-14 rounded skeleton opacity-75" />
+            <div className="h-4 w-20 rounded skeleton opacity-70" />
+          </div>
+          <div className="h-5 w-48 max-w-[70%] rounded-md skeleton" />
+          <div className="h-3.5 w-72 max-w-[90%] rounded skeleton opacity-70" />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="h-10 w-16 rounded-xl skeleton" />
+          <div className="h-10 w-16 rounded-xl skeleton" />
+          <div className="h-10 w-24 rounded-xl skeleton" />
+        </div>
+      </div>
+    ))}
+  </div>
+));
+
+/**
+ * Admin Captains List Skeleton — matches <AdminCaptainsPage /> rows.
+ */
+export const AdminCaptainsSkeleton: React.FC<{ count?: number }> = React.memo(({ count = 4 }) => (
+  <div role="status" aria-busy="true" aria-label="Loading captains" className="space-y-3 w-full">
+    {Array.from({ length: count }).map((_, idx) => (
+      <div
+        key={idx}
+        aria-hidden="true"
+        className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] flex items-center justify-between gap-4 min-h-[84px]"
+      >
+        <div className="space-y-2 flex-1 min-w-0">
+          <div className="h-4 w-40 max-w-[60%] rounded-md skeleton" />
+          <div className="h-3 w-56 max-w-[80%] rounded-md skeleton opacity-75" />
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="h-8 w-20 rounded-xl skeleton" />
+          <div className="h-8 w-24 rounded-xl skeleton" />
+        </div>
+      </div>
+    ))}
+  </div>
+));
+
+/**
+ * Admin Question Bank Skeleton — matches <AdminQuestionsPage /> MCQ card list.
+ */
+export const AdminQuestionsMcqListSkeleton: React.FC<{ count?: number }> = React.memo(
+  ({ count = 4 }) => (
+    <div role="status" aria-busy="true" aria-label="Loading questions" className="space-y-3 w-full">
+      {Array.from({ length: count }).map((_, idx) => (
+        <div
+          key={idx}
+          aria-hidden="true"
+          className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3 min-h-[116px]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="h-5 w-20 rounded-full skeleton" />
+              <div className="h-5 w-24 rounded-full skeleton opacity-75" />
+            </div>
+            <div className="h-6 w-16 rounded-lg skeleton opacity-70" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-4 w-[88%] rounded-md skeleton" />
+            <div className="h-4 w-[62%] rounded-md skeleton opacity-75" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+);
+
+/**
+ * Full Admin Question Bank Page Skeleton (for cold initial load before universities resolve).
+ */
+export const AdminQuestionsPageSkeleton: React.FC = React.memo(() => (
+  <div role="status" aria-busy="true" className="w-full space-y-4">
+    <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-2">
+      <div className="h-6 w-44 rounded-lg skeleton" />
+      <div className="h-3.5 w-56 rounded-md skeleton opacity-75" />
+    </div>
+    <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3">
+      <div className="h-4 w-28 rounded skeleton" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl skeleton shrink-0" />
+          <div className="space-y-1.5">
+            <div className="h-4 w-36 rounded skeleton" />
+            <div className="h-3 w-24 rounded skeleton opacity-75" />
+          </div>
+        </div>
+        <div className="h-9 w-20 rounded-xl skeleton" />
+      </div>
+    </div>
+    <AdminQuestionsMcqListSkeleton count={4} />
+  </div>
+));
+
+/**
+ * Admin Overview Page Skeleton — matches the 6 stat cards (2 cols mobile, 4 cols desktop).
+ */
+export const AdminOverviewSkeleton: React.FC = React.memo(() => (
+  <div role="status" aria-busy="true" className="w-full space-y-6">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      {Array.from({ length: 6 }).map((_, idx) => (
+        <div
+          key={idx}
+          className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]"
+        >
+          <div className="h-3.5 w-28 rounded skeleton opacity-75" />
+          <div className="h-9 w-20 rounded-lg skeleton my-2" />
+          <div className="h-3 w-24 rounded skeleton opacity-70" />
+        </div>
+      ))}
+    </div>
+  </div>
+));
+
+/**
  * Route-aware Page Skeleton so any Suspense fallback or page loader shows the exact shape
- * of the target screen with zero text loaders.
+ * of the target screen with zero text loaders and never mixes unrelated layouts.
  */
 export const RoutePageSkeleton: React.FC<{ pathname?: string }> = React.memo(({ pathname }) => {
   const clean = (
     pathname || (typeof window !== 'undefined' ? window.location.pathname : '')
   ).toLowerCase();
+
+  if (clean.startsWith('/admin')) {
+    if (clean.startsWith('/admin/questions')) {
+      return <AdminQuestionsPageSkeleton />;
+    }
+    if (clean.startsWith('/admin/crews')) {
+      return <AdminCrewsSkeleton count={5} />;
+    }
+    if (
+      clean.startsWith('/admin/certificates') ||
+      clean.startsWith('/admin/signatures') ||
+      clean.startsWith('/admin/settings')
+    ) {
+      return <AdminCertificatesSkeleton count={4} />;
+    }
+    if (clean.startsWith('/admin/captains')) {
+      return <AdminCaptainsSkeleton count={4} />;
+    }
+    if (clean === '/admin' || clean === '/admin/') {
+      return <AdminOverviewSkeleton />;
+    }
+    return <AdminCaptainsSkeleton count={5} />;
+  }
 
   if (
     clean.startsWith('/commons') ||
@@ -348,3 +530,4 @@ export const RoutePageSkeleton: React.FC<{ pathname?: string }> = React.memo(({ 
   }
   return <DashboardOverviewSkeleton />;
 });
+

@@ -100,6 +100,8 @@ import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
+import { ProfilePicturePickerModal } from './ProfilePicturePickerModal';
+import { MATRIX_AVATARS } from '@/lib/matrixAvatarsData';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { fetchUserCommonsPosts } from '@/services/commonsService';
@@ -158,6 +160,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     owned: ownedCosmetics,
     purchaseCosmetic,
     loading: walletLoading,
+    isSuperAdmin,
   } = useWallet();
   const effectivePlan = useEffectivePlan();
   const { effectiveProBadge } = useProBadge();
@@ -196,6 +199,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Sub-modals
   const [followListTab, setFollowListTab] = useState<'followers' | 'following' | null>(null);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [crewDetailModalOpen, setCrewDetailModalOpen] = useState(false);
 
@@ -1214,6 +1218,46 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     broadcastPublicProfileUpdate(currentUid, updates);
   };
 
+  const handleSaveAvatar = async (newAvatarId: string | null) => {
+    if (!currentUid || !isViewingSelf) return;
+    const prevProfile = profile;
+
+    setProfile((prev) => {
+      if (!prev) return null;
+      const next: PublicProfile = {
+        ...prev,
+        avatar: newAvatarId,
+        avatarUrl: newAvatarId,
+        equipped: {
+          ...(prev.equipped || {
+            effect: null,
+            frame: null,
+            nameplate: null,
+            avatar: null,
+            banner: null,
+          }),
+          avatar: newAvatarId,
+        },
+      };
+      profileMemoryCache.set(currentUid, { profile: next, timestamp: Date.now() });
+      return next;
+    });
+
+    try {
+      await equipCosmetic('avatar', newAvatarId);
+      await updateProfileData({
+        avatar: newAvatarId ?? undefined,
+        equippedAvatar: newAvatarId,
+      });
+    } catch (err) {
+      if (prevProfile) {
+        setProfile(prevProfile);
+        profileMemoryCache.set(currentUid, { profile: prevProfile, timestamp: Date.now() });
+      }
+      throw err;
+    }
+  };
+
   // Unequip cosmetic item
   const handleUnequipItem = async (type: 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner') => {
     if (!isViewingSelf) return;
@@ -1623,6 +1667,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             isViewingSelf && !previewAsPublic ? () => setPreviewAsPublic(true) : undefined
           }
           onEditProfile={() => setEditSheetOpen(true)}
+          onChangeAvatar={
+            isViewingSelf && !isPublicMode ? () => setAvatarPickerOpen(true) : undefined
+          }
           onOpenStore={() => {
             if (onClose) onClose(true);
             navigate('/store');
@@ -1926,7 +1973,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <div className="flex flex-col">
                         <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Picture</span>
                         <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.avatar || '')?.name || 'Dot-Matrix Avatar'}
+                          {getCosmeticById(profile?.avatar || '')?.name ||
+                            MATRIX_AVATARS.find((a) => a.key === profile?.avatar)?.label ||
+                            'Dot-Matrix Avatar'}
                         </span>
                       </div>
                     </div>
@@ -1934,7 +1983,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     {isViewingSelf && !isPublicMode && (
                       <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => navigate('/store')}
+                          onClick={() => setAvatarPickerOpen(true)}
                           className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
                         >
                           Change
@@ -2504,7 +2553,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           isOpen={editSheetOpen}
           onClose={() => setEditSheetOpen(false)}
           profile={profile}
+          onChangePicture={
+            isViewingSelf && !isPublicMode ? () => setAvatarPickerOpen(true) : undefined
+          }
           onSave={handleSaveProfileUpdates}
+        />
+      )}
+
+      {/* ── CHANGE PROFILE PICTURE PICKER MODAL (OWN MODE ONLY) ── */}
+      {isViewingSelf && !isPublicMode && currentUid && (
+        <ProfilePicturePickerModal
+          isOpen={avatarPickerOpen}
+          onClose={() => setAvatarPickerOpen(false)}
+          uid={currentUid}
+          currentAvatarId={profile?.avatar || ownEquipped?.avatar || null}
+          ownedIds={ownedCosmetics || []}
+          isSuperAdmin={isSuperAdmin}
+          onSaveAvatar={handleSaveAvatar}
         />
       )}
 

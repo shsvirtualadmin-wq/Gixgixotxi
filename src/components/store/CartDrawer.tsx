@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import {
   AlertCircle,
   CheckCircle2,
@@ -101,17 +102,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   }, [open]);
 
   // Lock body scroll and hide floating bottom navigation while drawer is open
+  useBodyScrollLock(open, 'cart-drawer');
+
   useEffect(() => {
     if (!open || typeof document === 'undefined') return;
-    const prevOverflow = document.body.style.overflow;
     const prevModalAttr = document.body.getAttribute('data-fullscreen-modal-open');
 
-    document.body.style.overflow = 'hidden';
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new Event('boardly:modal-change'));
 
     return () => {
-      document.body.style.overflow = prevOverflow;
       if (prevModalAttr === null) {
         document.body.removeAttribute('data-fullscreen-modal-open');
       } else {

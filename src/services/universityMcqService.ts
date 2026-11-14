@@ -1641,6 +1641,27 @@ const UNIVERSITY_SPEC_MAP: Record<string, D1UniversityTestSpec> = {
     markingLabel: '+4 / -1',
     patternLabel: 'Mathematics · English Grammar & Comprehension',
   },
+  sat: {
+    durationMinutes: 134,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (Digital SAT)',
+    patternLabel: 'Reading & Writing · Math',
+  },
+  ca: {
+    durationMinutes: 120,
+    positiveMarks: 1,
+    negativeMarks: 0,
+    markingLabel: '+1 / 0 (ICAP PRC)',
+    patternLabel: 'Quantitative Methods · Accounting · Economics · Business Writing',
+  },
+  acca: {
+    durationMinutes: 120,
+    positiveMarks: 2,
+    negativeMarks: 0,
+    markingLabel: '+2 / 0 (Applied Knowledge)',
+    patternLabel: 'Business & Technology · Management Accounting · Financial Accounting',
+  },
 };
 
 export function getUniversityTestSpec(uni: D1UniversityRow): D1UniversityTestSpec {

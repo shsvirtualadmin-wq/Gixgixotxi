@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import { Menu, X } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { useTheme } from '@/hooks/useTheme';
@@ -61,15 +62,7 @@ export function Navbar() {
   }, [location.pathname, location.hash]);
 
   // Lock page scroll while mobile menu is open
-  useEffect(() => {
-    if (isMounted) {
-      const prevOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = prevOverflow;
-      };
-    }
-  }, [isMounted]);
+  useBodyScrollLock(isMounted && isOpen, 'public-navbar-drawer');
 
   const isLinkActive = (to: string) => {
     if (location.pathname === to) return true;

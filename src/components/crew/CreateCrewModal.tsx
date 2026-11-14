@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Sparkles, Users, Check, AlertCircle } from 'lucide-react';
 import { AvatarPicker } from '@/lib/matrixAvatars';
 import { type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 import type { CrewTier, CrewJoinMode } from '@/types/crew';
 import { createNewCrew } from '@/services/crewService';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 interface CreateCrewModalProps {
   onClose: () => void;
@@ -31,6 +33,18 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useBodyScrollLock(true, 'create-crew-modal');
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,11 +75,35 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-2xl max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto text-white shadow-2xl relative">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+  if (typeof document === 'undefined' || !document.body) return null;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create Study Squad"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !loading) onClose();
+      }}
+      className="overlay-blur bg-black/60 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100dvh',
+        zIndex: 1200,
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-t-2xl sm:rounded-2xl max-w-xl w-full text-white shadow-2xl relative flex flex-col overflow-hidden"
+        style={{
+          maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 16px)',
+        }}
+      >
+        {/* Pinned Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-[rgba(255,255,255,0.1)] shrink-0">
           <div>
             <h2 className="text-xl font-bold font-heading text-white">Create Study Squad</h2>
             <p className="text-xs text-[rgba(255,255,255,0.65)]">
@@ -82,14 +120,15 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
           </button>
         </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-red-950/40 border border-[#D71921] text-[#D71921] text-xs flex items-center gap-2">
-            <AlertCircle size={16} className="shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        {/* Internally Scrollable Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 space-y-5">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-950/40 border border-[#D71921] text-[#D71921] text-xs flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name & Bio */}
           <div className="space-y-3">
             <div>
@@ -235,34 +274,41 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Submit */}
-          <div className="pt-2 flex items-center justify-end gap-3 border-t border-[rgba(255,255,255,0.1)]">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2 rounded-xl text-xs text-[rgba(255,255,255,0.7)] hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !name.trim()}
-              className="px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
-            >
-              {loading ? (
-                'Creating Crew...'
-              ) : (
-                <>
-                  <Users size={14} />
-                  <span>Create Squad</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {/* Pinned Footer with safe-area-inset-bottom */}
+        <div
+          className="px-6 pt-3 flex items-center justify-end gap-3 border-t border-[rgba(255,255,255,0.1)] bg-[#0A0A0A] shrink-0"
+          style={{
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl text-xs text-[rgba(255,255,255,0.7)] hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !name.trim()}
+            className="px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b0131a] text-white text-xs font-bold transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+          >
+            {loading ? (
+              'Creating Crew...'
+            ) : (
+              <>
+                <Users size={14} />
+                <span>Create Squad</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
   );
 };
+

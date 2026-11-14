@@ -2495,11 +2495,16 @@ ${urls
 
         let following = false;
         if (action === 'unfollow' || (action === 'toggle' && existing)) {
-          await env.DB.prepare(
-            'DELETE FROM follows WHERE follower_uid = ? AND following_uid = ?'
-          )
-            .bind(followerUid, followingUid)
-            .run();
+          await env.DB.batch([
+            env.DB.prepare(
+              'DELETE FROM follows WHERE follower_uid = ? AND following_uid = ?'
+            ).bind(followerUid, followingUid),
+            env.DB.prepare(
+              `DELETE FROM notifications
+               WHERE user_id = ? AND author_id = ?
+                 AND (type IN ('following_post', 'new_post', 'post') OR post_id IS NOT NULL)`
+            ).bind(followerUid, followingUid),
+          ]);
           following = false;
         } else {
           await env.DB.prepare(
@@ -2560,36 +2565,126 @@ ${urls
       const nSub = url.pathname.slice('/api/notifications'.length).replace(/\/+$/, '') || '/';
       const user = await verifyFirebaseIdToken(req, env).catch(() => null);
 
+      if (nSub === '/cleanup-unfollowed' && req.method === 'POST') {
+        const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+        const userId = String(user?.uid || body.userId || '').trim();
+        if (!userId) {
+          return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
+        }
+        const followingIds: string[] = Array.isArray(body.followingIds)
+          ? body.followingIds
+              .map((id: unknown) => String(id || '').trim())
+              .filter((id: string) => Boolean(id) && id !== userId)
+          : [];
+        const followingSet = new Set<string>(followingIds);
+
+        const { results: userNotifs } = await env.DB.prepare(
+          'SELECT id, type, title, author_id, post_id FROM notifications WHERE user_id = ?'
+        )
+          .bind(userId)
+          .all();
+
+        const idsToDelete: string[] = [];
+        for (const r of userNotifs || []) {
+          const rType = String((r as any).type || '');
+          const rTitle = String((r as any).title || '');
+          const isPost =
+            rType === 'following_post' ||
+            rType === 'new_post' ||
+            rType === 'post' ||
+            Boolean((r as any).post_id) ||
+            /\bposted:\s*/i.test(rTitle);
+          if (!isPost) continue;
+          const authorId = String((r as any).author_id || '').trim();
+          if (!authorId || authorId === userId || !followingSet.has(authorId)) {
+            idsToDelete.push(String((r as any).id));
+          }
+        }
+
+        if (idsToDelete.length > 0) {
+          const delStmts = idsToDelete.map((id) =>
+            env.DB!.prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?').bind(
+              id,
+              userId
+            )
+          );
+          await env.DB.batch(delStmts);
+        }
+
+        return jsonResponse(
+          { success: true, deletedCount: idsToDelete.length },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
       if (nSub === '/' && req.method === 'GET') {
         const userId = String(url.searchParams.get('userId') || user?.uid || '').trim();
         if (!userId) {
           return jsonResponse({ success: false, error: 'Missing userId' }, 400, cors);
         }
 
-        const [{ results: notifRows }, { results: readAnnRows }, welcomeSt] = await Promise.all([
-          env.DB.prepare(
-            'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100'
-          )
-            .bind(userId)
-            .all(),
-          env.DB.prepare(
-            'SELECT announcement_id FROM user_read_announcements WHERE user_uid = ?'
-          )
-            .bind(userId)
-            .all(),
-          env.DB.prepare(
-            'SELECT welcomed, read FROM user_welcome_status WHERE user_uid = ? LIMIT 1'
-          )
-            .bind(userId)
-            .first<{ welcomed: number; read: number }>(),
-        ]);
+        const followingKnown = String(url.searchParams.get('followingKnown') || '') === '1';
+        const followingIdsParam = String(url.searchParams.get('followingIds') || '').trim();
+        const clientFollowingSet = followingKnown
+          ? new Set(
+              followingIdsParam
+                .split(',')
+                .map((s) => s.trim())
+                .filter((s) => Boolean(s) && s !== userId)
+            )
+          : null;
+
+        const [{ results: notifRows }, { results: readAnnRows }, welcomeSt, { results: followRows }] =
+          await Promise.all([
+            env.DB.prepare(
+              'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100'
+            )
+              .bind(userId)
+              .all(),
+            env.DB.prepare(
+              'SELECT announcement_id FROM user_read_announcements WHERE user_uid = ?'
+            )
+              .bind(userId)
+              .all(),
+            env.DB.prepare(
+              'SELECT welcomed, read FROM user_welcome_status WHERE user_uid = ? LIMIT 1'
+            )
+              .bind(userId)
+              .first<{ welcomed: number; read: number }>(),
+            env.DB.prepare('SELECT following_uid FROM follows WHERE follower_uid = ?')
+              .bind(userId)
+              .all(),
+          ]);
+
+        const effectiveFollowingSet =
+          clientFollowingSet ??
+          new Set<string>(
+            (followRows || [])
+              .map((r: any) => String(r.following_uid || '').trim())
+              .filter((id) => Boolean(id) && id !== userId)
+          );
+
+        const filteredNotifRows = (notifRows || []).filter((r: any) => {
+          const rType = String(r.type || '');
+          const rTitle = String(r.title || '');
+          const isPost =
+            rType === 'following_post' ||
+            rType === 'new_post' ||
+            rType === 'post' ||
+            Boolean(r.post_id) ||
+            /\bposted:\s*/i.test(rTitle);
+          if (!isPost) return true;
+          const authorId = String(r.author_id || '').trim();
+          return Boolean(authorId && authorId !== userId && effectiveFollowingSet.has(authorId));
+        });
 
         const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(
           env.DB,
-          (notifRows || []).map((r: any) => (r.author_id ? String(r.author_id) : null))
+          filteredNotifRows.map((r: any) => (r.author_id ? String(r.author_id) : null))
         );
 
-        const notifications = (notifRows || []).map((r: any) => {
+        const notifications = filteredNotifRows.map((r: any) => {
           const authorId = r.author_id ? String(r.author_id) : undefined;
           const live = authorId ? liveAuthorsMap.get(authorId) : undefined;
           const resolvedAuthorName =

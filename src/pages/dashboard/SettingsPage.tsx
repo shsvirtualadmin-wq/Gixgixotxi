@@ -1139,7 +1139,8 @@ export function SettingsPage() {
       return found?.name || 'Game Card';
     }
     if (profileLayoutStatus.known) {
-      return profileLayoutStatus.name;
+      const found = PROFILE_LAYOUT_METADATA.find((l) => l.id === profileLayoutStatus.layout);
+      return found?.name || 'Game Card';
     }
     const fromProfile = profile?.profileLayout ?? profile?.profile_layout;
     if (fromProfile) {
@@ -1152,7 +1153,7 @@ export function SettingsPage() {
     isGuest,
     savedProfileLayout,
     profileLayoutStatus.known,
-    profileLayoutStatus.name,
+    profileLayoutStatus.layout,
     profile?.profileLayout,
     profile?.profile_layout,
   ]);

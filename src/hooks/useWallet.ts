@@ -21,6 +21,7 @@ import {
   readOptimisticWalletSnapshot,
   writeOptimisticWalletSnapshot,
 } from '@/lib/swrCache';
+import { isValidAvatar } from '@/lib/matrixAvatarsData';
 import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
@@ -390,10 +391,15 @@ export function useWallet() {
         new Set([...(current.owned || []), ...(walletRef.current.owned || [])])
       );
 
+      const isFreeSystemAvatar = Boolean(
+        type === 'avatar' && itemId !== null && isValidAvatar(itemId)
+      );
+
       if (
         !isSuperAdminUser &&
         !isGuestUid &&
         itemId !== null &&
+        !isFreeSystemAvatar &&
         !mergedCurrentOwned.includes(itemId)
       ) {
         throw new Error(
@@ -410,7 +416,7 @@ export function useWallet() {
       const updated: WalletDoc = {
         ...current,
         owned:
-          itemId && !mergedCurrentOwned.includes(itemId)
+          itemId && !isFreeSystemAvatar && !mergedCurrentOwned.includes(itemId)
             ? [...mergedCurrentOwned, itemId]
             : mergedCurrentOwned,
         equipped: updatedEquipped,
@@ -426,25 +432,32 @@ export function useWallet() {
           await runTransaction(db, async (tx) => {
             const snap = await tx.get(walletDocRef);
             const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-            const ownedList = Array.from(
-              new Set([
-                ...(Array.isArray(curData.owned) ? curData.owned : []),
-                ...mergedCurrentOwned,
-                ...(itemId ? [itemId] : []),
-              ])
-            );
             if (snap.exists()) {
-              tx.update(walletDocRef, {
-                owned: ownedList,
-                equipped: updatedEquipped,
-                updatedAt: serverTimestamp(),
-              });
+              if (isSuperAdminUser) {
+                const ownedList = Array.from(
+                  new Set([
+                    ...(Array.isArray(curData.owned) ? curData.owned : []),
+                    ...mergedCurrentOwned,
+                    ...(itemId && !isFreeSystemAvatar ? [itemId] : []),
+                  ])
+                );
+                tx.update(walletDocRef, {
+                  owned: ownedList,
+                  equipped: updatedEquipped,
+                  updatedAt: serverTimestamp(),
+                });
+              } else {
+                tx.update(walletDocRef, {
+                  equipped: updatedEquipped,
+                  updatedAt: serverTimestamp(),
+                });
+              }
             } else {
               tx.set(
                 walletDocRef,
                 {
-                  balance: typeof curData.balance === 'number' ? curData.balance : current.balance,
-                  owned: ownedList,
+                  balance: isSuperAdminUser && typeof curData.balance === 'number' ? curData.balance : 0,
+                  owned: isSuperAdminUser ? mergedCurrentOwned : [],
                   equipped: updatedEquipped,
                   updatedAt: serverTimestamp(),
                 },
@@ -461,7 +474,6 @@ export function useWallet() {
           await setDoc(
             walletDocRef,
             {
-              owned: updated.owned,
               equipped: updatedEquipped,
               updatedAt: serverTimestamp(),
             },

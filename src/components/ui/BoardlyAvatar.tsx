@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
-import { getDefaultAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
+import { getDefaultAvatar, isValidAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 import {
   getCachedPublicProfile,
   getPublicProfile,
@@ -30,10 +30,11 @@ function isExternalOrDataUrl(val?: string | null): boolean {
 }
 
 /**
- * Resolves a store-bought cosmetic ID (avatar or frame) from a raw value.
+ * Resolves a cosmetic or free system avatar ID from a raw value.
  * Handles direct catalog IDs (`pfp_pixel_pop_arcade`, `eclipse-wyrm`, `frame-topper-burst`),
- * legacy ID aliases (`pfp_eclipse_wyrm`), and store asset paths (`/assets/store/pfp_.../poster.webp`).
- * Rejects Google/external photo URLs, matrix avatar keys (`skull-01`), and unknown strings.
+ * legacy ID aliases (`pfp_eclipse_wyrm`), store asset paths (`/assets/store/pfp_.../poster.webp`),
+ * and free system dot-matrix avatar keys (`skull-01`, `robot-01`, etc.) when expectedSlot is 'avatar' or omitted.
+ * Rejects Google/external photo URLs and unknown strings.
  */
 export function resolveCosmeticItemId(
   val?: string | null,
@@ -61,6 +62,10 @@ export function resolveCosmeticItemId(
     }
   }
 
+  if ((!expectedSlot || expectedSlot === 'avatar') && isValidAvatar(candidate)) {
+    return candidate;
+  }
+
   return null;
 }
 
@@ -75,7 +80,7 @@ export interface ResolvedUserAvatar {
 /**
  * Single shared avatar resolver for the entire app.
  * Rule:
- * 1. Equipped store avatar -> 2. Profile avatar -> 3. Deterministic default matrix avatar by `uid`.
+ * 1. Equipped store or free system avatar -> 2. Profile avatar -> 3. Deterministic default matrix avatar by `uid`.
  * Never return or expose a Google/Gmail photo URL.
  */
 export function resolveUserAvatar(
@@ -95,15 +100,27 @@ export function resolveUserAvatar(
   ];
 
   for (const cand of orderedCandidates) {
-    const storeAvatarId = resolveCosmeticItemId(cand, 'avatar');
-    if (storeAvatarId) {
-      return {
-        type: 'store',
-        storeAvatarId,
-        uid: cleanUid,
-        matrixKey: matrix.key,
-        matrixVariant: matrix.variant,
-      };
+    const resolvedId = resolveCosmeticItemId(cand, 'avatar');
+    if (resolvedId) {
+      const catalogItem = getCosmeticById(resolvedId);
+      if (catalogItem && catalogItem.type === 'avatar') {
+        return {
+          type: 'store',
+          storeAvatarId: catalogItem.id,
+          uid: cleanUid,
+          matrixKey: matrix.key,
+          matrixVariant: matrix.variant,
+        };
+      }
+      if (isValidAvatar(resolvedId)) {
+        return {
+          type: 'matrix',
+          storeAvatarId: null,
+          uid: cleanUid,
+          matrixKey: resolvedId,
+          matrixVariant: matrix.variant,
+        };
+      }
     }
   }
 
@@ -167,6 +184,8 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   frame,
   size: rawSize = 36,
   className = '',
+  avatarKey,
+  avatarVariant,
   forceStatic = false,
   priority,
   loading = false,
@@ -213,7 +232,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
     equippedFrameId ||
     null;
 
-  // Fallback order: 1. Equipped store avatar -> 2. Profile avatar -> 3. Default matrix avatar
+  // Fallback order: 1. Equipped store or free system avatar -> 2. Profile avatar -> 3. Default matrix avatar
   const resolved = resolveUserAvatar(
     cleanUid,
     liveProfile?.equipped?.avatar,
@@ -224,6 +243,7 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
     liveProfile?.avatarUrl,
     avatarId,
     avatar,
+    avatarKey,
     avatarUrl,
     customAvatarUrl
   );
@@ -265,6 +285,8 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
       <MatrixAvatar
         uid={resolved.uid}
         seed={resolved.uid}
+        avatarKey={resolved.matrixKey}
+        variant={avatarVariant || resolved.matrixVariant}
         size={size}
         className="rounded-full"
       />

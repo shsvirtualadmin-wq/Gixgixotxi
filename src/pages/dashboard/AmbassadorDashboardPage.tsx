@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import {
   Plus,
   Upload,
@@ -234,17 +235,15 @@ export function AmbassadorDashboardPage() {
   }, [csvText, editingTestId]);
 
   // Lock background scroll while the Create/Edit Test modal or Delete modal is open
+  useBodyScrollLock(modalOpen || Boolean(deleteConfirmTest), 'ambassador-dashboard-modal');
   useEffect(() => {
     const isAnyModalOpen = modalOpen || Boolean(deleteConfirmTest);
     if (!isAnyModalOpen) return;
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new CustomEvent('boardly:modal-change'));
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     };

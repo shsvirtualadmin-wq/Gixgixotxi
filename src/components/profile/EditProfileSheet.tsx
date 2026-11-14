@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2, Camera } from 'lucide-react';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useNavigate } from 'react-router-dom';
 import { ACCENT_PRESETS, BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
@@ -7,12 +8,14 @@ import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { validateDisplayName } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import type { PublicProfile } from '@/types';
 
 interface EditProfileSheetProps {
   isOpen: boolean;
   onClose: () => void;
   profile: PublicProfile;
+  onChangePicture?: () => void;
   onSave: (updates: {
     displayName: string;
     bio: string;
@@ -25,9 +28,11 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
   isOpen,
   onClose,
   profile,
+  onChangePicture,
   onSave,
 }) => {
   const navigate = useNavigate();
+  useBodyScrollLock(isOpen, 'edit-profile-sheet');
 
   const [displayName, setDisplayName] = useState(profile.displayName || '');
   const [bio, setBio] = useState(profile.bio || '');
@@ -115,10 +120,19 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
+  const modalNode = (
+    <div
+      className="fixed inset-0 z-[1180] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100vw',
+        height: '100dvh',
+        zIndex: 1180,
+      }}
+    >
       <div
-        className="w-full sm:max-w-xl bg-[var(--card)] border-t sm:border border-[var(--border)] sm:rounded-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] shadow-2xl overflow-hidden"
+        className="w-full sm:max-w-xl bg-[var(--card)] border-t sm:border border-[var(--border)] sm:rounded-2xl flex flex-col max-h-[92dvh] sm:max-h-[85dvh] shadow-2xl overflow-hidden"
         style={{ borderRadius: '24px 24px 0 0' }}
       >
         {/* Header */}
@@ -192,15 +206,37 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
               {/* Preview Avatar & Details */}
               <div className="px-4 pb-4 -mt-7 flex flex-col gap-2">
                 <div className="flex items-end justify-between">
-                  <div className="p-1 rounded-full bg-[var(--card-2)]">
-                    <AvatarFrame itemId={profile.frame || profile.equipped?.frame || 'none'} size={52}>
-                      <AvatarPicture
-                        uid={profile.uid}
-                        seed={profile.uid}
-                        avatarId={profile.equipped?.avatar || profile.avatar}
-                        size={44}
-                      />
-                    </AvatarFrame>
+                  <div className="flex items-end gap-2.5">
+                    <div
+                      className={`relative p-1 rounded-full bg-[var(--card-2)] ${
+                        onChangePicture ? 'cursor-pointer group' : ''
+                      }`}
+                      onClick={onChangePicture}
+                    >
+                      <AvatarFrame itemId={profile.frame || profile.equipped?.frame || 'none'} size={52}>
+                        <AvatarPicture
+                          uid={profile.uid}
+                          seed={profile.uid}
+                          avatarId={profile.equipped?.avatar || profile.avatar}
+                          size={44}
+                        />
+                      </AvatarFrame>
+                      {onChangePicture && (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-[#D71921] text-white border-2 border-[#121216] flex items-center justify-center shadow">
+                          <Camera size={11} />
+                        </span>
+                      )}
+                    </div>
+                    {onChangePicture && (
+                      <button
+                        type="button"
+                        onClick={onChangePicture}
+                        className="mb-1 px-3 py-1.5 rounded-lg bg-[var(--card)] hover:bg-[var(--surface-2)] border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Camera size={13} className="text-[#D71921]" />
+                        <span>Change picture</span>
+                      </button>
+                    )}
                   </div>
                   <span
                     className="font-mono text-[10px] px-2 py-0.5 rounded-full border"
@@ -391,4 +427,9 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalNode, document.body);
+  }
+  return modalNode;
 };

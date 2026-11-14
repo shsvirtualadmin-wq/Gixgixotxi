@@ -1,18 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { AvatarPicker } from '@/lib/matrixAvatars';
 import { type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 import type { CrewDoc, PublicCrewSummary, CrewJoinMode } from '@/types/crew';
 import {
-  fetchCrewLeaderboard,
-  fetchCrewDetails,
   updateCrewSettings,
   removeMemberFromCrew,
   promoteMemberToLeader,
   handleRequestAction,
   adminDisbandCrew,
 } from '@/services/crewService';
+import {
+  getCachedAdminCrews,
+  fetchAdminCrewsSWR,
+  getCachedAdminCrewDetail,
+  fetchAdminCrewDetailSWR,
+  invalidateAdminCrewsCache,
+} from '@/services/adminTabCache';
 import { recordCrewPaymentActionServer } from '@/services/crewBackend';
 import { DEFAULT_CREW_PRICING } from '@/config/crewPricing';
 import {
@@ -30,18 +35,33 @@ import {
   Award,
   RefreshCw,
 } from 'lucide-react';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import { AdminCrewsSkeleton } from '@/components/ui/Skeleton';
+
+const CREWS_PAGE_SIZE = 20;
 
 export function AdminCrewsPage() {
   const { user } = useAuth();
-  const [crews, setCrews] = useState<PublicCrewSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialCrewsCache = getCachedAdminCrews();
+  const [crews, setCrews] = useState<PublicCrewSummary[]>(
+    () => initialCrewsCache?.crews ?? []
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialCrewsCache);
+  const [visibleCount, setVisibleCount] = useState<number>(CREWS_PAGE_SIZE);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'free' | 'paid' | 'closed'>('all');
 
   const [selectedCrewId, setSelectedCrewId] = useState<string | null>(null);
   const [crewDetails, setCrewDetails] = useState<CrewDoc | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Edit settings state
   const [isEditing, setIsEditing] = useState(false);
@@ -70,44 +90,78 @@ export function AdminCrewsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  const loadCrews = useCallback(async () => {
-    setLoading(true);
+  const loadCrews = useCallback(async (force = false) => {
+    const cached = getCachedAdminCrews();
+    if (!cached) {
+      setLoading(true);
+    }
+    if (force) {
+      invalidateAdminCrewsCache();
+    }
     try {
-      const res = await fetchCrewLeaderboard({ limit: 100 });
-      setCrews(res.crews);
+      const res = await fetchAdminCrewsSWR({
+        force,
+        limit: 100,
+        onUpdate: (updated) => {
+          if (isMountedRef.current) {
+            setCrews(updated.crews);
+          }
+        },
+      });
+      if (isMountedRef.current) {
+        setCrews(res.crews);
+      }
     } catch (err) {
       console.error('[AdminCrewsPage] Load error:', err);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    loadCrews();
+    void loadCrews(false);
   }, [loadCrews]);
 
-  const loadCrewDetails = async (id: string) => {
+  const applyCrewDetailState = useCallback((data: CrewDoc | null) => {
+    if (!isMountedRef.current) return;
+    setCrewDetails(data);
+    if (data) {
+      setEditName(data.name || '');
+      setEditBio(data.bio || '');
+      setEditAvatarKey(data.avatarKey || 'skull-01');
+      setEditAvatarVariant((data.avatarVariant as MatrixAvatarVariant) || 'red-on-black');
+      setEditJoinMode(data.joinMode || 'direct');
+      setEditMinStreak(Number(data.minStreak) || 0);
+      setEditMaxMembers(Number(data.maxMembers) || 5);
+      setEditIsClosed(Boolean(data.isClosed));
+    }
+  }, []);
+
+  const loadCrewDetails = async (id: string, force = false) => {
     setSelectedCrewId(id);
-    setDetailsLoading(true);
+    const cachedDetail = getCachedAdminCrewDetail(id);
+    if (cachedDetail && !force) {
+      applyCrewDetailState(cachedDetail);
+      setDetailsLoading(false);
+    } else {
+      setDetailsLoading(true);
+    }
     setActionError(null);
     setActionSuccess(null);
     try {
-      const data = await fetchCrewDetails(id);
-      setCrewDetails(data);
-      if (data) {
-        setEditName(data.name || '');
-        setEditBio(data.bio || '');
-        setEditAvatarKey(data.avatarKey || 'skull-01');
-        setEditAvatarVariant((data.avatarVariant as MatrixAvatarVariant) || 'red-on-black');
-        setEditJoinMode(data.joinMode || 'direct');
-        setEditMinStreak(Number(data.minStreak) || 0);
-        setEditMaxMembers(Number(data.maxMembers) || 5);
-        setEditIsClosed(Boolean(data.isClosed));
-      }
+      const data = await fetchAdminCrewDetailSWR(id, {
+        force,
+        onUpdate: applyCrewDetailState,
+      });
+      applyCrewDetailState(data);
     } catch (err) {
       console.error('[AdminCrewsPage] Details error:', err);
     } finally {
-      setDetailsLoading(false);
+      if (isMountedRef.current) {
+        setDetailsLoading(false);
+      }
     }
   };
 
@@ -278,7 +332,7 @@ export function AdminCrewsPage() {
 
         <button
           type="button"
-          onClick={loadCrews}
+          onClick={() => void loadCrews(true)}
           className="p-2 sm:px-3 sm:py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs text-[var(--text)] flex items-center gap-2 transition-colors self-start sm:self-auto"
         >
           <RefreshCw size={14} />
@@ -328,8 +382,8 @@ export function AdminCrewsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Table */}
         <div className={selectedCrewId ? 'lg:col-span-7 space-y-3' : 'lg:col-span-12 space-y-3'}>
-          {loading ? (
-            <LineLoader context="admin" message="Loading study crews..." />
+          {loading && crews.length === 0 ? (
+            <AdminCrewsSkeleton count={5} />
           ) : filteredCrews.length === 0 ? (
             <div className="p-12 rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-center space-y-2">
               <Users size={28} className="mx-auto text-[var(--muted)]" />
@@ -338,7 +392,7 @@ export function AdminCrewsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredCrews.map((c) => {
+              {filteredCrews.slice(0, visibleCount).map((c) => {
                 const isSelected = selectedCrewId === c.id;
 
                 return (
@@ -408,6 +462,17 @@ export function AdminCrewsPage() {
                   </div>
                 );
               })}
+              {filteredCrews.length > visibleCount && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => prev + CREWS_PAGE_SIZE)}
+                    className="px-4 py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] transition-colors cursor-pointer"
+                  >
+                    Load more squads ({filteredCrews.length - visibleCount} remaining)
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -415,8 +480,8 @@ export function AdminCrewsPage() {
         {/* Right: Detailed Crew Cockpit Drawer */}
         {selectedCrewId && (
           <div className="lg:col-span-5 bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 space-y-6 self-start sticky top-20 max-h-[85vh] overflow-y-auto">
-            {detailsLoading ? (
-              <LineLoader context="admin" message="Loading squad details..." />
+            {detailsLoading && !crewDetails ? (
+              <AdminCrewsSkeleton count={2} />
             ) : !crewDetails ? (
               <div className="p-8 text-center text-xs text-red-400">Failed to load crew details.</div>
             ) : (

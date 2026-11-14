@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { isValidAvatar } from '@/lib/matrixAvatarsData';
 import { PFP_ARTWORK_MAP, type PfpSvgProps } from './artwork/pfpArtwork';
 import { FrameRenderer } from './artwork/frameArtwork';
 import { NameplateRenderer } from './artwork/plateArtwork';
@@ -568,13 +569,18 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
     );
   }
 
-  // Fallback to default dot-matrix avatar (strictly uid-seeded when uid/seed is provided)
+  // Fallback to dot-matrix avatar (prioritize explicit free matrix avatar if chosen, else uid-seeded)
+  const chosenMatrixKey =
+    (avatarId && isValidAvatar(avatarId) ? avatarId : null) ||
+    (avatarKey && isValidAvatar(avatarKey) ? avatarKey : null) ||
+    undefined;
+
   return (
     <MatrixAvatar
       uid={userSeed}
       seed={userSeed}
-      avatarKey={userSeed ? undefined : avatarKey}
-      variant={userSeed ? undefined : effectiveVariant}
+      avatarKey={chosenMatrixKey}
+      variant={effectiveVariant || undefined}
       size={numericSize}
       className={className}
     />
@@ -587,12 +593,17 @@ export const AvatarPicture: React.FC<AvatarPictureProps> = (props) => {
     (typeof props.uid === 'string' && props.uid.trim()) ||
     (typeof props.seed === 'string' && props.seed.trim()) ||
     null;
+  const rawAvatarId = props.avatarId || props.itemId || null;
+  const chosenMatrixKey =
+    (rawAvatarId && isValidAvatar(rawAvatarId) ? rawAvatarId : null) ||
+    (props.avatarKey && isValidAvatar(props.avatarKey) ? props.avatarKey : null) ||
+    undefined;
   const fallback = (
     <MatrixAvatar
       uid={userSeed}
       seed={userSeed}
-      avatarKey={userSeed ? undefined : props.avatarKey}
-      variant={userSeed ? undefined : props.variant || props.avatarVariant}
+      avatarKey={chosenMatrixKey}
+      variant={props.variant || props.avatarVariant || undefined}
       size={numericSize}
       className={props.className}
     />

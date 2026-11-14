@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, Outlet, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -25,11 +25,17 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader } from '@/components/ui/LineLoader';
+import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { motion } from 'framer-motion';
 import { NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock';
+import {
+  scheduleIdleAdminPrefetchAll,
+  prefetchAdminRouteOnInteraction,
+} from '@/services/adminTabCache';
 
 const AdminKobanNavIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <KobanIcon size={typeof size === 'number' ? size : 16} decorative className={className} />
@@ -76,19 +82,30 @@ export function AdminLayout() {
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  useBodyScrollLock(isMoreOpen, 'admin-more-sheet');
+
+  useEffect(() => {
+    setIsMoreOpen(false);
+    safetyCleanupScrollLocks();
+  }, [location.pathname]);
+
   useEffect(() => {
     if (isMoreOpen) {
-      document.body.style.overflow = 'hidden';
       document.body.setAttribute('data-fullscreen-modal-open', 'true');
     } else {
-      document.body.style.overflow = '';
       document.body.removeAttribute('data-fullscreen-modal-open');
     }
     return () => {
-      document.body.style.overflow = '';
       document.body.removeAttribute('data-fullscreen-modal-open');
     };
   }, [isMoreOpen]);
+
+  // Prefetch all admin tab chunks and SWR data during idle time once AdminLayout is verified
+  useEffect(() => {
+    if (!profileLoading && user && isSessionVerified && isAdmin) {
+      return scheduleIdleAdminPrefetchAll(user.uid);
+    }
+  }, [profileLoading, user, isSessionVerified, isAdmin]);
 
   const handleSignOut = async () => {
     setIsMoreOpen(false);
@@ -127,6 +144,9 @@ export function AdminLayout() {
               key={to}
               to={to}
               end={end}
+              onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+              onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+              onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-[14px] text-[13px] font-heading transition-colors ${
                   isActive
@@ -244,7 +264,20 @@ export function AdminLayout() {
             </div>
           </div>
         ) : (
-          <Outlet />
+          <div
+            key={location.pathname}
+            className="w-full min-h-[calc(100vh-5rem)] bg-[var(--bg)] relative isolate"
+          >
+            <Suspense
+              fallback={
+                <div className="w-full min-h-[60vh] bg-[var(--bg)]">
+                  <RoutePageSkeleton pathname={location.pathname} />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </div>
         )}
       </main>
 
@@ -273,6 +306,9 @@ export function AdminLayout() {
                     end={end}
                     title={label}
                     aria-label={label}
+                    onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                    onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                    onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                     onClick={(e) => e.stopPropagation()}
                     className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
                   >
@@ -435,6 +471,8 @@ export function AdminLayout() {
                   <Link
                     key={to}
                     to={to}
+                    onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                    onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                     onClick={() => setIsMoreOpen(false)}
                     className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
                       location.pathname.startsWith(to)

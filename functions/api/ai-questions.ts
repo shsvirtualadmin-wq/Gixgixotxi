@@ -81,7 +81,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
   try {
     const body = (await context.request.json()) as RequestBody;
     const mode = body.mode || 'generate';
-    const model = context.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const model = context.env.GEMINI_MODEL || 'gemini-4-hydrogen';
 
     if (mode === 'generate') {
       const count = Math.min(Math.max(Number(body.count) || 5, 1), 30);

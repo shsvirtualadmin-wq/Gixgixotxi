@@ -5,6 +5,7 @@ import {
   FeedPostSkeletonCard,
   UniversityGridSkeleton,
 } from './Skeleton';
+import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 
 export type LineLoaderContext =
   | 'login'
@@ -124,12 +125,12 @@ export const LineLoader: React.FC<LineLoaderProps> = ({
 }) => {
   const [timedOut, setTimedOut] = useState<boolean>(false);
 
-  // Release any accidental body scroll locks on unmount
+  // Release any accidental body scroll locks on unmount if no modal is open
   useEffect(() => {
     return () => {
       if (typeof document !== 'undefined' && document.body) {
-        document.body.style.overflow = '';
         document.body.style.pointerEvents = '';
+        safetyCleanupScrollLocks();
       }
     };
   }, []);

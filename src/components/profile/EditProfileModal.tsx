@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Sparkles, ExternalLink } from 'lucide-react';
+import { X, Check, Sparkles, ExternalLink, Camera } from 'lucide-react';
 import { ACCENT_PRESETS, BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { Link } from 'react-router-dom';
@@ -15,6 +15,7 @@ interface EditProfileModalProps {
   onClose: () => void;
   publicProfile: PublicProfile;
   userProfile?: UserProfile | null;
+  onChangePicture?: () => void;
   onSave: (updates: {
     displayName: string;
     bio: string;
@@ -28,6 +29,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   onClose,
   publicProfile,
   userProfile,
+  onChangePicture,
   onSave,
 }) => {
   const [displayName, setDisplayName] = useState(
@@ -121,15 +123,27 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 />
               </div>
               <div className="px-3 pb-3">
-                <div className="-mt-6 mb-2 inline-block">
-                  <AvatarFrame itemId={publicProfile.frame || 'none'} size={52} forceStatic>
-                    <AvatarPicture
-                      uid={publicProfile.uid}
-                      seed={publicProfile.uid}
-                      itemId={publicProfile.equipped?.avatar || publicProfile.avatar || 'none'}
-                      size={44}
-                    />
-                  </AvatarFrame>
+                <div className="-mt-6 mb-2 flex items-end justify-between gap-2">
+                  <div className="inline-block relative">
+                    <AvatarFrame itemId={publicProfile.frame || 'none'} size={52} forceStatic>
+                      <AvatarPicture
+                        uid={publicProfile.uid}
+                        seed={publicProfile.uid}
+                        itemId={publicProfile.equipped?.avatar || publicProfile.avatar || 'none'}
+                        size={44}
+                      />
+                    </AvatarFrame>
+                  </div>
+                  {onChangePicture && (
+                    <button
+                      type="button"
+                      onClick={onChangePicture}
+                      className="px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-xs font-semibold text-neutral-100 inline-flex items-center gap-1.5 transition-colors"
+                    >
+                      <Camera size={13} className="text-[#D71921]" />
+                      <span>Change picture</span>
+                    </button>
+                  )}
                 </div>
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">

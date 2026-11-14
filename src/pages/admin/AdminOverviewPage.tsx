@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Users,
@@ -17,11 +17,10 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
-  fetchAdminStats,
   getCachedAdminStats,
   getCachedAdminUsersState,
   getUserDisplayName,
@@ -30,6 +29,10 @@ import {
   type AdminStats,
   CORE_SUBJECTS,
 } from '@/services/adminService';
+import {
+  getCachedAdminOverview,
+  fetchAdminOverviewSWR,
+} from '@/services/adminTabCache';
 import {
   fetchRewardsHealth,
   fetchRewardsState,
@@ -55,16 +58,18 @@ type LoadState = 'loading' | 'loaded' | 'error';
 
 export function AdminOverviewPage() {
   const { user, isAdmin, profileLoading } = useAuth();
-  const [stats, setStats] = useState<AdminStats | null>(() => getCachedAdminStats());
+  const initialOverview = getCachedAdminOverview();
+  const [stats, setStats] = useState<AdminStats | null>(() => initialOverview?.stats ?? getCachedAdminStats());
   const [previewUsers, setPreviewUsers] = useState<UserProfile[] | null>(
     () => getCachedAdminUsersState()?.users ?? null
   );
   const [loadState, setLoadState] = useState<LoadState>(() =>
-    getCachedAdminStats() ? 'loaded' : 'loading'
+    initialOverview?.stats || getCachedAdminStats() ? 'loaded' : 'loading'
   );
-  const [loading, setLoading] = useState(() => !getCachedAdminStats());
+  const [loading, setLoading] = useState(() => !(initialOverview?.stats || getCachedAdminStats()));
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
-  const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
+  const [recentLogs, setRecentLogs] = useState<AuditLog[]>(() => initialOverview?.recentLogs ?? []);
 
   // Seeder state & confirmation dialog
   const [isConfirmSeedOpen, setIsConfirmSeedOpen] = useState(false);
@@ -74,69 +79,83 @@ export function AdminOverviewPage() {
   const [seedError, setSeedError] = useState<string | null>(null);
 
   // Super Admin Rewards 3-way Mode Switch + Health Check state
-  const [rewardsMode, setRewardsMode] = useState<RewardsMode | null>(null);
+  const [rewardsMode, setRewardsMode] = useState<RewardsMode | null>(
+    () => initialOverview?.rewardsMode ?? null
+  );
   const [pendingRewardsMode, setPendingRewardsMode] = useState<RewardsMode | null>(null);
   const [updatingRewardsMode, setUpdatingRewardsMode] = useState(false);
   const [rewardsModeSuccess, setRewardsModeSuccess] = useState<string | null>(null);
   const [rewardsModeError, setRewardsModeError] = useState<string | null>(null);
-  const [rewardsHealth, setRewardsHealth] = useState<RewardsHealthResponse | null>(null);
+  const [rewardsHealth, setRewardsHealth] = useState<RewardsHealthResponse | null>(
+    () => initialOverview?.rewardsHealth ?? null
+  );
   const [checkingRewardsHealth, setCheckingRewardsHealth] = useState(false);
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleRunRewardsHealthCheck = useCallback(async () => {
     setCheckingRewardsHealth(true);
     try {
       const h = await fetchRewardsHealth();
-      setRewardsHealth(h);
+      if (isMountedRef.current) setRewardsHealth(h);
     } finally {
-      setCheckingRewardsHealth(false);
+      if (isMountedRef.current) setCheckingRewardsHealth(false);
     }
   }, []);
+
+  const applyOverviewData = useCallback(
+    (data: {
+      stats: AdminStats;
+      recentLogs: AuditLog[];
+      rewardsMode: RewardsMode | null;
+      rewardsHealth: RewardsHealthResponse | null;
+    }) => {
+      if (!isMountedRef.current) return;
+      setStats(data.stats);
+      const cachedUsersDir = getCachedAdminUsersState();
+      if (cachedUsersDir) {
+        setPreviewUsers(cachedUsersDir.users);
+      }
+      setLoadState('loaded');
+      if (data.recentLogs.length > 0) {
+        setRecentLogs(data.recentLogs);
+      }
+      if (data.rewardsMode) {
+        setRewardsMode(data.rewardsMode);
+      }
+      if (data.rewardsHealth) {
+        setRewardsHealth(data.rewardsHealth);
+      }
+    },
+    []
+  );
 
   const loadData = useCallback(
     async (options?: { force?: boolean }) => {
       if (!user || !isAdmin) return;
-      const hasCached = Boolean(getCachedAdminStats());
-      setLoading(true);
-      if (!hasCached || options?.force) {
-        if (!hasCached) setLoadState('loading');
+      const hasCached = Boolean(getCachedAdminOverview()?.stats || getCachedAdminStats());
+      if (!hasCached) {
+        setLoading(true);
+        setLoadState('loading');
+      } else if (options?.force) {
+        setIsRefreshing(true);
       }
       setError(null);
 
       try {
-        const [s, logs, rState, rHealth] = await Promise.all([
-          fetchAdminStats({ force: options?.force }),
-          fetchAuditLogs(5).catch((err) => {
-            console.warn('[AdminOverviewPage] Audit logs load warning:', err);
-            return [] as AuditLog[];
-          }),
-          fetchRewardsState(user.uid).catch((err) => {
-            console.warn('[AdminOverviewPage] Rewards state load warning:', err);
-            return null;
-          }),
-          fetchRewardsHealth().catch((err) => {
-            console.warn('[AdminOverviewPage] Rewards health load warning:', err);
-            return null;
-          }),
-        ]);
-
-        setStats(s);
-        const cachedUsersDir = getCachedAdminUsersState();
-        if (cachedUsersDir) {
-          setPreviewUsers(cachedUsersDir.users);
-        }
-        setLoadState('loaded');
-        setRecentLogs(logs);
-
-        if (rState?.loadError) {
-          setRewardsMode(null);
-          setRewardsModeError(rState.loadError);
-        } else if (rState?.mode) {
-          setRewardsMode(rState.mode);
-        }
-        if (rHealth) {
-          setRewardsHealth(rHealth);
-        }
+        const res = await fetchAdminOverviewSWR(user.uid, {
+          force: options?.force,
+          onUpdate: applyOverviewData,
+        });
+        applyOverviewData(res);
       } catch (err: unknown) {
+        if (!isMountedRef.current) return;
         console.error('[AdminOverviewPage] Failed to load admin overview:', err);
         const e = err as Partial<AdminDiagnosticError>;
         setError({
@@ -150,10 +169,13 @@ export function AdminOverviewPage() {
           setLoadState('error');
         }
       } finally {
-        setLoading(false);
+        if (isMountedRef.current) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
-    [user, isAdmin]
+    [user, isAdmin, applyOverviewData]
   );
 
   // Wait for auth AND admin-role check to finish before starting fetches
@@ -277,24 +299,20 @@ export function AdminOverviewPage() {
         <button
           type="button"
           onClick={() => loadData({ force: true })}
-          disabled={loading}
+          disabled={isRefreshing}
           className="relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
-          {loading && <ButtonLineLoader />}
+          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+          <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          {isRefreshing && <ButtonLineLoader />}
         </button>
       </div>
-
-      {isInitialLoading && (
-        <LineLoader context="admin" message="Loading admin panel..." />
-      )}
 
       <AdminDiagnosticBanner
         error={error}
         collectionName="questions, users, attempts"
         onRetry={() => loadData({ force: true })}
-        retrying={loading}
+        retrying={loading || isRefreshing}
       />
 
       {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}

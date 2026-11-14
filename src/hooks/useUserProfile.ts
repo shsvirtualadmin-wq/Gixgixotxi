@@ -583,6 +583,21 @@ export function useUserProfile(): UserProfileHookResult {
       }
       if (updates.avatar !== undefined || updates.equippedAvatar !== undefined) {
         const av = updates.equippedAvatar ?? updates.avatar ?? null;
+        if (av !== null && av !== '' && av !== 'none') {
+          const { isValidAvatar } = await import('@/lib/matrixAvatarsData');
+          const { readOptimisticWalletSnapshot } = await import('@/lib/swrCache');
+          const ownedList = Array.from(
+            new Set([
+              ...(Array.isArray(profile?.ownedCosmetics) ? profile.ownedCosmetics : []),
+              ...(readOptimisticWalletSnapshot(user.uid)?.owned || []),
+            ])
+          );
+          if (!isValidAvatar(av) && !ownedList.includes(av)) {
+            throw new Error(
+              'Invalid avatar: must be a free system avatar or an owned Store avatar.'
+            );
+          }
+        }
         localPayload.avatar = av;
         localPayload.equippedAvatar = av;
         firestorePayload.avatar = av;

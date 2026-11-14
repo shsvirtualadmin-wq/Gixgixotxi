@@ -266,6 +266,33 @@ export const PRE_SEEDED_UNIVERSITIES: D1UniversitySeed[] = [
     logo_url: '',
     sort_order: 18,
   },
+  {
+    id: 'uni_sat',
+    name: 'SAT',
+    slug: 'sat',
+    shortName: 'SAT',
+    category: 'National Test',
+    logo_url: '',
+    sort_order: 19,
+  },
+  {
+    id: 'uni_ca',
+    name: 'CA',
+    slug: 'ca',
+    shortName: 'CA',
+    category: 'Business & General',
+    logo_url: '',
+    sort_order: 20,
+  },
+  {
+    id: 'uni_acca',
+    name: 'ACCA',
+    slug: 'acca',
+    shortName: 'ACCA',
+    category: 'Business & General',
+    logo_url: '',
+    sort_order: 21,
+  },
 ];
 
 export const DEFAULT_UNIVERSITY_SUBJECTS = [

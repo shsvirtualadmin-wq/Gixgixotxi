@@ -88,6 +88,8 @@ export interface NotificationStoreSnapshot {
   userNotifications: AppNotification[];
   announcements: AnnouncementItem[];
   readAnnouncementIds: Set<string>;
+  followingIds: Set<string>;
+  followingLoaded: boolean;
   unreadCount: number;
   loading: boolean;
   initialized: boolean;
@@ -100,6 +102,8 @@ interface InternalStoreState {
   optimisticReadIds: Set<string>;
   announcements: AnnouncementItem[];
   readAnnouncementIds: Set<string>;
+  followingIds: Set<string>;
+  followingLoaded: boolean;
   loading: boolean;
   initialized: boolean;
 }
@@ -111,6 +115,8 @@ let activeStore: InternalStoreState = {
   optimisticReadIds: new Set(),
   announcements: [],
   readAnnouncementIds: new Set(),
+  followingIds: new Set(),
+  followingLoaded: false,
   loading: false,
   initialized: false,
 };
@@ -122,6 +128,8 @@ let syncInFlightPromise: Promise<void> | null = null;
 const storeSubscribers = new Set<(snapshot: NotificationStoreSnapshot) => void>();
 const unreadRefreshSubscribers = new Set<() => void>();
 const cleanedDuplicateIds = new Set<string>();
+const cleanedUnfollowedNotifIds = new Set<string>();
+const cleanedUnfollowedUsersSession = new Set<string>();
 const dedupIdAliases = new Map<string, Set<string>>();
 
 function getLocalReadIdsKey(userId: string): string {
@@ -304,13 +312,20 @@ export function extractNotificationActorMeta(
 
   if (!resolvedUid && rawName) {
     const lowerName = String(rawName).trim().toLowerCase();
-    const bot = BOARDLY_BOT_ACCOUNTS.find(
-      (b) =>
-        b.displayName.toLowerCase() === lowerName ||
-        (b.username && b.username.toLowerCase() === lowerName)
-    );
-    if (bot) {
-      resolvedUid = bot.uid;
+    if (
+      lowerName === SUPER_ADMIN_NAME.toLowerCase() ||
+      lowerName === 'shs virtual academy'
+    ) {
+      resolvedUid = SUPER_ADMIN_UID;
+    } else {
+      const bot = BOARDLY_BOT_ACCOUNTS.find(
+        (b) =>
+          b.displayName.toLowerCase() === lowerName ||
+          (b.username && b.username.toLowerCase() === lowerName)
+      );
+      if (bot) {
+        resolvedUid = bot.uid;
+      }
     }
   }
 
@@ -503,6 +518,29 @@ function getSemanticDedupKey(n: AppNotification): string {
   return `${n.type}_${normalizeDedupToken(n.title)}_${normalizeDedupToken(n.message).slice(0, 80)}`;
 }
 
+export function isPostNotificationItem(
+  n: Pick<AppNotification, 'type' | 'isAnnouncement' | 'title' | 'postId'>
+): boolean {
+  if (n.isAnnouncement || n.type === 'announcement') return false;
+  if (
+    n.type === 'reward' ||
+    n.type === 'crew' ||
+    n.type === 'system' ||
+    n.type === 'new_follower' ||
+    n.type === 'follow' ||
+    n.type === 'new_message'
+  ) {
+    return false;
+  }
+  return (
+    n.type === 'following_post' ||
+    (n.type as string) === 'new_post' ||
+    (n.type as string) === 'post' ||
+    Boolean(n.postId) ||
+    /\bposted:\s*/i.test(String(n.title || ''))
+  );
+}
+
 function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
   const rawList: AppNotification[] = [];
 
@@ -538,6 +576,19 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
       title: sanitizedTitle,
       message: sanitizedMessage,
     };
+
+    // Read-time filter: post notifications may ONLY be shown if the current user currently follows the author
+    if (isPostNotificationItem(n)) {
+      const authorUid = String(n.authorId || n.actorId || '').trim();
+      if (
+        !state.followingLoaded ||
+        !authorUid ||
+        authorUid === state.userId ||
+        !state.followingIds.has(authorUid)
+      ) {
+        continue;
+      }
+    }
 
     let semKey = getSemanticDedupKey(n);
     if (n.postId && postIdToKey.has(n.postId)) {
@@ -650,6 +701,8 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
     userNotifications,
     announcements: state.announcements,
     readAnnouncementIds: new Set(state.readAnnouncementIds),
+    followingIds: new Set(state.followingIds),
+    followingLoaded: state.followingLoaded,
     unreadCount,
     loading: state.loading,
     initialized: state.initialized,
@@ -675,12 +728,78 @@ export function getNotificationStoreSnapshot(userId?: string): NotificationStore
       userNotifications: [],
       announcements: [],
       readAnnouncementIds: new Set(),
+      followingIds: new Set(),
+      followingLoaded: false,
       unreadCount: 0,
       loading: true,
       initialized: false,
     };
   }
   return buildSnapshot(activeStore);
+}
+
+/**
+ * Updates the current user's following set in the notification store immediately on follow/unfollow
+ * and cleans up any post notifications from unfollowed authors.
+ */
+export function updateNotificationStoreFollowingIds(
+  userId: string,
+  nextFollowingIds: Iterable<string>,
+  unfollowedAuthorId?: string
+): void {
+  if (!userId || activeStore.userId !== userId) return;
+  const cleanSet = new Set<string>();
+  for (const rawId of nextFollowingIds) {
+    const id = String(rawId || '').trim();
+    if (id && id !== userId) {
+      cleanSet.add(id);
+    }
+  }
+  activeStore.followingIds = cleanSet;
+  activeStore.followingLoaded = true;
+
+  const fsIdsToDelete: string[] = [];
+  activeStore.d1Notifications.forEach((n, id) => {
+    if (isPostNotificationItem(n)) {
+      const authorUid = String(n.authorId || n.actorId || '').trim();
+      if (
+        !authorUid ||
+        authorUid === userId ||
+        !cleanSet.has(authorUid) ||
+        (unfollowedAuthorId && authorUid === unfollowedAuthorId)
+      ) {
+        activeStore.d1Notifications.delete(id);
+      }
+    }
+  });
+
+  activeStore.firestoreNotifications.forEach((n, id) => {
+    if (isPostNotificationItem(n)) {
+      const authorUid = String(n.authorId || n.actorId || '').trim();
+      if (
+        !authorUid ||
+        authorUid === userId ||
+        !cleanSet.has(authorUid) ||
+        (unfollowedAuthorId && authorUid === unfollowedAuthorId)
+      ) {
+        activeStore.firestoreNotifications.delete(id);
+        fsIdsToDelete.push(id);
+      }
+    }
+  });
+
+  emitStoreChange();
+
+  if (fsIdsToDelete.length > 0) {
+    void Promise.all(
+      fsIdsToDelete.slice(0, 50).map((id) =>
+        Promise.all([
+          deleteDoc(doc(db, 'notifications', id)).catch(() => {}),
+          deleteDoc(doc(db, 'users', userId, 'notifications', id)).catch(() => {}),
+        ])
+      )
+    );
+  }
 }
 
 export function triggerUnreadNotificationsRefresh(): void {
@@ -1214,6 +1333,7 @@ export async function notifyFollowersOfPost(params: {
           message: notifMessage,
           link: null,
           authorId,
+          actorId: authorId,
           authorName: cleanAuthor,
           authorAvatar: authorAvatar || null,
           authorFrame: authorFrame || null,
@@ -1362,6 +1482,129 @@ export async function fetchReadAnnouncementIds(userId: string): Promise<Set<stri
   return readSet;
 }
 
+async function fetchCurrentUserFollowingSet(userId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!userId) return ids;
+  try {
+    const [userSnap, pubSnap, followsSnap] = await Promise.all([
+      getDocs(query(collection(db, 'users', userId, 'following'), limit(500))).catch(() => null),
+      getDocs(query(collection(db, 'publicProfiles', userId, 'following'), limit(500))).catch(
+        () => null
+      ),
+      getDocs(
+        query(collection(db, 'follows'), where('followerId', '==', userId), limit(500))
+      ).catch(() => null),
+    ]);
+
+    if (userSnap) {
+      userSnap.docs.forEach((d) => {
+        if (d.id && d.id !== userId) ids.add(d.id);
+      });
+    }
+    if (pubSnap) {
+      pubSnap.docs.forEach((d) => {
+        if (d.id && d.id !== userId) ids.add(d.id);
+      });
+    }
+    if (followsSnap) {
+      followsSnap.docs.forEach((d) => {
+        const followingId = d.data()?.followingId;
+        if (followingId && String(followingId) !== userId) {
+          ids.add(String(followingId));
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[notificationService] fetchCurrentUserFollowingSet notice:', err);
+  }
+  return ids;
+}
+
+async function cleanupUnfollowedPostNotifications(
+  userId: string,
+  followingSet: Set<string>,
+  unfollowedNotifIds: string[]
+): Promise<void> {
+  if (!userId) return;
+
+  const uniqueFsIds = Array.from(new Set(unfollowedNotifIds)).filter(
+    (id) => id && !cleanedUnfollowedNotifIds.has(id)
+  );
+  uniqueFsIds.forEach((id) => cleanedUnfollowedNotifIds.add(id));
+
+  if (uniqueFsIds.length > 0) {
+    void Promise.all(
+      uniqueFsIds.slice(0, 50).map((id) =>
+        Promise.all([
+          deleteDoc(doc(db, 'notifications', id)).catch(() => {}),
+          deleteDoc(doc(db, 'users', userId, 'notifications', id)).catch(() => {}),
+        ])
+      )
+    );
+  }
+
+  if (!cleanedUnfollowedUsersSession.has(userId)) {
+    cleanedUnfollowedUsersSession.add(userId);
+    void (async () => {
+      try {
+        const headers = await getOptionalBearerHeader();
+        await fetch('/api/notifications/cleanup-unfollowed', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...headers,
+          },
+          body: JSON.stringify({
+            userId,
+            followingIds: Array.from(followingSet),
+          }),
+        }).catch(() => {});
+
+        // Also check users/{userId}/notifications subcollection for any legacy post notifications from unfollowed authors
+        const subSnap = await getDocs(
+          query(collection(db, 'users', userId, 'notifications'), limit(100))
+        ).catch(() => null);
+        if (subSnap && !subSnap.empty) {
+          const subDeletes: Promise<unknown>[] = [];
+          subSnap.docs.forEach((d) => {
+            const data = d.data();
+            const actorMeta = extractNotificationActorMeta(data, d.id);
+            const cleanTitle = sanitizeNotificationText(data.title, actorMeta.authorName);
+            const cleanMsg = sanitizeNotificationText(data.message, actorMeta.authorName);
+            const resolvedType = normalizeNotificationType(
+              data.type,
+              false,
+              cleanTitle,
+              cleanMsg,
+              data.link,
+              actorMeta.postId
+            );
+            const isPost = isPostNotificationItem({
+              type: resolvedType,
+              isAnnouncement: false,
+              title: cleanTitle,
+              postId: actorMeta.postId,
+            });
+            if (isPost) {
+              const authorUid = String(actorMeta.authorId || actorMeta.actorId || '').trim();
+              if (!authorUid || authorUid === userId || !followingSet.has(authorUid)) {
+                subDeletes.push(
+                  deleteDoc(doc(db, 'users', userId, 'notifications', d.id)).catch(() => {})
+                );
+              }
+            }
+          });
+          if (subDeletes.length > 0) {
+            await Promise.all(subDeletes);
+          }
+        }
+      } catch {
+        // Ignore background cleanup error
+      }
+    })();
+  }
+}
+
 /**
  * Synchronizes the single-source-of-truth notification store with D1 and Firestore.
  */
@@ -1376,14 +1619,27 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
       if (!activeStore.initialized) {
         void ensureWelcomeNotificationForUser(userId).catch(() => {});
       }
-      const headers = await getOptionalBearerHeader();
+      const [headers, followingSet] = await Promise.all([
+        getOptionalBearerHeader(),
+        fetchCurrentUserFollowingSet(userId),
+      ]);
+
+      if (activeStore.userId === userId) {
+        activeStore.followingIds = followingSet;
+        activeStore.followingLoaded = true;
+      }
+
+      const followingParam = encodeURIComponent(Array.from(followingSet).join(','));
 
       const [d1Data, announcements, firestoreReadAnns, fsNotifSnap] =
         await Promise.all([
-          fetch(`/api/notifications?userId=${encodeURIComponent(userId)}`, {
-            headers,
-            cache: 'no-store',
-          })
+          fetch(
+            `/api/notifications?userId=${encodeURIComponent(userId)}&followingKnown=1&followingIds=${followingParam}`,
+            {
+              headers,
+              cache: 'no-store',
+            }
+          )
             .then((r) => (r.ok ? r.json() : null))
             .catch(() => null),
           fetchAnnouncements(50, userId),
@@ -1415,7 +1671,9 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
         });
       }
 
-      // Update D1 notifications map
+      const unfollowedToCleanup: string[] = [];
+
+      // Update D1 notifications map (filtering out any post notifications from non-followed authors)
       if (Array.isArray(d1Data?.notifications)) {
         const nextD1Map = new Map<string, AppNotification>();
         for (const item of d1Data.notifications) {
@@ -1430,7 +1688,7 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
           const actorMeta = extractNotificationActorMeta(item, id);
           const cleanTitle = sanitizeNotificationText(item.title, actorMeta.authorName);
           const cleanMsg = sanitizeNotificationText(item.message, actorMeta.authorName);
-          nextD1Map.set(id, {
+          const notifItem: AppNotification = {
             id,
             type: normalizeNotificationType(
               item.type,
@@ -1455,12 +1713,22 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             postId: actorMeta.postId,
             postSlug: item.postSlug,
             postType: item.postType,
-          });
+          };
+
+          if (isPostNotificationItem(notifItem)) {
+            const authorUid = String(notifItem.authorId || notifItem.actorId || '').trim();
+            if (!authorUid || authorUid === userId || !followingSet.has(authorUid)) {
+              unfollowedToCleanup.push(id);
+              continue;
+            }
+          }
+
+          nextD1Map.set(id, notifItem);
         }
         activeStore.d1Notifications = nextD1Map;
       }
 
-      // Update Firestore notifications map if snapshot was fetched
+      // Update Firestore notifications map if snapshot was fetched (or prune existing map against followingSet)
       if (fsNotifSnap) {
         const nextFsMap = new Map<string, AppNotification>();
         const seenSemKeys = new Map<string, string>();
@@ -1502,6 +1770,15 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             postSlug: data.postSlug,
             postType: data.postType,
           };
+
+          if (isPostNotificationItem(notifItem)) {
+            const authorUid = String(notifItem.authorId || notifItem.actorId || '').trim();
+            if (!authorUid || authorUid === userId || !followingSet.has(authorUid)) {
+              unfollowedToCleanup.push(d.id);
+              return;
+            }
+          }
+
           const semKey = getSemanticDedupKey(notifItem);
           if (seenSemKeys.has(semKey)) {
             if (!cleanedDuplicateIds.has(d.id)) {
@@ -1522,7 +1799,21 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             )
           );
         }
+      } else {
+        // Real-time listener already populated firestoreNotifications; prune any post notifications from non-followed authors
+        activeStore.firestoreNotifications.forEach((n, id) => {
+          if (isPostNotificationItem(n)) {
+            const authorUid = String(n.authorId || n.actorId || '').trim();
+            if (!authorUid || authorUid === userId || !followingSet.has(authorUid)) {
+              activeStore.firestoreNotifications.delete(id);
+              unfollowedToCleanup.push(id);
+            }
+          }
+        });
       }
+
+      // Run one-time cleanup for unfollowed post notifications
+      void cleanupUnfollowedPostNotifications(userId, followingSet, unfollowedToCleanup);
 
       saveLocalReadIds(userId, [
         ...activeStore.optimisticReadIds,
@@ -1563,6 +1854,8 @@ function attachUserRealtimeStore(userId: string): void {
       optimisticReadIds: new Set(),
       announcements: [],
       readAnnouncementIds: new Set(),
+      followingIds: new Set(),
+      followingLoaded: false,
       loading: false,
       initialized: false,
     };
@@ -1591,6 +1884,8 @@ function attachUserRealtimeStore(userId: string): void {
     optimisticReadIds: new Set(cachedReadIds),
     announcements: [],
     readAnnouncementIds: new Set(cachedReadIds),
+    followingIds: new Set(),
+    followingLoaded: false,
     loading: true,
     initialized: false,
   };
@@ -1610,6 +1905,7 @@ function attachUserRealtimeStore(userId: string): void {
         const nextFsMap = new Map<string, AppNotification>();
         const seenSemKeys = new Map<string, string>();
         const dupIdsToDelete: string[] = [];
+        const unfollowedIdsToDelete: string[] = [];
 
         snap.docs.forEach((d) => {
           const data = d.data();
@@ -1647,6 +1943,18 @@ function attachUserRealtimeStore(userId: string): void {
             postSlug: data.postSlug,
             postType: data.postType,
           };
+
+          if (activeStore.followingLoaded && isPostNotificationItem(notifItem)) {
+            const authorUid = String(notifItem.authorId || notifItem.actorId || '').trim();
+            if (!authorUid || authorUid === userId || !activeStore.followingIds.has(authorUid)) {
+              if (!cleanedUnfollowedNotifIds.has(d.id)) {
+                cleanedUnfollowedNotifIds.add(d.id);
+                unfollowedIdsToDelete.push(d.id);
+              }
+              return;
+            }
+          }
+
           const semKey = getSemanticDedupKey(notifItem);
           if (seenSemKeys.has(semKey)) {
             if (!cleanedDuplicateIds.has(d.id)) {
@@ -1661,10 +1969,11 @@ function attachUserRealtimeStore(userId: string): void {
         activeStore.firestoreNotifications = nextFsMap;
         emitStoreChange();
 
-        if (dupIdsToDelete.length > 0) {
+        const allDeletes = [...dupIdsToDelete, ...unfollowedIdsToDelete];
+        if (allDeletes.length > 0) {
           void Promise.all(
-            dupIdsToDelete.slice(0, 25).map((dupId) =>
-              deleteDoc(doc(db, 'notifications', dupId)).catch(() => {})
+            allDeletes.slice(0, 25).map((delId) =>
+              deleteDoc(doc(db, 'notifications', delId)).catch(() => {})
             )
           );
         }
@@ -2024,6 +2333,9 @@ export async function fetchUserNotificationsPage(params: {
     );
 
     const snap = await getDocs(q);
+    const followingSet = activeStore.followingLoaded
+      ? activeStore.followingIds
+      : await fetchCurrentUserFollowingSet(userId);
     const notifications: AppNotification[] = snap.docs
       .filter((d) => d.data()?.announcementId !== WELCOME_ANNOUNCEMENT_ID)
       .map((d) => {
@@ -2058,6 +2370,13 @@ export async function fetchUserNotificationsPage(params: {
           postSlug: data.postSlug,
           postType: data.postType,
         };
+      })
+      .filter((n) => {
+        if (isPostNotificationItem(n)) {
+          const authorUid = String(n.authorId || n.actorId || '').trim();
+          return Boolean(authorUid && authorUid !== userId && followingSet.has(authorUid));
+        }
+        return true;
       });
 
     const newLastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
