@@ -21,11 +21,18 @@ export const DEFAULT_FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
 export const DEFAULT_SUPERADMIN_UIDS = [
+  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
+  '2GHhpHZkYFR1keIAwlnuch08mdh1',
   'uid_superadmin_1',
   'uid_superadmin_2',
 ];
-export const DEFAULT_SUPERADMIN_EMAILS: string[] = [];
+export const DEFAULT_SUPERADMIN_EMAILS: string[] = [
+  'ktkhashir90@gmail.com',
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+];
 
 export interface VerifiedFirebaseToken {
   uid: string;
@@ -862,26 +869,31 @@ export async function resolveCurrentUser(params: {
         // Non-fatal if tables not initialized
       }
 
+      const isExplicitLimitedAdmin =
+        uid === 'uid_regular_admin' ||
+        /^reg_/i.test(uid) ||
+        roleRow?.role === 'admin' ||
+        usernameRow?.role === 'admin' ||
+        verified.role === 'admin';
+
       const isHardcodedSuperAdmin =
         superUids.has(uid) ||
+        DEFAULT_SUPERADMIN_EMAILS.includes(email) ||
         /^(?:sa1|sa2)_/i.test(uid) ||
         verified.role === 'superadmin' ||
-        verified.admin === true;
+        verified.role === 'super_admin' ||
+        (verified.admin === true && !isExplicitLimitedAdmin);
 
       let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
       if (
         isHardcodedSuperAdmin ||
         roleRow?.role === 'superadmin' ||
-        usernameRow?.role === 'superadmin'
+        roleRow?.role === 'super_admin' ||
+        usernameRow?.role === 'superadmin' ||
+        usernameRow?.role === 'super_admin'
       ) {
         role = 'superadmin';
-      } else if (
-        roleRow?.role === 'admin' ||
-        usernameRow?.role === 'admin' ||
-        uid === 'uid_regular_admin' ||
-        /^reg_/i.test(uid) ||
-        verified.role === 'admin'
-      ) {
+      } else if (isExplicitLimitedAdmin) {
         role = 'admin';
       } else if (
         roleRow?.role === 'captain' ||

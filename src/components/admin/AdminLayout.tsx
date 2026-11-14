@@ -18,10 +18,12 @@ import {
   ArrowLeft,
   Activity,
   Award,
-  Coins,
   Tag,
   Megaphone,
   Bot,
+  Lock,
+  KeyRound,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader } from '@/components/ui/LineLoader';
@@ -36,6 +38,8 @@ import {
   scheduleIdleAdminPrefetchAll,
   prefetchAdminRouteOnInteraction,
 } from '@/services/adminTabCache';
+import { apiRequest } from '@/lib/api';
+import type { PermissionKey } from '@/constants/permissions';
 
 const AdminKobanNavIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <KobanIcon size={typeof size === 'number' ? size : 16} decorative className={className} />
@@ -46,26 +50,30 @@ interface AdminNavItem {
   label: string;
   icon: typeof LayoutDashboard | typeof AdminKobanNavIcon;
   end?: boolean;
+  permission?: PermissionKey;
+  superAdminOnlyBadge?: boolean;
 }
 
 const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/admin/users', label: 'Users', icon: Users },
-  { to: '/admin/announcements', label: 'Announcements', icon: Megaphone },
-  { to: '/admin/bots', label: 'Bots', icon: Bot },
-  { to: '/admin/crews', label: 'Crews', icon: Shield },
-  { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award },
-  { to: '/admin/certificates', label: 'Certificates', icon: Award },
-  { to: '/admin/questions', label: 'Questions', icon: Database },
+  { to: '/admin/questions', label: 'Questions', icon: Database, permission: 'mcq.manage' },
+  { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete' },
+  { to: '/admin/users', label: 'Users', icon: Users, permission: 'users.view' },
+  { to: '/admin/access-requests', label: 'Access Requests', icon: KeyRound, permission: 'audit.view', superAdminOnlyBadge: true },
+  { to: '/admin/announcements', label: 'Announcements', icon: Megaphone, permission: 'announcements.manage' },
+  { to: '/admin/certificates', label: 'Certificates', icon: Award, permission: 'certificates.issue' },
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
-  { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2 },
-  { to: '/admin/pricing', label: 'Store Pricing', icon: Tag },
-  { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon },
-  { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },
-  { to: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },
+  { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon, permission: 'coupons.grant' },
+  { to: '/admin/pricing', label: 'Store Pricing', icon: Tag, permission: 'coupons.grant' },
+  { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2, permission: 'certificates.issue' },
+  { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award, permission: 'tests.manage' },
+  { to: '/admin/crews', label: 'Crews', icon: Shield, permission: 'users.view' },
+  { to: '/admin/bots', label: 'Bots', icon: Bot, permission: 'tests.manage' },
+  { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
+  { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
+  { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal, permission: 'audit.view' },
   { to: '/admin/health', label: 'Health & Tests', icon: Activity },
 ];
 
@@ -75,12 +83,21 @@ const ALL_SIDEBAR_NAV: AdminNavItem[] = [
 ];
 
 export function AdminLayout() {
-  const { user, profileLoading, isAdmin, isSessionVerified, otpVerificationState, signOutUser } =
-    useAuth();
+  const {
+    user,
+    profileLoading,
+    isAdmin,
+    isSuperAdmin,
+    hasPermission,
+    isSessionVerified,
+    otpVerificationState,
+    signOutUser,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useBodyScrollLock(isMoreOpen, 'admin-more-sheet');
 
@@ -100,6 +117,34 @@ export function AdminLayout() {
     };
   }, [isMoreOpen]);
 
+  // Poll or fetch pending access requests count for Super Admin badge
+  useEffect(() => {
+    if (!user || !isSuperAdmin) {
+      setPendingRequestsCount(0);
+      return;
+    }
+    let cancelled = false;
+    const loadPendingCount = async () => {
+      try {
+        const res = await apiRequest<{ requests?: Array<{ status: string }> }>(
+          '/api/admin/access-requests?status=pending',
+          { method: 'GET', skipErrorToast: true }
+        );
+        if (!cancelled && Array.isArray(res?.requests)) {
+          setPendingRequestsCount(res.requests.filter((r) => r.status === 'pending').length);
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+    void loadPendingCount();
+    const timer = window.setInterval(loadPendingCount, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [user, isSuperAdmin, location.pathname]);
+
   // Prefetch all admin tab chunks and SWR data during idle time once AdminLayout is verified
   useEffect(() => {
     if (!profileLoading && user && isSessionVerified && isAdmin) {
@@ -113,62 +158,85 @@ export function AdminLayout() {
     navigate('/login');
   };
 
-  const emailLower = user?.email?.toLowerCase().trim();
-  const isSuperAdmin = !!(
-    emailLower === 'shsvirtualadmin@gmail.com' ||
-    emailLower === 'support@boardly.cfd' ||
-    user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
-  );
   const userInitial = (user?.displayName || user?.email || 'A')[0].toUpperCase();
 
   // Check if current path is in the secondary "More" section
   const isSecondaryActive = SECONDARY_NAV.some((item) =>
-    location.pathname.startsWith(item.to)
+    location.pathname.startsWith(item.to.split('?')[0])
   );
+
+  const isNavItemLocked = (item: AdminNavItem): boolean => {
+    if (isSuperAdmin) return false;
+    if (!item.permission) return false;
+    return !hasPermission(item.permission);
+  };
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip">
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
       <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 glass border-r border-[var(--glass-border)] z-30">
         {/* Sidebar Header */}
-        <div className="h-16 px-5 border-b border-[var(--glass-border)] flex items-center">
+        <div className="h-16 px-5 border-b border-[var(--glass-border)] flex items-center justify-between">
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
             <Logo size="admin" />
           </Link>
+          <span
+            className={`text-[10px] font-heading font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+              isSuperAdmin
+                ? 'border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)]'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+            }`}
+          >
+            {isSuperAdmin ? 'Super Admin' : 'Admin'}
+          </span>
         </div>
 
         {/* Sidebar Links */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {ALL_SIDEBAR_NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-              onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-              onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-[14px] text-[13px] font-heading transition-colors ${
-                  isActive
-                    ? 'glass-row text-[var(--text)] font-semibold border-[var(--glass-border)]'
-                    : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] border border-transparent'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon size={16} className={isActive ? 'text-[#D71921]' : 'text-[var(--muted)]'} />
-                  <span className="flex-1">{label}</span>
-                  {isActive && (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-[var(--red)]"
-                      aria-hidden="true"
-                    />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
+          {ALL_SIDEBAR_NAV.map((item) => {
+            const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
+            const locked = isNavItemLocked(item);
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-[14px] text-[13px] font-heading transition-colors ${
+                    locked ? 'opacity-65' : ''
+                  } ${
+                    isActive
+                      ? 'glass-row text-[var(--text)] font-semibold border-[var(--glass-border)]'
+                      : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] border border-transparent'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon size={16} className={isActive ? 'text-[#D71921]' : 'text-[var(--muted)]'} />
+                    <span className="flex-1 truncate">{label}</span>
+                    {locked && (
+                      <Lock size={12} className="text-amber-400 shrink-0" aria-label="Locked" />
+                    )}
+                    {superAdminOnlyBadge && isSuperAdmin && pendingRequestsCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-[var(--red)] text-white text-[10px] font-bold leading-none shrink-0">
+                        {pendingRequestsCount}
+                      </span>
+                    )}
+                    {isActive && !locked && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-[var(--red)]"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Sidebar Footer with Signed-in Info & Avatar Menu Trigger */}
@@ -183,8 +251,14 @@ export function AdminLayout() {
                   {user?.email || 'admin@boardly.cfd'}
                 </p>
                 <div className="mt-0.5">
-                  <span className="inline-block text-[10px] font-heading px-1.5 py-0.2 rounded-full border border-[var(--red)] text-[var(--red)]">
-                    {isSuperAdmin ? 'Super Admin' : 'Admin'}
+                  <span
+                    className={`inline-block text-[10px] font-heading px-1.5 py-0.2 rounded-full border ${
+                      isSuperAdmin
+                        ? 'border-[var(--red)] text-[var(--red)]'
+                        : 'border-amber-500/50 text-amber-400'
+                    }`}
+                  >
+                    {isSuperAdmin ? 'Super Admin' : 'Admin (Limited)'}
                   </span>
                 </div>
               </div>
@@ -219,19 +293,27 @@ export function AdminLayout() {
             <Logo size="admin" className="!h-[28px] min-[400px]:!h-[30px] w-auto shrink-0" />
           </Link>
           <span className="badge-pill-red text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
-            PRO
-          </span>
-          <span className="hidden min-[400px]:inline-flex items-center text-[11px] font-semibold text-[var(--red)] truncate">
-            Admin Portal
+            {isSuperAdmin ? 'SUPER ADMIN' : 'ADMIN'}
           </span>
         </div>
-        <Link
-          to="/dashboard"
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full glass-pill text-[11px] font-heading font-semibold text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 whitespace-nowrap"
-        >
-          <ExternalLink size={12} className="shrink-0" />
-          <span>Student Home</span>
-        </Link>
+        <div className="flex items-center gap-1.5">
+          {isSuperAdmin && pendingRequestsCount > 0 && (
+            <Link
+              to="/admin/access-requests"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--red)] text-white text-[11px] font-heading font-bold shrink-0"
+            >
+              <KeyRound size={11} />
+              <span>{pendingRequestsCount}</span>
+            </Link>
+          )}
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full glass-pill text-[11px] font-heading font-semibold text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 whitespace-nowrap"
+          >
+            <ExternalLink size={12} className="shrink-0" />
+            <span>Student Home</span>
+          </Link>
+        </div>
       </header>
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
@@ -250,12 +332,9 @@ export function AdminLayout() {
                 Admin access restricted
               </h1>
               <p className="font-heading text-[14px] text-[var(--muted)] leading-relaxed mb-5">
-                This portal is strictly reserved for the Boardly platform super-administrator.
+                This portal is strictly reserved for Boardly administrators.
                 Your account (<strong className="text-[var(--text)] font-semibold">{user.email}</strong>) does not have administrator authority.
               </p>
-              <div className="glass-row p-3 rounded-[14px] text-[12px] font-heading text-[var(--muted)] mb-6">
-                Authorized: shsvirtualadmin@gmail.com
-              </div>
               <Link to="/dashboard" className="inline-block w-full">
                 <Button variant="secondary" size="md" className="w-full justify-center">
                   <ArrowLeft size={16} /> Return to student dashboard
@@ -281,7 +360,7 @@ export function AdminLayout() {
         )}
       </main>
 
-      {/* ─── MOBILE FLOATING PILL BOTTOM NAV (Overview, Users, Questions, More) ──── */}
+      {/* ─── MOBILE FLOATING PILL BOTTOM NAV ──── */}
       {typeof document !== 'undefined' &&
         createPortal(
           <div
@@ -297,8 +376,9 @@ export function AdminLayout() {
               role="tablist"
               className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px] pointer-events-auto"
             >
-              {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
-                const isQuestions = to.includes('questions');
+              {PRIMARY_NAV.slice(0, 5).map((item) => {
+                const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
+                const locked = isNavItemLocked(item);
                 return (
                   <NavLink
                     key={to}
@@ -310,7 +390,9 @@ export function AdminLayout() {
                     onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                     onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                     onClick={(e) => e.stopPropagation()}
-                    className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
+                    className={`relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1 ${
+                      locked ? 'opacity-65' : ''
+                    }`}
                   >
                     {({ isActive }) => (
                       <>
@@ -340,12 +422,16 @@ export function AdminLayout() {
                         >
                           <div className="relative shrink-0 flex items-center justify-center">
                             <Icon size={20} className={isActive ? 'text-white' : ''} />
-                            {isQuestions && (
-                              <span
-                                className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ${
-                                  isActive ? 'ring-[#D71921]' : 'ring-[var(--nav-bg)]'
-                                }`}
+                            {locked && (
+                              <Lock
+                                size={9}
+                                className="absolute -top-1 -right-1.5 text-amber-400"
                               />
+                            )}
+                            {superAdminOnlyBadge && isSuperAdmin && pendingRequestsCount > 0 && (
+                              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[var(--red)] text-white text-[9px] font-bold">
+                                {pendingRequestsCount}
+                              </span>
                             )}
                           </div>
                           <span className="sr-only">{label}</span>
@@ -356,7 +442,7 @@ export function AdminLayout() {
                 );
               })}
 
-              {/* 4th Tab: "More" button */}
+              {/* "More" button */}
               <button
                 type="button"
                 role="tab"
@@ -467,26 +553,35 @@ export function AdminLayout() {
               </div>
 
               <div className="space-y-1.5">
-                {SECONDARY_NAV.map(({ to, label, icon: Icon }) => (
-                  <Link
-                    key={to}
-                    to={to}
-                    onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-                    onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-                    onClick={() => setIsMoreOpen(false)}
-                    className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
-                      location.pathname.startsWith(to)
-                        ? 'glass-row border-[var(--red)]/40 text-[var(--text)] font-semibold'
-                        : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon size={16} />
-                      <span>{label}</span>
-                    </div>
-                    <ChevronRight size={14} className="text-[var(--muted)]" />
-                  </Link>
-                ))}
+                {[...PRIMARY_NAV.slice(5), ...SECONDARY_NAV].map((item) => {
+                  const { to, label, icon: Icon } = item;
+                  const locked = isNavItemLocked(item);
+                  return (
+                    <Link
+                      key={to}
+                      to={to}
+                      onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                      onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                      onClick={() => setIsMoreOpen(false)}
+                      className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
+                        locked ? 'opacity-65' : ''
+                      } ${
+                        location.pathname.startsWith(to.split('?')[0])
+                          ? 'glass-row border-[var(--red)]/40 text-[var(--text)] font-semibold'
+                          : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon size={16} />
+                        <span>{label}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {locked && <Lock size={13} className="text-amber-400" />}
+                        <ChevronRight size={14} className="text-[var(--muted)]" />
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
 
               <div className="pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2">

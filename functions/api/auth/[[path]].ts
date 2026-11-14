@@ -6070,6 +6070,46 @@ export async function handleAuthApiRequest(
     }
 
     const targetUidFilter = (url.searchParams.get('uid') || '').trim();
+
+    // Load local D1 store to check temporary access grants and persisted user plan/role overrides
+    let d1JsonStore: any = null;
+    try {
+      const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
+      const fsMod = reqFn('fs');
+      const pathMod = reqFn('path');
+      const storePath = pathMod.resolve(process.cwd(), 'data/cloudflare_d1_posts.json');
+      if (fsMod.existsSync(storePath)) {
+        d1JsonStore = JSON.parse(fsMod.readFileSync(storePath, 'utf8'));
+      }
+    } catch {
+      // Non-fatal in edge worker
+    }
+
+    // If caller is a limited Admin (not Super Admin), require an active users.view or security.reset grant
+    // unless only querying their own UID
+    if (!caller.isSuperAdmin && targetUidFilter !== caller.uid) {
+      const activeGrants = Array.isArray(d1JsonStore?.accessGrants) ? d1JsonStore.accessGrants : [];
+      const hasViewGrant = activeGrants.some(
+        (g: any) =>
+          g.adminUid === caller.uid &&
+          (g.permission === 'users.view' || g.permission === 'security.reset') &&
+          !g.revokedAt &&
+          !g.usedAt &&
+          (g.expiresAt === null || g.expiresAt === undefined || Number(g.expiresAt) > nowMs)
+      );
+      if (!hasViewGrant) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'Permission denied: users.view is required to view user accounts.',
+            code: 'PERMISSION_DENIED',
+            permission: 'users.view',
+          },
+          403
+        );
+      }
+    }
+
     const rawUidsList = (url.searchParams.get('uids') || '')
       .split(',')
       .map((s) => s.trim())
@@ -6085,7 +6125,7 @@ export async function handleAuthApiRequest(
       getBatchUsersTwoFactorStatusFromD1(db, Array.from(uidsToResolve), nowMs),
       db
         .prepare(
-          'SELECT username_lower, username_display, uid, account_type, email, created_at, updated_at FROM user_usernames ORDER BY created_at DESC LIMIT 500'
+          'SELECT username_lower, username_display, uid, account_type, email, role, created_at, updated_at FROM user_usernames ORDER BY created_at DESC LIMIT 500'
         )
         .all<{
           username_lower: string;
@@ -6093,6 +6133,11 @@ export async function handleAuthApiRequest(
           uid: string;
           account_type: string;
           email?: string;
+          role?: string;
+          plan?: string;
+          plan_expires_at?: string | null;
+          is_premium?: number;
+          suspended?: number;
           created_at: number;
           updated_at: number;
         }>()
@@ -6124,7 +6169,17 @@ export async function handleAuthApiRequest(
       }
     }
 
-    const rolesByUid = new Map<string, { role: string; customRole: string | null; isPostingBanned: boolean }>();
+    const rolesByUid = new Map<
+      string,
+      {
+        role: string;
+        customRole: string | null;
+        isPostingBanned: boolean;
+        plan?: string;
+        planExpiresAt?: string | null;
+        suspended?: boolean;
+      }
+    >();
     for (const r of d1RolesRes.results || []) {
       if (r.uid) {
         rolesByUid.set(String(r.uid), {
@@ -6132,6 +6187,21 @@ export async function handleAuthApiRequest(
           customRole: r.custom_role || null,
           isPostingBanned: Boolean(r.is_posting_banned),
         });
+      }
+    }
+    if (Array.isArray(d1JsonStore?.userRoles)) {
+      for (const r of d1JsonStore.userRoles) {
+        if (r?.uid) {
+          const prev = rolesByUid.get(String(r.uid));
+          rolesByUid.set(String(r.uid), {
+            role: String(r.role || prev?.role || 'student'),
+            customRole: r.custom_role ?? prev?.customRole ?? null,
+            isPostingBanned: Boolean(r.is_posting_banned ?? prev?.isPostingBanned),
+            plan: r.plan || prev?.plan,
+            planExpiresAt: r.plan_expires_at ?? prev?.planExpiresAt ?? null,
+            suspended: Boolean(r.suspended ?? r.is_posting_banned ?? prev?.suspended),
+          });
+        }
       }
     }
 
@@ -6143,6 +6213,10 @@ export async function handleAuthApiRequest(
       email: string;
       accountType: 'guest' | 'registered';
       role: string;
+      plan?: 'free' | 'pro';
+      isPremium?: boolean;
+      planExpiresAt?: string | null;
+      suspended?: boolean;
       createdAt: number;
       updatedAt: number;
       twoFactorStatus: UserTwoFactorStatusSummary;
@@ -6176,15 +6250,27 @@ export async function handleAuthApiRequest(
 
       let inferredRole = roleInfo?.role || u.role || 'student';
       if (
+        uid === 'JBGCDTLuWUMUIUMCLek7SdgvUNn1' ||
         uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+        uid === 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2' ||
+        uid === '2GHhpHZkYFR1keIAwlnuch08mdh1' ||
         uid === 'uid_superadmin_1' ||
         uid === 'uid_superadmin_2' ||
-        /^(?:sa1|sa2)_/i.test(uid)
+        /^(?:sa1|sa2)_/i.test(uid) ||
+        inferredRole === 'superadmin' ||
+        inferredRole === 'super_admin'
       ) {
-        inferredRole = 'admin';
+        inferredRole = 'super_admin';
       } else if (uid === 'uid_regular_admin' || /^reg_/i.test(uid)) {
         inferredRole = 'admin';
       }
+
+      const resolvedPlan: 'free' | 'pro' =
+        roleInfo?.plan === 'pro' || (u as any).plan === 'pro' || (u as any).is_premium
+          ? 'pro'
+          : 'free';
+      const resolvedExpiresAt = roleInfo?.planExpiresAt ?? (u as any).plan_expires_at ?? null;
+      const resolvedSuspended = Boolean(roleInfo?.suspended ?? (u as any).suspended);
 
       const pbEntry = proBadgesByUid[uid];
       d1Users.push({
@@ -6194,6 +6280,10 @@ export async function handleAuthApiRequest(
         email: cleanEmail,
         accountType: cleanAccType,
         role: inferredRole,
+        plan: resolvedPlan,
+        isPremium: resolvedPlan === 'pro',
+        planExpiresAt: resolvedExpiresAt,
+        suspended: resolvedSuspended,
         createdAt: Number(u.created_at || nowMs),
         updatedAt: Number(u.updated_at || u.created_at || nowMs),
         twoFactorStatus: statusByUid[uid],
@@ -6318,7 +6408,8 @@ export async function handleAuthApiRequest(
           ok: false,
           error:
             "Forbidden: Only a Super Admin can reset or change another user's two-step verification.",
-          code: 'FORBIDDEN',
+          code: 'PERMISSION_DENIED',
+          permission: 'security.reset',
         },
         403
       );

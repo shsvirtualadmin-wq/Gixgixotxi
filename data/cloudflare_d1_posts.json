@@ -2292,7 +2292,7 @@
     {
       "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
       "email": "shsvirtualadmin@gmail.com",
-      "role": "superadmin",
+      "role": "super_admin",
       "custom_role": "Super Admin",
       "is_posting_banned": 0,
       "updated_at": 1793184063714
@@ -2472,6 +2472,30 @@
       "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1793688191377
+    },
+    {
+      "uid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "email": "ktkhashir90@gmail.com",
+      "role": "super_admin",
+      "custom_role": "Super Admin",
+      "is_posting_banned": 0,
+      "updated_at": 1794682463328
+    },
+    {
+      "uid": "Pz5fjmLtXHbWL2ntnW1zd8nlQos2",
+      "email": "shsvirtualadmin@gmail.com",
+      "role": "super_admin",
+      "custom_role": "Super Admin",
+      "is_posting_banned": 0,
+      "updated_at": 1794682463328
+    },
+    {
+      "uid": "2GHhpHZkYFR1keIAwlnuch08mdh1",
+      "email": "support@boardly.cfd",
+      "role": "super_admin",
+      "custom_role": "Super Admin",
+      "is_posting_banned": 0,
+      "updated_at": 1794682463328
     }
   ],
   "botAccounts": [
@@ -6227,6 +6251,844 @@
       "avgScore": 0,
       "createdAt": "2026-11-05T00:06:16.010Z",
       "updatedAt": "2026-11-05T00:06:16.011Z"
+    },
+    {
+      "id": "gl_mock_01",
+      "title": "Grand Line Mock #01 — Kinematics & Dynamics",
+      "description": "Official Grand Line Physics championship drill (GL#01).",
+      "subject": "Physics",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "forceEnded",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 1,
+      "results_finalised": 1,
+      "finalisedAt": 1742644800000,
+      "finalised_at": 1742644800000,
+      "mockNumber": 1,
+      "mock_number": 1,
+      "editionLabel": "GL#01 · GRAND LINE",
+      "edition_label": "GL#01 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_01_q1",
+          "position": 0,
+          "question": "In Physics, which fundamental principle governs the primary conservation law tested in GL#01?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_01_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Physics problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_01_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Physics Mock #01.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Physics",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 48,
+      "avgScore": 84,
+      "createdAt": 1742601600000,
+      "updatedAt": 1742601600000
+    },
+    {
+      "id": "gl_mock_02",
+      "title": "Grand Line Mock #02 — Atomic Structure & Bonding",
+      "description": "Official Grand Line Chemistry championship drill (GL#02).",
+      "subject": "Chemistry",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "forceEnded",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 1,
+      "results_finalised": 1,
+      "finalisedAt": 1742731200000,
+      "finalised_at": 1742731200000,
+      "mockNumber": 2,
+      "mock_number": 2,
+      "editionLabel": "GL#02 · GRAND LINE",
+      "edition_label": "GL#02 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_02_q1",
+          "position": 0,
+          "question": "In Chemistry, which fundamental principle governs the primary conservation law tested in GL#02?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Chemistry",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_02_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Chemistry problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Chemistry",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_02_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Chemistry Mock #02.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Chemistry",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 42,
+      "avgScore": 79,
+      "createdAt": 1742688000000,
+      "updatedAt": 1742688000000
+    },
+    {
+      "id": "gl_mock_03",
+      "title": "Grand Line Mock #03 — Cell Biology & Enzymes",
+      "description": "Official Grand Line Biology championship drill (GL#03).",
+      "subject": "Biology",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "forceEnded",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 1,
+      "results_finalised": 1,
+      "finalisedAt": 1742817600000,
+      "finalised_at": 1742817600000,
+      "mockNumber": 3,
+      "mock_number": 3,
+      "editionLabel": "GL#03 · GRAND LINE",
+      "edition_label": "GL#03 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_03_q1",
+          "position": 0,
+          "question": "In Biology, which fundamental principle governs the primary conservation law tested in GL#03?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_03_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Biology problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_03_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Biology Mock #03.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Biology",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 51,
+      "avgScore": 86,
+      "createdAt": 1742774400000,
+      "updatedAt": 1742774400000
+    },
+    {
+      "id": "gl_mock_04",
+      "title": "Grand Line Mock #04 — Calculus & Limits Sprint",
+      "description": "Official Grand Line Mathematics championship drill (GL#04).",
+      "subject": "Mathematics",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "forceLive",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": 1794682715433,
+      "finalised_at": 1794682715433,
+      "mockNumber": 4,
+      "mock_number": 4,
+      "editionLabel": "GL#04 · GRAND LINE",
+      "edition_label": "GL#04 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_04_q1",
+          "position": 0,
+          "question": "In Mathematics, which fundamental principle governs the primary conservation law tested in GL#04?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Mathematics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_04_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Mathematics problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Mathematics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_04_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Mathematics Mock #04.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Mathematics",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 37,
+      "avgScore": 76,
+      "createdAt": 1742860800000,
+      "updatedAt": 1794682715487,
+      "reason": "Using one-time grant"
+    },
+    {
+      "id": "gl_mock_05",
+      "title": "Grand Line Mock #05 — Electromagnetism & Waves",
+      "description": "Official Grand Line Physics championship drill (GL#05).",
+      "subject": "Physics",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 5,
+      "mock_number": 5,
+      "editionLabel": "GL#05 · GRAND LINE",
+      "edition_label": "GL#05 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_05_q1",
+          "position": 0,
+          "question": "In Physics, which fundamental principle governs the primary conservation law tested in GL#05?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_05_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Physics problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_05_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Physics Mock #05.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Physics",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 33,
+      "avgScore": 81,
+      "createdAt": 1742947200000,
+      "updatedAt": 1742947200000
+    },
+    {
+      "id": "gl_mock_06",
+      "title": "Grand Line Mock #06 — Organic Hydrocarbons",
+      "description": "Official Grand Line Chemistry championship drill (GL#06).",
+      "subject": "Chemistry",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 6,
+      "mock_number": 6,
+      "editionLabel": "GL#06 · GRAND LINE",
+      "edition_label": "GL#06 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_06_q1",
+          "position": 0,
+          "question": "In Chemistry, which fundamental principle governs the primary conservation law tested in GL#06?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Chemistry",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_06_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Chemistry problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Chemistry",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_06_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Chemistry Mock #06.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Chemistry",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 29,
+      "avgScore": 74,
+      "createdAt": 1743033600000,
+      "updatedAt": 1743033600000
+    },
+    {
+      "id": "gl_mock_07",
+      "title": "Grand Line Mock #07 — Bioenergetics & Genetics",
+      "description": "Official Grand Line Biology championship drill (GL#07).",
+      "subject": "Biology",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 7,
+      "mock_number": 7,
+      "editionLabel": "GL#07 · GRAND LINE",
+      "edition_label": "GL#07 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_07_q1",
+          "position": 0,
+          "question": "In Biology, which fundamental principle governs the primary conservation law tested in GL#07?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_07_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Biology problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_07_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Biology Mock #07.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Biology",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 44,
+      "avgScore": 83,
+      "createdAt": 1743120000000,
+      "updatedAt": 1743120000000
+    },
+    {
+      "id": "gl_mock_08",
+      "title": "Grand Line Mock #08 — Matrices, Vectors & Conics",
+      "description": "Official Grand Line Mathematics championship drill (GL#08).",
+      "subject": "Mathematics",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "forceLive",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": 1794682715351,
+      "finalised_at": 1794682715351,
+      "mockNumber": 8,
+      "mock_number": 8,
+      "editionLabel": "GL#08 · GRAND LINE",
+      "edition_label": "GL#08 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_08_q1",
+          "position": 0,
+          "question": "In Mathematics, which fundamental principle governs the primary conservation law tested in GL#08?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Mathematics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_08_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Mathematics problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Mathematics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_08_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Mathematics Mock #08.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Mathematics",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 25,
+      "avgScore": 78,
+      "createdAt": 1743206400000,
+      "updatedAt": 1794682715495,
+      "reason": "Verification test end now"
+    },
+    {
+      "id": "gl_mock_09",
+      "title": "Grand Line Mock #09 — Precision Grammar & Vocab",
+      "description": "Official Grand Line English championship drill (GL#09).",
+      "subject": "English",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 9,
+      "mock_number": 9,
+      "editionLabel": "GL#09 · GRAND LINE",
+      "edition_label": "GL#09 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_09_q1",
+          "position": 0,
+          "question": "In English, which fundamental principle governs the primary conservation law tested in GL#09?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "English",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_09_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step English problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "English",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_09_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for English Mock #09.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "English",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 39,
+      "avgScore": 88,
+      "createdAt": 1743292800000,
+      "updatedAt": 1743292800000
+    },
+    {
+      "id": "gl_mock_10",
+      "title": "Grand Line Mock #10 — Modern Physics & Electronics",
+      "description": "Official Grand Line Physics championship drill (GL#10).",
+      "subject": "Physics",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 10,
+      "mock_number": 10,
+      "editionLabel": "GL#10 · GRAND LINE",
+      "edition_label": "GL#10 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_10_q1",
+          "position": 0,
+          "question": "In Physics, which fundamental principle governs the primary conservation law tested in GL#10?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_10_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Physics problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Physics",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_10_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Physics Mock #10.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Physics",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 31,
+      "avgScore": 80,
+      "createdAt": 1743379200000,
+      "updatedAt": 1743379200000
+    },
+    {
+      "id": "gl_mock_11",
+      "title": "Grand Line Mock #11 — Full Grand Line Championship",
+      "description": "Official Grand Line Biology championship drill (GL#11).",
+      "subject": "Biology",
+      "durationMinutes": 25,
+      "visibility": "public",
+      "status": "published",
+      "statusMode": "auto",
+      "captainUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "captainName": "Captain Hashir",
+      "crewId": "crew_grand_line",
+      "crewName": "Grand Line Fleet",
+      "questionCount": 3,
+      "certificateThemeId": null,
+      "certificate_theme_id": null,
+      "resultsFinalised": 0,
+      "results_finalised": 0,
+      "finalisedAt": null,
+      "finalised_at": null,
+      "mockNumber": 11,
+      "mock_number": 11,
+      "editionLabel": "GL#11 · GRAND LINE",
+      "edition_label": "GL#11 · GRAND LINE",
+      "questions": [
+        {
+          "id": "gl_mock_11_q1",
+          "position": 0,
+          "question": "In Biology, which fundamental principle governs the primary conservation law tested in GL#11?",
+          "options": [
+            "Conservation of Energy & Charge",
+            "Spontaneous Symmetry Violation",
+            "Empirical Approximation Only",
+            "Arbitrary Frame Shift"
+          ],
+          "correctIndex": 0,
+          "explanation": "Conservation of Energy and Charge holds across isolated physical and chemical systems.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_11_q2",
+          "position": 1,
+          "question": "Which analytical approach yields the fastest verification for multi-step Biology problems?",
+          "options": [
+            "Dimensional & boundary condition analysis",
+            "Random trial substitution",
+            "Ignoring unit prefixes",
+            "Unverified extrapolation"
+          ],
+          "correctIndex": 0,
+          "explanation": "Dimensional consistency and boundary conditions eliminate invalid options immediately.",
+          "topic": "Biology",
+          "difficulty": "medium"
+        },
+        {
+          "id": "gl_mock_11_q3",
+          "position": 2,
+          "question": "Evaluate the standard state equilibrium condition for Biology Mock #11.",
+          "options": [
+            "Net driving potential equals zero at equilibrium",
+            "Forward rate vanishes completely",
+            "Entropy is minimized",
+            "Activation barrier becomes infinite"
+          ],
+          "correctIndex": 0,
+          "explanation": "At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.",
+          "topic": "Biology",
+          "difficulty": "hard"
+        }
+      ],
+      "attemptsCount": 64,
+      "avgScore": 85,
+      "createdAt": 1743465600000,
+      "updatedAt": 1743465600000
     }
   ],
   "crews": [],
@@ -6571,6 +7433,132 @@
       "questions_solved": 0,
       "ai_tutor_tokens": 0,
       "updated_at": 1794143853506
+    }
+  ],
+  "roleMigrationV1": {
+    "migratedAt": "2026-11-14T18:54:23.328Z",
+    "migratedAccounts": [
+      {
+        "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+        "email": "shsvirtualadmin@gmail.com",
+        "previousRole": "super_admin",
+        "newRole": "super_admin"
+      },
+      {
+        "uid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+        "email": "ktkhashir90@gmail.com",
+        "previousRole": "super_admin",
+        "newRole": "super_admin"
+      },
+      {
+        "uid": "Pz5fjmLtXHbWL2ntnW1zd8nlQos2",
+        "email": "shsvirtualadmin@gmail.com",
+        "previousRole": "super_admin",
+        "newRole": "super_admin"
+      },
+      {
+        "uid": "2GHhpHZkYFR1keIAwlnuch08mdh1",
+        "email": "support@boardly.cfd",
+        "previousRole": "super_admin",
+        "newRole": "super_admin"
+      }
+    ]
+  },
+  "accessRequests": [],
+  "accessGrants": [],
+  "pro_purchase_locks": [],
+  "grandLineAuditLogs": [
+    {
+      "id": "gl_sched_1794682715495_6c08636f",
+      "adminEmail": "ktkhashir90@gmail.com",
+      "adminUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "action": "grand_line_schedule_status_updated",
+      "targetUid": "gl_mock_08",
+      "targetEmail": "Grand Line Mock #08 — Matrices, Vectors & Conics",
+      "details": {
+        "testId": "gl_mock_08",
+        "testTitle": "Grand Line Mock #08 — Matrices, Vectors & Conics",
+        "previousStatus": "ended",
+        "newStatus": "live",
+        "previousStatusMode": "forceEnded",
+        "newStatusMode": "forceLive",
+        "previousWindow": "No schedule",
+        "newWindow": "No schedule",
+        "startAt": null,
+        "endAt": null,
+        "closeAllAttemptsNow": false,
+        "reason": "Verification test end now"
+      },
+      "timestampMs": 1794682715495
+    },
+    {
+      "id": "gl_sched_1794682715487_b7b7870b",
+      "adminEmail": "ktkhashir90@gmail.com",
+      "adminUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "action": "grand_line_schedule_status_updated",
+      "targetUid": "gl_mock_04",
+      "targetEmail": "Grand Line Mock #04 — Calculus & Limits Sprint",
+      "details": {
+        "testId": "gl_mock_04",
+        "testTitle": "Grand Line Mock #04 — Calculus & Limits Sprint",
+        "previousStatus": "ended",
+        "newStatus": "live",
+        "previousStatusMode": "forceEnded",
+        "newStatusMode": "forceLive",
+        "previousWindow": "No schedule",
+        "newWindow": "No schedule",
+        "startAt": null,
+        "endAt": null,
+        "closeAllAttemptsNow": false,
+        "reason": "Using one-time grant"
+      },
+      "timestampMs": 1794682715487
+    },
+    {
+      "id": "gl_sched_1794682715433_51bf2b38",
+      "adminEmail": "helper-admin@boardly.cfd",
+      "adminUid": "limited-admin-uid-999",
+      "action": "grand_line_schedule_status_updated",
+      "targetUid": "gl_mock_04",
+      "targetEmail": "Grand Line Mock #04 — Calculus & Limits Sprint",
+      "details": {
+        "testId": "gl_mock_04",
+        "testTitle": "Grand Line Mock #04 — Calculus & Limits Sprint",
+        "previousStatus": "live",
+        "newStatus": "ended",
+        "previousStatusMode": "auto",
+        "newStatusMode": "forceEnded",
+        "previousWindow": "No schedule",
+        "newWindow": "No schedule",
+        "startAt": null,
+        "endAt": null,
+        "closeAllAttemptsNow": false,
+        "reason": "Using one-time grant"
+      },
+      "timestampMs": 1794682715433
+    },
+    {
+      "id": "gl_sched_1794682715351_aea88ba2",
+      "adminEmail": "ktkhashir90@gmail.com",
+      "adminUid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
+      "action": "grand_line_schedule_status_updated",
+      "targetUid": "gl_mock_08",
+      "targetEmail": "Grand Line Mock #08 — Matrices, Vectors & Conics",
+      "details": {
+        "testId": "gl_mock_08",
+        "testTitle": "Grand Line Mock #08 — Matrices, Vectors & Conics",
+        "previousStatus": "live",
+        "newStatus": "ended",
+        "previousStatusMode": "auto",
+        "newStatusMode": "forceEnded",
+        "previousWindow": "No schedule",
+        "newWindow": "No schedule",
+        "startAt": null,
+        "endAt": null,
+        "closeAllAttemptsNow": false,
+        "reason": "Verification test end now"
+      },
+      "timestampMs": 1794682715351
     }
   ]
 }

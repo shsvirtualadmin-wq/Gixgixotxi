@@ -396,10 +396,14 @@ async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) 
 }
 
 const SUPERADMIN_UIDS = new Set([
+  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
+  '2GHhpHZkYFR1keIAwlnuch08mdh1',
   'jJfb1nThG1X9phL8fFDZ0G0J7m33',
 ]);
 const SUPERADMIN_EMAILS = new Set([
+  'ktkhashir90@gmail.com',
   'shsvirtualadmin@gmail.com',
   'support@boardly.cfd',
   'scholariosupport@gmail.com',
@@ -620,9 +624,11 @@ async function authenticateRequest(request, env, requireAuth = true) {
 
   let role = isHardcodedSuperAdmin
     ? 'superadmin'
+    : roleRow?.role === 'super_admin'
+    ? 'superadmin'
     : roleRow?.role || decoded.claimRole || 'student';
 
-  if (!roleRow || (isHardcodedSuperAdmin && roleRow.role !== 'superadmin')) {
+  if (!roleRow || (isHardcodedSuperAdmin && roleRow.role !== 'superadmin' && roleRow.role !== 'super_admin')) {
     const now = Date.now();
     await env.DB.prepare(
       `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
@@ -649,9 +655,9 @@ async function authenticateRequest(request, env, requireAuth = true) {
     role,
     customRole: roleRow?.custom_role || null,
     isPostingBanned: Boolean(roleRow?.is_posting_banned),
-    isCaptainOrAbove: ['captain', 'admin', 'superadmin'].includes(role),
-    isAdminOrAbove: ['admin', 'superadmin'].includes(role),
-    isSuperAdmin: role === 'superadmin',
+    isCaptainOrAbove: ['captain', 'admin', 'superadmin', 'super_admin'].includes(role),
+    isAdminOrAbove: ['admin', 'superadmin', 'super_admin'].includes(role),
+    isSuperAdmin: role === 'superadmin' || role === 'super_admin',
   };
 }
 
@@ -736,6 +742,26 @@ export default {
           .catch(() => {});
         await db
           .prepare('ALTER TABLE captain_tests ADD COLUMN finalised_at INTEGER DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN start_at INTEGER DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN end_at INTEGER DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare("ALTER TABLE captain_tests ADD COLUMN status_mode TEXT DEFAULT 'auto'")
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN reason TEXT DEFAULT NULL')
+          .run()
+          .catch(() => {});
+        await db
+          .prepare('ALTER TABLE captain_tests ADD COLUMN force_close_attempts_at INTEGER DEFAULT NULL')
           .run()
           .catch(() => {});
       }
@@ -1275,6 +1301,7 @@ export default {
         if (!PUBLIC_PREVIEW) {
           await authenticateRequest(request, env, true);
         }
+        await ensureCertificateD1Tables(db);
         const subjectFilter = cleanStr(url.searchParams.get('subject'), 80);
         let stmt;
         if (subjectFilter && subjectFilter.toLowerCase() !== 'all') {
@@ -1283,9 +1310,13 @@ export default {
               `SELECT id, title, description, subject, question_count AS questionCount, duration_minutes AS durationMinutes,
                       visibility, status, captain_uid AS captainUid, captain_name AS captainName,
                       crew_id AS crewId, crew_name AS crewName, attempts_count AS attemptsCount,
-                      avg_score AS avgScore, created_at AS createdAt
+                      avg_score AS avgScore, certificate_theme_id AS certificateThemeId,
+                      results_finalised AS resultsFinalised, finalised_at AS finalisedAt,
+                      start_at AS startAt, end_at AS endAt, status_mode AS statusMode,
+                      force_close_attempts_at AS forceCloseAttemptsAt,
+                      created_at AS createdAt, updated_at AS updatedAt
                FROM captain_tests
-               WHERE visibility = 'public' AND status = 'published' AND lower(subject) = lower(?1)
+               WHERE visibility = 'public' AND status != 'draft' AND lower(subject) = lower(?1)
                ORDER BY created_at DESC LIMIT 100`
             )
             .bind(subjectFilter);
@@ -1294,38 +1325,218 @@ export default {
             `SELECT id, title, description, subject, question_count AS questionCount, duration_minutes AS durationMinutes,
                     visibility, status, captain_uid AS captainUid, captain_name AS captainName,
                     crew_id AS crewId, crew_name AS crewName, attempts_count AS attemptsCount,
-                    avg_score AS avgScore, created_at AS createdAt
+                    avg_score AS avgScore, certificate_theme_id AS certificateThemeId,
+                    results_finalised AS resultsFinalised, finalised_at AS finalisedAt,
+                    start_at AS startAt, end_at AS endAt, status_mode AS statusMode,
+                    force_close_attempts_at AS forceCloseAttemptsAt,
+                    created_at AS createdAt, updated_at AS updatedAt
              FROM captain_tests
-             WHERE visibility = 'public' AND status = 'published'
+             WHERE visibility = 'public' AND status != 'draft'
              ORDER BY created_at DESC LIMIT 100`
           );
         }
         const { results } = await stmt.all();
-        return jsonResponse(request, env, { tests: results || [] });
+        const mapped = (results || []).map((r) => ({
+          ...r,
+          resultsFinalised: Boolean(r.resultsFinalised),
+          statusMode: r.statusMode || 'auto',
+        }));
+        return jsonResponse(request, env, { tests: mapped, serverTimeMs: Date.now() });
       }
 
       if (path === '/api/tests/mine' && method === 'GET') {
         const user = await authenticateRequest(request, env, true);
         requireRole(user, ['captain', 'admin', 'superadmin']);
+        await ensureCertificateD1Tables(db);
+        const fetchAllForAdmin = user.isAdminOrAbove && url.searchParams.get('all') === '1';
         const targetUid =
           user.isAdminOrAbove && url.searchParams.get('captainUid')
             ? cleanStr(url.searchParams.get('captainUid'), 128)
             : user.uid;
 
-        const { results } = await db
+        let stmt;
+        if (fetchAllForAdmin) {
+          stmt = db.prepare(
+            `SELECT id, title, description, subject, question_count AS questionCount, duration_minutes AS durationMinutes,
+                    visibility, status, captain_uid AS captainUid, captain_name AS captainName,
+                    crew_id AS crewId, crew_name AS crewName, attempts_count AS attemptsCount,
+                    avg_score AS avgScore, certificate_theme_id AS certificateThemeId,
+                    results_finalised AS resultsFinalised, finalised_at AS finalisedAt,
+                    start_at AS startAt, end_at AS endAt, status_mode AS statusMode,
+                    reason, force_close_attempts_at AS forceCloseAttemptsAt,
+                    created_at AS createdAt, updated_at AS updatedAt
+             FROM captain_tests
+             ORDER BY created_at DESC LIMIT 200`
+          );
+        } else {
+          stmt = db
+            .prepare(
+              `SELECT id, title, description, subject, question_count AS questionCount, duration_minutes AS durationMinutes,
+                      visibility, status, captain_uid AS captainUid, captain_name AS captainName,
+                      crew_id AS crewId, crew_name AS crewName, attempts_count AS attemptsCount,
+                      avg_score AS avgScore, certificate_theme_id AS certificateThemeId,
+                      results_finalised AS resultsFinalised, finalised_at AS finalisedAt,
+                      start_at AS startAt, end_at AS endAt, status_mode AS statusMode,
+                      reason, force_close_attempts_at AS forceCloseAttemptsAt,
+                      created_at AS createdAt, updated_at AS updatedAt
+               FROM captain_tests
+               WHERE captain_uid = ?1
+               ORDER BY created_at DESC LIMIT 200`
+            )
+            .bind(targetUid);
+        }
+
+        const { results } = await stmt.all();
+        const mapped = (results || []).map((r) => ({
+          ...r,
+          resultsFinalised: Boolean(r.resultsFinalised),
+          statusMode: r.statusMode || 'auto',
+        }));
+
+        return jsonResponse(request, env, { tests: mapped, serverTimeMs: Date.now() });
+      }
+
+      // POST /api/tests/:id/schedule — Update Grand Line test schedule or statusMode (End now / Force Live / Auto)
+      const scheduleMatch = path.match(/^\/api\/tests\/([^/]+)\/schedule$/);
+      if (scheduleMatch && method === 'POST') {
+        const testId = decodeURIComponent(scheduleMatch[1]);
+        const user = await authenticateRequest(request, env, true);
+        if (!user.isSuperAdmin) {
+          const bodyCheck = await request.clone().json().catch(() => ({}));
+          const requiredPerm = bodyCheck?.statusMode === 'forceEnded' ? 'tests.end' : 'tests.manage';
+          return jsonResponse(
+            request,
+            env,
+            {
+              error: `Permission denied: ${requiredPerm} is required to change a Grand Line test schedule or status.`,
+              code: 'PERMISSION_DENIED',
+              permission: requiredPerm,
+            },
+            403
+          );
+        }
+        await ensureCertificateD1Tables(db);
+        const existing = await db
           .prepare(
             `SELECT id, title, description, subject, question_count AS questionCount, duration_minutes AS durationMinutes,
                     visibility, status, captain_uid AS captainUid, captain_name AS captainName,
                     crew_id AS crewId, crew_name AS crewName, attempts_count AS attemptsCount,
-                    avg_score AS avgScore, created_at AS createdAt, updated_at AS updatedAt
-             FROM captain_tests
-             WHERE captain_uid = ?1
-             ORDER BY created_at DESC LIMIT 200`
+                    avg_score AS avgScore, certificate_theme_id AS certificateThemeId,
+                    results_finalised AS resultsFinalised, finalised_at AS finalisedAt,
+                    start_at AS startAt, end_at AS endAt, status_mode AS statusMode,
+                    reason, force_close_attempts_at AS forceCloseAttemptsAt,
+                    created_at AS createdAt, updated_at AS updatedAt
+             FROM captain_tests WHERE id = ?1`
           )
-          .bind(targetUid)
-          .all();
+          .bind(testId)
+          .first();
+        if (!existing) {
+          return errorResponse(request, env, 'Test not found.', 'NOT_FOUND', 404);
+        }
 
-        return jsonResponse(request, env, { tests: results || [] });
+        const body = await request.json().catch(() => ({}));
+        const nowMs = Date.now();
+        const nextStartAt =
+          body.startAt !== undefined
+            ? body.startAt === null
+              ? null
+              : Number(body.startAt)
+            : existing.startAt ?? null;
+        const nextEndAt =
+          body.endAt !== undefined
+            ? body.endAt === null
+              ? null
+              : Number(body.endAt)
+            : existing.endAt ?? null;
+
+        if (nextStartAt && nextEndAt && nextEndAt <= nextStartAt) {
+          return errorResponse(
+            request,
+            env,
+            'End date and time must be after start date and time.',
+            'INVALID_SCHEDULE_WINDOW',
+            400
+          );
+        }
+
+        const validModes = ['auto', 'forceLive', 'forceEnded', 'draft'];
+        const nextMode =
+          body.statusMode && validModes.includes(String(body.statusMode))
+            ? String(body.statusMode)
+            : existing.statusMode || 'auto';
+        const nextReason =
+          body.reason !== undefined
+            ? body.reason && String(body.reason).trim()
+              ? String(body.reason).trim().slice(0, 500)
+              : null
+            : existing.reason ?? null;
+        const nextForceClose =
+          nextMode === 'forceEnded' && body.closeAllAttemptsNow === true
+            ? nowMs
+            : nextMode !== 'forceEnded' || body.closeAllAttemptsNow === false
+            ? null
+            : existing.forceCloseAttemptsAt ?? null;
+        const nextStatus =
+          nextMode === 'forceLive' || nextMode === 'forceEnded' || (nextMode === 'auto' && (nextStartAt || nextEndAt))
+            ? 'published'
+            : existing.status;
+        const nextVisibility =
+          nextMode === 'forceLive' || nextMode === 'forceEnded' || (nextMode === 'auto' && (nextStartAt || nextEndAt))
+            ? 'public'
+            : existing.visibility;
+        const nextResultsFinalised =
+          nextMode === 'forceEnded'
+            ? 1
+            : nextMode === 'forceLive'
+            ? 0
+            : Number(existing.resultsFinalised || 0);
+        const nextFinalisedAt =
+          nextMode === 'forceEnded'
+            ? existing.finalisedAt || nowMs
+            : existing.finalisedAt ?? null;
+
+        await db
+          .prepare(
+            `UPDATE captain_tests
+             SET start_at = ?1, end_at = ?2, status_mode = ?3, reason = ?4,
+                 force_close_attempts_at = ?5, status = ?6, visibility = ?7,
+                 results_finalised = ?8, finalised_at = ?9, updated_at = ?10
+             WHERE id = ?11`
+          )
+          .bind(
+            nextStartAt,
+            nextEndAt,
+            nextMode,
+            nextReason,
+            nextForceClose,
+            nextStatus,
+            nextVisibility,
+            nextResultsFinalised,
+            nextFinalisedAt,
+            nowMs,
+            testId
+          )
+          .run();
+
+        const updatedTest = {
+          ...existing,
+          startAt: nextStartAt,
+          endAt: nextEndAt,
+          statusMode: nextMode,
+          reason: nextReason,
+          forceCloseAttemptsAt: nextForceClose,
+          status: nextStatus,
+          visibility: nextVisibility,
+          resultsFinalised: Boolean(nextResultsFinalised),
+          finalisedAt: nextFinalisedAt,
+          updatedAt: nowMs,
+        };
+
+        return jsonResponse(request, env, {
+          ok: true,
+          test: updatedTest,
+          serverTimeMs: nowMs,
+        });
       }
 
       if (path === '/api/tests' && method === 'POST') {

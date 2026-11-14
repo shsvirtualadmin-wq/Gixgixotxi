@@ -245,6 +245,9 @@ const AdminPricingPage = lazyWithRetry(() =>
 const AdminCertificatesPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCertificatesPage').then(m => ({ default: m.AdminCertificatesPage }))
 );
+const AdminAccessRequestsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminAccessRequestsPage').then(m => ({ default: m.AdminAccessRequestsPage }))
+);
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -327,6 +330,7 @@ function AppInner() {
           <Route path="certificates" element={<AdminCertificatesPage />} />
           <Route path="signatures" element={<AdminCertificatesPage />} />
           <Route path="settings" element={<AdminCertificatesPage />} />
+          <Route path="access-requests" element={<AdminAccessRequestsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

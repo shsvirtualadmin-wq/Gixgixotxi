@@ -1475,7 +1475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       unsubscribe();
     };
-  }, [retryCount, resolveServerGuestSession, evaluateUserVerificationGate]);
+  }, [retryCount, resolveServerGuestSession, evaluateUserVerificationGate, refreshActiveGrants]);
 
   // ── Sliding Guest Session Keep-Alive (tab focus + periodic refresh) ──────
   useEffect(() => {

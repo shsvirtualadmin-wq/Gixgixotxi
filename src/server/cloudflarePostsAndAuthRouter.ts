@@ -79,13 +79,20 @@ const FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
 const SUPERADMIN_UIDS = new Set([
+  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
   'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
+  '2GHhpHZkYFR1keIAwlnuch08mdh1',
   'uid_superadmin_1',
   'uid_superadmin_2',
   ...(process.env.SUPERADMIN_UIDS || '').split(',').map((s) => s.trim()).filter(Boolean),
 ]);
 
-const SUPERADMIN_EMAILS = new Set<string>();
+const SUPERADMIN_EMAILS = new Set<string>([
+  'ktkhashir90@gmail.com',
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+]);
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -403,6 +410,188 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
 
   if (!Array.isArray(store.userRoles)) store.userRoles = [];
   if (!Array.isArray(store.botAccounts)) store.botAccounts = [];
+
+  // ── One-time idempotent migration: convert all existing "admin" accounts to "super_admin" ──
+  const anyStore = store as any;
+  const ownerSeedAccounts = [
+    { uid: 'JBGCDTLuWUMUIUMCLek7SdgvUNn1', email: 'ktkhashir90@gmail.com' },
+    { uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2', email: 'shsvirtualadmin@gmail.com' },
+    { uid: 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2', email: 'shsvirtualadmin@gmail.com' },
+    { uid: '2GHhpHZkYFR1keIAwlnuch08mdh1', email: 'support@boardly.cfd' },
+  ];
+  for (const owner of ownerSeedAccounts) {
+    const existingOwner = store.userRoles.find((r) => r.uid === owner.uid);
+    if (!existingOwner) {
+      store.userRoles.push({
+        uid: owner.uid,
+        email: owner.email,
+        role: 'super_admin',
+        custom_role: 'Super Admin',
+        is_posting_banned: 0,
+        updated_at: now,
+      });
+      mutated = true;
+    } else if (existingOwner.role === 'admin' || existingOwner.role === 'superadmin') {
+      existingOwner.role = 'super_admin';
+      mutated = true;
+    }
+  }
+
+  if (!anyStore.roleMigrationV1) {
+    const migratedAccounts: Array<{ uid: string; email: string; previousRole: string; newRole: string }> = [];
+    for (const r of store.userRoles) {
+      const uid = String(r.uid || '').trim();
+      if (!uid || uid === 'uid_regular_admin' || /^reg_/i.test(uid)) continue;
+      if (r.role === 'admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(uid)) {
+        const prev = r.role;
+        r.role = 'super_admin';
+        migratedAccounts.push({
+          uid,
+          email: r.email || '',
+          previousRole: prev,
+          newRole: 'super_admin',
+        });
+        mutated = true;
+      }
+    }
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        const uid = String(u.uid || '').trim();
+        if (!uid || uid === 'uid_regular_admin' || /^reg_/i.test(uid)) continue;
+        if (u.role === 'admin' || u.role === 'superadmin' || SUPERADMIN_UIDS.has(uid)) {
+          const prev = String(u.role || 'admin');
+          u.role = 'super_admin';
+          if (!migratedAccounts.some((m) => m.uid === uid)) {
+            migratedAccounts.push({
+              uid,
+              email: String(u.email || ''),
+              previousRole: prev,
+              newRole: 'super_admin',
+            });
+          }
+        }
+      }
+    } catch {
+      // ignore if local D1 not yet ready
+    }
+    anyStore.roleMigrationV1 = {
+      migratedAt: new Date(now).toISOString(),
+      migratedAccounts,
+    };
+    mutated = true;
+  }
+
+  // ── Ensure 11 Grand Line mocks (GL#01 to GL#11: 8 LIVE, 3 Finalised) exist in captainTests ──
+  if (!Array.isArray(anyStore.captainTests)) {
+    anyStore.captainTests = [];
+    mutated = true;
+  }
+  const canonicalMocks = [
+    { id: 'gl_mock_01', mockNumber: 1, title: 'Grand Line Mock #01 — Kinematics & Dynamics', subject: 'Physics', finalised: true, attemptsCount: 48, avgScore: 84 },
+    { id: 'gl_mock_02', mockNumber: 2, title: 'Grand Line Mock #02 — Atomic Structure & Bonding', subject: 'Chemistry', finalised: true, attemptsCount: 42, avgScore: 79 },
+    { id: 'gl_mock_03', mockNumber: 3, title: 'Grand Line Mock #03 — Cell Biology & Enzymes', subject: 'Biology', finalised: true, attemptsCount: 51, avgScore: 86 },
+    { id: 'gl_mock_04', mockNumber: 4, title: 'Grand Line Mock #04 — Calculus & Limits Sprint', subject: 'Mathematics', finalised: false, attemptsCount: 37, avgScore: 76 },
+    { id: 'gl_mock_05', mockNumber: 5, title: 'Grand Line Mock #05 — Electromagnetism & Waves', subject: 'Physics', finalised: false, attemptsCount: 33, avgScore: 81 },
+    { id: 'gl_mock_06', mockNumber: 6, title: 'Grand Line Mock #06 — Organic Hydrocarbons', subject: 'Chemistry', finalised: false, attemptsCount: 29, avgScore: 74 },
+    { id: 'gl_mock_07', mockNumber: 7, title: 'Grand Line Mock #07 — Bioenergetics & Genetics', subject: 'Biology', finalised: false, attemptsCount: 44, avgScore: 83 },
+    { id: 'gl_mock_08', mockNumber: 8, title: 'Grand Line Mock #08 — Matrices, Vectors & Conics', subject: 'Mathematics', finalised: false, attemptsCount: 25, avgScore: 78 },
+    { id: 'gl_mock_09', mockNumber: 9, title: 'Grand Line Mock #09 — Precision Grammar & Vocab', subject: 'English', finalised: false, attemptsCount: 39, avgScore: 88 },
+    { id: 'gl_mock_10', mockNumber: 10, title: 'Grand Line Mock #10 — Modern Physics & Electronics', subject: 'Physics', finalised: false, attemptsCount: 31, avgScore: 80 },
+    { id: 'gl_mock_11', mockNumber: 11, title: 'Grand Line Mock #11 — Full Grand Line Championship', subject: 'Biology', finalised: false, attemptsCount: 64, avgScore: 85 },
+  ];
+  if (anyStore.captainTests.length < 11) {
+    for (let i = 0; i < canonicalMocks.length; i++) {
+      const m = canonicalMocks[i];
+      const existingByMock = anyStore.captainTests.find(
+        (t: any) => t.id === m.id || Number(t.mockNumber ?? t.mock_number) === m.mockNumber
+      );
+      if (existingByMock) {
+        if (!existingByMock.mockNumber) {
+          existingByMock.mockNumber = m.mockNumber;
+          existingByMock.mock_number = m.mockNumber;
+          mutated = true;
+        }
+        if (!existingByMock.editionLabel) {
+          existingByMock.editionLabel = `GL#${String(m.mockNumber).padStart(2, '0')} · GRAND LINE`;
+          existingByMock.edition_label = existingByMock.editionLabel;
+          mutated = true;
+        }
+        continue;
+      }
+      const createdAtMs = basePastMs - (11 - m.mockNumber) * 86400000;
+      const finalisedAtMs = m.finalised ? createdAtMs + 43200000 : null;
+      anyStore.captainTests.push({
+        id: m.id,
+        title: m.title,
+        description: `Official Grand Line ${m.subject} championship drill (GL#${String(m.mockNumber).padStart(2, '0')}).`,
+        subject: m.subject,
+        durationMinutes: 25,
+        visibility: 'public',
+        status: 'published',
+        statusMode: m.finalised ? 'forceEnded' : 'auto',
+        captainUid: 'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
+        captainName: 'Captain Hashir',
+        crewId: 'crew_grand_line',
+        crewName: 'Grand Line Fleet',
+        questionCount: 3,
+        certificateThemeId: null,
+        certificate_theme_id: null,
+        resultsFinalised: m.finalised ? 1 : 0,
+        results_finalised: m.finalised ? 1 : 0,
+        finalisedAt: finalisedAtMs,
+        finalised_at: finalisedAtMs,
+        mockNumber: m.mockNumber,
+        mock_number: m.mockNumber,
+        editionLabel: `GL#${String(m.mockNumber).padStart(2, '0')} · GRAND LINE`,
+        edition_label: `GL#${String(m.mockNumber).padStart(2, '0')} · GRAND LINE`,
+        questions: [
+          {
+            id: `${m.id}_q1`,
+            position: 0,
+            question: `In ${m.subject}, which fundamental principle governs the primary conservation law tested in GL#${String(m.mockNumber).padStart(2, '0')}?`,
+            options: ['Conservation of Energy & Charge', 'Spontaneous Symmetry Violation', 'Empirical Approximation Only', 'Arbitrary Frame Shift'],
+            correctIndex: 0,
+            explanation: 'Conservation of Energy and Charge holds across isolated physical and chemical systems.',
+            topic: m.subject,
+            difficulty: 'medium',
+          },
+          {
+            id: `${m.id}_q2`,
+            position: 1,
+            question: `Which analytical approach yields the fastest verification for multi-step ${m.subject} problems?`,
+            options: ['Dimensional & boundary condition analysis', 'Random trial substitution', 'Ignoring unit prefixes', 'Unverified extrapolation'],
+            correctIndex: 0,
+            explanation: 'Dimensional consistency and boundary conditions eliminate invalid options immediately.',
+            topic: m.subject,
+            difficulty: 'medium',
+          },
+          {
+            id: `${m.id}_q3`,
+            position: 2,
+            question: `Evaluate the standard state equilibrium condition for ${m.subject} Mock #${String(m.mockNumber).padStart(2, '0')}.`,
+            options: ['Net driving potential equals zero at equilibrium', 'Forward rate vanishes completely', 'Entropy is minimized', 'Activation barrier becomes infinite'],
+            correctIndex: 0,
+            explanation: 'At dynamic equilibrium, forward and reverse rates balance and net driving potential is zero.',
+            topic: m.subject,
+            difficulty: 'hard',
+          },
+        ],
+        attemptsCount: m.attemptsCount,
+        avgScore: m.avgScore,
+        createdAt: createdAtMs,
+        updatedAt: createdAtMs,
+      });
+      mutated = true;
+    }
+  }
+
+  if (!Array.isArray(anyStore.accessRequests)) {
+    anyStore.accessRequests = [];
+  }
+  if (!Array.isArray(anyStore.accessGrants)) {
+    anyStore.accessGrants = [];
+  }
 
   for (const b of BOARDLY_BOT_ACCOUNTS) {
     if (!store.userRoles.some((r) => r.uid === b.uid)) {
@@ -1376,21 +1565,30 @@ export async function verifyFirebaseJwtZeroFirestore(
       throw new Error('POSTING_BANNED');
     }
 
-    let role: 'student' | 'captain' | 'superadmin' = 'student';
+    let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
     let customRole: string | null =
       payload.customRole || roleRow?.custom_role || unameCustomRole || null;
 
+    const isExplicitLimitedAdmin =
+      uid === 'uid_regular_admin' ||
+      /^reg_/i.test(uid) ||
+      roleRow?.role === 'admin' ||
+      unameRole === 'admin' ||
+      payload.role === 'admin';
+
     if (
       SUPERADMIN_UIDS.has(uid) ||
+      (email && SUPERADMIN_EMAILS.has(email.toLowerCase())) ||
       payload.role === 'superadmin' ||
-      payload.role === 'admin' ||
-      payload.admin === true ||
+      payload.role === 'super_admin' ||
       roleRow?.role === 'superadmin' ||
-      roleRow?.role === 'admin' ||
+      roleRow?.role === 'super_admin' ||
       unameRole === 'superadmin' ||
-      unameRole === 'admin'
+      unameRole === 'super_admin'
     ) {
       role = 'superadmin';
+    } else if (isExplicitLimitedAdmin) {
+      role = 'admin';
     } else if (
       payload.role === 'captain' ||
       payload.nakamaCaptain === true ||
@@ -2295,17 +2493,40 @@ ${postSitemaps}
   app.get('/api/posts/moderation/queue', async (req, res) => {
     try {
       const user = await verifyFirebaseJwtZeroFirestore(req);
-      if (!user || user.role !== 'superadmin') {
-        return res.status(403).json({ success: false, error: 'Superadmin access required.' });
+      if (!user || (user.role !== 'superadmin' && user.role !== 'admin')) {
+        return res.status(403).json({
+          success: false,
+          code: 'PERMISSION_DENIED',
+          permission: 'content.delete',
+          error: 'Admin access required.',
+        });
       }
-      const store = loadD1Store();
+      const store = loadD1Store() as any;
+      const canSeePrivateIdentity = user.role === 'superadmin';
       const flaggedPosts = store.posts
-        .filter((p) => p.report_count >= 1 || p.is_hidden === 1)
-        .map((p) => ({
-          ...rowToCommonsPost(p, user.uid),
-          realAuthorUid: p.real_author_uid,
-        }));
-      const pendingReports = store.reports.filter((r) => r.status === 'pending');
+        .filter((p: any) => p.report_count >= 1 || p.is_hidden === 1)
+        .map((p: any) => {
+          const formatted = rowToCommonsPost(p, user.uid) as any;
+          if (!canSeePrivateIdentity) {
+            delete formatted.authorUid;
+            delete formatted.realAuthorUid;
+            delete formatted.authorEmail;
+            return formatted;
+          }
+          return {
+            ...formatted,
+            realAuthorUid: p.real_author_uid,
+          };
+        });
+      const pendingReports = (store.reports || [])
+        .filter((r: any) => r.status === 'pending')
+        .map((r: any) => {
+          if (!canSeePrivateIdentity) {
+            const { reporter_uid, ...safeReport } = r;
+            return safeReport;
+          }
+          return r;
+        });
 
       return res.status(200).json({
         success: true,
@@ -2321,17 +2542,41 @@ ${postSitemaps}
   app.post('/api/posts/moderation/ban', async (req, res) => {
     try {
       const user = await verifyFirebaseJwtZeroFirestore(req);
-      if (!user || user.role !== 'superadmin') {
-        return res.status(403).json({ success: false, error: 'Superadmin access required.' });
+      if (!user) {
+        return res.status(401).json({ success: false, error: 'Authentication required.' });
       }
       const targetUid = String(req.body?.targetUid || req.body?.authorUid || '').trim();
       const postId = String(req.body?.postId || '').trim();
-      const store = loadD1Store();
+      const store = loadD1Store() as any;
 
       let resolvedUid = targetUid;
       if (!resolvedUid && postId) {
-        const p = store.posts.find((row) => row.id === postId);
+        const p = store.posts.find((row: any) => row.id === postId);
         resolvedUid = p?.real_author_uid || p?.author_uid || '';
+      }
+
+      if (user.role !== 'superadmin') {
+        const nowMs = Date.now();
+        const grant = (store.accessGrants || []).find(
+          (g: any) =>
+            g.adminUid === user.uid &&
+            g.permission === 'users.suspend' &&
+            !g.revokedAt &&
+            !g.usedAt &&
+            (g.expiresAt === null || Number(g.expiresAt) > nowMs) &&
+            (!g.targetId || !resolvedUid || g.targetId === resolvedUid)
+        );
+        if (!grant) {
+          return res.status(403).json({
+            success: false,
+            code: 'PERMISSION_DENIED',
+            permission: 'users.suspend',
+            error: 'Permission denied: users.suspend is required to ban users.',
+          });
+        }
+        if (grant.duration === 'once') {
+          grant.usedAt = nowMs;
+        }
       }
       if (!resolvedUid) {
         return res.status(400).json({ success: false, error: 'Author UID could not be determined.' });
@@ -2570,8 +2815,9 @@ ${postSitemaps}
       }
 
       const isOwner = row.real_author_uid === user.uid || row.author_uid === user.uid;
-      if (!isOwner && user.role !== 'superadmin') {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+      const isMod = user.role === 'superadmin' || user.role === 'admin';
+      if (!isOwner && !isMod) {
+        return res.status(403).json({ success: false, code: 'PERMISSION_DENIED', permission: 'content.delete', error: 'Forbidden' });
       }
 
       const body = req.body || {};
@@ -2613,7 +2859,7 @@ ${postSitemaps}
           row.author_photo_url = null;
         }
       }
-      if (body.isHidden !== undefined && user.role === 'superadmin') {
+      if (body.isHidden !== undefined && isMod) {
         row.is_hidden = body.isHidden ? 1 : 0;
       }
       if (body.isPinned !== undefined && user.role === 'superadmin') {
@@ -2656,8 +2902,8 @@ ${postSitemaps}
 
       const row = store.posts[idx];
       const isOwner = row.real_author_uid === user.uid || row.author_uid === user.uid;
-      if (!isOwner && user.role !== 'superadmin') {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+      if (!isOwner && user.role !== 'superadmin' && user.role !== 'admin') {
+        return res.status(403).json({ success: false, code: 'PERMISSION_DENIED', permission: 'content.delete', error: 'Forbidden' });
       }
 
       const deletedId = row.id;
@@ -3017,8 +3263,8 @@ ${postSitemaps}
       if (idx === -1) return res.status(404).json({ success: false, error: 'Comment not found' });
 
       const cmt = store.comments[idx];
-      if (cmt.real_author_uid !== user.uid && user.role !== 'superadmin') {
-        return res.status(403).json({ success: false, error: 'Forbidden' });
+      if (cmt.real_author_uid !== user.uid && user.role !== 'superadmin' && user.role !== 'admin') {
+        return res.status(403).json({ success: false, code: 'PERMISSION_DENIED', permission: 'content.delete', error: 'Forbidden' });
       }
 
       const post = store.posts.find((p) => p.id === cmt.post_id);
@@ -3173,20 +3419,49 @@ ${postSitemaps}
   // ============================================================================
   // COMPLETE & CONSISTENT ADMIN USER DELETION (Auth + Firestore + D1)
   // ============================================================================
-  app.post('/api/admin/users/delete', async (req, res) => {
+  const handleAdminDeleteUser = async (req: Request, res: Response) => {
     try {
       const adminUser = await verifyFirebaseJwtZeroFirestore(req);
-      if (!adminUser || adminUser.role !== 'superadmin') {
-        return res.status(403).json({
+      if (!adminUser) {
+        return res.status(401).json({
           success: false,
-          error: 'Forbidden: Only superadmins can permanently delete user accounts.',
+          code: 'UNAUTHENTICATED',
+          error: 'Authentication required.',
         });
       }
 
-      const targetUid = String(req.body?.targetUid || req.body?.studentId || '').trim();
+      const targetUid = String(
+        req.params?.id || req.params?.uid || req.body?.targetUid || req.body?.studentId || ''
+      ).trim();
       const targetEmail = String(req.body?.targetEmail || req.body?.studentEmail || '')
         .trim()
         .toLowerCase();
+
+      const d1StoreCheck = loadD1Store() as any;
+      if (adminUser.role !== 'superadmin') {
+        const nowMs = Date.now();
+        const grant = (d1StoreCheck.accessGrants || []).find(
+          (g: any) =>
+            g.adminUid === adminUser.uid &&
+            g.permission === 'users.delete' &&
+            !g.revokedAt &&
+            !g.usedAt &&
+            (g.expiresAt === null || Number(g.expiresAt) > nowMs) &&
+            (!g.targetId || g.targetId === targetUid)
+        );
+        if (!grant) {
+          return res.status(403).json({
+            success: false,
+            code: 'PERMISSION_DENIED',
+            permission: 'users.delete',
+            error: 'Forbidden: Only superadmins or admins with an approved users.delete grant can permanently delete user accounts.',
+          });
+        }
+        if (grant.duration === 'once') {
+          grant.usedAt = nowMs;
+          saveD1Store(d1StoreCheck);
+        }
+      }
 
       if (!targetUid && !targetEmail) {
         return res.status(400).json({
@@ -3198,8 +3473,27 @@ ${postSitemaps}
       if (SUPERADMIN_UIDS.has(targetUid) || (targetEmail && SUPERADMIN_EMAILS.has(targetEmail))) {
         return res.status(403).json({
           success: false,
-          error: 'Cannot delete the protected superadmin account.',
+          code: 'SUPERADMIN_PROTECTED',
+          error: 'Cannot delete a protected Super Admin account.',
         });
+      }
+
+      const targetRoleRow = (d1StoreCheck.userRoles || []).find(
+        (r: any) => r.uid === targetUid || (targetEmail && String(r.email || '').toLowerCase() === targetEmail)
+      );
+      if (targetRoleRow && (targetRoleRow.role === 'super_admin' || targetRoleRow.role === 'superadmin')) {
+        const remainingSupers = (d1StoreCheck.userRoles || []).filter(
+          (r: any) =>
+            r.uid !== targetUid &&
+            (r.role === 'super_admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(r.uid))
+        );
+        if (remainingSupers.length === 0) {
+          return res.status(403).json({
+            success: false,
+            code: 'LAST_SUPERADMIN_PROTECTED',
+            error: 'Cannot delete the last remaining Super Admin account.',
+          });
+        }
       }
 
       const steps: Record<string, { ok: boolean; detail: string }> = {};
@@ -3332,7 +3626,9 @@ ${postSitemaps}
         error: err?.message || 'Failed to delete user account.',
       });
     }
-  });
+  };
+  app.post('/api/admin/users/delete', handleAdminDeleteUser);
+  app.delete('/api/admin/users/:id', handleAdminDeleteUser);
 
   // Check if an email belongs to an admin-deleted or orphan account
   app.get('/api/auth/check-account-status', async (req, res) => {
@@ -4712,11 +5008,36 @@ ${postSitemaps}
 
   app.put('/api/announcements/welcome', async (req, res) => {
     const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
-    if (!user || user.role !== 'superadmin') {
-      return res.status(403).json({
+    if (!user) {
+      return res.status(401).json({
         success: false,
-        error: 'Only superadmin can edit the Welcome to Boardly announcement.',
+        code: 'UNAUTHENTICATED',
+        error: 'Authentication required.',
       });
+    }
+    if (user.role !== 'superadmin') {
+      const storeCheck = loadD1Store() as any;
+      const nowMs = Date.now();
+      const grant = (storeCheck.accessGrants || []).find(
+        (g: any) =>
+          g.adminUid === user.uid &&
+          g.permission === 'announcements.manage' &&
+          !g.revokedAt &&
+          !g.usedAt &&
+          (g.expiresAt === null || Number(g.expiresAt) > nowMs)
+      );
+      if (!grant) {
+        return res.status(403).json({
+          success: false,
+          code: 'PERMISSION_DENIED',
+          permission: 'announcements.manage',
+          error: 'Permission denied: announcements.manage is required to edit announcements.',
+        });
+      }
+      if (grant.duration === 'once') {
+        grant.usedAt = nowMs;
+        saveD1Store(storeCheck);
+      }
     }
 
     const body = req.body || {};
@@ -5463,7 +5784,9 @@ ${postSitemaps}
   // /api/questions — Cloudflare D1 Question Bank Endpoints
   // ===========================================================================
   const isStrictQuestionBankAdmin = (user: VerifiedFirebaseUser | null): boolean => {
-    return Boolean(user && (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin'));
+    return Boolean(
+      user && (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin' || user.role === 'admin')
+    );
   };
 
   const normalizeQSubject = (raw: string): string => {
@@ -6252,11 +6575,11 @@ ${postSitemaps}
   // ===========================================================================
   const isAdminOrSuperadmin = (user: VerifiedFirebaseUser | null, store: D1StoreData): boolean => {
     if (!user) return false;
-    if (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin') {
+    if (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin' || user.role === 'admin') {
       return true;
     }
     const roleRow = (store.userRoles || []).find((r) => r.uid === user.uid);
-    if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
+    if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin' || roleRow.role === 'super_admin')) {
       return true;
     }
     return false;
@@ -7477,10 +7800,12 @@ ${postSitemaps}
     });
   });
 
-  // ── D1 User Roles ──────────────────────────────────────────────────────────
+  // ── D1 User Roles & Granular Admin Permissions ─────────────────────────────
+  const ADMIN_DEFAULT_PERMISSIONS = new Set(['mcq.manage', 'content.delete']);
+
   const resolveD1Role = (
     store: any,
-    user: { uid: string; email: string; isGuest?: boolean; username?: string; name?: string }
+    user: { uid: string; email: string; isGuest?: boolean; username?: string; name?: string; role?: string }
   ) => {
     if (user.isGuest || String(user.uid || '').startsWith('guest_')) {
       return {
@@ -7494,7 +7819,11 @@ ${postSitemaps}
     }
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
     let row = store.userRoles.find((r: any) => r.uid === user.uid);
-    const isSuper = SUPERADMIN_UIDS.has(user.uid);
+    const isSuper =
+      SUPERADMIN_UIDS.has(user.uid) ||
+      Boolean(user.email && SUPERADMIN_EMAILS.has(user.email.toLowerCase()));
+    const isExplicitLimitedAdmin =
+      user.uid === 'uid_regular_admin' || /^reg_/i.test(user.uid);
     let unameRole: string | null = null;
     try {
       const localD1 = getSharedLocalD1Database();
@@ -7511,18 +7840,78 @@ ${postSitemaps}
       row = {
         uid: user.uid,
         email: user.email,
-        role: isSuper ? 'superadmin' : (unameRole || 'student'),
+        role: isSuper
+          ? 'super_admin'
+          : isExplicitLimitedAdmin
+          ? 'admin'
+          : unameRole === 'superadmin'
+          ? 'super_admin'
+          : unameRole || (user.role === 'admin' ? 'admin' : 'student'),
         custom_role: null,
         is_posting_banned: 0,
         updated_at: Date.now(),
       };
       store.userRoles.push(row);
       saveD1Store(store);
-    } else if (isSuper && row.role !== 'superadmin') {
-      row.role = 'superadmin';
+    } else if (isSuper && row.role !== 'super_admin') {
+      row.role = 'super_admin';
+      saveD1Store(store);
+    } else if (row.role === 'superadmin') {
+      row.role = 'super_admin';
       saveD1Store(store);
     }
     return row;
+  };
+
+  const hasAdminPermission = (
+    store: any,
+    user: { uid: string; email: string; role?: string } | null,
+    permissionKey: string,
+    options?: { targetId?: string; consumeOnce?: boolean }
+  ): boolean => {
+    if (!user) return false;
+    const roleRow = resolveD1Role(store, user);
+    const canonicalRole =
+      roleRow.role === 'superadmin' || roleRow.role === 'super_admin' || SUPERADMIN_UIDS.has(user.uid)
+        ? 'super_admin'
+        : roleRow.role;
+
+    if (canonicalRole === 'super_admin') {
+      return true;
+    }
+    if (canonicalRole !== 'admin') {
+      return false;
+    }
+    if (ADMIN_DEFAULT_PERMISSIONS.has(permissionKey)) {
+      return true;
+    }
+
+    const nowMs = Date.now();
+    if (!Array.isArray(store.accessGrants)) store.accessGrants = [];
+    const targetId = options?.targetId ? String(options.targetId).trim() : '';
+    const matchingGrant = store.accessGrants.find((g: any) => {
+      if (g.adminUid !== user.uid) return false;
+      if (g.permission !== permissionKey) return false;
+      if (g.revokedAt) return false;
+      if (g.usedAt) return false;
+      if (g.expiresAt !== null && g.expiresAt !== undefined && Number(g.expiresAt) <= nowMs) {
+        return false;
+      }
+      if (g.targetId && targetId && g.targetId !== targetId) {
+        return false;
+      }
+      return true;
+    });
+
+    if (!matchingGrant) {
+      return false;
+    }
+
+    if (options?.consumeOnce !== false && matchingGrant.duration === 'once') {
+      matchingGrant.usedAt = nowMs;
+      saveD1Store(store);
+    }
+    return true;
   };
 
   app.get('/api/me/role', async (req: Request, res: Response) => {
@@ -7530,6 +7919,10 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     const roleRow = resolveD1Role(store, user);
+    const canonicalRole =
+      roleRow.role === 'superadmin' || roleRow.role === 'super_admin' || SUPERADMIN_UIDS.has(user.uid)
+        ? 'super_admin'
+        : roleRow.role;
     return res.status(200).json({
       uid: user.uid,
       email: user.email,
@@ -7537,8 +7930,9 @@ ${postSitemaps}
       displayName: user.displayName || user.username || user.name,
       accountType: user.isGuest ? 'guest' : 'registered',
       isGuest: Boolean(user.isGuest),
-      plan: user.plan || 'free',
-      role: roleRow.role,
+      plan: (roleRow as any).plan || user.plan || 'free',
+      planExpiresAt: (roleRow as any).plan_expires_at || null,
+      role: canonicalRole,
       customRole: roleRow.custom_role,
       isPostingBanned: Boolean(roleRow.is_posting_banned),
     });
@@ -7548,9 +7942,12 @@ ${postSitemaps}
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'users.view', { consumeOnce: false })) {
+      return res.status(403).json({
+        error: 'Permission denied: users.view is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.view',
+      });
     }
     return res.status(200).json({ roles: store.userRoles || [] });
   });
@@ -7559,16 +7956,21 @@ ${postSitemaps}
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden: Superadmin access required.', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'audit.view', { consumeOnce: false })) {
+      return res.status(403).json({
+        error: 'Forbidden: audit.view permission required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'audit.view',
+      });
     }
 
     const byUid = new Map<string, any>();
     for (const r of store.userRoles || []) {
       const uid = String(r?.uid || '').trim();
       if (!uid) continue;
-      const resolvedRole = SUPERADMIN_UIDS.has(uid) ? 'superadmin' : (r.role || 'student');
+      const resolvedRole = SUPERADMIN_UIDS.has(uid) || r.role === 'superadmin' || r.role === 'super_admin'
+        ? 'super_admin'
+        : (r.role || 'student');
       byUid.set(uid, {
         uid,
         email: r.email || '',
@@ -7587,7 +7989,7 @@ ${postSitemaps}
         if (!uid) continue;
         const existing = byUid.get(uid);
         const resolvedRole = SUPERADMIN_UIDS.has(uid)
-          ? 'superadmin'
+          ? 'super_admin'
           : existing?.role && existing.role !== 'student'
             ? existing.role
             : (u.role || 'student');
@@ -7614,6 +8016,7 @@ ${postSitemaps}
       ok: true,
       totalNonStudentCount: nonStudentUsers.length,
       nonStudentUsers,
+      migrationReport: store.roleMigrationV1 || null,
     });
   });
 
@@ -7621,17 +8024,60 @@ ${postSitemaps}
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
-    }
     const body = req.body || {};
     const targetUid = String(body.uid || '').trim();
-    const newRole = String(body.role || 'student').trim();
-    if (!targetUid || !['student', 'captain', 'admin', 'superadmin'].includes(newRole)) {
+    const rawRole = String(body.role || 'student').trim();
+    const newRole = rawRole === 'superadmin' ? 'super_admin' : rawRole;
+
+    if (!hasAdminPermission(store, user, 'users.role', { targetId: targetUid })) {
+      return res.status(403).json({
+        error: 'Permission denied: users.role is required to assign roles.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    const callerRoleRow = resolveD1Role(store, user);
+    const callerIsSuperAdmin =
+      callerRoleRow.role === 'super_admin' ||
+      callerRoleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+    if (newRole === 'super_admin' && !callerIsSuperAdmin) {
+      return res.status(403).json({
+        error: 'Only a Super Admin can assign the Super Admin role.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    if (!targetUid || !['student', 'crew', 'captain', 'admin', 'super_admin'].includes(newRole)) {
       return res.status(400).json({ error: 'Valid uid and role are required.', code: 'INVALID_INPUT' });
     }
+
     let existing = store.userRoles.find((r: any) => r.uid === targetUid);
+    const wasSuperAdmin =
+      existing &&
+      (existing.role === 'super_admin' || existing.role === 'superadmin' || SUPERADMIN_UIDS.has(targetUid));
+    if (wasSuperAdmin && newRole !== 'super_admin') {
+      if (SUPERADMIN_UIDS.has(targetUid)) {
+        return res.status(403).json({
+          error: 'Cannot demote a protected Super Admin owner account.',
+          code: 'LAST_SUPERADMIN_PROTECTED',
+        });
+      }
+      const otherSuperAdmins = (store.userRoles || []).filter(
+        (r: any) =>
+          r.uid !== targetUid &&
+          (r.role === 'super_admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(r.uid))
+      );
+      if (otherSuperAdmins.length === 0) {
+        return res.status(403).json({
+          error: 'Cannot demote the last remaining Super Admin.',
+          code: 'LAST_SUPERADMIN_PROTECTED',
+        });
+      }
+    }
+
     if (!existing) {
       existing = {
         uid: targetUid,
@@ -7647,6 +8093,17 @@ ${postSitemaps}
       if (body.email) existing.email = String(body.email).trim().toLowerCase();
       if (body.customRole !== undefined) existing.custom_role = body.customRole;
       existing.updated_at = Date.now();
+    }
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        if (u.uid === targetUid) {
+          u.role = newRole;
+          u.updated_at = Date.now();
+        }
+      }
+    } catch {
+      // ignore
     }
     saveD1Store(store);
     return res.status(200).json({ ok: true, uid: targetUid, role: newRole });
@@ -7802,7 +8259,7 @@ ${postSitemaps}
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     const nowMs = Date.now();
     const roleRow = resolveD1Role(store, user);
-    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
+    const isAdmin = ['admin', 'superadmin', 'super_admin'].includes(roleRow.role);
     const targetUid =
       isAdmin && req.query.captainUid
         ? String(req.query.captainUid)
@@ -8182,6 +8639,15 @@ ${postSitemaps}
       if (nextMode === 'forceLive') {
         existing.status = 'published';
         existing.visibility = 'public';
+        existing.resultsFinalised = 0;
+        existing.results_finalised = 0;
+      } else if (nextMode === 'forceEnded') {
+        existing.status = 'published';
+        existing.visibility = 'public';
+        existing.resultsFinalised = 1;
+        existing.results_finalised = 1;
+        existing.finalisedAt = existing.finalisedAt || nowMs;
+        existing.finalised_at = existing.finalised_at || nowMs;
       } else if (nextMode === 'auto' && (nextStartAt || nextEndAt)) {
         existing.status = 'published';
         existing.visibility = 'public';
@@ -8245,16 +8711,20 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+    const rawId = decodeURIComponent(String(req.params.id || '')).trim();
+    const altId = rawId.replace(/-/g, '_');
+    const existing = store.captainTests.find((t: any) => t.id === rawId || t.id === altId);
+    const resolvedTargetId = existing ? existing.id : rawId;
+
+    const requiredPerm = req.body?.statusMode === 'forceEnded' ? 'tests.end' : 'tests.manage';
+    if (!hasAdminPermission(store, user, requiredPerm, { targetId: resolvedTargetId })) {
       return res.status(403).json({
-        error: 'Forbidden: Only admins can change a Grand Line test schedule or status.',
-        code: 'FORBIDDEN',
+        error: `Permission denied: ${requiredPerm} is required to change a Grand Line test schedule or status.`,
+        code: 'PERMISSION_DENIED',
+        permission: requiredPerm,
       });
     }
 
-    const testId = decodeURIComponent(String(req.params.id || ''));
-    const existing = store.captainTests.find((t: any) => t.id === testId);
     if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
     const nowMs = Date.now();
@@ -8277,9 +8747,12 @@ ${postSitemaps}
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'audit.view', { consumeOnce: false })) {
+      return res.status(403).json({
+        error: 'Permission denied: audit.view is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'audit.view',
+      });
     }
     const logs = Array.isArray(store.grandLineAuditLogs) ? store.grandLineAuditLogs : [];
     return res.status(200).json({ ok: true, logs });
@@ -8295,12 +8768,6 @@ ${postSitemaps}
     if (idx === -1) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
     const existing = store.captainTests[idx];
-    const roleRow = resolveD1Role(store, user);
-    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
-    if (existing.captainUid !== user.uid && !isAdmin) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
-    }
-
     const body = req.body || {};
     const touchesScheduleOrStatusMode =
       body.startAt !== undefined ||
@@ -8309,15 +8776,26 @@ ${postSitemaps}
       body.reason !== undefined ||
       body.closeAllAttemptsNow !== undefined;
 
-    if (touchesScheduleOrStatusMode && !isAdmin) {
+    const requiredPerm = body.statusMode === 'forceEnded' ? 'tests.end' : 'tests.manage';
+    const hasPerm = hasAdminPermission(store, user, requiredPerm, { targetId: testId });
+    if (existing.captainUid !== user.uid && !hasPerm) {
       return res.status(403).json({
-        error: 'Forbidden: Only admins can change a Grand Line test schedule or status.',
-        code: 'FORBIDDEN',
+        error: `Permission denied: ${requiredPerm} is required.`,
+        code: 'PERMISSION_DENIED',
+        permission: requiredPerm,
+      });
+    }
+
+    if (touchesScheduleOrStatusMode && !hasPerm) {
+      return res.status(403).json({
+        error: `Permission denied: ${requiredPerm} is required to change a Grand Line test schedule or status.`,
+        code: 'PERMISSION_DENIED',
+        permission: requiredPerm,
       });
     }
 
     const nowMs = Date.now();
-    if (touchesScheduleOrStatusMode && isAdmin) {
+    if (touchesScheduleOrStatusMode && hasPerm) {
       const schedResult = applyAdminScheduleAndStatusUpdate(store, existing, body, user, nowMs);
       if (!schedResult.ok) {
         return res.status(schedResult.status).json({ error: schedResult.error, code: schedResult.code });
@@ -8371,9 +8849,12 @@ ${postSitemaps}
     const existing = store.captainTests.find((t: any) => t.id === testId);
     if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
-    const roleRow = resolveD1Role(store, user);
-    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (existing.captainUid !== user.uid && !hasAdminPermission(store, user, 'tests.manage', { targetId: testId })) {
+      return res.status(403).json({
+        error: 'Permission denied: tests.manage is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'tests.manage',
+      });
     }
     store.captainTests = store.captainTests.filter((t: any) => t.id !== testId);
     if (Array.isArray(store.testAttempts)) {
@@ -8392,9 +8873,12 @@ ${postSitemaps}
     const existing = store.captainTests.find((t: any) => t.id === testId);
     if (!existing) return res.status(404).json({ error: 'Test not found.', code: 'NOT_FOUND' });
 
-    const roleRow = resolveD1Role(store, user);
-    if (existing.captainUid !== user.uid && !['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (existing.captainUid !== user.uid && !hasAdminPermission(store, user, 'tests.manage', { targetId: testId })) {
+      return res.status(403).json({
+        error: 'Permission denied: tests.manage is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'tests.manage',
+      });
     }
     const body = req.body || {};
     existing.status =
@@ -9556,11 +10040,11 @@ ${postSitemaps}
     }
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
       return res.status(403).json({
-        error: 'Forbidden: Only admins can upload or modify certificate signatures.',
-        code: 'FORBIDDEN',
+        error: 'Permission denied: certificates.issue is required to upload or modify certificate signatures.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
       });
     }
 
@@ -9696,7 +10180,7 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
     const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+    if (!['admin', 'superadmin', 'super_admin'].includes(roleRow.role)) {
       return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
     }
 
@@ -9729,9 +10213,12 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     const active = store.certificateSignatures.find((s: any) => Number(s.active) === 1);
@@ -9779,9 +10266,12 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     const targetParam = decodeURIComponent(String(req.params.version || '')).trim();
@@ -9825,9 +10315,12 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     for (const s of store.certificateSignatures) {
@@ -9843,9 +10336,12 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     const targetId = decodeURIComponent(String(req.params.id || '')).trim();
@@ -9920,18 +10416,21 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
 
-    const testId = decodeURIComponent(String(req.params.id || ''));
-    const test = store.captainTests.find((t: any) => t.id === testId);
-    if (!test) return res.status(404).json({ error: 'Grand Line mock not found.', code: 'NOT_FOUND' });
+    const rawId = decodeURIComponent(String(req.params.id || '')).trim();
+    const altId = rawId.replace(/-/g, '_');
+    const test = store.captainTests.find((t: any) => t.id === rawId || t.id === altId);
+    const resolvedTargetId = test ? test.id : rawId;
 
-    const roleRow = resolveD1Role(store, user);
-    const isAdmin = ['admin', 'superadmin'].includes(roleRow.role);
-    if (!isAdmin && test.captainUid !== user.uid) {
+    const hasCertPerm = hasAdminPermission(store, user, 'certificates.issue', { targetId: resolvedTargetId });
+    if (!hasCertPerm && (!test || test.captainUid !== user.uid)) {
       return res.status(403).json({
-        error: 'Forbidden: Only admins or the mock captain can finalise results.',
-        code: 'FORBIDDEN',
+        error: 'Permission denied: certificates.issue is required to finalise results and issue certificates.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
       });
     }
+
+    if (!test) return res.status(404).json({ error: 'Grand Line mock not found.', code: 'NOT_FOUND' });
 
     const body = req.body || {};
     if (body.certificateThemeId !== undefined || body.certificate_theme_id !== undefined) {
@@ -10287,7 +10786,7 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
     const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+    if (!['admin', 'superadmin', 'super_admin'].includes(roleRow.role)) {
       return res.status(403).json({ error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' });
     }
 
@@ -10334,9 +10833,10 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
     const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
+    if (!['admin', 'superadmin', 'super_admin'].includes(roleRow.role)) {
       return res.status(403).json({ error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' });
     }
+    const canSeeStudentEmails = hasAdminPermission(store, user, 'users.view', { consumeOnce: false });
 
     const search = String(req.query.search || req.query.q || '').trim().toLowerCase();
     const statusFilter = String(req.query.status || '').trim().toLowerCase();
@@ -10349,7 +10849,7 @@ ${postSitemaps}
         if (statusFilter && statusFilter !== 'all' && c.status !== statusFilter) return false;
         if (grandLineFilter && grandLineFilter !== 'all' && c.grand_line_id !== grandLineFilter) return false;
         if (search) {
-          const hay = `${c.student_name} ${c.student_email} ${c.serial} ${c.grand_line_title}`.toLowerCase();
+          const hay = `${c.student_name} ${canSeeStudentEmails ? c.student_email : ''} ${c.serial} ${c.grand_line_title}`.toLowerCase();
           if (!hay.includes(search)) return false;
         }
         return true;
@@ -10374,9 +10874,9 @@ ${postSitemaps}
           id: c.id,
           serial: c.serial,
           serialNumber: c.serial,
-          studentUid: c.student_uid,
+          studentUid: canSeeStudentEmails ? c.student_uid : undefined,
           studentName: c.student_name,
-          studentEmail: c.student_email,
+          studentEmail: canSeeStudentEmails ? c.student_email : undefined,
           grandLineId: c.grand_line_id,
           grandLineTitle: c.grand_line_title,
           testTitle: c.grand_line_title,
@@ -10444,9 +10944,13 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    if (!hasAdminPermission(store, user, 'certificates.issue', { targetId: certId })) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required to regenerate certificates.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     const { signatureRow: activeSig } = getActiveSignatureRecord(store);
@@ -10457,7 +10961,6 @@ ${postSitemaps}
       });
     }
 
-    const certId = decodeURIComponent(String(req.params.id || '')).trim();
     const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
     if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
     if (cert.status === 'revoked') {
@@ -10497,9 +11000,12 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    if (!hasAdminPermission(store, user, 'certificates.issue')) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required to regenerate certificates.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
     const { signatureRow: activeSig } = getActiveSignatureRecord(store);
@@ -10592,12 +11098,15 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
-    const roleRow = resolveD1Role(store, user);
-    if (!['admin', 'superadmin'].includes(roleRow.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    const certId = decodeURIComponent(String(req.params.id || '')).trim();
+    if (!hasAdminPermission(store, user, 'certificates.issue', { targetId: certId })) {
+      return res.status(403).json({
+        error: 'Permission denied: certificates.issue is required to revoke or restore certificates.',
+        code: 'PERMISSION_DENIED',
+        permission: 'certificates.issue',
+      });
     }
 
-    const certId = decodeURIComponent(String(req.params.id || '')).trim();
     const cert = store.certificates.find((c: any) => c.id === certId || c.serial === certId);
     if (!cert) return res.status(404).json({ error: 'Certificate not found.', code: 'NOT_FOUND' });
 
@@ -11308,10 +11817,604 @@ ${postSitemaps}
   app.get('/api/store/buy', delegateToEconomyWorker);
   app.post('/api/kobans/purchase', delegateToEconomyWorker);
   app.get('/api/kobans/purchase', delegateToEconomyWorker);
-  app.get('/api/admin/coupons', delegateToEconomyWorker);
-  app.post('/api/admin/coupons', delegateToEconomyWorker);
-  app.patch('/api/admin/coupons', delegateToEconomyWorker);
-  app.put('/api/admin/coupons', delegateToEconomyWorker);
+  const requireCouponsGrantAndDelegate = async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const consumeOnce = req.method !== 'GET';
+    if (!hasAdminPermission(store, user, 'coupons.grant', { consumeOnce })) {
+      return res.status(403).json({
+        error: 'Permission denied: coupons.grant is required to manage coupons or grant Kobans.',
+        code: 'PERMISSION_DENIED',
+        permission: 'coupons.grant',
+      });
+    }
+    return delegateToEconomyWorker(req, res);
+  };
+
+  app.get('/api/admin/coupons', requireCouponsGrantAndDelegate);
+  app.post('/api/admin/coupons', requireCouponsGrantAndDelegate);
+  app.patch('/api/admin/coupons', requireCouponsGrantAndDelegate);
+  app.put('/api/admin/coupons', requireCouponsGrantAndDelegate);
+
+  // ===========================================================================
+  // ADMIN USER OVERRIDE PERSISTENCE (BUG 3 + PART 2 ROLE / PLAN / SUSPEND)
+  // ===========================================================================
+  app.post('/api/admin/users/:uid/override', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const targetUid = decodeURIComponent(String(req.params.uid || '').trim());
+    if (!targetUid) {
+      return res.status(400).json({ error: 'Target user UID is required.', code: 'INVALID_UID' });
+    }
+
+    const store = loadD1Store() as any;
+    if (!Array.isArray(store.userRoles)) store.userRoles = [];
+    if (!Array.isArray(store.pro_purchase_locks)) store.pro_purchase_locks = [];
+
+    const body = req.body || {};
+    const nowMs = Date.now();
+    const callerRoleRow = resolveD1Role(store, user);
+    const callerIsSuperAdmin =
+      callerRoleRow.role === 'super_admin' ||
+      callerRoleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+
+    let roleRow = store.userRoles.find((r: any) => r.uid === targetUid);
+    let d1UserRow: any = null;
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        if (u.uid === targetUid) {
+          d1UserRow = u;
+          break;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    const currentRole =
+      roleRow?.role === 'superadmin'
+        ? 'super_admin'
+        : roleRow?.role || d1UserRow?.role || (SUPERADMIN_UIDS.has(targetUid) ? 'super_admin' : 'student');
+    const currentPlan =
+      (roleRow as any)?.plan || d1UserRow?.plan || 'free';
+    const currentSuspended = Boolean(
+      (roleRow as any)?.suspended || roleRow?.is_posting_banned || d1UserRow?.suspended
+    );
+
+    const requestedRole =
+      body.role !== undefined
+        ? body.role === 'superadmin'
+          ? 'super_admin'
+          : String(body.role).trim()
+        : undefined;
+    const requestedPlan =
+      body.plan !== undefined ? (body.plan === 'pro' ? 'pro' : 'free') : undefined;
+    const requestedSuspended =
+      body.suspended !== undefined ? Boolean(body.suspended) : undefined;
+
+    const changingRole = requestedRole !== undefined && requestedRole !== currentRole;
+    const changingPlan =
+      (requestedPlan !== undefined && requestedPlan !== currentPlan) ||
+      body.planExpiresAt !== undefined ||
+      body.extendMonths !== undefined;
+    const changingSuspend =
+      requestedSuspended !== undefined && requestedSuspended !== currentSuspended;
+
+    if (changingRole) {
+      if (!hasAdminPermission(store, user, 'users.role', { targetId: targetUid })) {
+        return res.status(403).json({
+          error: 'Permission denied: users.role is required to change user roles.',
+          code: 'PERMISSION_DENIED',
+          permission: 'users.role',
+        });
+      }
+      if (requestedRole === 'super_admin' && !callerIsSuperAdmin) {
+        return res.status(403).json({
+          error: 'Only a Super Admin can assign the Super Admin role.',
+          code: 'PERMISSION_DENIED',
+          permission: 'users.role',
+        });
+      }
+      if (currentRole === 'super_admin' && requestedRole !== 'super_admin') {
+        if (SUPERADMIN_UIDS.has(targetUid)) {
+          return res.status(403).json({
+            error: 'Cannot demote a protected Super Admin owner account.',
+            code: 'LAST_SUPERADMIN_PROTECTED',
+          });
+        }
+        const otherSuperAdmins = (store.userRoles || []).filter(
+          (r: any) =>
+            r.uid !== targetUid &&
+            (r.role === 'super_admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(r.uid))
+        );
+        if (otherSuperAdmins.length === 0) {
+          return res.status(403).json({
+            error: 'Cannot demote the last remaining Super Admin.',
+            code: 'LAST_SUPERADMIN_PROTECTED',
+          });
+        }
+      }
+    }
+
+    if (changingPlan) {
+      if (!hasAdminPermission(store, user, 'users.plan', { targetId: targetUid })) {
+        return res.status(403).json({
+          error: 'Permission denied: users.plan is required to change subscription plans.',
+          code: 'PERMISSION_DENIED',
+          permission: 'users.plan',
+        });
+      }
+    }
+
+    if (changingSuspend) {
+      if (!hasAdminPermission(store, user, 'users.suspend', { targetId: targetUid })) {
+        return res.status(403).json({
+          error: 'Permission denied: users.suspend is required to suspend or unsuspend users.',
+          code: 'PERMISSION_DENIED',
+          permission: 'users.suspend',
+        });
+      }
+      if (requestedSuspended && (currentRole === 'super_admin' || SUPERADMIN_UIDS.has(targetUid))) {
+        return res.status(403).json({
+          error: 'Cannot suspend a Super Admin account.',
+          code: 'LAST_SUPERADMIN_PROTECTED',
+        });
+      }
+    }
+
+    const finalRole = requestedRole ?? currentRole;
+    const finalPlan: 'free' | 'pro' = requestedPlan ?? (currentPlan === 'pro' ? 'pro' : 'free');
+    const finalSuspended = requestedSuspended ?? currentSuspended;
+
+    let finalExpiresIso: string | null = null;
+    if (finalPlan === 'pro') {
+      if (typeof body.planExpiresAt === 'string' && body.planExpiresAt.trim()) {
+        finalExpiresIso = body.planExpiresAt.trim();
+      } else {
+        const extendMonths = Number(body.extendMonths || 0);
+        const daysToAdd = extendMonths > 0 ? extendMonths * 30 : 30;
+        finalExpiresIso = new Date(nowMs + daysToAdd * 86400 * 1000).toISOString();
+      }
+    } else {
+      finalExpiresIso = null;
+    }
+
+    if (!roleRow) {
+      roleRow = {
+        uid: targetUid,
+        email: String(body.email || d1UserRow?.email || '').trim().toLowerCase(),
+        role: finalRole,
+        custom_role:
+          finalRole === 'super_admin'
+            ? 'Super Admin'
+            : finalRole === 'admin'
+            ? 'Admin'
+            : finalRole === 'captain'
+            ? 'Nakama Captain'
+            : finalRole === 'crew'
+            ? 'Nakama Crew'
+            : null,
+        is_posting_banned: finalSuspended ? 1 : 0,
+        updated_at: nowMs,
+      };
+      store.userRoles.push(roleRow);
+    } else {
+      roleRow.role = finalRole;
+      roleRow.is_posting_banned = finalSuspended ? 1 : 0;
+      roleRow.updated_at = nowMs;
+      if (body.email && !roleRow.email) {
+        roleRow.email = String(body.email).trim().toLowerCase();
+      }
+    }
+    (roleRow as any).plan = finalPlan;
+    (roleRow as any).is_premium = finalPlan === 'pro';
+    (roleRow as any).plan_expires_at = finalExpiresIso;
+    (roleRow as any).suspended = finalSuspended;
+
+    // Also update pro_purchase_locks so resolveUnifiedPlanStatus reflects the new plan immediately
+    store.pro_purchase_locks = (store.pro_purchase_locks || []).filter(
+      (l: any) => l.uid !== targetUid
+    );
+    if (finalPlan === 'pro' && finalExpiresIso) {
+      const expiresMs = new Date(finalExpiresIso).getTime();
+      if (Number.isFinite(expiresMs) && expiresMs > nowMs) {
+        store.pro_purchase_locks.push({
+          uid: targetUid,
+          email: roleRow.email || '',
+          order_id: `admin_override_${nowMs}`,
+          purchased_at: nowMs,
+          expires_at: expiresMs,
+          status: 'active',
+        });
+      }
+    }
+
+    // Also persist to shared local D1 user_usernames table
+    try {
+      const localD1 = getSharedLocalD1Database();
+      for (const u of localD1.tables.user_usernames.values()) {
+        if (u.uid === targetUid) {
+          u.role = finalRole;
+          u.plan = finalPlan;
+          u.is_premium = finalPlan === 'pro' ? 1 : 0;
+          u.plan_expires_at = finalExpiresIso;
+          u.suspended = finalSuspended ? 1 : 0;
+          u.updated_at = nowMs;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      user: {
+        uid: targetUid,
+        email: roleRow.email || d1UserRow?.email || '',
+        displayName: d1UserRow?.username_display || d1UserRow?.display_name || body.displayName || 'Student',
+        role: finalRole,
+        plan: finalPlan,
+        isPremium: finalPlan === 'pro',
+        planExpiresAt: finalExpiresIso,
+        suspended: finalSuspended,
+        updatedAt: nowMs,
+      },
+    });
+  });
+
+  // ===========================================================================
+  // ACCESS REQUESTS & TEMPORARY PERMISSION GRANTS (/api/admin/access-requests*)
+  // ===========================================================================
+  const VALID_PERMISSION_KEYS = new Set([
+    'mcq.manage',
+    'content.delete',
+    'users.view',
+    'users.suspend',
+    'users.delete',
+    'users.role',
+    'users.plan',
+    'coupons.grant',
+    'tests.manage',
+    'tests.end',
+    'certificates.issue',
+    'announcements.manage',
+    'security.reset',
+    'audit.view',
+  ]);
+
+  function expireStaleAccessGrants(store: any, nowMs: number) {
+    if (!Array.isArray(store.accessGrants)) store.accessGrants = [];
+    if (!Array.isArray(store.accessRequests)) store.accessRequests = [];
+    return store.accessGrants.filter((g: any) => {
+      if (g.revokedAt || g.usedAt) return false;
+      if (g.expiresAt !== null && g.expiresAt !== undefined && Number(g.expiresAt) <= nowMs) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // POST /api/admin/access-requests — Limited Admin creates a pending access request
+  app.post('/api/admin/access-requests', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'super_admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({
+        error: 'Only Admin accounts can request elevated permissions.',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    if (!checkWriteRateLimit(`access_req:${user.uid}`, 15, 60 * 1000)) {
+      return res.status(429).json({
+        error: 'Too many access requests. Please wait a minute before trying again.',
+        code: 'RATE_LIMITED',
+      });
+    }
+
+    const body = req.body || {};
+    const permission = String(body.permission || '').trim();
+    const reason = String(body.reason || '').trim().slice(0, 500);
+    const targetType = body.targetType ? String(body.targetType).trim().slice(0, 60) : null;
+    const targetId = body.targetId ? String(body.targetId).trim().slice(0, 120) : null;
+    const targetLabel = body.targetLabel ? String(body.targetLabel).trim().slice(0, 200) : null;
+
+    if (!VALID_PERMISSION_KEYS.has(permission)) {
+      return res.status(400).json({
+        error: `Invalid permission key: ${permission}`,
+        code: 'INVALID_PERMISSION',
+      });
+    }
+    if (!reason || reason.length < 3) {
+      return res.status(400).json({
+        error: 'A clear reason (at least 3 characters) is required.',
+        code: 'REASON_REQUIRED',
+      });
+    }
+
+    if (!Array.isArray(store.accessRequests)) store.accessRequests = [];
+
+    // Block duplicate pending requests for the same admin + permission + targetId
+    const existingPending = store.accessRequests.find(
+      (r: any) =>
+        r.adminUid === user.uid &&
+        r.permission === permission &&
+        (r.targetId || null) === (targetId || null) &&
+        r.status === 'pending'
+    );
+    if (existingPending) {
+      return res.status(409).json({
+        ok: false,
+        code: 'DUPLICATE_PENDING_REQUEST',
+        error: 'You already have a pending request for this action.',
+        request: existingPending,
+      });
+    }
+
+    const nowMs = Date.now();
+    const newReq = {
+      id: `areq_${nowMs}_${crypto.randomUUID().slice(0, 8)}`,
+      adminUid: user.uid,
+      adminName: user.displayName || user.name || (user.email ? user.email.split('@')[0] : 'Admin'),
+      adminEmail: user.email || '',
+      permission,
+      targetType,
+      targetId,
+      targetLabel,
+      reason,
+      status: 'pending',
+      createdAt: nowMs,
+      decidedAt: null,
+      decidedBy: null,
+      decisionNote: null,
+      grantDuration: null,
+      expiresAt: null,
+    };
+
+    store.accessRequests.unshift(newReq);
+    saveD1Store(store);
+
+    return res.status(201).json({
+      ok: true,
+      request: newReq,
+    });
+  });
+
+  // GET /api/admin/access-requests/mine — Admin fetches own active grants & requests
+  app.get('/api/admin/access-requests/mine', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    if (!['admin', 'super_admin', 'superadmin'].includes(roleRow.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+    }
+
+    const nowMs = Date.now();
+    const activeGrants = expireStaleAccessGrants(store, nowMs).filter(
+      (g: any) => g.adminUid === user.uid
+    );
+    const myRequests = (store.accessRequests || []).filter(
+      (r: any) => r.adminUid === user.uid
+    );
+
+    return res.status(200).json({
+      ok: true,
+      grants: activeGrants,
+      requests: myRequests,
+    });
+  });
+
+  // GET /api/admin/access-requests — Super Admin lists requests & active grants
+  app.get('/api/admin/access-requests', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    const isSuperAdmin =
+      roleRow.role === 'super_admin' ||
+      roleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only Super Admin can view all access requests.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    const statusFilter = String(req.query.status || '').trim().toLowerCase();
+    const nowMs = Date.now();
+    const allRequests = Array.isArray(store.accessRequests) ? store.accessRequests : [];
+    const filteredRequests =
+      statusFilter && statusFilter !== 'all'
+        ? allRequests.filter((r: any) => String(r.status || '').toLowerCase() === statusFilter)
+        : allRequests;
+    const activeGrants = expireStaleAccessGrants(store, nowMs);
+
+    return res.status(200).json({
+      ok: true,
+      requests: filteredRequests,
+      grants: activeGrants,
+      pendingCount: allRequests.filter((r: any) => r.status === 'pending').length,
+      migrationReport: store.roleMigrationV1 || null,
+    });
+  });
+
+  // POST /api/admin/access-requests/:id/approve — Super Admin approves a request
+  app.post('/api/admin/access-requests/:id/approve', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    const isSuperAdmin =
+      roleRow.role === 'super_admin' ||
+      roleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only Super Admin can approve access requests.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    const reqId = decodeURIComponent(String(req.params.id || '').trim());
+    if (!Array.isArray(store.accessRequests)) store.accessRequests = [];
+    if (!Array.isArray(store.accessGrants)) store.accessGrants = [];
+
+    const reqRow = store.accessRequests.find((r: any) => r.id === reqId);
+    if (!reqRow) {
+      return res.status(404).json({ error: 'Access request not found.', code: 'NOT_FOUND' });
+    }
+
+    if (reqRow.adminUid === user.uid) {
+      return res.status(403).json({
+        error: 'An admin can never approve their own access request.',
+        code: 'SELF_APPROVAL_FORBIDDEN',
+      });
+    }
+
+    const rawDuration = String(req.body?.duration || '1h').trim();
+    const duration: 'once' | '1h' | '24h' | '7d' = ['once', '1h', '24h', '7d'].includes(rawDuration)
+      ? (rawDuration as 'once' | '1h' | '24h' | '7d')
+      : '1h';
+    const note = req.body?.note ? String(req.body.note).trim().slice(0, 500) : null;
+
+    const nowMs = Date.now();
+    const durationMsMap: Record<string, number | null> = {
+      once: nowMs + 24 * 3600 * 1000, // 24h window to use single-use grant
+      '1h': nowMs + 3600 * 1000,
+      '24h': nowMs + 24 * 3600 * 1000,
+      '7d': nowMs + 7 * 24 * 3600 * 1000,
+    };
+    const expiresAt = durationMsMap[duration];
+
+    reqRow.status = 'approved';
+    reqRow.decidedAt = nowMs;
+    reqRow.decidedBy = user.uid;
+    reqRow.decisionNote = note;
+    reqRow.grantDuration = duration;
+    reqRow.expiresAt = expiresAt;
+
+    const grant = {
+      id: `agrant_${nowMs}_${crypto.randomUUID().slice(0, 8)}`,
+      requestId: reqRow.id,
+      adminUid: reqRow.adminUid,
+      adminName: reqRow.adminName,
+      adminEmail: reqRow.adminEmail,
+      permission: reqRow.permission,
+      targetType: reqRow.targetType || null,
+      targetId: reqRow.targetId || null,
+      targetLabel: reqRow.targetLabel || null,
+      duration,
+      grantedBy: user.uid,
+      grantedAt: nowMs,
+      expiresAt,
+      usedAt: null,
+      revokedAt: null,
+    };
+    store.accessGrants.unshift(grant);
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      request: reqRow,
+      grant,
+    });
+  });
+
+  // POST /api/admin/access-requests/:id/deny — Super Admin denies a request
+  app.post('/api/admin/access-requests/:id/deny', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    const isSuperAdmin =
+      roleRow.role === 'super_admin' ||
+      roleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only Super Admin can deny access requests.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    const reqId = decodeURIComponent(String(req.params.id || '').trim());
+    if (!Array.isArray(store.accessRequests)) store.accessRequests = [];
+    const reqRow = store.accessRequests.find((r: any) => r.id === reqId);
+    if (!reqRow) {
+      return res.status(404).json({ error: 'Access request not found.', code: 'NOT_FOUND' });
+    }
+
+    const nowMs = Date.now();
+    const note = req.body?.note ? String(req.body.note).trim().slice(0, 500) : null;
+    reqRow.status = 'denied';
+    reqRow.decidedAt = nowMs;
+    reqRow.decidedBy = user.uid;
+    reqRow.decisionNote = note;
+
+    saveD1Store(store);
+    return res.status(200).json({
+      ok: true,
+      request: reqRow,
+    });
+  });
+
+  // POST /api/admin/access-grants/:id/revoke — Super Admin revokes an active grant immediately
+  app.post('/api/admin/access-grants/:id/revoke', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+
+    const store = loadD1Store() as any;
+    const roleRow = resolveD1Role(store, user);
+    const isSuperAdmin =
+      roleRow.role === 'super_admin' ||
+      roleRow.role === 'superadmin' ||
+      SUPERADMIN_UIDS.has(user.uid);
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: Only Super Admin can revoke access grants.',
+        code: 'PERMISSION_DENIED',
+        permission: 'users.role',
+      });
+    }
+
+    const grantId = decodeURIComponent(String(req.params.id || '').trim());
+    if (!Array.isArray(store.accessGrants)) store.accessGrants = [];
+    const grant = store.accessGrants.find((g: any) => g.id === grantId);
+    if (!grant) {
+      return res.status(404).json({ error: 'Access grant not found.', code: 'NOT_FOUND' });
+    }
+
+    const nowMs = Date.now();
+    grant.revokedAt = nowMs;
+    const linkedReq = (store.accessRequests || []).find((r: any) => r.id === grant.requestId);
+    if (linkedReq) {
+      linkedReq.status = 'revoked';
+    }
+    saveD1Store(store);
+
+    return res.status(200).json({
+      ok: true,
+      grant,
+    });
+  });
 
   const delegateToAuthWorker = async (req: Request, res: Response) => {
     try {

@@ -20,11 +20,13 @@ import {
   Smartphone,
   Tablet,
   Monitor,
+  Lock,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import {
   fetchKobanRequests,
   approveKobanRequest,
@@ -104,7 +106,9 @@ function StatusChip({ status }: { status: KobanStudentStatus }) {
 }
 
 export function AdminKobansPage() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const canGrantKobans = hasPermission('coupons.grant');
+  const [requestAccessOpen, setRequestAccessOpen] = useState(false);
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
   const params = useParams<{ uid?: string }>();
   const [searchParams] = useSearchParams();
@@ -188,8 +192,12 @@ export function AdminKobansPage() {
   }, [requestFilter]);
 
   useEffect(() => {
+    if (!canGrantKobans) {
+      setRequestsLoading(false);
+      return;
+    }
     loadRequests();
-  }, [loadRequests]);
+  }, [loadRequests, canGrantKobans]);
 
   // Execute student search with AbortController & stale-sequence protection
   const executeStudentSearch = useCallback(async (rawQuery: string) => {
@@ -596,6 +604,42 @@ export function AdminKobansPage() {
     0,
     currentBalanceNum + (adjustMode === 'grant' ? parsedAmountNum : -parsedAmountNum)
   );
+
+  if (!canGrantKobans) {
+    return (
+      <div className="max-w-xl mx-auto py-12 px-4">
+        <div className="p-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-4 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+            <Lock size={22} />
+          </div>
+          <div className="space-y-1.5">
+            <h1 className="text-lg font-extrabold text-[var(--text)]">
+              Kobans &amp; Coupons Locked
+            </h1>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              Granting Kobans, coupons, or modifying student wallet balances requires the{' '}
+              <span className="font-mono font-bold text-amber-300">coupons.grant</span> permission.
+              No student wallet records are loaded until access is granted by the Super Admin.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRequestAccessOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-colors cursor-pointer"
+          >
+            <Lock size={14} />
+            <span>Request Koban &amp; Coupon Access</span>
+          </button>
+        </div>
+        <RequestAccessSheet
+          open={requestAccessOpen}
+          onClose={() => setRequestAccessOpen(false)}
+          permission="coupons.grant"
+          targetLabel="Kobans & Wallets"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="akb-page-shell">

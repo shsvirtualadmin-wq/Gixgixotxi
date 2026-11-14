@@ -1,15 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { auth } from '@/lib/firebase';
-import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw, Lock } from 'lucide-react';
 import { normalizeCloudflarePost } from '@/services/commonsService';
 import type { CommonsPost, CommonsReport } from '@/types/commons';
 import { LineLoader } from '@/components/ui/LineLoader';
+import { useAuth } from '@/contexts/AuthContext';
+import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
+import type { AdminPermissionKey } from '@/constants/permissions';
 
 export function AdminCommonsPage() {
+  const { hasPermission, isSuperAdmin } = useAuth();
+  const canBanAuthor = hasPermission('users.suspend');
   const [flaggedPosts, setFlaggedPosts] = useState<CommonsPost[]>([]);
   const [, setReports] = useState<CommonsReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [accessRequestTarget, setAccessRequestTarget] = useState<{
+    permission: AdminPermissionKey;
+    targetId?: string;
+    targetLabel?: string;
+  } | null>(null);
 
   const getAdminHeaders = useCallback(async () => {
     const token = await auth.currentUser?.getIdToken(false);
@@ -90,6 +100,14 @@ export function AdminCommonsPage() {
   };
 
   const handleBanAuthor = async (post: CommonsPost) => {
+    if (!hasPermission('users.suspend', post.id)) {
+      setAccessRequestTarget({
+        permission: 'users.suspend',
+        targetId: post.id,
+        targetLabel: `Author of "${post.title}"`,
+      });
+      return;
+    }
     try {
       const authorUid = (post as any).realAuthorUid || post.authorUid;
       if (!window.confirm(`Ban author of "${post.title}" from publishing in Boardly Commons?`)) {
@@ -110,7 +128,7 @@ export function AdminCommonsPage() {
         throw new Error(data?.error || 'Could not ban author');
       }
 
-      setActionNotice(`User ${data.bannedUid || authorUid} has been banned from posting.`);
+      setActionNotice(`Author of "${post.title}" has been banned from posting.`);
     } catch (err: any) {
       setActionNotice(`Ban failed: ${err.message}`);
     }
@@ -123,13 +141,13 @@ export function AdminCommonsPage() {
         <div>
           <div className="flex items-center gap-2 text-red-500 font-mono text-xs uppercase">
             <Shield size={16} />
-            <span>Superadmin Moderation Queue</span>
+            <span>{isSuperAdmin ? 'Superadmin Moderation Queue' : 'Admin Moderation Queue'}</span>
           </div>
           <h1 className="text-2xl font-bold font-mono tracking-tight text-white mt-1">
             COMMONS MODERATION
           </h1>
           <p className="text-xs text-neutral-400">
-            Review reported study posts, manage auto-hidden content, and enforce posting bans.
+            Review reported study posts, manage auto-hidden content, and delete inappropriate posts.
           </p>
         </div>
 
@@ -213,9 +231,17 @@ export function AdminCommonsPage() {
                     <button
                       onClick={() => handleBanAuthor(post)}
                       className="p-2 rounded-lg bg-amber-950/40 hover:bg-amber-950 text-amber-400 border border-amber-800/60 text-xs font-semibold transition-colors flex items-center gap-1"
-                      title="Ban author from posting"
+                      title={
+                        canBanAuthor || hasPermission('users.suspend', post.id)
+                          ? 'Ban author from posting'
+                          : 'Requires Super Admin approval (users.suspend)'
+                      }
                     >
-                      <Ban size={14} />
+                      {canBanAuthor || hasPermission('users.suspend', post.id) ? (
+                        <Ban size={14} />
+                      ) : (
+                        <Lock size={13} />
+                      )}
                       <span>Ban</span>
                     </button>
                     <button
@@ -233,6 +259,16 @@ export function AdminCommonsPage() {
           </div>
         )}
       </div>
+
+      {accessRequestTarget && (
+        <RequestAccessSheet
+          open={Boolean(accessRequestTarget)}
+          onClose={() => setAccessRequestTarget(null)}
+          permission={accessRequestTarget.permission}
+          targetId={accessRequestTarget.targetId}
+          targetLabel={accessRequestTarget.targetLabel}
+        />
+      )}
     </div>
   );
 }

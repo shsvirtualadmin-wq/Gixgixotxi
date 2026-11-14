@@ -10,12 +10,14 @@ import {
   Clock,
   Pin,
   Save,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -23,13 +25,13 @@ import {
   fetchWelcomeAnnouncement,
   updateWelcomeAnnouncement,
   WELCOME_ANNOUNCEMENT_ID,
-  isUserSuperAdmin,
   type AnnouncementItem,
 } from '@/services/notificationService';
 
 export function AdminAnnouncementsPage() {
-  const { user, isAdmin, profileLoading } = useAuth();
-  const isSuperAdmin = isUserSuperAdmin(user);
+  const { user, isAdmin, hasPermission, profileLoading } = useAuth();
+  const canManageAnnouncements = hasPermission('announcements.manage');
+  const [requestAccessOpen, setRequestAccessOpen] = useState(false);
 
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,8 +78,8 @@ export function AdminAnnouncementsPage() {
 
   const handleSaveWelcome = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isSuperAdmin) {
-      setErrorMsg('Unauthorized: Only the superadmin can edit the Welcome announcement.');
+    if (!user || !canManageAnnouncements) {
+      setRequestAccessOpen(true);
       return;
     }
     if (!welcomeTitle.trim() || !welcomeMessage.trim()) {
@@ -113,8 +115,8 @@ export function AdminAnnouncementsPage() {
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isSuperAdmin) {
-      setErrorMsg('Unauthorized: Only the superadmin can create announcements.');
+    if (!user || !canManageAnnouncements) {
+      setRequestAccessOpen(true);
       return;
     }
 
@@ -153,7 +155,10 @@ export function AdminAnnouncementsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!user || !isSuperAdmin) return;
+    if (!user || !canManageAnnouncements) {
+      setRequestAccessOpen(true);
+      return;
+    }
     if (
       !window.confirm(
         'Are you sure you want to delete this announcement? It will be removed from all student notifications.'
@@ -231,6 +236,27 @@ export function AdminAnnouncementsPage() {
             className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 font-semibold cursor-pointer"
           >
             Retry
+          </button>
+        </div>
+      )}
+
+      {!canManageAnnouncements && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 text-xs text-amber-200">
+            <Lock size={16} className="text-amber-400 shrink-0" />
+            <span>
+              Broadcasting announcements requires{' '}
+              <span className="font-mono font-bold text-amber-300">announcements.manage</span>{' '}
+              approval from the Super Admin.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRequestAccessOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <Lock size={13} />
+            <span>Request Access</span>
           </button>
         </div>
       )}
@@ -467,6 +493,12 @@ export function AdminAnnouncementsPage() {
           </div>
         )}
       </div>
+      <RequestAccessSheet
+        open={requestAccessOpen}
+        onClose={() => setRequestAccessOpen(false)}
+        permission="announcements.manage"
+        targetLabel="Announcements & Broadcasts"
+      />
     </div>
   );
 }
