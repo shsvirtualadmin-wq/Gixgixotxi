@@ -66,9 +66,6 @@ import {
 } from '@/lib/swrCache';
 import {
   seedSecurityStatusFromServer,
-  seedProfileLayoutFromServer,
-  commitSavedProfileLayout,
-  getProfileLayoutSnapshotForUid,
   preloadSecurityAndSettingsForUid,
   clearSecurityStatusCache,
 } from '@/hooks/useSecurityStatus';
@@ -338,12 +335,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         cachedCustom?.equippedBanner ??
         null,
     };
-    const layoutSnap = getProfileLayoutSnapshotForUid(opt.uid);
-    const restoredLayout =
-      (layoutSnap.known ? layoutSnap.layout : null) ||
-      (opt.profileLayout as any) ||
-      cachedCustom?.profileLayout ||
-      undefined;
     const restored: UserProfile = {
       uid: opt.uid,
       email: opt.email || '',
@@ -365,7 +356,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatar: restoredEquipped.avatar || opt.avatar || undefined,
       frame: restoredEquipped.frame || opt.frame || undefined,
       equipped: restoredEquipped,
-      ...(restoredLayout ? { profileLayout: restoredLayout } : {}),
     };
     seedSharedUserProfileCache(opt.uid, restored);
     return restored;
@@ -1206,15 +1196,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Ignore
         }
         const walletSnap = readOptimisticWalletSnapshot(g.uid);
-        const layoutSnap = getProfileLayoutSnapshotForUid(g.uid);
-        const serverLayout =
-          (meData as any).profileLayout ??
-          (meData as any).profile_layout ??
-          (g as any).profileLayout ??
-          (g as any).profile_layout;
-        if (typeof serverLayout === 'string' && serverLayout.trim()) {
-          seedProfileLayoutFromServer(g.uid, serverLayout, { isPassiveSeed: true });
-        }
         const prevSameGuest =
           profileRef.current && profileRef.current.uid === g.uid ? profileRef.current : null;
         const mergedEquipped = {
@@ -1222,11 +1203,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...(prevSameGuest?.equipped || {}),
           ...(walletSnap?.equipped || {}),
         };
-        const resolvedGuestLayout =
-          (layoutSnap.known ? layoutSnap.layout : null) ||
-          prevSameGuest?.profileLayout ||
-          cachedGuestCustom.profileLayout ||
-          (typeof serverLayout === 'string' ? (serverLayout as any) : undefined);
 
         const synthUser = buildSyntheticGuestUser(g.uid, guestUsername, effectiveToken);
         const guestProfile: UserProfile = {
@@ -1257,7 +1233,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           streak: Number(g.streak ?? prevSameGuest?.streak ?? 0),
           lastActiveAt: (g as any).lastActiveAt || Date.now(),
           ...(Object.keys(mergedEquipped).length > 0 ? { equipped: mergedEquipped } : {}),
-          ...(resolvedGuestLayout ? { profileLayout: resolvedGuestLayout } : {}),
           ...(prevSameGuest?.avatarId || cachedGuestCustom.avatarId
             ? { avatarId: prevSameGuest?.avatarId || cachedGuestCustom.avatarId }
             : {}),
@@ -1281,7 +1256,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isGuest: true,
           streak: Number(g.streak || 0),
           targetUniversity: guestProfile.targetUniversity,
-          profileLayout: guestProfile.profileLayout,
         });
         setOtpVerificationState({
           status: 'verified',
@@ -1555,22 +1529,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!isMounted) return;
 
-        // Apply server-side username, twoFactorStatus, profileLayout, and trusted role from `/api/auth/me`
+        // Apply server-side username, twoFactorStatus, and trusted role from `/api/auth/me`
         if (meCheck?.ok && meCheck.meData?.user) {
           const { meData, idToken } = meCheck;
           const twoFactorPayload = meData.twoFactorStatus || meData.user.twoFactorStatus;
           if (twoFactorPayload) {
             seedSecurityStatusFromServer(firebaseUser.uid, twoFactorPayload);
-          }
-          const profileLayoutPayload =
-            meData.profileLayout ??
-            meData.profile_layout ??
-            meData.user.profileLayout ??
-            meData.user.profile_layout;
-          if (typeof profileLayoutPayload === 'string') {
-            seedProfileLayoutFromServer(firebaseUser.uid, profileLayoutPayload, {
-              isPassiveSeed: true,
-            });
           }
           const idTokenResult = await firebaseUser.getIdTokenResult().catch(() => null);
           if (!idTokenResult || !idTokenResult.claims) {
@@ -2016,7 +1980,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Ignore
         }
         const guestWalletSnap = readOptimisticWalletSnapshot(guestUid);
-        const guestLayoutSnap = getProfileLayoutSnapshotForUid(guestUid);
         const migratedKobanStyle = migrateGuestKobanStyleToUser(guestUid, newFirebaseUser.uid);
         if (migratedKobanStyle) {
           void fetch('/api/koban-style', {
@@ -2029,14 +1992,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
             body: JSON.stringify(migratedKobanStyle),
           }).catch(() => {});
-        }
-        const carriedLayout =
-          (guestLayoutSnap.known ? guestLayoutSnap.layout : null) ||
-          profile.profileLayout ||
-          guestCachedCustom.profileLayout ||
-          undefined;
-        if (carriedLayout) {
-          commitSavedProfileLayout(newFirebaseUser.uid, carriedLayout);
         }
         const carriedEquipped = {
           ...(guestCachedCustom.equipped || {}),
@@ -2072,7 +2027,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ),
           streak: Number(upgData.streak ?? profile.streak ?? 0),
           ...(Object.keys(carriedEquipped).length > 0 ? { equipped: carriedEquipped } : {}),
-          ...(carriedLayout ? { profileLayout: carriedLayout } : {}),
           ...(profile.avatarId || guestCachedCustom.avatarId
             ? { avatarId: profile.avatarId || guestCachedCustom.avatarId }
             : {}),
@@ -2124,7 +2078,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             studentId: upgradedProfileDoc.shortId,
             role: 'student',
             ...(Object.keys(carriedEquipped).length > 0 ? { equipped: carriedEquipped } : {}),
-            ...(carriedLayout ? { profileLayout: carriedLayout } : {}),
             stats: {
               streak: upgradedProfileDoc.streak || 0,
               testsCompleted: upgradedProfileDoc.testsCompleted || 0,
@@ -2307,7 +2260,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ignore
       }
       const guestGoogleWalletSnap = readOptimisticWalletSnapshot(guestUid);
-      const guestGoogleLayoutSnap = getProfileLayoutSnapshotForUid(guestUid);
       const migratedGoogleKobanStyle = migrateGuestKobanStyleToUser(guestUid, googleUser.uid);
       if (migratedGoogleKobanStyle) {
         void fetch('/api/koban-style', {
@@ -2320,14 +2272,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
           body: JSON.stringify(migratedGoogleKobanStyle),
         }).catch(() => {});
-      }
-      const carriedGoogleLayout =
-        (guestGoogleLayoutSnap.known ? guestGoogleLayoutSnap.layout : null) ||
-        snapshotGuestProfile.profileLayout ||
-        guestCachedGoogleCustom.profileLayout ||
-        undefined;
-      if (carriedGoogleLayout) {
-        commitSavedProfileLayout(googleUser.uid, carriedGoogleLayout);
       }
       const carriedGoogleEquipped = {
         ...(guestCachedGoogleCustom.equipped || {}),
@@ -2367,7 +2311,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ),
         streak: Number(upgData?.streak ?? snapshotGuestProfile.streak ?? 0),
         ...(Object.keys(carriedGoogleEquipped).length > 0 ? { equipped: carriedGoogleEquipped } : {}),
-        ...(carriedGoogleLayout ? { profileLayout: carriedGoogleLayout } : {}),
         ...(snapshotGuestProfile.avatarId || guestCachedGoogleCustom.avatarId
           ? { avatarId: snapshotGuestProfile.avatarId || guestCachedGoogleCustom.avatarId }
           : {}),
@@ -2419,7 +2362,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           studentId: upgradedProfileDoc.shortId,
           role: 'student',
           ...(Object.keys(carriedGoogleEquipped).length > 0 ? { equipped: carriedGoogleEquipped } : {}),
-          ...(carriedGoogleLayout ? { profileLayout: carriedGoogleLayout } : {}),
           stats: {
             streak: upgradedProfileDoc.streak || 0,
             testsCompleted: upgradedProfileDoc.testsCompleted || 0,
@@ -2865,7 +2807,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               key.startsWith('boardly_swr_v2:') ||
               key.startsWith('boardly_read_notifs_v2_') ||
               key.startsWith('boardly_security_status_') ||
-              key.startsWith('boardly_profile_layout_') ||
               key.startsWith('boardly_plan_cache_') ||
               key.startsWith('boardly_wallet_') ||
               key.startsWith('firebase:authUser:')

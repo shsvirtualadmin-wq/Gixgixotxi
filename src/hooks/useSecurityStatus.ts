@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  DEFAULT_PROFILE_LAYOUT,
-  normalizeProfileLayout,
-  type ProfileLayoutId,
-} from '@/lib/profileLayouts';
 
 export type SecurityRowLabel = '2FA: Both' | 'Authenticator' | 'Email code' | 'Off';
 
@@ -53,7 +48,6 @@ export interface SecurityStatusInput {
 }
 
 const SECURITY_LS_PREFIX = 'boardly_security_status_v1_';
-const LAYOUT_LS_PREFIX = 'boardly_profile_layout_v1_';
 const PLAN_LS_PREFIX = 'boardly_settings_plan_v1_';
 const NOTIF_LS_PREFIX = 'boardly_notif_prefs_v1_';
 
@@ -359,222 +353,6 @@ export async function refreshSecurityStatusForUid(uid: string): Promise<void> {
   return fetchPromise;
 }
 
-// ── Shared Profile Layout & Settings Row Store (Keyed by UID) ───────────────
-export interface ProfileLayoutSnapshot {
-  uid: string;
-  layout: ProfileLayoutId;
-  known: boolean;
-  ready: boolean;
-  loading: boolean;
-  savedAt?: number;
-}
-
-const layoutMemoryStore = new Map<string, ProfileLayoutSnapshot>();
-const inFlightLayoutFetch = new Map<string, Promise<void>>();
-const layoutListeners = new Set<() => void>();
-
-function emitLayoutChange() {
-  for (const listener of layoutListeners) {
-    try {
-      listener();
-    } catch {
-      // Ignore
-    }
-  }
-}
-
-function subscribeLayoutStore(listener: () => void): () => void {
-  layoutListeners.add(listener);
-  return () => {
-    layoutListeners.delete(listener);
-  };
-}
-
-function readLayoutFromLocalStorage(uid: string): { layout: ProfileLayoutId; savedAt?: number } | null {
-  if (!uid || typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const raw = window.localStorage.getItem(`${LAYOUT_LS_PREFIX}${uid}`);
-    if (!raw) return null;
-    if (raw.startsWith('{')) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.layout === 'string') {
-        return {
-          layout: normalizeProfileLayout(parsed.layout),
-          savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : undefined,
-        };
-      }
-    }
-    return { layout: normalizeProfileLayout(raw) };
-  } catch {
-    return null;
-  }
-}
-
-function writeLayoutToLocalStorage(uid: string, layout: ProfileLayoutId, savedAt?: number): void {
-  if (!uid || typeof window === 'undefined' || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(
-      `${LAYOUT_LS_PREFIX}${uid}`,
-      JSON.stringify({ layout, savedAt: savedAt ?? Date.now() })
-    );
-    // Also keep cached_profile_${uid} and boardly_user_profile_${uid} synchronized so no stale cache reverts the layout
-    for (const lsKey of [`cached_profile_${uid}`, `boardly_user_profile_${uid}`]) {
-      const rawProf = window.localStorage.getItem(lsKey);
-      if (rawProf) {
-        const parsed = JSON.parse(rawProf);
-        parsed.profileLayout = layout;
-        parsed.profile_layout = layout;
-        window.localStorage.setItem(lsKey, JSON.stringify(parsed));
-      }
-    }
-  } catch {
-    // Ignore
-  }
-}
-
-export function getProfileLayoutSnapshotForUid(uid: string): ProfileLayoutSnapshot {
-  const cleanUid = (uid || '').trim();
-  if (!cleanUid) {
-    const anonKey = '__anonymous__';
-    let anon = layoutMemoryStore.get(anonKey);
-    if (!anon) {
-      anon = { uid: '', layout: DEFAULT_PROFILE_LAYOUT, known: false, ready: false, loading: false };
-      layoutMemoryStore.set(anonKey, anon);
-    }
-    return anon;
-  }
-
-  const inMem = layoutMemoryStore.get(cleanUid);
-  if (inMem) return inMem;
-
-  const fromLs = readLayoutFromLocalStorage(cleanUid);
-  if (fromLs) {
-    const snap: ProfileLayoutSnapshot = {
-      uid: cleanUid,
-      layout: fromLs.layout,
-      known: true,
-      ready: true,
-      loading: false,
-      savedAt: fromLs.savedAt,
-    };
-    layoutMemoryStore.set(cleanUid, snap);
-    return snap;
-  }
-
-  const unknown: ProfileLayoutSnapshot = {
-    uid: cleanUid,
-    layout: DEFAULT_PROFILE_LAYOUT,
-    known: false,
-    ready: false,
-    loading: true,
-  };
-  layoutMemoryStore.set(cleanUid, unknown);
-  return unknown;
-}
-
-/**
- * Authoritatively commits a user-saved profile layout (optimistically on tap + confirmed after POST)
- * so stale background fetches or AuthContext snapshots can never overwrite it.
- */
-export function commitSavedProfileLayout(uid: string, rawLayout: unknown): void {
-  const cleanUid = (uid || '').trim();
-  if (!cleanUid || typeof rawLayout !== 'string' || !rawLayout.trim()) return;
-  const resolved = normalizeProfileLayout(rawLayout);
-  const now = Date.now();
-  const nextSnap: ProfileLayoutSnapshot = {
-    uid: cleanUid,
-    layout: resolved,
-    known: true,
-    ready: true,
-    loading: false,
-    savedAt: now,
-  };
-  layoutMemoryStore.set(cleanUid, nextSnap);
-  writeLayoutToLocalStorage(cleanUid, resolved, now);
-  emitLayoutChange();
-}
-
-export function seedProfileLayoutFromServer(
-  uid: string,
-  rawLayout: unknown,
-  options?: { isAuthoritativeSave?: boolean; isPassiveSeed?: boolean }
-): void {
-  const cleanUid = (uid || '').trim();
-  if (!cleanUid || typeof rawLayout !== 'string' || !rawLayout.trim()) return;
-  if (options?.isAuthoritativeSave) {
-    commitSavedProfileLayout(cleanUid, rawLayout);
-    return;
-  }
-
-  const resolved = normalizeProfileLayout(rawLayout);
-  const existing = layoutMemoryStore.get(cleanUid) || readLayoutFromLocalStorage(cleanUid);
-
-  // Never let a passive seed (e.g. from AuthContext.profile) overwrite an already-known layout
-  if (options?.isPassiveSeed && existing && 'layout' in existing) {
-    const existingMem = layoutMemoryStore.get(cleanUid);
-    if (existingMem?.known) {
-      return;
-    }
-  }
-
-  // Never let a late background response overwrite a layout that the user explicitly saved in the last 60s
-  if (existing?.savedAt && Date.now() - existing.savedAt < 60_000 && existing.layout !== resolved) {
-    return;
-  }
-
-  const nextSnap: ProfileLayoutSnapshot = {
-    uid: cleanUid,
-    layout: resolved,
-    known: true,
-    ready: true,
-    loading: false,
-    savedAt: existing?.savedAt,
-  };
-  layoutMemoryStore.set(cleanUid, nextSnap);
-  writeLayoutToLocalStorage(cleanUid, resolved, existing?.savedAt);
-  emitLayoutChange();
-}
-
-export async function refreshProfileLayoutForUid(uid: string): Promise<void> {
-  const cleanUid = (uid || '').trim();
-  if (!cleanUid) return;
-
-  const existing = inFlightLayoutFetch.get(cleanUid);
-  if (existing) return existing;
-
-  const promise = (async () => {
-    try {
-      const res = await fetch(`/api/auth/profile-layout?uid=${encodeURIComponent(cleanUid)}`, {
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        if (json?.ok && (json.profile_layout || json.layout)) {
-          seedProfileLayoutFromServer(cleanUid, json.profile_layout ?? json.layout);
-          return;
-        }
-      }
-    } catch {
-      // Ignore network error
-    }
-    const cur = layoutMemoryStore.get(cleanUid);
-    if (cur && !cur.known) {
-      layoutMemoryStore.set(cleanUid, {
-        ...cur,
-        known: true,
-        ready: true,
-        loading: false,
-      });
-      emitLayoutChange();
-    }
-  })().finally(() => {
-    inFlightLayoutFetch.delete(cleanUid);
-  });
-
-  inFlightLayoutFetch.set(cleanUid, promise);
-  return promise;
-}
-
 // ── Per-UID Plan & Notification Preferences Cache Helpers ───────────────────
 export function readCachedPlanLabelForUid(uid: string): string | null {
   if (!uid || typeof window === 'undefined' || !window.localStorage) return null;
@@ -641,11 +419,9 @@ export function preloadSecurityAndSettingsForUid(uid: string, isGuest = false): 
   const cleanUid = (uid || '').trim();
   if (!cleanUid) return;
   getSecuritySnapshotForUid(cleanUid, isGuest);
-  getProfileLayoutSnapshotForUid(cleanUid);
   if (!isGuest && !cleanUid.startsWith('guest_')) {
     void refreshSecurityStatusForUid(cleanUid);
   }
-  void refreshProfileLayoutForUid(cleanUid);
 }
 
 /**
@@ -655,10 +431,8 @@ export function preloadSecurityAndSettingsForUid(uid: string, isGuest = false): 
 export function clearSecurityStatusCache(uid?: string | null): void {
   if (uid) {
     securityMemoryStore.delete(uid);
-    layoutMemoryStore.delete(uid);
   } else {
     securityMemoryStore.clear();
-    layoutMemoryStore.clear();
   }
 
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -670,7 +444,6 @@ export function clearSecurityStatusCache(uid?: string | null): void {
         if (uid) {
           if (
             k === `${SECURITY_LS_PREFIX}${uid}` ||
-            k === `${LAYOUT_LS_PREFIX}${uid}` ||
             k === `${PLAN_LS_PREFIX}${uid}` ||
             k === `${NOTIF_LS_PREFIX}${uid}`
           ) {
@@ -678,7 +451,6 @@ export function clearSecurityStatusCache(uid?: string | null): void {
           }
         } else if (
           k.startsWith(SECURITY_LS_PREFIX) ||
-          k.startsWith(LAYOUT_LS_PREFIX) ||
           k.startsWith(PLAN_LS_PREFIX) ||
           k.startsWith(NOTIF_LS_PREFIX)
         ) {
@@ -692,7 +464,6 @@ export function clearSecurityStatusCache(uid?: string | null): void {
   }
 
   emitSecurityChange();
-  emitLayoutChange();
 }
 
 /**
@@ -739,60 +510,3 @@ export function useSecurityStatus(): UseSecurityStatusResult {
   };
 }
 
-/**
- * Shared React hook for reading and updating the signed-in user's profile layout.
- */
-export function useProfileLayoutStatus(): {
-  layout: ProfileLayoutId;
-  known: boolean;
-  ready: boolean;
-  loading: boolean;
-  setLayout: (next: ProfileLayoutId) => void;
-  refresh: () => Promise<void>;
-} {
-  const { user, profile } = useAuth();
-  const uid = (user?.uid || profile?.uid || '').trim();
-
-  const getSnapshot = useCallback(
-    () => getProfileLayoutSnapshotForUid(uid),
-    [uid]
-  );
-
-  const snapshot = useSyncExternalStore(
-    subscribeLayoutStore,
-    getSnapshot,
-    getSnapshot
-  );
-
-  useEffect(() => {
-    if (!uid) return;
-    if (profile?.profileLayout || profile?.profile_layout) {
-      seedProfileLayoutFromServer(uid, profile.profileLayout ?? profile.profile_layout, {
-        isPassiveSeed: true,
-      });
-    }
-    void refreshProfileLayoutForUid(uid);
-  }, [uid, profile?.profileLayout, profile?.profile_layout]);
-
-  const setLayout = useCallback(
-    (next: ProfileLayoutId) => {
-      if (!uid) return;
-      commitSavedProfileLayout(uid, next);
-    },
-    [uid]
-  );
-
-  const refresh = useCallback(async () => {
-    if (!uid) return;
-    await refreshProfileLayoutForUid(uid);
-  }, [uid]);
-
-  return {
-    layout: snapshot.layout,
-    known: snapshot.known,
-    ready: snapshot.known,
-    loading: snapshot.loading,
-    setLayout,
-    refresh,
-  };
-}

@@ -1739,18 +1739,17 @@ export async function handleAuthApiRequest(
       );
     }
 
-    // Check if the registered user has a canonical username & profile_layout in `user_usernames` and load 2FA status in parallel
+    // Check if the registered user has a canonical username in `user_usernames` and load 2FA status in parallel
     const [usernameRow, twoFactorStatus] = await Promise.all([
       db
         .prepare(
-          'SELECT username_lower, username_display, email, profile_layout, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
+          'SELECT username_lower, username_display, email, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
         )
         .bind(resolved.uid)
         .first<{
           username_lower: string;
           username_display: string;
           email?: string;
-          profile_layout?: string;
           custom_role?: string;
         }>()
         .catch(() => null),
@@ -1765,7 +1764,6 @@ export async function handleAuthApiRequest(
         .catch(() => {});
     }
 
-    const resolvedProfileLayout = normalizeAuthProfileLayout(usernameRow?.profile_layout);
     const enrichedTwoFactorStatus = twoFactorStatus
       ? {
           ...twoFactorStatus,
@@ -1789,8 +1787,6 @@ export async function handleAuthApiRequest(
       customRole: usernameRow?.custom_role || resolved.customRole,
       emailVerified: resolved.emailVerified,
       sessionVerified: resolved.sessionVerified,
-      profileLayout: resolvedProfileLayout,
-      profile_layout: resolvedProfileLayout,
       twoFactorStatus: enrichedTwoFactorStatus,
     };
 
@@ -1802,7 +1798,6 @@ export async function handleAuthApiRequest(
         hasRegisteredUsername: Boolean(usernameRow?.username_display),
         user: regPayload,
         twoFactorStatus: enrichedTwoFactorStatus,
-        profileLayout: resolvedProfileLayout,
         guest: null,
       },
       200
@@ -2895,9 +2890,6 @@ export async function handleAuthApiRequest(
       status?: string;
       accent?: string;
       email?: string;
-      profile_layout?: string;
-      profileLayout?: string;
-      layout?: string;
     } = {};
     try {
       body = (await request.json()) as typeof body;
@@ -2928,15 +2920,7 @@ export async function handleAuthApiRequest(
       return jsonResponse({ ok: false, error: 'Missing user uid.' }, 400);
     }
 
-    const rawLayoutInput = body.profile_layout ?? body.profileLayout ?? body.layout;
-    if (rawLayoutInput !== undefined && !isValidAuthProfileLayout(rawLayoutInput)) {
-      return jsonResponse(
-        { ok: false, error: 'Invalid profile layout.', code: 'INVALID_PROFILE_LAYOUT' },
-        400
-      );
-    }
-
-    // Strict whitelist: only display_name, avatar, frame, bio, status, accent, and profile_layout may be written by normal users.
+    // Strict whitelist: only display_name, avatar, frame, bio, status, and accent may be written by normal users.
     // Only an authenticated real superadmin can write role or custom_role.
     const displayName = String(body.displayName ?? body.nickname ?? body.name ?? '').trim();
     const hasAvatarProp =
@@ -2962,7 +2946,7 @@ export async function handleAuthApiRequest(
 
     const existingRow = await db
       .prepare(
-        'SELECT username_lower, username_display, uid, account_type, email, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1'
+        'SELECT username_lower, username_display, uid, account_type, email, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
       )
       .bind(targetUid)
       .first<{
@@ -2979,7 +2963,6 @@ export async function handleAuthApiRequest(
         bio?: string;
         status?: string;
         accent?: string;
-        profile_layout?: string;
       }>();
 
     let fallbackUsernameDisplay = existingRow?.username_display || '';
@@ -3037,16 +3020,12 @@ export async function handleAuthApiRequest(
     const nextBio = bio !== undefined ? bio : (existingRow?.bio ?? '');
     const nextStatus = statusText !== undefined ? statusText : (existingRow?.status ?? '');
     const nextAccent = accent !== undefined ? accent : (existingRow?.accent ?? '');
-    const nextProfileLayout =
-      rawLayoutInput !== undefined
-        ? normalizeAuthProfileLayout(rawLayoutInput)
-        : normalizeAuthProfileLayout(existingRow?.profile_layout);
 
     await db
       .prepare(
         `UPDATE user_usernames
-         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, profile_layout = ?9, updated_at = ?10
-         WHERE uid = ?11`
+         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
+         WHERE uid = ?10`
       )
       .bind(
         nextDisplayName,
@@ -3057,7 +3036,6 @@ export async function handleAuthApiRequest(
         nextBio,
         nextStatus,
         nextAccent,
-        nextProfileLayout,
         nowMs,
         targetUid
       )
@@ -3077,132 +3055,9 @@ export async function handleAuthApiRequest(
         bio: nextBio,
         status: nextStatus,
         accent: nextAccent,
-        profile_layout: nextProfileLayout,
-        profileLayout: nextProfileLayout,
         updatedAt: nowMs,
       },
     });
-  }
-
-  // ─── G1b2. POST/PUT/GET /api/auth/profile-layout (Save & Read Profile Layout by Session UID) ───
-  if (
-    subPath === 'profile-layout' &&
-    (request.method === 'POST' || request.method === 'PUT' || request.method === 'GET')
-  ) {
-    try {
-      const targetDb = opts.dbOverride || env?.DB || db;
-      if (!targetDb) {
-        return jsonResponse(
-          { ok: false, error: 'Database binding (env.DB) is not available.' },
-          500
-        );
-      }
-
-      const caller = await resolveCurrentUser({
-        request,
-        env,
-        db: targetDb,
-        tokenVerifierOverride: opts.tokenVerifierOverride,
-      }).catch((authErr) => {
-        console.error('[AuthWorker] profile-layout session check error:', authErr);
-        return null;
-      });
-
-      if (request.method === 'GET') {
-        const targetUid = String(url.searchParams.get('uid') || caller?.uid || '').trim();
-        if (!targetUid) {
-          return jsonResponse({ ok: false, error: 'Missing uid.', code: 'MISSING_UID' }, 400);
-        }
-        const row = await targetDb
-          .prepare('SELECT profile_layout FROM user_usernames WHERE uid = ? LIMIT 1')
-          .bind(targetUid)
-          .first<{ profile_layout?: string }>()
-          .catch(() => null);
-        const resolvedLayout = normalizeAuthProfileLayout(row?.profile_layout);
-        return jsonResponse({
-          ok: true,
-          uid: targetUid,
-          layout: resolvedLayout,
-          profile_layout: resolvedLayout,
-          profileLayout: resolvedLayout,
-        });
-      }
-
-      const sessionUid =
-        caller && typeof caller.uid === 'string' && caller.uid.trim().length > 0
-          ? caller.uid.trim()
-          : null;
-
-      if (!sessionUid) {
-        return jsonResponse(
-          { ok: false, error: 'Authentication required. Please sign in again.', code: 'UNAUTHENTICATED' },
-          401
-        );
-      }
-
-      let body: {
-        layout?: unknown;
-        profile_layout?: unknown;
-        profileLayout?: unknown;
-      } = {};
-      try {
-        body = (await request.json()) as typeof body;
-      } catch (parseErr) {
-        console.error('[AuthWorker] profile-layout invalid JSON:', parseErr);
-        return jsonResponse({ ok: false, error: 'Invalid JSON body.', code: 'INVALID_JSON' }, 400);
-      }
-
-      const rawLayout = body?.layout ?? body?.profile_layout ?? body?.profileLayout;
-      const candidateLayout = typeof rawLayout === 'string' ? rawLayout.trim() : '';
-      const ALLOWED_LAYOUTS = [
-        'game-card',
-        'clean-social',
-        'dark-passport',
-        'centered-hero',
-        'full-cover',
-        'trading-card',
-        'retro-pixel',
-        'glass',
-        'id-badge',
-        'loadout-showcase',
-      ];
-
-      if (!candidateLayout || !ALLOWED_LAYOUTS.includes(candidateLayout)) {
-        return jsonResponse(
-          {
-            ok: false,
-            error: `Invalid layout id "${candidateLayout || String(rawLayout ?? '')}". Must be one of: ${ALLOWED_LAYOUTS.join(', ')}.`,
-            code: 'INVALID_PROFILE_LAYOUT',
-          },
-          400
-        );
-      }
-
-      const updatedAt = Math.floor(Date.now());
-
-      await targetDb
-        .prepare('UPDATE user_usernames SET profile_layout = ?, updated_at = ? WHERE uid = ?')
-        .bind(candidateLayout, updatedAt, sessionUid)
-        .run();
-
-      return jsonResponse({
-        ok: true,
-        layout: candidateLayout,
-        profile_layout: candidateLayout,
-        profileLayout: candidateLayout,
-        uid: sessionUid,
-        updatedAt,
-      });
-    } catch (err: any) {
-      console.error('[AuthWorker] /api/auth/profile-layout error:', err);
-      const errMsg =
-        err instanceof Error && err.message
-          ? err.message
-          : typeof err === 'string' && err
-          ? err
-          : 'Internal server error while saving profile layout.';
-      return jsonResponse({ ok: false, error: errMsg }, 500);
-    }
   }
 
   // ─── G1c. GET /api/auth/resolve-profiles (Batched Live Author & 14-Day Hold Username Lookup) ───
@@ -3215,14 +3070,13 @@ export async function handleAuthApiRequest(
       // 1. Check active user_usernames
       const activeRow = await db
         .prepare(
-          'SELECT username_lower, username_display, uid, account_type, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout, updated_at FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
+          'SELECT username_lower, username_display, uid, account_type, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at FROM user_usernames WHERE username_lower = ?1 LIMIT 1'
         )
         .bind(queryUsername)
         .first<any>();
 
       if (activeRow && activeRow.uid) {
         const badgeMap = await resolveProBadgesBatch([activeRow.uid], db, env, nowMs);
-        const resolvedLayout = normalizeAuthProfileLayout(activeRow.profile_layout);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3240,8 +3094,6 @@ export async function handleAuthApiRequest(
             bio: activeRow.bio || '',
             status: activeRow.status || '',
             accent: activeRow.accent || '',
-            profile_layout: resolvedLayout,
-            profileLayout: resolvedLayout,
             proBadge: badgeMap.get(String(activeRow.uid)) ?? null,
           },
         });
@@ -3267,8 +3119,6 @@ export async function handleAuthApiRequest(
             frame: null,
             role: guestRow.role || 'student',
             customRole: null,
-            profile_layout: 'game-card',
-            profileLayout: 'game-card',
             proBadge: null,
           },
         });
@@ -3285,14 +3135,13 @@ export async function handleAuthApiRequest(
       if (historyRow && historyRow.uid) {
         const currentRow = await db
           .prepare(
-            'SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout FROM user_usernames WHERE uid = ?1 LIMIT 1'
+            'SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames WHERE uid = ?1 LIMIT 1'
           )
           .bind(historyRow.uid)
           .first<any>();
 
         const badgeMap = await resolveProBadgesBatch([historyRow.uid], db, env, nowMs);
         const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
-        const resolvedLayout = normalizeAuthProfileLayout(currentRow?.profile_layout);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3312,8 +3161,6 @@ export async function handleAuthApiRequest(
                 bio: currentRow.bio || '',
                 status: currentRow.status || '',
                 accent: currentRow.accent || '',
-                profile_layout: resolvedLayout,
-                profileLayout: resolvedLayout,
                 proBadge: badgeMap.get(String(historyRow.uid)) ?? null,
               }
             : null,
@@ -3340,7 +3187,7 @@ export async function handleAuthApiRequest(
     const [unameRes, guestRes, roleRes, proBadgesMap] = await Promise.all([
       db
         .prepare(
-          `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, profile_layout, updated_at
+          `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at
            FROM user_usernames WHERE uid IN (${placeholders})`
         )
         .bind(...uids)
@@ -3382,8 +3229,6 @@ export async function handleAuthApiRequest(
         frame: null,
         role: rInfo?.role || g.role || 'student',
         customRole: rInfo?.custom_role ?? null,
-        profile_layout: 'game-card',
-        profileLayout: 'game-card',
         proBadge: null,
       };
     }
@@ -3402,7 +3247,6 @@ export async function handleAuthApiRequest(
         ? 'superadmin'
         : rInfo?.role || u.role || 'student';
       const uname = u.username_display || u.username || u.username_lower || '';
-      const resolvedLayout = normalizeAuthProfileLayout(u.profile_layout);
       profiles[uidStr] = {
         uid: uidStr,
         username: uname,
@@ -3414,8 +3258,6 @@ export async function handleAuthApiRequest(
         bio: u.bio || '',
         status: u.status || '',
         accent: u.accent || '',
-        profile_layout: resolvedLayout,
-        profileLayout: resolvedLayout,
         proBadge: proBadgesMap.get(uidStr) ?? null,
       };
     }

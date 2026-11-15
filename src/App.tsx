@@ -158,6 +158,9 @@ const SettingsPage = lazyWithRetry(() =>
 const ProfilePage = lazyWithRetry(() =>
   import('./pages/dashboard/ProfilePage').then(m => ({ default: m.ProfilePage }))
 );
+const LockerPage = lazyWithRetry(() =>
+  import('./pages/LockerPage').then(m => ({ default: m.LockerPage }))
+);
 const ResultsListPage = lazyWithRetry(() =>
   import('./pages/dashboard/ResultsListPage').then(m => ({ default: m.ResultsListPage }))
 );
@@ -371,6 +374,7 @@ function AppInner() {
           <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="messages" element={<MessagesPage />} />
+          <Route path="messages/:conversationId" element={<MessagesPage />} />
           <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
@@ -379,6 +383,7 @@ function AppInner() {
           <Route path="results/:attemptId" element={<TestResultPage />} />
           <Route path="certificates" element={<MyCertificatesPage />} />
           <Route path="store" element={<StorePage />} />
+          <Route path="locker" element={<LockerPage />} />
           <Route path="rewards" element={<Navigate to="/rewards" replace />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
@@ -404,6 +409,9 @@ function AppInner() {
           />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
+          <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
+          <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/:subPage" element={<SettingsPage />} />
           <Route path="menu" element={<OverviewPage />} />
@@ -426,6 +434,10 @@ function AppInner() {
         </Route>
         <Route path="/messages" element={<DashboardShell />}>
           <Route index element={<MessagesPage />} />
+          <Route path=":conversationId" element={<MessagesPage />} />
+        </Route>
+        <Route path="/locker" element={<DashboardShell />}>
+          <Route index element={<LockerPage />} />
         </Route>
         <Route path="/notifications" element={<DashboardShell />}>
           <Route index element={<NotificationsPage />} />
@@ -433,6 +445,10 @@ function AppInner() {
         <Route path="/saved" element={<DashboardShell />}>
           <Route index element={<CommonsFeedPage />} />
         </Route>
+        <Route path="/settings/profile-layout" element={<Navigate to="/profile" replace />} />
+        <Route path="/settings/layout" element={<Navigate to="/profile" replace />} />
+        <Route path="/profile/layout" element={<Navigate to="/profile" replace />} />
+        <Route path="/profile-layout" element={<Navigate to="/profile" replace />} />
         <Route path="/settings" element={<DashboardShell />}>
           <Route index element={<SettingsPage />} />
           <Route path=":subPage" element={<SettingsPage />} />

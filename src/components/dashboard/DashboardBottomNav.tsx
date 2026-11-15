@@ -137,13 +137,16 @@ function DashboardBottomNavComponent() {
       }
       if (
         document.body.getAttribute('data-fullscreen-modal-open') === 'true' ||
-        document.body.getAttribute('data-pro-checkout-open') === 'true'
+        document.body.getAttribute('data-pro-checkout-open') === 'true' ||
+        document.body.getAttribute('data-modal-open') === 'true' ||
+        document.body.getAttribute('data-chat-open') === 'true' ||
+        document.body.classList.contains('modal-open')
       ) {
         setIsExternalModalOpen((prev) => (prev ? prev : true));
         return;
       }
       const overlays = document.querySelectorAll<HTMLElement>(
-        '[data-fullscreen-modal="true"], [role="dialog"], [aria-modal="true"]'
+        '[data-fullscreen-modal="true"], [data-modal-layer="true"], [role="dialog"], [aria-modal="true"]'
       );
       const hasActiveModal = Array.from(overlays).some((el) => {
         if (
@@ -173,9 +176,12 @@ function DashboardBottomNavComponent() {
         'data-fullscreen-modal-open',
         'data-pro-checkout-open',
         'data-hamburger-sheet-open',
+        'data-modal-open',
+        'data-chat-open',
+        'class',
       ],
       childList: true,
-      subtree: false,
+      subtree: true,
     });
 
     window.addEventListener('boardly:modal-change', scheduleModalCheck);
@@ -186,7 +192,7 @@ function DashboardBottomNavComponent() {
       observer.disconnect();
       window.removeEventListener('boardly:modal-change', scheduleModalCheck);
     };
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   const isSettingsScreen =
     location.pathname === '/settings' ||
@@ -194,8 +200,18 @@ function DashboardBottomNavComponent() {
     location.pathname === '/dashboard/settings' ||
     location.pathname.startsWith('/dashboard/settings/');
 
+  const searchParams = new URLSearchParams(location.search);
+  const isInsideChatScreen =
+    /^\/(dashboard\/)?messages\/[^/]+/.test(location.pathname) ||
+    ((location.pathname === '/dashboard/messages' || location.pathname === '/messages') &&
+      Boolean(searchParams.get('uid') || searchParams.get('conversationId')));
+
   const shouldHideBottomNav =
-    isSettingsScreen || isProfileModalOpen || isExternalModalOpen || isMenuOpen;
+    isSettingsScreen ||
+    isInsideChatScreen ||
+    isProfileModalOpen ||
+    isExternalModalOpen ||
+    isMenuOpen;
 
   // Keep authenticated users inside /dashboard/* routes so DashboardShell stays mounted and KeepAlive tabs swap in 0ms
   const crewLink = isAuthenticated ? '/dashboard/crew' : '/crew';

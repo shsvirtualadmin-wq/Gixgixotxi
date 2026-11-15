@@ -1,6 +1,13 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, initializeFirestore, memoryLocalCache, setLogLevel } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  memoryLocalCache,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  setLogLevel,
+} from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import {
   TARGET_PROJECT_ID,
@@ -36,26 +43,38 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 export const auth = getAuth(app);
 export const functions = getFunctions(app);
 
-// Initialize Firestore with the unified database:
-// Uses experimentalForceLongPolling: true to avoid 10s WebChannel stalls in restricted proxy/iframe environments
-// Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
-// Uses ignoreUndefinedProperties: true to prevent invalid data errors on optional fields
+// Initialize Firestore with persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+// so recent chats, messages, and profiles render immediately from local IndexedDB cache (<100ms).
 export const db = (() => {
   try {
     return initializeFirestore(
       app,
       {
         experimentalForceLongPolling: true,
-        localCache: memoryLocalCache(),
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager(),
+        }),
         ignoreUndefinedProperties: true,
       } as unknown as Parameters<typeof initializeFirestore>[1],
       TARGET_DATABASE_ID
     );
-  } catch (err) {
-    console.warn('[Firebase] initializeFirestore failed, falling back to getFirestore:', err);
-    return TARGET_DATABASE_ID === '(default)'
-      ? getFirestore(app)
-      : getFirestore(app, TARGET_DATABASE_ID);
+  } catch {
+    try {
+      return initializeFirestore(
+        app,
+        {
+          experimentalForceLongPolling: true,
+          localCache: memoryLocalCache(),
+          ignoreUndefinedProperties: true,
+        } as unknown as Parameters<typeof initializeFirestore>[1],
+        TARGET_DATABASE_ID
+      );
+    } catch (err) {
+      console.warn('[Firebase] initializeFirestore failed, falling back to getFirestore:', err);
+      return TARGET_DATABASE_ID === '(default)'
+        ? getFirestore(app)
+        : getFirestore(app, TARGET_DATABASE_ID);
+    }
   }
 })();
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Send,
   Check,
+  CheckCheck,
   X,
   ArrowLeft,
   Clock,
@@ -13,6 +14,10 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
+  MoreHorizontal,
+  Paperclip,
+  ChevronDown,
+  Loader2,
 } from 'lucide-react';
 import { showApiToast } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,7 +25,6 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useChatUserProfiles, type ChatUserSeed } from '@/hooks/useChatUserProfiles';
 import { useUnreadMessagesState } from '@/hooks/useUnreadMessagesCount';
 import {
@@ -32,9 +36,17 @@ import {
   subscribeUserConversations,
   getCachedUserConversations,
   getCachedIncomingChatRequests,
+  getCachedConversationMessages,
+  seedConversationMessagesCache,
+  getCachedChatPermission,
+  seedChatPermissionCache,
+  getConversationId,
   getOrCreateConversation,
+  clearConversationUnreadCount,
   sendMessage,
   subscribeMessages,
+  loadOlderMessages,
+  CHAT_MESSAGES_PAGE_SIZE,
   type ChatRequest,
   type Conversation,
   type DirectMessage,
@@ -44,10 +56,18 @@ import {
 export interface TargetChatUser {
   uid: string;
   displayName: string;
+  username?: string | null;
   avatar?: string | null;
+  equippedAvatar?: string | null;
   frame?: string | null;
+  equippedFrame?: string | null;
   role?: string;
+  customRole?: string | null;
   photoURL?: string | null;
+  proBadge?: any;
+  lastMessageText?: string;
+  lastMessageSenderId?: string;
+  lastMessageAtMs?: number;
 }
 
 export interface DirectMessageModalProps {
@@ -55,6 +75,8 @@ export interface DirectMessageModalProps {
   onClose: () => void;
   /** Optional target user if opened from a profile's Message button */
   targetUser?: TargetChatUser | null;
+  /** Alias for targetUser used by ProfileView */
+  partner?: TargetChatUser | null;
   /** Initial tab when opened ('chat' | 'requests') */
   initialTab?: 'chat' | 'requests';
   /** Callback when request status changes so parent ProfileView can refresh button state */
@@ -72,11 +94,11 @@ export function formatRelativeTime(ms?: number, ts?: any): string {
   const diffSec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
   if (diffSec < 45) return 'Just now';
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 60) return `${diffMin}m`;
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) return `${diffHr}h`;
   const diffDays = Math.floor(diffHr / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays < 7) return `${diffDays}d`;
   return new Date(timestamp).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -103,22 +125,28 @@ export function formatDateDividerLabel(ms?: number, ts?: any): string {
     else if (typeof ts?.toMillis === 'function') timestamp = ts.toMillis();
     else if (typeof ts?.seconds === 'number') timestamp = ts.seconds * 1000;
   }
-  if (!timestamp) return 'Today';
+  if (!timestamp) return 'TODAY';
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return 'Today';
+  if (Number.isNaN(date.getTime())) return 'TODAY';
 
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
 
-  if (timestamp >= startOfToday) return 'Today';
-  if (timestamp >= startOfYesterday) return 'Yesterday';
+  if (timestamp >= startOfToday) return 'TODAY';
+  if (timestamp >= startOfYesterday) return 'YESTERDAY';
 
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
-  });
+  return date
+    .toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+    })
+    .toUpperCase();
 }
 
 export function formatRoleChipLabel(
@@ -129,7 +157,8 @@ export function formatRoleChipLabel(
   if (isSuperAdmin) return 'Admin';
   if (!role) return 'Student';
   const lower = role.trim().toLowerCase();
-  if (lower === 'superadmin' || lower === 'super admin' || lower === 'admin') return 'Admin';
+  if (lower === 'superadmin' || lower === 'super admin' || lower === 'admin')
+    return 'Admin';
   if (lower === 'captain' || lower === 'ambassador') return 'Captain';
   if (lower === 'bot') return 'Bot';
   if (lower === 'teacher') return 'Teacher';
@@ -145,9 +174,6 @@ function formatFirestoreError(collectionName: string, err: any): string {
   return `Firestore error on "${collectionName}" (${code}): ${msg}`;
 }
 
-/**
- * Subscribes to outgoing (sent) pending chat requests for the current user.
- */
 export function useOutgoingChatRequests(
   uid?: string | null,
   retryNonce = 0,
@@ -187,14 +213,17 @@ export interface FullScreenConversationViewProps {
 }
 
 /**
- * Full-screen Conversation Screen (Section 4 of design specification):
- * - Slides up with a short spring animation; hides bottom dock while open.
- * - Floating glass header: round back button, 40px avatar, name with role chip,
- *   and existing status line ("Request accepted · Direct chat" / "Mutual Follow · Direct chat") with green dot.
- * - "Today" style date divider (muted pill), left card-colored bubbles with thin border,
- *   right red bubbles with white text (20px radius, 6px squared corner nearest sender, max-width 78%, time inside).
- * - Fixed bottom message bar with safe-area padding, pill input with 2px red focus ring,
- *   and 46px round red glass send button disabled when empty.
+ * Full-screen iOS Messages + Glassmorphism + Nothing OS Conversation Screen:
+ * - Zero waterfall: Deterministic convId is computed at 0ms; cached messages + header render in <100ms;
+ *   Firestore message listener and permission check run in parallel.
+ * - Floating glass header (56px pill): back button, avatar with frame, name + gold PRO pill + Student chip
+ *   on one line, status line "Direct chat" with green dot below, more button on the right. No overflow at 360px.
+ * - Sent bubbles solid red right-aligned, received bubbles glass left-aligned, radius 22 (6 on tail side),
+ *   max width 78%, 15px/21px text, timestamps (11px) and delivered/read ticks under the last message of a group,
+ *   dotted date separators ("TODAY" in Doto).
+ * - Sticky glass pill composer above safe area following visualViewport: attach button, growing text field
+ *   (max 5 lines), red circular send button that appears when there is text.
+ * - Optimistic sending with clock -> delivered/read ticks -> red retry badge on failure.
  */
 export const FullScreenConversationView: React.FC<FullScreenConversationViewProps> = ({
   partner,
@@ -204,6 +233,12 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   respondingId,
   onRespondRequest,
 }) => {
+  const openPerfStartRef = useRef<number>(
+    typeof performance !== 'undefined' ? performance.now() : Date.now()
+  );
+  const loggedCachedPaintRef = useRef(false);
+  const loggedFreshSnapshotRef = useRef(false);
+
   const { user: authUser, profile: authProfile, isAdmin } = useAuth();
   const { profile: ownProfile } = useUserProfile();
   const { equipped: ownEquipped } = useWallet();
@@ -211,21 +246,86 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
 
   const currentUid = authUser?.uid || null;
 
-  const [activePermission, setActivePermission] = useState<ChatPermissionState | null>(null);
-  const [checkingPermission, setCheckingPermission] = useState(false);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  // Deterministic conversationId computed at 0ms (never awaits network)
+  const deterministicConvId = useMemo(() => {
+    if (!currentUid || !partner.uid || partner.uid === currentUid) return null;
+    return getConversationId(currentUid, partner.uid);
+  }, [currentUid, partner.uid]);
+
+  // Seed initial messages synchronously from memory/SWR cache or partner preview (< 10ms)
+  const initialCachedMessages = useMemo<DirectMessage[]>(() => {
+    if (!deterministicConvId) return [];
+    const cached = getCachedConversationMessages(deterministicConvId);
+    if (cached && cached.length > 0) return cached;
+    if (partner.lastMessageText) {
+      return [
+        {
+          id: `seed_${deterministicConvId}`,
+          conversationId: deterministicConvId,
+          senderId: partner.lastMessageSenderId || partner.uid,
+          senderName: partner.displayName || 'Student',
+          text: partner.lastMessageText,
+          createdAt: partner.lastMessageAtMs || Date.now(),
+          createdAtMs: partner.lastMessageAtMs || Date.now(),
+          deliveryStatus: 'read',
+        },
+      ];
+    }
+    return [];
+  }, [deterministicConvId, partner]);
+
+  const [messages, setMessages] = useState<DirectMessage[]>(initialCachedMessages);
+  const [optimisticMessages, setOptimisticMessages] = useState<DirectMessage[]>([]);
+  const [hasFirstSnapshot, setHasFirstSnapshot] = useState<boolean>(
+    initialCachedMessages.length > 0
+  );
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+
+  const [activePermission, setActivePermission] = useState<ChatPermissionState | null>(
+    () => getCachedChatPermission(currentUid, partner.uid)
+  );
   const [messagesError, setMessagesError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const [requestNote, setRequestNote] = useState('');
   const [sendingRequest, setSendingRequest] = useState(false);
   const [requestFeedback, setRequestFeedback] = useState<string | null>(null);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [keyboardOffsetBottom, setKeyboardOffsetBottom] = useState(0);
 
   const messagesAreaRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileAttachInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Log time to header + cached messages on first paint (< 100ms target)
+  useEffect(() => {
+    if (loggedCachedPaintRef.current) return;
+    loggedCachedPaintRef.current = true;
+    const elapsed = Math.round(
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+        openPerfStartRef.current
+    );
+    console.info(
+      `[Boardly Chat Perf] Header + cached messages rendered in ${elapsed}ms (target < 100ms)`
+    );
+  }, []);
+
+  // Hide the bottom nav while inside an active chat
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.setAttribute('data-chat-open', 'true');
+    document.body.setAttribute('data-fullscreen-modal-open', 'true');
+    window.dispatchEvent(new Event('boardly:modal-change'));
+    return () => {
+      document.body.removeAttribute('data-chat-open');
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    };
+  }, []);
 
   const mySenderProfile = useMemo(() => {
     const op = (ownProfile || authProfile) as any;
@@ -241,20 +341,19 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
       (op?.equipped?.frame as string) ||
       op?.frame ||
       null;
-    const photoURL = null;
     const role = isAdmin ? 'admin' : op?.role || 'student';
-    return { displayName, avatar, frame, role, photoURL };
+    return { displayName, avatar, frame, role, photoURL: null };
   }, [ownProfile, authProfile, ownEquipped, authUser, isAdmin]);
 
-  // Enrich partner profile picture from publicProfileService
+  // Enrich partner profile in background without blocking header or messages
   const partnerSeeds = useMemo<ChatUserSeed[]>(
     () => [
       {
         uid: partner.uid,
         displayName: partner.displayName,
-        avatar: partner.avatar,
+        avatar: partner.equippedAvatar || partner.avatar,
         photoURL: partner.photoURL,
-        frame: partner.frame,
+        frame: partner.equippedFrame || partner.frame,
         role: partner.role,
       },
     ],
@@ -263,28 +362,21 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   const resolvedProfiles = useChatUserProfiles(partnerSeeds);
   const resolvedPartner = resolvedProfiles[partner.uid];
 
-  const partnerName = resolvedPartner?.displayName || partner.displayName || 'Student';
+  const partnerName =
+    resolvedPartner?.displayName || partner.displayName || 'Student';
+  const partnerAvatar =
+    resolvedPartner?.equippedAvatar ||
+    partner.equippedAvatar ||
+    partner.avatar ||
+    'avatar-1';
+  const partnerFrame =
+    resolvedPartner?.frame || partner.equippedFrame || partner.frame || null;
   const partnerRoleLabel = formatRoleChipLabel(
     resolvedPartner?.role || partner.role,
-    resolvedPartner?.customRole,
+    resolvedPartner?.customRole || partner.customRole,
     resolvedPartner?.isSuperAdmin
   );
-  const isPartnerAdmin = Boolean(
-    resolvedPartner?.isSuperAdmin ||
-      (resolvedPartner?.role || partner.role || '').toLowerCase() === 'admin' ||
-      (resolvedPartner?.role || partner.role || '').toLowerCase() === 'superadmin'
-  );
-
-  // Hide the bottom dock while full-screen conversation is open
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    document.body.setAttribute('data-fullscreen-modal-open', 'true');
-    window.dispatchEvent(new Event('boardly:modal-change'));
-    return () => {
-      document.body.removeAttribute('data-fullscreen-modal-open');
-      window.dispatchEvent(new Event('boardly:modal-change'));
-    };
-  }, []);
+  const partnerProBadge = resolvedPartner?.proBadge || partner.proBadge || null;
 
   const scrollToNewest = useCallback((behavior: ScrollBehavior = 'smooth') => {
     requestAnimationFrame(() => {
@@ -293,63 +385,104 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
       } else if (messagesAreaRef.current) {
         messagesAreaRef.current.scrollTop = messagesAreaRef.current.scrollHeight;
       }
+      setShowJumpToLatest(false);
     });
   }, []);
 
-  // Keep message list scrolled when mobile keyboard resizes visualViewport
+  // Follow mobile keyboard via visualViewport
   useEffect(() => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
     const vv = window.visualViewport;
-    const handleViewportResize = () => {
-      scrollToNewest('auto');
+    const handleViewportChange = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKeyboardOffsetBottom(offset);
     };
-    vv.addEventListener('resize', handleViewportResize);
-    return () => vv.removeEventListener('resize', handleViewportResize);
-  }, [scrollToNewest]);
+    vv.addEventListener('resize', handleViewportChange);
+    vv.addEventListener('scroll', handleViewportChange);
+    return () => {
+      vv.removeEventListener('resize', handleViewportChange);
+      vv.removeEventListener('scroll', handleViewportChange);
+    };
+  }, []);
 
-  // Check chat permission & initialize conversation
+  // 1. PARALLEL STREAM A: Start messages listener immediately using deterministicConvId (0ms waterfall!)
   useEffect(() => {
-    if (!currentUid || !partner.uid || partner.uid === currentUid) {
-      setActivePermission(null);
-      setActiveConversationId(null);
-      setMessages([]);
-      return;
-    }
+    if (!deterministicConvId) return;
+    setMessagesError(null);
 
+    const unsub = subscribeMessages(
+      deterministicConvId,
+      (liveMsgs) => {
+        if (!loggedFreshSnapshotRef.current) {
+          loggedFreshSnapshotRef.current = true;
+          const elapsed = Math.round(
+            (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
+              openPerfStartRef.current
+          );
+          console.info(
+            `[Boardly Chat Perf] Fresh Firestore messages snapshot in ${elapsed}ms (target < 500ms)`
+          );
+        }
+        setHasFirstSnapshot(true);
+        setMessagesError(null);
+        setMessages(liveMsgs);
+        // Remove any optimistic message whose text matches a newly arrived live message
+        setOptimisticMessages((prev) =>
+          prev.filter(
+            (opt) =>
+              opt.deliveryStatus === 'failed' ||
+              !liveMsgs.some(
+                (m) =>
+                  m.senderId === opt.senderId &&
+                  m.text === opt.text &&
+                  Math.abs((m.createdAtMs || 0) - (opt.createdAtMs || 0)) < 15000
+              )
+          )
+        );
+      },
+      (err) => {
+        setHasFirstSnapshot(true);
+        // If permission denied because conversation isn't created yet, don't show scary error
+        const code = String(err?.code || '').toLowerCase();
+        if (!code.includes('permission-denied')) {
+          setMessagesError(
+            formatFirestoreError(`conversations/${deterministicConvId}/messages`, err)
+          );
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+    };
+  }, [deterministicConvId]);
+
+  // 2. PARALLEL STREAM B: Check permission & ensure conversation doc in background
+  useEffect(() => {
+    if (!currentUid || !partner.uid || partner.uid === currentUid) return;
     let isMounted = true;
-    setCheckingPermission(true);
-    setSendError(null);
-    setRequestFeedback(null);
 
     checkChatPermission(currentUid, partner.uid)
-      .then(async (perm) => {
+      .then((perm) => {
         if (!isMounted) return;
+        seedChatPermissionCache(currentUid, partner.uid, perm);
         setActivePermission(perm);
-        if (perm.canChat) {
-          const convId = await getOrCreateConversation(currentUid, partner.uid, {
+
+        if (perm.canChat && deterministicConvId) {
+          // Ensure conversation doc exists in background without blocking UI
+          void getOrCreateConversation(currentUid, partner.uid, {
             [currentUid]: mySenderProfile,
             [partner.uid]: {
               displayName: partnerName,
-              avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
-              frame: resolvedPartner?.frame || partner.frame || null,
+              avatar: partnerAvatar,
+              frame: partnerFrame,
               role: resolvedPartner?.role || partner.role || 'student',
               photoURL: null,
             },
-          });
-          if (isMounted) {
-            setActiveConversationId(convId);
-            void markConversationNotificationsRead(partner.uid, convId);
-          }
-        } else {
-          setActiveConversationId(null);
+          }).catch(() => {});
         }
       })
-      .catch((err) => {
-        console.warn('[ConversationView] checkChatPermission error:', err);
-      })
-      .finally(() => {
-        if (isMounted) setCheckingPermission(false);
-      });
+      .catch(() => {});
 
     return () => {
       isMounted = false;
@@ -357,78 +490,178 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   }, [
     currentUid,
     partner.uid,
-    partnerName,
-    partner.avatar,
-    partner.frame,
-    partner.role,
-    resolvedPartner?.equippedAvatar,
-    resolvedPartner?.avatar,
-    resolvedPartner?.frame,
-    resolvedPartner?.role,
+    deterministicConvId,
     mySenderProfile,
+    partner.role,
+    partnerAvatar,
+    partnerFrame,
+    partnerName,
+    resolvedPartner?.role,
+  ]);
+
+  // 3. Fire-and-forget read receipts AFTER first paint (never awaited before showing messages)
+  useEffect(() => {
+    if (!currentUid || !partner.uid || !deterministicConvId) return;
+    const rafId = requestAnimationFrame(() => {
+      const timerId = window.setTimeout(() => {
+        void markConversationNotificationsRead(partner.uid, deterministicConvId);
+        void clearConversationUnreadCount(deterministicConvId, currentUid);
+      }, 120);
+      return () => clearTimeout(timerId);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [
+    currentUid,
+    partner.uid,
+    deterministicConvId,
+    messages.length,
     markConversationNotificationsRead,
   ]);
 
-  // Subscribe to messages for activeConversationId
+  // Auto-scroll on initial open
   useEffect(() => {
-    if (!activeConversationId) {
-      setMessages([]);
-      setMessagesError(null);
-      return;
-    }
-    setMessagesError(null);
-    return subscribeMessages(
-      activeConversationId,
-      (msgs) => {
-        setMessagesError(null);
-        setMessages(msgs);
-        void markConversationNotificationsRead(partner.uid, activeConversationId);
-        setTimeout(() => {
-          scrollToNewest('smooth');
-        }, 40);
-      },
-      (err) => {
-        const formatted = formatFirestoreError(
-          `conversations/${activeConversationId}/messages`,
-          err
-        );
-        setMessagesError(formatted);
-        showApiToast(formatted, 'error');
-      }
-    );
-  }, [activeConversationId, partner.uid, markConversationNotificationsRead, scrollToNewest]);
-
-  // Scroll to newest on initial open
-  useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && !showJumpToLatest) {
       scrollToNewest('auto');
     }
-  }, [messages.length, scrollToNewest]);
+  }, [deterministicConvId, messages.length, scrollToNewest, showJumpToLatest]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!currentUid || !partner.uid || !activeConversationId || !draft.trim() || sending) return;
+  // Handle scroll for "Jump to latest" button & scroll-up pagination for older messages
+  const handleMessagesScroll = useCallback(async () => {
+    const el = messagesAreaRef.current;
+    if (!el || !deterministicConvId) return;
 
-    const textToSend = draft.trim();
-    setDraft('');
-    setSending(true);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJumpToLatest(distanceFromBottom > 220);
+
+    // Load older 30 messages when scrolled near top
+    if (
+      el.scrollTop < 80 &&
+      !loadingOlder &&
+      hasMoreOlder &&
+      messages.length >= CHAT_MESSAGES_PAGE_SIZE
+    ) {
+      const oldestMsg = messages[0];
+      const oldestMs = oldestMsg?.createdAtMs || 0;
+      if (!oldestMs) return;
+
+      setLoadingOlder(true);
+      const prevHeight = el.scrollHeight;
+      try {
+        const olderBatch = await loadOlderMessages(
+          deterministicConvId,
+          oldestMs,
+          CHAT_MESSAGES_PAGE_SIZE
+        );
+        if (olderBatch.length < CHAT_MESSAGES_PAGE_SIZE) {
+          setHasMoreOlder(false);
+        }
+        if (olderBatch.length > 0) {
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const uniqueOlder = olderBatch.filter((m) => !existingIds.has(m.id));
+            const merged = [...uniqueOlder, ...prev];
+            seedConversationMessagesCache(deterministicConvId, merged);
+            return merged;
+          });
+          requestAnimationFrame(() => {
+            if (messagesAreaRef.current) {
+              messagesAreaRef.current.scrollTop =
+                messagesAreaRef.current.scrollHeight - prevHeight;
+            }
+          });
+        }
+      } finally {
+        setLoadingOlder(false);
+      }
+    }
+  }, [deterministicConvId, loadingOlder, hasMoreOlder, messages]);
+
+  // Growing textarea (max 5 lines)
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxHeight = 5 * 22; // 5 lines max
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+  }, []);
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [draft, adjustTextareaHeight]);
+
+  // Optimistic message send (appears at 0ms with clock, then ticks, or red retry badge on failure)
+  const executeSendMessage = async (textToSend: string, retryTempId?: string) => {
+    if (!currentUid || !partner.uid || !deterministicConvId || !textToSend.trim())
+      return;
+
+    const cleanText = textToSend.trim();
+    const nowMs = Date.now();
+    const tempId = retryTempId || `opt_${nowMs}_${Math.random().toString(36).slice(2, 7)}`;
+
+    const optimisticItem: DirectMessage = {
+      id: tempId,
+      conversationId: deterministicConvId,
+      senderId: currentUid,
+      recipientId: partner.uid,
+      senderName: mySenderProfile.displayName,
+      senderAvatar: mySenderProfile.avatar,
+      senderFrame: mySenderProfile.frame,
+      text: cleanText,
+      createdAt: nowMs,
+      createdAtMs: nowMs,
+      deliveryStatus: 'sending',
+    };
+
+    setOptimisticMessages((prev) => {
+      const withoutOld = prev.filter((m) => m.id !== tempId);
+      return [...withoutOld, optimisticItem];
+    });
     setSendError(null);
+    scrollToNewest('smooth');
 
     try {
       await sendMessage(
-        activeConversationId,
+        deterministicConvId,
         currentUid,
         partner.uid,
-        textToSend,
+        cleanText,
         mySenderProfile
       );
-      scrollToNewest('smooth');
+      setOptimisticMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...m, deliveryStatus: 'delivered' } : m
+        )
+      );
     } catch (err: any) {
-      setDraft(textToSend);
-      setSendError(err?.message || 'Could not send message. Please try again.');
-    } finally {
-      setSending(false);
+      setOptimisticMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId ? { ...m, deliveryStatus: 'failed' } : m
+        )
+      );
+      setSendError(err?.message || 'Message failed to send. Tap retry on the bubble.');
     }
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!draft.trim()) return;
+    const textToSend = draft;
+    setDraft('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+    await executeSendMessage(textToSend);
+  };
+
+  const handleAttachFileChoice = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const sizeKb = Math.max(1, Math.round(file.size / 1024));
+    setDraft((prev) =>
+      prev ? `${prev} [Attachment: ${file.name} (${sizeKb} KB)]` : `📎 ${file.name} (${sizeKb} KB)`
+    );
+    e.target.value = '';
+    textareaRef.current?.focus();
   };
 
   const handleSendChatRequest = async () => {
@@ -444,32 +677,18 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
         mySenderProfile,
         {
           displayName: partnerName,
-          avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
-          frame: resolvedPartner?.frame || partner.frame || null,
+          avatar: partnerAvatar,
+          frame: partnerFrame,
           photoURL: null,
         },
         requestNote
       );
 
-      if (result.status === 'already_allowed' || result.status === 'auto_accepted') {
-        const updatedPerm = await checkChatPermission(currentUid, partner.uid);
-        setActivePermission(updatedPerm);
-        if (updatedPerm.canChat) {
-          const convId = await getOrCreateConversation(currentUid, partner.uid, {
-            [currentUid]: mySenderProfile,
-            [partner.uid]: {
-              displayName: partnerName,
-              avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
-              frame: resolvedPartner?.frame || partner.frame || null,
-              role: resolvedPartner?.role || partner.role || 'student',
-              photoURL: null,
-            },
-          });
-          setActiveConversationId(convId);
-        }
-      } else {
-        const updatedPerm = await checkChatPermission(currentUid, partner.uid);
-        setActivePermission(updatedPerm);
+      const updatedPerm = await checkChatPermission(currentUid, partner.uid);
+      seedChatPermissionCache(currentUid, partner.uid, updatedPerm);
+      setActivePermission(updatedPerm);
+
+      if (result.status !== 'already_allowed' && result.status !== 'auto_accepted') {
         setRequestFeedback('Chat request sent! You can message once they accept.');
       }
       if (onPermissionChange) onPermissionChange();
@@ -480,10 +699,18 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     }
   };
 
-  // Group messages by date divider ("Today", "Yesterday", or short date)
+  // Combine live messages + pending/failed optimistic messages
+  const combinedMessages = useMemo(() => {
+    const realMessages = messages.filter((m) => !m.id.startsWith('seed_'));
+    const baseList = realMessages.length > 0 ? realMessages : messages;
+    if (optimisticMessages.length === 0) return baseList;
+    return [...baseList, ...optimisticMessages];
+  }, [messages, optimisticMessages]);
+
+  // Group messages by date divider ("TODAY", "YESTERDAY", etc.)
   const groupedMessages = useMemo(() => {
     const groups: Array<{ dateLabel: string; items: DirectMessage[] }> = [];
-    for (const msg of messages) {
+    for (const msg of combinedMessages) {
       const label = formatDateDividerLabel(msg.createdAtMs, msg.createdAt);
       const lastGroup = groups[groups.length - 1];
       if (!lastGroup || lastGroup.dateLabel !== label) {
@@ -493,275 +720,146 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
       }
     }
     return groups;
-  }, [messages]);
+  }, [combinedMessages]);
 
-  const statusLineText = activePermission?.isMutualFollow
-    ? 'Mutual Follow · Direct chat'
-    : activePermission?.hasAcceptedRequest
-    ? 'Request accepted · Direct chat'
-    : 'Request accepted · Direct chat';
-
-  const [backPulsing, setBackPulsing] = useState(false);
-  const handleBackTap = () => {
-    setBackPulsing(true);
-    window.setTimeout(() => {
-      onBack();
-    }, 130);
-  };
+  // Determine whether permission explicitly blocks chatting (only after permission check resolves false and no existing messages)
+  const isExplicitlyBlockedByPermission =
+    activePermission !== null &&
+    !activePermission.canChat &&
+    combinedMessages.length === 0;
 
   return (
     <div
-      className="conv-screen page-slide-right"
+      data-modal-layer="true"
       data-fullscreen-modal="true"
       role="dialog"
       aria-modal="true"
       aria-label={`Conversation with ${partnerName}`}
+      className="fixed inset-0 z-[2000] bg-[#050506] text-white flex flex-col overflow-hidden page-slide-right"
+      style={{
+        paddingBottom: keyboardOffsetBottom > 0 ? `${keyboardOffsetBottom}px` : undefined,
+      }}
     >
-      {/* ── FLOATING GLASS HEADER ── */}
-      <div className="conv-header-wrap">
-        <header className="conv-header-pill">
+      {/* Ambient blurred red (#D71921) and blue (#3a4cff) glows */}
+      <div
+        className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+        aria-hidden="true"
+      >
+        <div className="absolute -top-24 -left-24 w-[320px] h-[320px] rounded-full bg-[#D71921]/18 blur-[120px]" />
+        <div className="absolute bottom-1/4 -right-24 w-[300px] h-[300px] rounded-full bg-[#3a4cff]/15 blur-[130px]" />
+      </div>
+
+      {/* 1. FLOATING GLASS HEADER (56px pill): back button, avatar with frame, name + gold PRO pill + Student chip on one line, status line "Direct chat" with green dot below, more button on the right. No overflow at 360px. */}
+      <div className="relative z-20 px-3 pt-[calc(10px+env(safe-area-inset-top,0px))] pb-2 shrink-0">
+        <header className="boardly-glass-pill h-[56px] max-w-3xl mx-auto px-2 flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={handleBackTap}
-            className={`conv-icon-btn ${backPulsing ? 'nav-back-pulse' : ''}`}
+            onClick={onBack}
             aria-label="Back to messages"
-            title="Back"
+            className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
           >
-            <ArrowLeft size={18} strokeWidth={2.2} />
+            <ArrowLeft className="w-5 h-5" />
           </button>
 
-          <div className="shrink-0" style={{ width: 40, height: 40 }}>
+          {/* Lazy-loaded fixed-size 40px Avatar with Frame */}
+          <div className="w-10 h-10 shrink-0 flex items-center justify-center">
             <BoardlyAvatar
               uid={partner.uid}
-              equippedAvatar={resolvedPartner?.equippedAvatar || partner.avatar}
-              frame={resolvedPartner?.frame}
-              isSuperAdmin={resolvedPartner?.isSuperAdmin}
-              loading={resolvedPartner?.isLoadingProfile}
-              name={partnerName}
+              equippedAvatar={partnerAvatar}
+              equippedFrameId={partnerFrame}
               size={40}
+              alt={partnerName}
             />
           </div>
 
-          <div className="flex-1 min-w-0 pr-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="font-bold text-[15px] truncate leading-tight"
-                style={{ color: 'var(--rs-text)' }}
-              >
+          {/* Name + Gold PRO Pill + Student Chip on one line, Status line "Direct chat" with green dot below */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+              <span className="text-[14px] sm:text-[15px] font-bold text-white truncate">
                 {partnerName}
               </span>
-              {resolvedPartner?.proBadge && (
-                <ProBadge design={resolvedPartner.proBadge} size="sm" animated />
+              {partnerProBadge && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/25 text-amber-200 border border-amber-400/60 shrink-0">
+                  PRO
+                </span>
               )}
-              <span
-                className={`rs-chip ${isPartnerAdmin ? 'rs-chip--red' : ''} shrink-0`}
-              >
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 border border-white/15 text-white/85 shrink-0">
                 {partnerRoleLabel}
               </span>
             </div>
 
             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-              {activePermission?.canChat ? (
-                <>
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: 'var(--rs-green)' }}
-                    aria-hidden="true"
-                  />
-                  <span
-                    className="text-[11.5px] font-medium truncate"
-                    style={{ color: 'var(--rs-muted)' }}
-                  >
-                    {statusLineText}
-                  </span>
-                </>
-              ) : (
-                <span
-                  className="text-[11.5px] font-medium truncate"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
-                  {checkingPermission ? 'Checking chat status...' : 'Chat Request'}
-                </span>
-              )}
+              <span
+                className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"
+                aria-hidden="true"
+              />
+              <span className="text-[11px] font-medium text-white/72 truncate">
+                Direct chat
+              </span>
             </div>
+          </div>
+
+          {/* More Button on the Right */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowMoreMenu((v) => !v)}
+              aria-label="More chat options"
+              className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            {showMoreMenu && (
+              <div className="absolute right-0 mt-2 w-44 boardly-glass-card rounded-2xl p-1.5 z-50 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    scrollToNewest('smooth');
+                  }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
+                >
+                  Jump to latest
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    onBack();
+                  }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
+                >
+                  Close conversation
+                </button>
+              </div>
+            )}
           </div>
         </header>
       </div>
 
-      {/* ── CONVERSATION BODY ── */}
-      {checkingPermission ? (
-        <div className="conv-messages-area flex items-center justify-center">
-          <ButtonLineLoader label="Loading conversation..." />
-        </div>
-      ) : activePermission?.canChat ? (
-        <>
-          <div ref={messagesAreaRef} className="conv-messages-area">
-            <div className="conv-messages-inner">
-              {messagesError ? (
-                <div className="msg-empty-box my-8" data-testid="messages-query-error">
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                    style={{
-                      backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
-                      boxShadow: 'inset 0 0 0 1px var(--rs-red)',
-                      color: 'var(--rs-red-text)',
-                    }}
-                  >
-                    <AlertTriangle size={20} />
-                  </div>
-                  <p
-                    className="text-[15px] font-bold m-0"
-                    style={{ color: 'var(--rs-text)' }}
-                  >
-                    Unable to load messages
-                  </p>
-                  <p
-                    className="text-[12.5px] max-w-md m-0 leading-relaxed font-mono break-all"
-                    style={{ color: 'var(--rs-red-text)' }}
-                  >
-                    {messagesError}
-                  </p>
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="msg-empty-box my-8">
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                    style={{
-                      backgroundColor: 'var(--rs-card2)',
-                      boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                      color: 'var(--rs-red-text)',
-                    }}
-                  >
-                    <Sparkles size={20} />
-                  </div>
-                  <p
-                    className="text-[15px] font-bold m-0"
-                    style={{ color: 'var(--rs-text)' }}
-                  >
-                    Say Salam to {partnerName}!
-                  </p>
-                  <p
-                    className="text-[13px] max-w-xs m-0 leading-relaxed"
-                    style={{ color: 'var(--rs-muted)' }}
-                  >
-                    Discuss study topics, share exam tips, or ask questions directly.
-                  </p>
-                </div>
-              ) : (
-                groupedMessages.map((group) => (
-                  <React.Fragment key={group.dateLabel}>
-                    <div className="conv-date-divider">{group.dateLabel}</div>
-                    {group.items.map((msg) => {
-                      const isMe = msg.senderId === currentUid;
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`conv-bubble ${
-                            isMe ? 'conv-bubble--mine' : 'conv-bubble--theirs'
-                          }`}
-                        >
-                          <span className="whitespace-pre-wrap break-words">
-                            {msg.text}
-                          </span>
-                          <span className="conv-bubble-time">
-                            {formatBubbleTime(msg.createdAtMs, msg.createdAt)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </React.Fragment>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          {sendError && (
-            <div
-              className="px-4 py-2 text-xs text-center"
-              style={{
-                color: 'var(--rs-red-text)',
-                backgroundColor: 'color-mix(in srgb, var(--rs-red) 12%, var(--rs-card))',
-              }}
-            >
-              {sendError}
-            </div>
-          )}
-
-          {/* ── FIXED BOTTOM MESSAGE BAR ── */}
-          <form onSubmit={handleSendMessage} className="conv-composer-bar">
-            <div className="conv-composer-inner">
-              <input
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void handleSendMessage();
-                  }
-                }}
-                placeholder={`Message ${partnerName}...`}
-                maxLength={2000}
-                className="conv-input"
-              />
-              <button
-                type="submit"
-                disabled={!draft.trim() || sending}
-                className="rs-glass-btn rs-glass-btn--red conv-send-btn"
-                aria-label="Send message"
-                title="Send"
-              >
-                <Send size={18} strokeWidth={2.2} />
-              </button>
-            </div>
-          </form>
-        </>
-      ) : (
-        /* ── PERMISSION / REQUEST GATE ── */
-        <div className="conv-messages-area flex items-center justify-center p-5">
-          <div className="msg-empty-box max-w-sm w-full">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-              style={{
-                backgroundColor: 'var(--rs-card2)',
-                boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                color: 'var(--rs-muted)',
-              }}
-            >
+      {/* 2. CONVERSATION BODY */}
+      {isExplicitlyBlockedByPermission ? (
+        <div className="relative z-10 flex-1 flex items-center justify-center p-5 overflow-y-auto">
+          <div className="boardly-glass-card rounded-[32px] p-6 max-w-sm w-full text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-white/10 border border-white/18 flex items-center justify-center mx-auto text-white/80">
               {activePermission?.outgoingRequest?.status === 'pending' ? (
-                <Clock size={22} style={{ color: 'var(--rs-gold)' }} />
+                <Clock className="w-5 h-5 text-amber-300" />
               ) : (
-                <Lock size={22} />
+                <Lock className="w-5 h-5 text-[#D71921]" />
               )}
             </div>
 
             {activePermission?.incomingRequest?.status === 'pending' ? (
               <>
-                <h4
-                  className="text-base font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
+                <h4 className="text-base font-bold text-white">
                   {partnerName} wants to chat with you
                 </h4>
                 {activePermission.incomingRequest.message && (
-                  <p
-                    className="text-xs italic px-3.5 py-2.5 rounded-2xl m-0 w-full"
-                    style={{
-                      backgroundColor: 'var(--rs-card2)',
-                      boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                      color: 'var(--rs-muted)',
-                    }}
-                  >
+                  <p className="text-xs italic px-3.5 py-2.5 rounded-2xl bg-white/[0.05] border border-white/12 text-white/80">
                     &ldquo;{activePermission.incomingRequest.message}&rdquo;
                   </p>
                 )}
-                <p
-                  className="text-xs m-0 leading-relaxed"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
-                  Accept their chat request to start a 1-on-1 conversation.
-                </p>
                 <div className="flex items-center justify-center gap-2.5 pt-2">
                   <button
                     type="button"
@@ -774,30 +872,14 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                       void onRespondRequest(req, 'accepted').then(async () => {
                         if (currentUid) {
                           const perm = await checkChatPermission(currentUid, partner.uid);
+                          seedChatPermissionCache(currentUid, partner.uid, perm);
                           setActivePermission(perm);
-                          if (perm.canChat) {
-                            const convId = await getOrCreateConversation(
-                              currentUid,
-                              partner.uid,
-                              {
-                                [currentUid]: mySenderProfile,
-                                [partner.uid]: {
-                                  displayName: partnerName,
-                                  avatar: resolvedPartner?.equippedAvatar || resolvedPartner?.avatar || partner.avatar || null,
-                                  frame: resolvedPartner?.frame || partner.frame || null,
-                                  role: resolvedPartner?.role || partner.role || 'student',
-                                  photoURL: null,
-                                },
-                              }
-                            );
-                            setActiveConversationId(convId);
-                          }
                         }
                       });
                     }}
-                    className="rs-glass-btn rs-glass-btn--red h-10 px-5 text-xs inline-flex items-center gap-1.5"
+                    className="boardly-red-pill press-scale min-h-[44px] px-5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Check size={14} />
+                    <Check className="w-4 h-4" />
                     <span>Accept</span>
                   </button>
                   <button
@@ -810,89 +892,252 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                         ) || activePermission.incomingRequest!;
                       void onRespondRequest(req, 'declined');
                     }}
-                    className="msg-decline-btn"
+                    className="boardly-glass-pill press-scale w-11 h-11 rounded-full inline-flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
                     aria-label="Decline request"
-                    title="Decline"
                   >
-                    <X size={16} />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               </>
             ) : activePermission?.outgoingRequest?.status === 'pending' ? (
               <>
-                <h4
-                  className="text-base font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
-                  Chat Request Pending
-                </h4>
-                <p
-                  className="text-xs m-0 leading-relaxed"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
-                  You&apos;ve sent a chat request to <strong>{partnerName}</strong>. You&apos;ll
-                  be notified as soon as they accept, or if they follow you back.
+                <h4 className="text-base font-bold text-white">Chat Request Pending</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  You&apos;ve sent a chat request to <strong>{partnerName}</strong>.
+                  You&apos;ll be notified as soon as they accept.
                 </p>
-                <div className="pt-1">
-                  <span className="rs-chip">Pending</span>
-                </div>
               </>
             ) : (
               <>
-                <h4
-                  className="text-base font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
-                  Send a Chat Request
-                </h4>
-                <p
-                  className="text-xs m-0 leading-relaxed"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
-                  Direct messaging is open between mutual followers. Since you and{' '}
-                  <strong>{partnerName}</strong> don&apos;t follow each other yet, send a quick
-                  chat request first.
+                <h4 className="text-base font-bold text-white">Send a Chat Request</h4>
+                <p className="text-xs text-white/70 leading-relaxed">
+                  Direct messaging is open between mutual followers. Send a quick request
+                  to start chatting with <strong>{partnerName}</strong>.
                 </p>
-
-                <div className="w-full pt-2 space-y-2.5">
-                  <input
-                    type="text"
-                    value={requestNote}
-                    onChange={(e) => setRequestNote(e.target.value)}
-                    placeholder="Optional note (e.g., Let's study Physics together!)"
-                    maxLength={160}
-                    className="conv-input w-full text-xs"
-                  />
-                  {sendError && (
-                    <p
-                      className="text-xs m-0"
-                      style={{ color: 'var(--rs-red-text)' }}
-                    >
-                      {sendError}
-                    </p>
-                  )}
+                <div className="space-y-2.5 pt-2">
+                  <div className="search-pill-wrapper boardly-glass-pill px-3.5 min-h-[44px] flex items-center">
+                    <input
+                      type="text"
+                      value={requestNote}
+                      onChange={(e) => setRequestNote(e.target.value)}
+                      placeholder="Optional note (e.g., Let's study together!)"
+                      maxLength={160}
+                      className="w-full text-xs text-white placeholder:text-white/45"
+                    />
+                  </div>
+                  {sendError && <p className="text-xs text-[#ff6b72]">{sendError}</p>}
                   {requestFeedback && (
-                    <p
-                      className="text-xs m-0"
-                      style={{ color: 'var(--rs-green)' }}
-                    >
-                      {requestFeedback}
-                    </p>
+                    <p className="text-xs text-emerald-400">{requestFeedback}</p>
                   )}
                   <button
                     type="button"
                     disabled={sendingRequest}
-                    onClick={handleSendChatRequest}
-                    className="rs-glass-btn rs-glass-btn--red w-full h-11 px-5 text-xs inline-flex items-center justify-center gap-2"
+                    onClick={() => void handleSendChatRequest()}
+                    className="boardly-red-pill press-scale w-full min-h-[48px] rounded-full text-xs font-bold inline-flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <UserPlus size={15} />
-                    <span>{sendingRequest ? 'Sending Request...' : 'Request to Chat'}</span>
+                    <UserPlus className="w-4 h-4" />
+                    <span>
+                      {sendingRequest ? 'Sending Request...' : 'Request to Chat'}
+                    </span>
                   </button>
                 </div>
               </>
             )}
           </div>
         </div>
+      ) : (
+        <>
+          <div
+            ref={messagesAreaRef}
+            onScroll={() => void handleMessagesScroll()}
+            className="relative z-10 flex-1 overflow-y-auto px-3.5 sm:px-5 py-3 overscroll-contain"
+          >
+            <div className="max-w-3xl mx-auto flex flex-col gap-1.5">
+              {loadingOlder && (
+                <div className="py-2 flex items-center justify-center gap-2 text-xs text-white/60">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Loading older messages...</span>
+                </div>
+              )}
+
+              {messagesError ? (
+                <div className="boardly-glass-card rounded-[28px] p-6 my-8 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-[#D71921] mx-auto" />
+                  <p className="text-sm font-bold text-white">Unable to load messages</p>
+                  <p className="text-xs text-white/65 break-all">{messagesError}</p>
+                </div>
+              ) : !hasFirstSnapshot && combinedMessages.length === 0 ? (
+                /* Skeleton bubbles ONLY on first fetch when nothing is cached */
+                <div className="space-y-3 py-4 animate-pulse">
+                  <div className="w-48 h-11 rounded-[22px] rounded-bl-[6px] bg-white/10 self-start" />
+                  <div className="w-56 h-12 rounded-[22px] rounded-br-[6px] bg-[#D71921]/30 self-end ml-auto" />
+                  <div className="w-40 h-10 rounded-[22px] rounded-bl-[6px] bg-white/10 self-start" />
+                </div>
+              ) : combinedMessages.length === 0 ? (
+                /* Instant "Say hi to <name>" empty state */
+                <div className="boardly-glass-card rounded-[28px] p-8 my-10 text-center max-w-sm mx-auto space-y-2.5">
+                  <div className="w-12 h-12 rounded-full bg-[#D71921]/18 border border-[#D71921]/40 flex items-center justify-center mx-auto text-[#ff6b72]">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <p className="text-[16px] font-bold text-white">
+                    Say hi to {partnerName}
+                  </p>
+                  <p className="text-[13px] text-white/70 leading-relaxed">
+                    Send a message below to start your study conversation.
+                  </p>
+                </div>
+              ) : (
+                groupedMessages.map((group) => (
+                  <React.Fragment key={group.dateLabel}>
+                    {/* Dotted Date Separator ("TODAY" in Doto) */}
+                    <div className="my-3 flex items-center gap-3">
+                      <div className="flex-1 nothing-dotted-divider" />
+                      <span className="font-doto-title text-[10px] tracking-[0.18em] text-white/65 px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/12">
+                        {group.dateLabel}
+                      </span>
+                      <div className="flex-1 nothing-dotted-divider" />
+                    </div>
+
+                    {group.items.map((msg, idx) => {
+                      const isMe = msg.senderId === currentUid;
+                      const nextMsg = group.items[idx + 1];
+                      const isLastInSenderGroup =
+                        !nextMsg || nextMsg.senderId !== msg.senderId;
+                      const status = msg.deliveryStatus || 'read';
+
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`msg-bubble-pop flex flex-col ${
+                            isMe ? 'items-end' : 'items-start'
+                          } ${isLastInSenderGroup ? 'mb-2' : 'mb-0.5'}`}
+                        >
+                          {/* Bubble: Sent solid red right-aligned, Received glass left-aligned, radius 22 (6 on tail side), max width 78%, 15px/21px text */}
+                          <div
+                            className={`max-w-[78%] px-4 py-2.5 text-[15px] leading-[21px] break-words whitespace-pre-wrap font-sans ${
+                              isMe
+                                ? 'bg-[#D71921] text-white rounded-[22px] rounded-br-[6px] shadow-[0_6px_20px_rgba(215,25,33,0.32)]'
+                                : 'boardly-glass-card text-white rounded-[22px] rounded-bl-[6px]'
+                            }`}
+                          >
+                            {msg.text}
+                          </div>
+
+                          {/* Timestamp (11px) and Delivered/Read Ticks under the last message of a group (or failed retry badge) */}
+                          {(isLastInSenderGroup || status === 'failed') && (
+                            <div className="mt-1 px-1 flex items-center gap-1.5 text-[11px] text-white/60 font-inter-num">
+                              <span>
+                                {formatBubbleTime(msg.createdAtMs, msg.createdAt)}
+                              </span>
+                              {isMe && (
+                                <>
+                                  {status === 'sending' && (
+                                    <Clock
+                                      className="w-3 h-3 text-white/60"
+                                      aria-label="Sending"
+                                    />
+                                  )}
+                                  {(status === 'sent' || status === 'delivered') && (
+                                    <Check
+                                      className="w-3.5 h-3.5 text-white/75"
+                                      aria-label="Delivered"
+                                    />
+                                  )}
+                                  {status === 'read' && (
+                                    <CheckCheck
+                                      className="w-3.5 h-3.5 text-[#ff6b72]"
+                                      aria-label="Read"
+                                    />
+                                  )}
+                                  {status === 'failed' && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void executeSendMessage(msg.text, msg.id)
+                                      }
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-bold cursor-pointer"
+                                    >
+                                      <RefreshCw className="w-2.5 h-2.5" />
+                                      Retry
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Floating "Jump to latest" Glass Button when scrolled up */}
+          {showJumpToLatest && (
+            <div className="relative z-20 flex justify-center -mt-12 mb-2 pointer-events-none">
+              <button
+                type="button"
+                onClick={() => scrollToNewest('smooth')}
+                className="pointer-events-auto boardly-glass-pill press-scale min-h-[38px] px-4 rounded-full text-xs font-bold text-white inline-flex items-center gap-1.5 shadow-2xl cursor-pointer"
+              >
+                <ChevronDown className="w-4 h-4 text-[#D71921]" />
+                <span>Jump to latest</span>
+              </button>
+            </div>
+          )}
+
+          {/* 3. STICKY GLASS PILL COMPOSER ABOVE SAFE AREA: attach button, growing text field (max 5 lines), red circular send button that appears when there is text */}
+          <form
+            onSubmit={handleSendMessage}
+            className="relative z-20 px-3 pt-2 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shrink-0"
+          >
+            <div className="search-pill-wrapper boardly-glass-pill max-w-3xl mx-auto min-h-[52px] px-2.5 py-1.5 flex items-end gap-2 transition-all">
+              <input
+                ref={fileAttachInputRef}
+                type="file"
+                onChange={handleAttachFileChoice}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileAttachInputRef.current?.click()}
+                aria-label="Attach file"
+                className="press-scale w-10 h-10 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSendMessage();
+                  }
+                }}
+                placeholder={`Message ${partnerName}...`}
+                maxLength={2000}
+                className="flex-1 bg-transparent border-0 outline-none resize-none py-2 text-[15px] leading-[21px] text-white placeholder:text-white/50 max-h-[110px] font-sans"
+              />
+
+              {draft.trim().length > 0 && (
+                <button
+                  type="submit"
+                  aria-label="Send message"
+                  className="boardly-red-pill press-scale w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </form>
+        </>
       )}
     </div>
   );
@@ -908,10 +1153,6 @@ export interface MessagesDashboardContentProps {
   isModalWrapper?: boolean;
 }
 
-/**
- * Shared Messages & Requests Screen content used both on `/dashboard/messages` (`/messages`)
- * and when `DirectMessageModal` is opened without a specific conversation open.
- */
 export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> = ({
   initialTab = 'chat',
   initialPartner = null,
@@ -968,7 +1209,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     setSelectedPartner(initialPartner || null);
   }, [initialPartner]);
 
-  // If deep-linked via ?conversationId=conv_... without a resolved initialPartner, resolve from loaded conversations
+  // Resolve deep-linked ?conversationId=conv_... from loaded conversations
   useEffect(() => {
     if (selectedPartner || !initialConversationId || !currentUid) return;
     const match = conversations.find((c) => c.id === initialConversationId);
@@ -983,6 +1224,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           frame: details?.frame || null,
           role: details?.role || 'student',
           photoURL: null,
+          lastMessageText: match.lastMessageText,
+          lastMessageSenderId: match.lastMessageSenderId,
+          lastMessageAtMs: match.lastMessageAtMs,
         });
       }
     }
@@ -1002,9 +1246,8 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
       (op?.equipped?.frame as string) ||
       op?.frame ||
       null;
-    const photoURL = null;
     const role = isAdmin ? 'admin' : op?.role || 'student';
-    return { displayName, avatar, frame, role, photoURL };
+    return { displayName, avatar, frame, role, photoURL: null };
   }, [ownProfile, authProfile, ownEquipped, authUser, isAdmin]);
 
   // Subscribe to conversations & incoming requests
@@ -1065,7 +1308,6 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     };
   }, [currentUid, isGuest, retryNonce]);
 
-  // Build seeds for all users across conversations, received requests, and sent requests
   const allUserSeeds = useMemo<ChatUserSeed[]>(() => {
     const seeds: ChatUserSeed[] = [];
     for (const conv of conversations) {
@@ -1102,20 +1344,42 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
         frame: req.toFrame,
       });
     }
-    if (selectedPartner?.uid) {
-      seeds.push({
-        uid: selectedPartner.uid,
-        displayName: selectedPartner.displayName,
-        avatar: selectedPartner.avatar,
-        photoURL: selectedPartner.photoURL,
-        frame: selectedPartner.frame,
-        role: selectedPartner.role,
-      });
-    }
     return seeds;
-  }, [conversations, incomingRequests, outgoingRequests, currentUid, selectedPartner]);
+  }, [conversations, incomingRequests, outgoingRequests, currentUid]);
 
   const resolvedUsers = useChatUserProfiles(allUserSeeds);
+
+  // Preload chat messages in background on row hover / touchstart for <100ms instant open
+  const handlePrefetchRow = useCallback(
+    (conv: Conversation, otherUid: string, displayName: string) => {
+      if (!currentUid || !otherUid) return;
+      seedChatPermissionCache(currentUid, otherUid, {
+        canChat: true,
+        reason: 'request_accepted',
+        isMutualFollow: false,
+        hasAcceptedRequest: true,
+        outgoingRequest: null,
+        incomingRequest: null,
+        cooldownEndsAtMs: null,
+        isCooldownActive: false,
+      });
+      if (!getCachedConversationMessages(conv.id) && conv.lastMessageText) {
+        seedConversationMessagesCache(conv.id, [
+          {
+            id: `seed_${conv.id}`,
+            conversationId: conv.id,
+            senderId: conv.lastMessageSenderId || otherUid,
+            senderName: displayName,
+            text: conv.lastMessageText,
+            createdAt: conv.lastMessageAtMs || Date.now(),
+            createdAtMs: conv.lastMessageAtMs || Date.now(),
+            deliveryStatus: 'read',
+          },
+        ]);
+      }
+    },
+    [currentUid]
+  );
 
   const handleRespondRequest = useCallback(
     async (req: ChatRequest, decision: 'accepted' | 'declined') => {
@@ -1134,7 +1398,11 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           setSelectedPartner({
             uid: req.fromUid,
             displayName: senderResolved?.displayName || req.fromName || 'Student',
-            avatar: senderResolved?.equippedAvatar || senderResolved?.avatar || req.fromAvatar || null,
+            avatar:
+              senderResolved?.equippedAvatar ||
+              senderResolved?.avatar ||
+              req.fromAvatar ||
+              null,
             frame: senderResolved?.frame || req.fromFrame || null,
             role: senderResolved?.role || req.fromRole || 'student',
             photoURL: null,
@@ -1151,59 +1419,23 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     [currentUid, respondingId, mySenderProfile, resolvedUsers, onPermissionChange]
   );
 
-  // Segmented tab slider geometry
-  const tabButtonRefs = useRef<Record<'chat' | 'requests', HTMLButtonElement | null>>({
-    chat: null,
-    requests: null,
-  });
-  const [sliderRect, setSliderRect] = useState<{ left: number; width: number }>({
-    left: 4,
-    width: 0,
-  });
-
   const totalRequestsCount = incomingRequests.length + outgoingRequests.length;
 
-  useEffect(() => {
-    const updateSlider = () => {
-      const activeBtn = tabButtonRefs.current[activeTab];
-      if (activeBtn) {
-        setSliderRect({
-          left: activeBtn.offsetLeft,
-          width: activeBtn.offsetWidth,
-        });
-      }
-    };
-    updateSlider();
-    window.addEventListener('resize', updateSlider);
-    return () => window.removeEventListener('resize', updateSlider);
-  }, [activeTab, conversations.length, totalRequestsCount]);
-
-  // Filtered conversations by search query
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return conversations;
     return conversations.filter((conv) => {
       const otherUid = conv.participants.find((p) => p !== currentUid) || '';
       const resolved = resolvedUsers[otherUid];
-      const fallbackName = conv.participantDetails?.[otherUid]?.displayName || 'Student';
+      const fallbackName =
+        conv.participantDetails?.[otherUid]?.displayName || 'Student';
       const name = (resolved?.displayName || fallbackName).toLowerCase();
       const preview = (conv.lastMessageText || '').toLowerCase();
       return name.includes(q) || preview.includes(q);
     });
   }, [conversations, searchQuery, currentUid, resolvedUsers]);
 
-  const [segStretching, setSegStretching] = useState(false);
-  const triggerSegStretch = () => {
-    setSegStretching(false);
-    if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => {
-        setSegStretching(true);
-        window.setTimeout(() => setSegStretching(false), 475);
-      });
-    }
-  };
-
-  // If a conversation is open, render the full-screen Conversation Screen
+  // If a conversation is selected, render FullScreenConversationView immediately
   if (selectedPartner) {
     return (
       <FullScreenConversationView
@@ -1224,12 +1456,14 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   }
 
   return (
-    <div className="msg-page space-y-5 page-slide-left">
-      {/* Page Title & Description */}
-      <header className="flex items-start justify-between gap-3 pt-1">
+    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom px-3.5 sm:px-5 pt-4 space-y-4 max-w-3xl mx-auto">
+      {/* Header */}
+      <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="msg-title">Messages</h1>
-          <p className="msg-desc">
+          <h1 className="font-doto-title text-[24px] sm:text-[26px] tracking-[0.08em] text-white">
+            MESSAGES
+          </h1>
+          <p className="text-[13px] text-white/72 mt-0.5">
             Direct conversations and chat requests with fellow students.
           </p>
         </div>
@@ -1237,189 +1471,127 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           <button
             type="button"
             onClick={onCloseModal}
-            className="conv-icon-btn"
             aria-label="Close messages"
+            className="press-scale w-11 h-11 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-white/85 cursor-pointer"
           >
-            <X size={18} />
+            <X className="w-5 h-5" />
           </button>
         )}
       </header>
 
-      {/* Segmented Tab Bar with Sliding Red Glass Pill */}
-      <div className="rs-seg-scroll">
-        <div className="rs-seg-track" role="tablist" aria-label="Messages sections">
-          <div
-            className="rs-seg-slider !bg-transparent !shadow-none"
-            style={{
-              width: sliderRect.width > 0 ? `${sliderRect.width}px` : '50%',
-              transform: `translate3d(${sliderRect.left - 4}px, 0, 0)`,
-            }}
-            aria-hidden="true"
-          >
-            <div
-              className={`w-full h-full rounded-full ios-seg-thumb-inner ${
-                segStretching ? 'is-stretching' : ''
-              }`}
-            />
-          </div>
-          <button
-            ref={(el) => {
-              tabButtonRefs.current.chat = el;
-            }}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'chat'}
-            onClick={() => {
-              if (activeTab !== 'chat') triggerSegStretch();
-              setActiveTab('chat');
-            }}
-            className={`rs-seg-tab ${activeTab === 'chat' ? 'rs-seg-tab--active' : ''}`}
-          >
-            <span>Chats</span>
-            <span className="rs-seg-badge">
-              {Math.max(conversations.length, unreadChatNotificationsCount)}
-            </span>
-          </button>
-          <button
-            ref={(el) => {
-              tabButtonRefs.current.requests = el;
-            }}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'requests'}
-            onClick={() => {
-              if (activeTab !== 'requests') triggerSegStretch();
-              setActiveTab('requests');
-            }}
-            className={`rs-seg-tab ${activeTab === 'requests' ? 'rs-seg-tab--active' : ''}`}
-          >
-            <span>Requests</span>
-            <span className="rs-seg-badge">{totalRequestsCount}</span>
-          </button>
-        </div>
+      {/* Segmented Control: Chats / Requests with Shared Sliding Red Pill */}
+      <div
+        role="tablist"
+        aria-label="Messages sections"
+        className="boardly-glass-pill relative p-1.5 grid grid-cols-2 items-center h-[50px]"
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-[#D71921] shadow-[0_4px_16px_rgba(215,25,33,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+          style={{
+            width: 'calc((100% - 12px) / 2)',
+            left: '6px',
+            transform: `translateX(${activeTab === 'chat' ? 0 : 100}%)`,
+          }}
+        />
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'chat'}
+          onClick={() => setActiveTab('chat')}
+          className="relative z-10 h-full rounded-full text-xs font-bold tracking-wide inline-flex items-center justify-center gap-2 text-white cursor-pointer"
+        >
+          <span>Chats</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num">
+            {Math.max(conversations.length, unreadChatNotificationsCount)}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'requests'}
+          onClick={() => setActiveTab('requests')}
+          className="relative z-10 h-full rounded-full text-xs font-bold tracking-wide inline-flex items-center justify-center gap-2 text-white cursor-pointer"
+        >
+          <span>Requests</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num">
+            {totalRequestsCount}
+          </span>
+        </button>
       </div>
 
       {activeTab === 'chat' ? (
-        <div className="space-y-3.5">
-          {/* Rounded search field ("Search chats") */}
-          <div className="msg-search-wrap">
-            <Search size={17} className="msg-search-icon" />
+        <div className="space-y-3">
+          {/* Single-Ring Glass Search Pill (S1) */}
+          <div className="search-pill-wrapper boardly-glass-pill min-h-[48px] px-4 flex items-center gap-2.5 transition-all">
+            <Search className="w-4 h-4 text-white/60 shrink-0 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chats"
+              placeholder="Search chats..."
               aria-label="Search chats"
-              className="msg-search-input"
+              className="flex-1 text-sm text-white placeholder:text-white/50"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 text-[var(--rs-muted)] hover:text-[var(--rs-text)] p-1 cursor-pointer"
                 aria-label="Clear search"
+                className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
               >
-                <X size={15} />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* Conversation Rows */}
+          {/* Messages List Rows: Glass rows with avatar, name, one-line preview, time, and red unread count dot */}
           {conversationsError ? (
-            <div className="msg-empty-box" data-testid="conversations-query-error">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                style={{
-                  backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
-                  boxShadow: 'inset 0 0 0 1px var(--rs-red)',
-                  color: 'var(--rs-red-text)',
-                }}
-              >
-                <AlertTriangle size={20} />
-              </div>
-              <p
-                className="text-[15px] font-bold m-0"
-                style={{ color: 'var(--rs-text)' }}
-              >
-                Failed to load conversations
-              </p>
-              <p
-                className="text-[12.5px] max-w-md m-0 leading-relaxed font-mono break-all"
-                style={{ color: 'var(--rs-red-text)' }}
-              >
-                {conversationsError}
-              </p>
+            <div className="boardly-glass-card rounded-[28px] p-8 text-center space-y-3">
+              <AlertTriangle className="w-8 h-8 text-[#D71921] mx-auto" />
+              <p className="text-sm font-bold text-white">Failed to load conversations</p>
+              <p className="text-xs text-white/65 break-all">{conversationsError}</p>
               <button
                 type="button"
                 onClick={() => setRetryNonce((n) => n + 1)}
-                className="rs-glass-btn rs-glass-btn--red h-9 px-4 text-xs inline-flex items-center gap-1.5 mt-2"
+                className="boardly-red-pill press-scale min-h-[44px] px-5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <RefreshCw size={14} />
+                <RefreshCw className="w-3.5 h-3.5" />
                 <span>Retry</span>
               </button>
             </div>
           ) : loadingConversations && conversations.length === 0 ? (
-            <div className="space-y-2.5" data-testid="chats-loading-skeleton">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="space-y-2.5">
+              {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className="msg-conv-card animate-pulse pointer-events-none"
+                  className="boardly-glass-card rounded-[24px] p-3.5 flex items-center gap-3.5 animate-pulse"
                 >
-                  <div
-                    className="w-12 h-12 rounded-full shrink-0"
-                    style={{ backgroundColor: 'var(--rs-card2)' }}
-                  />
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div
-                        className="h-3.5 w-28 rounded"
-                        style={{ backgroundColor: 'var(--rs-card2)' }}
-                      />
-                      <div
-                        className="h-3 w-12 rounded"
-                        style={{ backgroundColor: 'var(--rs-card2)' }}
-                      />
-                    </div>
-                    <div
-                      className="h-3 w-44 rounded"
-                      style={{ backgroundColor: 'var(--rs-card2)' }}
-                    />
+                  <div className="w-12 h-12 rounded-full bg-white/10 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-28 rounded bg-white/10" />
+                    <div className="h-3 w-44 rounded bg-white/10" />
                   </div>
                 </div>
               ))}
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="msg-empty-box">
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                style={{
-                  backgroundColor: 'var(--rs-card2)',
-                  boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                  color: 'var(--rs-muted)',
-                }}
-              >
-                <MessageCircle size={20} />
-              </div>
-              <p
-                className="text-[15px] font-bold m-0"
-                style={{ color: 'var(--rs-text)' }}
-              >
+            <div className="boardly-glass-card rounded-[28px] p-10 text-center space-y-2">
+              <MessageCircle className="w-8 h-8 text-white/45 mx-auto" />
+              <p className="text-sm font-bold text-white">
                 {searchQuery.trim()
                   ? 'No matching conversations'
                   : 'No active conversations yet'}
               </p>
-              <p
-                className="text-[13px] max-w-xs m-0 leading-relaxed"
-                style={{ color: 'var(--rs-muted)' }}
-              >
+              <p className="text-xs text-white/65 max-w-xs mx-auto">
                 {searchQuery.trim()
-                  ? 'Try searching for another student name or message keyword.'
+                  ? 'Try searching for another student name.'
                   : 'Follow students back or accept a chat request to start messaging.'}
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5 stagger-list">
-              {filteredConversations.map((conv) => {
+            <div className="space-y-2.5">
+              {filteredConversations.map((conv, idx) => {
                 const otherUid =
                   conv.participants.find((p) => p !== currentUid) || '';
                 const otherDetails = conv.participantDetails?.[otherUid] || {
@@ -1428,8 +1600,17 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                 const resolved = resolvedUsers[otherUid];
                 const displayName =
                   resolved?.displayName || otherDetails.displayName || 'Student';
+                const avatarId =
+                  resolved?.equippedAvatar ||
+                  resolved?.avatar ||
+                  otherDetails.avatar ||
+                  'avatar-1';
+                const frameId = resolved?.frame || otherDetails.frame || null;
 
                 const unreadCountForRow =
+                  (conv.unreadCounts && currentUid
+                    ? Number(conv.unreadCounts[currentUid] || 0)
+                    : 0) ||
                   (unreadByConversationId[conv.id] || 0) ||
                   (otherUid ? unreadBySenderUid[otherUid] || 0 : 0);
                 const isUnread = unreadCountForRow > 0;
@@ -1438,60 +1619,77 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                   ? conv.lastMessageSenderId === currentUid
                     ? `You: ${conv.lastMessageText}`
                     : conv.lastMessageText
-                  : 'Tap to start chatting';
+                  : `Say hi to ${displayName}`;
 
                 return (
                   <button
                     key={conv.id}
                     type="button"
+                    style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
+                    onMouseEnter={() =>
+                      handlePrefetchRow(conv, otherUid, displayName)
+                    }
+                    onTouchStart={() =>
+                      handlePrefetchRow(conv, otherUid, displayName)
+                    }
                     onClick={() => {
-                      void markConversationNotificationsRead(otherUid, conv.id);
+                      handlePrefetchRow(conv, otherUid, displayName);
                       setSelectedPartner({
                         uid: otherUid,
                         displayName,
-                        avatar: resolved?.equippedAvatar || resolved?.avatar || otherDetails.avatar || null,
-                        frame: resolved?.frame || otherDetails.frame || null,
+                        avatar: avatarId,
+                        equippedAvatar: avatarId,
+                        frame: frameId,
+                        equippedFrame: frameId,
                         role: resolved?.role || otherDetails.role || 'student',
+                        proBadge: resolved?.proBadge || null,
                         photoURL: null,
+                        lastMessageText: conv.lastMessageText,
+                        lastMessageSenderId: conv.lastMessageSenderId,
+                        lastMessageAtMs: conv.lastMessageAtMs,
                       });
                     }}
-                    className={`msg-conv-card ${isUnread ? 'msg-conv-card--unread' : ''}`}
+                    className={`press-scale w-full text-left boardly-glass-card rounded-[24px] p-3.5 flex items-center gap-3.5 transition-all cursor-pointer ${
+                      isUnread
+                        ? 'border-[#D71921]/60 shadow-[0_0_20px_rgba(215,25,33,0.2)]'
+                        : 'hover:border-white/30'
+                    }`}
                   >
-                    <div className="shrink-0" style={{ width: 48, height: 48 }}>
+                    <div className="w-12 h-12 shrink-0 flex items-center justify-center">
                       <BoardlyAvatar
                         uid={otherUid}
-                        equippedAvatar={resolved?.equippedAvatar}
-                        frame={resolved?.frame}
-                        isSuperAdmin={resolved?.isSuperAdmin}
-                        loading={resolved?.isLoadingProfile}
-                        name={displayName}
+                        equippedAvatar={avatarId}
+                        equippedFrameId={frameId}
                         size={48}
+                        alt={displayName}
                       />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="msg-conv-name truncate">{displayName}</span>
+                          <span className="text-[15px] font-bold text-white truncate">
+                            {displayName}
+                          </span>
                           {resolved?.proBadge && (
                             <ProBadge design={resolved.proBadge} size="sm" listMode />
                           )}
                         </div>
-                        <span className="msg-conv-time">
+                        <span className="text-[11px] font-medium text-white/60 font-inter-num shrink-0">
                           {formatRelativeTime(conv.lastMessageAtMs, conv.updatedAt)}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between gap-2 mt-1">
                         <span
-                          className={`msg-conv-preview ${
-                            isUnread ? 'msg-conv-preview--unread' : ''
+                          className={`text-[13px] truncate ${
+                            isUnread ? 'font-bold text-white' : 'text-white/70'
                           }`}
                         >
                           {previewText}
                         </span>
                         {isUnread && (
-                          <span className="msg-unread-pill shrink-0">
+                          <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#D71921] text-white text-[11px] font-bold font-inter-num inline-flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(215,25,33,0.6)]">
                             {unreadCountForRow}
                           </span>
                         )}
@@ -1504,226 +1702,120 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           )}
         </div>
       ) : (
-        /* ── REQUESTS TAB ("Received" and "Sent") ── */
-        <div className="space-y-6">
-          {/* RECEIVED GROUP */}
-          <section>
-            <h2 className="msg-group-heading">Received</h2>
+        /* Requests Tab */
+        <div className="space-y-5">
+          <section className="space-y-2.5">
+            <h2 className="font-doto-title text-xs tracking-[0.16em] text-white/75 uppercase px-1">
+              RECEIVED REQUESTS
+            </h2>
             {requestsError ? (
-              <div className="msg-empty-box py-7" data-testid="requests-query-error">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center mb-0.5"
-                  style={{
-                    backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
-                    boxShadow: 'inset 0 0 0 1px var(--rs-red)',
-                    color: 'var(--rs-red-text)',
-                  }}
-                >
-                  <AlertTriangle size={18} />
-                </div>
-                <p
-                  className="text-[14px] font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
-                  Failed to load chat requests
-                </p>
-                <p
-                  className="text-[12px] max-w-md m-0 font-mono break-all"
-                  style={{ color: 'var(--rs-red-text)' }}
-                >
-                  {requestsError}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setRetryNonce((n) => n + 1)}
-                  className="rs-glass-btn rs-glass-btn--red h-9 px-4 text-xs inline-flex items-center gap-1.5 mt-2"
-                >
-                  <RefreshCw size={14} />
-                  <span>Retry</span>
-                </button>
+              <div className="boardly-glass-card rounded-[24px] p-6 text-center space-y-2">
+                <p className="text-xs text-[#ff6b72]">{requestsError}</p>
               </div>
             ) : incomingRequests.length === 0 ? (
-              <div className="msg-empty-box py-7">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center mb-0.5"
-                  style={{
-                    backgroundColor: 'var(--rs-card2)',
-                    boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                    color: 'var(--rs-muted)',
-                  }}
-                >
-                  <Inbox size={18} />
-                </div>
-                <p
-                  className="text-[14px] font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
-                  No received requests
-                </p>
-                <p
-                  className="text-[12.5px] max-w-xs m-0"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
+              <div className="boardly-glass-card rounded-[24px] p-8 text-center space-y-1.5">
+                <Inbox className="w-7 h-7 text-white/45 mx-auto" />
+                <p className="text-sm font-bold text-white">No received requests</p>
+                <p className="text-xs text-white/65">
                   When a student sends you a chat request, it will appear here.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2.5 stagger-list">
-                {incomingRequests.map((req) => {
-                  const resolved = resolvedUsers[req.fromUid];
-                  const senderName =
-                    resolved?.displayName || req.fromName || 'Student';
-                  const isHighlighted = Boolean(
-                    initialRequestId && req.id === initialRequestId
-                  );
+              incomingRequests.map((req) => {
+                const resolved = resolvedUsers[req.fromUid];
+                const senderName = resolved?.displayName || req.fromName || 'Student';
+                const isHighlighted = Boolean(
+                  initialRequestId && req.id === initialRequestId
+                );
 
-                  return (
-                    <div
-                      key={req.id}
-                      className={`msg-req-card ${isHighlighted ? 'msg-conv-card--unread' : ''}`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                          <div className="shrink-0" style={{ width: 48, height: 48 }}>
-                            <BoardlyAvatar
-                              uid={req.fromUid}
-                              equippedAvatar={resolved?.equippedAvatar}
-                              frame={resolved?.frame}
-                              isSuperAdmin={resolved?.isSuperAdmin}
-                              loading={resolved?.isLoadingProfile}
-                              name={senderName}
-                              size={48}
-                            />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="msg-conv-name truncate">
-                                  {senderName}
-                                </span>
-                                {resolved?.proBadge && (
-                                  <ProBadge design={resolved.proBadge} size="sm" listMode />
-                                )}
-                              </div>
-                              <span className="msg-conv-time">
-                                {formatRelativeTime(req.createdAtMs, req.createdAt)}
-                              </span>
-                            </div>
-                            <p
-                              className="text-[13px] m-0 mt-0.5 truncate"
-                              style={{ color: 'var(--rs-muted)' }}
-                            >
-                              wants to chat with you
-                            </p>
-                            {req.message && (
-                              <p
-                                className="text-[12px] italic m-0 mt-1.5 px-3 py-1.5 rounded-xl"
-                                style={{
-                                  backgroundColor: 'var(--rs-card2)',
-                                  boxShadow: 'inset 0 0 0 1px var(--rs-line)',
-                                  color: 'var(--rs-text)',
-                                }}
-                              >
-                                &ldquo;{req.message}&rdquo;
-                              </p>
-                            )}
-                          </div>
+                return (
+                  <div
+                    key={req.id}
+                    className={`boardly-glass-card rounded-[24px] p-4 flex items-center justify-between gap-3 ${
+                      isHighlighted ? 'border-[#D71921]' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <BoardlyAvatar
+                        uid={req.fromUid}
+                        equippedAvatar={resolved?.equippedAvatar || req.fromAvatar}
+                        equippedFrameId={resolved?.frame || req.fromFrame}
+                        size={46}
+                        alt={senderName}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-white truncate">
+                          {senderName}
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            disabled={respondingId === req.id}
-                            onClick={() => void handleRespondRequest(req, 'accepted')}
-                            className="rs-glass-btn rs-glass-btn--red h-9 px-4 text-xs inline-flex items-center gap-1.5"
-                          >
-                            <span>
-                              {respondingId === req.id ? 'Accepting...' : 'Accept'}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={respondingId === req.id}
-                            onClick={() => void handleRespondRequest(req, 'declined')}
-                            className="msg-decline-btn"
-                            aria-label="Decline request"
-                            title="Decline"
-                          >
-                            <X size={16} />
-                          </button>
+                        <div className="text-xs text-white/65 truncate">
+                          {req.message || 'Wants to chat with you'}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={respondingId === req.id}
+                        onClick={() => void handleRespondRequest(req, 'accepted')}
+                        className="boardly-red-pill press-scale min-h-[40px] px-4 rounded-full text-xs font-bold cursor-pointer"
+                      >
+                        {respondingId === req.id ? '...' : 'Accept'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingId === req.id}
+                        onClick={() => void handleRespondRequest(req, 'declined')}
+                        aria-label="Decline request"
+                        className="boardly-glass-pill press-scale w-10 h-10 rounded-full flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </section>
 
-          {/* SENT GROUP */}
-          <section>
-            <h2 className="msg-group-heading">Sent</h2>
+          <section className="space-y-2.5">
+            <h2 className="font-doto-title text-xs tracking-[0.16em] text-white/75 uppercase px-1">
+              SENT REQUESTS
+            </h2>
             {outgoingRequests.length === 0 ? (
-              <div className="msg-empty-box py-7">
-                <p
-                  className="text-[14px] font-bold m-0"
-                  style={{ color: 'var(--rs-text)' }}
-                >
-                  No sent requests
-                </p>
-                <p
-                  className="text-[12.5px] max-w-xs m-0"
-                  style={{ color: 'var(--rs-muted)' }}
-                >
-                  Requests you send from student profiles will show here while pending.
-                </p>
+              <div className="boardly-glass-card rounded-[24px] p-6 text-center text-xs text-white/60">
+                No pending sent requests.
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {outgoingRequests.map((req) => {
-                  const resolved = resolvedUsers[req.toUid];
-                  const recipientName =
-                    resolved?.displayName || req.toName || 'Student';
-
-                  return (
-                    <div key={req.id} className="msg-req-card">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                          <div className="shrink-0" style={{ width: 48, height: 48 }}>
-                            <BoardlyAvatar
-                              uid={req.toUid}
-                              equippedAvatar={resolved?.equippedAvatar}
-                              frame={resolved?.frame}
-                              isSuperAdmin={resolved?.isSuperAdmin}
-                              loading={resolved?.isLoadingProfile}
-                              name={recipientName}
-                              size={48}
-                            />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="msg-conv-name truncate">
-                                {recipientName}
-                              </span>
-                              {resolved?.proBadge && (
-                                <ProBadge design={resolved.proBadge} size="sm" listMode />
-                              )}
-                            </div>
-                            <span className="msg-conv-time block mt-0.5">
-                              {formatRelativeTime(req.createdAtMs, req.createdAt) ||
-                                'Sent recently'}
-                            </span>
-                          </div>
+              outgoingRequests.map((req) => {
+                const resolved = resolvedUsers[req.toUid];
+                const recipientName = resolved?.displayName || req.toName || 'Student';
+                return (
+                  <div
+                    key={req.id}
+                    className="boardly-glass-card rounded-[24px] p-4 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BoardlyAvatar
+                        uid={req.toUid}
+                        equippedAvatar={resolved?.equippedAvatar || req.toAvatar}
+                        equippedFrameId={resolved?.frame || req.toFrame}
+                        size={44}
+                        alt={recipientName}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-white truncate">
+                          {recipientName}
                         </div>
-
-                        <span className="rs-chip shrink-0">Pending</span>
+                        <div className="text-xs text-white/60">Pending acceptance</div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-white/10 border border-white/15 text-white/80">
+                      Pending
+                    </span>
+                  </div>
+                );
+              })
             )}
           </section>
         </div>
@@ -1736,9 +1828,11 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
   isOpen,
   onClose,
   targetUser,
+  partner,
   initialTab = 'chat',
   onPermissionChange,
 }) => {
+  const resolvedTarget = targetUser || partner || null;
   const { user: authUser, isGuest } = useAuth();
   const currentUid = authUser?.uid || null;
   const incomingRequests = useIncomingRequestsSnapshot(currentUid, isOpen && !isGuest);
@@ -1746,12 +1840,13 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
   const { profile: ownProfile } = useUserProfile();
   const { equipped: ownEquipped } = useWallet();
 
-  // Hide the bottom dock while DirectMessageModal is open
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return;
+    document.body.setAttribute('data-chat-open', 'true');
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new Event('boardly:modal-change'));
     return () => {
+      document.body.removeAttribute('data-chat-open');
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new Event('boardly:modal-change'));
     };
@@ -1783,11 +1878,10 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
 
   if (!isOpen || !currentUid || isGuest) return null;
 
-  // When opened for a specific targetUser (e.g. clicking Message on a profile or ?chat=open)
-  if (targetUser && initialTab === 'chat') {
+  if (resolvedTarget && initialTab === 'chat') {
     return (
       <FullScreenConversationView
-        partner={targetUser}
+        partner={resolvedTarget}
         onBack={onClose}
         onPermissionChange={onPermissionChange}
         incomingRequests={incomingRequests}
@@ -1797,29 +1891,30 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
     );
   }
 
-  // When opened on own profile or with ?chat=requests, show full-screen restyled Messages view
   return (
     <div
-      className="conv-screen overflow-y-auto"
+      data-modal-layer="true"
       data-fullscreen-modal="true"
       role="dialog"
       aria-modal="true"
       aria-label="Messages"
+      className="fixed inset-0 z-[2000] bg-[#050506] overflow-y-auto"
     >
-      <div className="max-w-3xl w-full mx-auto px-4 pt-[calc(16px+env(safe-area-inset-top,0px))] pb-12">
-        <MessagesDashboardContent
-          initialTab={initialTab}
-          initialPartner={targetUser || null}
-          onCloseModal={onClose}
-          onPermissionChange={onPermissionChange}
-          isModalWrapper={true}
-        />
-      </div>
+      <MessagesDashboardContent
+        initialTab={initialTab}
+        initialPartner={resolvedTarget}
+        onCloseModal={onClose}
+        onPermissionChange={onPermissionChange}
+        isModalWrapper={true}
+      />
     </div>
   );
 };
 
-function useIncomingRequestsSnapshot(uid: string | null, enabled: boolean): ChatRequest[] {
+function useIncomingRequestsSnapshot(
+  uid: string | null,
+  enabled: boolean
+): ChatRequest[] {
   const [reqs, setReqs] = useState<ChatRequest[]>([]);
   useEffect(() => {
     if (!uid || !enabled || uid.startsWith('guest_')) {

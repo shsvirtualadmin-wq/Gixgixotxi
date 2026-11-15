@@ -1,2669 +1,2128 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  X,
-  Edit3,
-  ShoppingBag,
-  Eye,
-  EyeOff,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+  limit,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { db, auth } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import {
+  Edit2,
   UserPlus,
   UserCheck,
-  Share2,
-  Users,
-  Flame,
-  Award,
-  Sparkles,
-  Shield,
-  Clock,
-  Calendar,
-  CreditCard,
-  LogOut,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Pin,
-  RotateCcw,
-  Tag,
-  Settings,
   MessageSquare,
+  Award,
+  Flame,
+  Shield,
+  Target,
+  Check,
+  X,
+  Lock,
+  Sparkles,
+  CheckCircle2,
+  Crown,
+  Share2,
+  Ban,
+  AlertTriangle,
+  Copy,
+  ShoppingBag,
+  Settings,
+  ArrowLeft,
+  Package,
 } from 'lucide-react';
-
-import { DirectMessageModal } from '@/components/chat/DirectMessageModal';
-import {
-  checkChatPermission,
-  sendChatRequest,
-  subscribeIncomingChatRequests,
-  type ChatPermissionState,
-} from '@/services/chatService';
-import { ProBadge } from '@/components/ui/ProBadge';
-import { useProBadge } from '@/contexts/ProBadgeContext';
-import { resolveUnifiedPlanStatus } from '@/config/plans';
-import {
-  DEFAULT_PRO_BADGE_DESIGN,
-  isValidProBadgeDesign,
-  normalizeProBadgeDesign,
-} from '@/lib/proBadgeDesigns';
-
-// Fast in-memory cache for instant profile reopening (kept in sync via subscribePublicProfile)
-const profileMemoryCache = new Map<string, { profile: PublicProfile; timestamp: number }>();
-
-export function invalidateProfileMemoryCache(uid?: string): void {
-  if (!uid) {
-    profileMemoryCache.clear();
-    return;
-  }
-  profileMemoryCache.delete(uid);
-}
-
-import { useAuth } from '@/contexts/AuthContext';
-import { useAuthGate } from '@/contexts/AuthGateContext';
-import { useProfileModal } from '@/contexts/ProfileModalContext';
-import { GuestUpgradeModal } from '@/components/auth/GuestUpgradeModal';
-import { WalletModal } from './WalletModal';
-import { useUserProfile } from '@/hooks/useUserProfile';
-import { useWallet } from '@/hooks/useWallet';
-import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import {
-  useProfileLayoutStatus,
-  getProfileLayoutSnapshotForUid,
-} from '@/hooks/useSecurityStatus';
+import { PublicProfile, EquippedCosmetics } from '@/types';
 import {
   getPublicProfile,
   syncPublicProfile,
-  subscribePublicProfile,
+  syncProfileToD1Backend,
   broadcastPublicProfileUpdate,
 } from '@/services/publicProfileService';
-import { followUser, unfollowUser, isFollowing, getFollowCounts } from '@/services/followService';
-import { getRankTitle } from '@/config/rankLadder';
+import { DirectMessageModal } from '@/components/chat/DirectMessageModal';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
+import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
+import { ProBadge } from '@/components/ui/ProBadge';
+import { resolveEffectivePlan } from '@/hooks/useEffectivePlan';
 import {
-  PASSPORT_STAMPS,
-  STREAK_BADGES,
-  ROLE_BADGES,
-  type PassportStamp,
-  type StreakBadge,
-} from '@/config/badgesConfig';
-import { getCosmeticById, COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
-import {
-  AvatarPicture,
-  AvatarFrame,
-  Nameplate,
-  ProfileCardEffect,
-  CosmeticErrorBoundary,
-} from '@/components/koban/CosmeticRenderers';
-import {
-  BannerRenderer,
-  DefaultDotMatrixBanner,
-} from '@/components/koban/artwork/bannerArtwork';
-import { KobanChip, KobanIcon } from '@/components/koban/KobanIcon';
+  getCosmeticById,
+  CosmeticRarity,
+} from '@/data/cosmeticsCatalog';
+import { useWallet } from '@/hooks/useWallet';
+import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
 import { ProfilePostsSection } from './ProfilePostsSection';
-import { FollowListModal } from './FollowListModal';
-import { EditProfileSheet } from './EditProfileSheet';
-import { ShareProfileCardModal } from './ShareProfileCardModal';
-import { ProfilePicturePickerModal } from './ProfilePicturePickerModal';
-import { MATRIX_AVATARS } from '@/lib/matrixAvatarsData';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { fetchUserCommonsPosts } from '@/services/commonsService';
-import { deriveFallbackShortId } from '@/utils/shortId';
-import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
-import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
-import { RoleBadge } from '@/components/ui/RoleBadge';
-import type { PublicProfile } from '@/types';
-import {
-  DEFAULT_PROFILE_LAYOUT,
-  normalizeProfileLayout,
-  buildSharedProfileData,
-  type ProfileLayoutId,
-  type SharedProfileData,
-} from '@/lib/profileLayouts';
-import { ProfileLayoutsRenderer } from './ProfileLayoutsRenderer';
+
+const COSMETIC_ROLE_OPTIONS = [
+  'Student',
+  'Pre-Medical',
+  'Pre-Engineering',
+  'ICS / Computer Science',
+  'O / A Levels',
+  'MDCAT Aspirant',
+  'ECAT Aspirant',
+  'Class Topper',
+];
+
+interface AchievementBadgeMeta {
+  id: string;
+  name: string;
+  description: string;
+  rarity: CosmeticRarity;
+}
+
+const ALL_ACHIEVEMENT_BADGES: AchievementBadgeMeta[] = [
+  {
+    id: 'first_login',
+    name: 'First Step',
+    description: 'Joined the Boardly student community.',
+    rarity: 'common',
+  },
+  {
+    id: 'streak_7',
+    name: '7-Day Streak',
+    description: 'Maintained a 7-day study streak.',
+    rarity: 'rare',
+  },
+  {
+    id: 'streak_30',
+    name: 'Unstoppable 30',
+    description: 'Completed 30 consecutive days of practice.',
+    rarity: 'epic',
+  },
+  {
+    id: 'centurion_100',
+    name: 'MCQ Centurion',
+    description: 'Solved 100+ practice questions accurately.',
+    rarity: 'rare',
+  },
+  {
+    id: 'topper_90',
+    name: '90% Precision',
+    description: 'Achieved 90%+ accuracy across mock tests.',
+    rarity: 'legendary',
+  },
+  {
+    id: 'commons_contributor',
+    name: 'Commons Scholar',
+    description: 'Shared helpful study resources with peers.',
+    rarity: 'epic',
+  },
+];
+
+export function computeLevelFromStats(stats: {
+  xp?: number;
+  testsCompleted?: number;
+  questionsAnswered?: number;
+  streakDays?: number;
+}): {
+  level: number;
+  xp: number;
+  currentLevelXp: number;
+  nextLevelXp: number;
+  progressPercent: number;
+} {
+  const rawXp =
+    typeof stats.xp === 'number' && stats.xp > 0
+      ? stats.xp
+      : (stats.testsCompleted || 0) * 120 +
+        (stats.questionsAnswered || 0) * 8 +
+        (stats.streakDays || 0) * 50;
+  const xp = Math.max(0, Math.floor(rawXp));
+  const xpPerLevel = 500;
+  const level = Math.max(1, Math.floor(xp / xpPerLevel) + 1);
+  const currentLevelXp = xp % xpPerLevel;
+  const nextLevelXp = xpPerLevel;
+  const progressPercent = Math.min(
+    100,
+    Math.max(4, Math.round((currentLevelXp / nextLevelXp) * 100))
+  );
+  return { level, xp, currentLevelXp, nextLevelXp, progressPercent };
+}
 
 export interface ProfileViewProps {
-  /** Explicit layout ID (one of the 10 layouts). Falls back to data.profile_layout or 'game-card'. */
-  layout?: ProfileLayoutId | string | null;
-  /** Pre-resolved shared profile data object by UID. */
-  data?: SharedProfileData | null;
-  /** When true, renders the compact live preview card for Settings > Profile Layout carousel. */
-  previewMode?: boolean;
-  /** If targetUid is provided and not current user, runs in PUBLIC mode. */
   targetUid?: string | null;
-  /** Whether mounted full-page (e.g. /dashboard/profile centered column max-w-960px) or in dialog */
   isFullPage?: boolean;
-  /** Optional callback to close modal container */
-  onClose?: (skipHistoryBack?: boolean) => void;
-  /** Force preview mode */
-  initialPreviewAsPublic?: boolean;
+  isModal?: boolean;
+  onClose?: () => void;
+  data?: Record<string, any>;
+  isOwnProfile?: boolean;
+  previewMode?: boolean;
+  onEditProfile?: () => void;
+  onFollow?: () => void;
+  onMessage?: () => void;
+  onShare?: () => void;
+}
+
+type ProfileTabId = 'overview' | 'loadout' | 'badges';
+
+interface EnrichedProfile extends PublicProfile {
+  bio?: string;
+  status?: string;
+  accent?: string;
+  shortId?: string;
+  bannerUrl?: string;
+  equippedAvatar?: string;
+  equippedFrame?: string;
+  equippedBanner?: string;
+  equippedTitle?: string;
+  equippedBadges?: string[];
+  equippedCosmetics?: EquippedCosmetics & {
+    profileBanner?: string | null;
+    avatarFrame?: string | null;
+    profileEffect?: string | null;
+    title?: string | null;
+  };
+  followersCount?: number;
+  followingCount?: number;
+  isBanned?: boolean;
+  proBadge?: ProBadgeDesignId | null;
+}
+
+const RARITY_STYLES: Record<
+  CosmeticRarity,
+  { badge: string; border: string; glow: string; text: string }
+> = {
+  common: {
+    badge: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
+    border: 'border-white/15',
+    glow: '',
+    text: 'text-zinc-300',
+  },
+  rare: {
+    badge: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+    border: 'border-sky-500/40',
+    glow: 'shadow-[0_0_20px_rgba(14,165,233,0.18)]',
+    text: 'text-sky-300',
+  },
+  epic: {
+    badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+    border: 'border-purple-500/40',
+    glow: 'shadow-[0_0_22px_rgba(168,85,247,0.22)]',
+    text: 'text-purple-300',
+  },
+  legendary: {
+    badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+    border: 'border-amber-500/50',
+    glow: 'shadow-[0_0_25px_rgba(245,158,11,0.28)]',
+    text: 'text-amber-300',
+  },
+  mythic: {
+    badge: 'bg-[#D71921]/25 text-red-200 border-[#D71921]/60',
+    border: 'border-[#D71921]/60',
+    glow: 'shadow-[0_0_28px_rgba(215,25,33,0.35)]',
+    text: 'text-red-200',
+  },
+};
+
+function deriveDeterministicShortId(uid: string): string {
+  if (!uid) return '10000';
+  let hash = 2166136261;
+  for (let i = 0; i < uid.length; i++) {
+    hash ^= uid.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const num = (Math.abs(hash) % 90000) + 10000;
+  return String(num);
+}
+
+const SHORT_ID_MEMORY_CACHE = new Map<string, string>();
+
+async function ensureUserShortId(uid: string, existingShortId?: string): Promise<string> {
+  const cleanExisting = String(existingShortId || '').replace(/^#+/, '').trim();
+  if (/^\d{5}$/.test(cleanExisting)) {
+    SHORT_ID_MEMORY_CACHE.set(uid, cleanExisting);
+    return cleanExisting;
+  }
+  const cached = SHORT_ID_MEMORY_CACHE.get(uid);
+  if (cached && /^\d{5}$/.test(cached)) {
+    return cached;
+  }
+  try {
+    const userRef = doc(db, 'users', uid);
+    const snap = await getDoc(userRef);
+    const data = snap.exists() ? snap.data() : null;
+    const saved = String(data?.shortId || data?.studentId || '').replace(/^#+/, '').trim();
+    if (/^\d{5}$/.test(saved)) {
+      SHORT_ID_MEMORY_CACHE.set(uid, saved);
+      return saved;
+    }
+
+    const pubRef = doc(db, 'publicProfiles', uid);
+    const pubSnap = await getDoc(pubRef).catch(() => null);
+    const pubData = pubSnap && pubSnap.exists() ? pubSnap.data() : null;
+    const pubSaved = String(pubData?.studentId || pubData?.shortId || '')
+      .replace(/^#+/, '')
+      .trim();
+    if (/^\d{5}$/.test(pubSaved)) {
+      SHORT_ID_MEMORY_CACHE.set(uid, pubSaved);
+      return pubSaved;
+    }
+
+    const fallbackId = deriveDeterministicShortId(uid);
+    SHORT_ID_MEMORY_CACHE.set(uid, fallbackId);
+    if (auth.currentUser?.uid === uid) {
+      await setDoc(
+        userRef,
+        { shortId: fallbackId, studentId: fallbackId },
+        { merge: true }
+      ).catch(() => {});
+      await setDoc(
+        pubRef,
+        { studentId: fallbackId, shortId: fallbackId },
+        { merge: true }
+      ).catch(() => {});
+    }
+    return fallbackId;
+  } catch {
+    const fallback = deriveDeterministicShortId(uid);
+    SHORT_ID_MEMORY_CACHE.set(uid, fallback);
+    return fallback;
+  }
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
-  layout: propLayout,
-  data: propData,
-  previewMode = false,
   targetUid,
-  isFullPage = false,
+  isModal = false,
   onClose,
-  initialPreviewAsPublic = false,
+  data: propData,
+  isOwnProfile: propIsOwnProfile,
+  previewMode = false,
+  onEditProfile: propOnEditProfile,
+  onFollow: propOnFollow,
+  onMessage: propOnMessage,
+  onShare: propOnShare,
 }) => {
-  const navigate = useNavigate();
-  const { user: authUser, profile: authProfile, isAdmin, isSuperAdmin: authIsSuperAdmin, isGuest, signOutUser } = useAuth();
-  const { requireAuth } = useAuthGate();
-  const { openProfile } = useProfileModal();
   const {
+    user: currentUser,
     profile: ownProfile,
-    updateProfileData,
-  } = useUserProfile();
-  const {
-    balance: kobanBalance,
-    equipped: ownEquipped,
-    equipCosmetic,
-    owned: ownedCosmetics,
-    purchaseCosmetic,
-    loading: walletLoading,
-    isSuperAdmin,
-  } = useWallet();
-  const effectivePlan = useEffectivePlan();
-  const { effectiveProBadge } = useProBadge();
-  const selfLayoutStatus = useProfileLayoutStatus();
+    authProfile,
+    isAdmin,
+    isGuest,
+    refreshUserProfile,
+    proBadgeDesign: myProBadgeDesign,
+    proBadgeVisible: myProBadgeVisible,
+  } = useAuth();
+  const navigate = useNavigate();
+  const wallet = useWallet();
 
-  // Determine true mode
-  const currentUid = authUser?.uid || authProfile?.uid || null;
-  const isViewingSelf = !targetUid || targetUid === currentUid;
+  const uid = targetUid || propData?.uid || currentUser?.uid;
+  const isOwnProfile =
+    typeof propIsOwnProfile === 'boolean'
+      ? propIsOwnProfile
+      : Boolean(currentUser && uid === currentUser.uid);
 
-  // Toggle for "View as others" (preview public mode while being owner)
-  const [previewAsPublic, setPreviewAsPublic] = useState(initialPreviewAsPublic);
-  const isPublicMode = !isViewingSelf || previewAsPublic;
+  const [profile, setProfile] = useState<EnrichedProfile | null>(null);
+  const [loading, setLoading] = useState(!previewMode);
+  const [activeTab, setActiveTab] = useState<ProfileTabId>('overview');
 
-  // Profile data state
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  // Follow state
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [postsCount, setPostsCount] = useState(0);
 
-  // Tabs: 'overview' | 'loadout' | 'badges'
-  const [activeTab, setActiveTab] = useState<'overview' | 'loadout' | 'badges'>('overview');
-  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  // Followers / Following Modal state
+  const [followListModal, setFollowListModal] = useState<'followers' | 'following' | null>(
+    null
+  );
+  const [followListUsers, setFollowListUsers] = useState<PublicProfile[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
 
-  // Loadout sub-tabs: 'slots' | 'banners'
-  const [loadoutSubTab, setLoadoutSubTab] = useState<'slots' | 'banners'>('slots');
-  const [bannerFilter, setBannerFilter] = useState<'all' | 'static' | 'animated' | 'owned'>('all');
-  const [selectedBannerPreviewId, setSelectedBannerPreviewId] = useState<string | null>(null);
-  const [previewThemeMode, setPreviewThemeMode] = useState<'dark' | 'light'>('dark');
-  const [equippingBannerId, setEquippingBannerId] = useState<string | null>(null);
+  // Direct Message Modal state
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Follow states
-  const [isFollowedByMe, setIsFollowedByMe] = useState(false);
-  const [followsMe, setFollowsMe] = useState(false);
-  const [followWorking, setFollowWorking] = useState(false);
-  const [unfollowModalOpen, setUnfollowModalOpen] = useState(false);
+  // Share Toast
+  const [copiedToast, setCopiedToast] = useState(false);
 
-  // Sub-modals
-  const [followListTab, setFollowListTab] = useState<'followers' | 'following' | null>(null);
-  const [editSheetOpen, setEditSheetOpen] = useState(false);
-  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [crewDetailModalOpen, setCrewDetailModalOpen] = useState(false);
+  // Edit Profile Modal state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editNickname, setEditNickname] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [editCustomRole, setEditCustomRole] = useState('Student');
+  const [editAvatar, setEditAvatar] = useState('avatar-1');
+  const [editFrame, setEditFrame] = useState<string>('none');
+  const [editBanner, setEditBanner] = useState<string>('none');
+  const [editEffect, setEditEffect] = useState<string>('none');
+  const [editBadges, setEditBadges] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Active badge popover state
-  const [badgePopover, setBadgePopover] = useState<{ name: string; meaning: string } | null>(null);
-
-  // Profile effect replay / play once trigger
-  const [effectPlayKey, setEffectPlayKey] = useState(1);
-
-  // Equipped streak badges (up to 3)
-  const [equippedStreakBadges, setEquippedStreakBadges] = useState<string[]>(['badge_streak_7d']);
-
-  // Pinned stamps in showcase (up to 3)
-  const [pinnedShowcase, setPinnedShowcase] = useState<string[]>([]);
-
-  // 1-on-1 Direct Message & Chat Requests modal
-  const [dmModalOpen, setDmModalOpen] = useState(false);
-  const [dmInitialTab, setDmInitialTab] = useState<'chat' | 'requests'>('chat');
-  const [chatPermission, setChatPermission] = useState<ChatPermissionState | null>(null);
-  const [chatRequestWorking, setChatRequestWorking] = useState(false);
-  const [incomingRequestsCount, setIncomingRequestsCount] = useState(0);
-
-  const [guestUpgradeModalOpen, setGuestUpgradeModalOpen] = useState(false);
-
-  // Subscribe to incoming chat requests count for signed-in non-guest user
+  // Sync modal attribute for bottom nav hiding when sub-modals are open
   useEffect(() => {
-    if (!currentUid || isGuest || currentUid.startsWith('guest_')) {
-      setIncomingRequestsCount(0);
+    const anySubModal = Boolean(isEditing || followListModal || isChatOpen || isModal);
+    if (anySubModal) {
+      document.body.setAttribute('data-modal-open', 'true');
+    } else {
+      document.body.removeAttribute('data-modal-open');
+    }
+    return () => {
+      document.body.removeAttribute('data-modal-open');
+    };
+  }, [isEditing, followListModal, isChatOpen, isModal]);
+
+  // Load Profile Data
+  useEffect(() => {
+    if (previewMode && propData) {
+      const candidateUid = String(propData.uid || uid || 'preview_user');
+      const resolvedShortId =
+        String(
+          propData.shortId ||
+            propData.studentId ||
+            ownProfile?.shortId ||
+            ownProfile?.studentId ||
+            SHORT_ID_MEMORY_CACHE.get(candidateUid) ||
+            deriveDeterministicShortId(candidateUid)
+        )
+          .replace(/^#+/, '')
+          .trim();
+
+      setProfile({
+        uid: candidateUid,
+        displayName: propData.displayName || propData.nickname || 'Student',
+        username: propData.username || 'student',
+        role: propData.role || 'student',
+        customRole: propData.customRole || 'Student',
+        equippedAvatar: propData.equippedAvatar || propData.avatar || 'avatar-1',
+        photoURL: propData.photoURL || '',
+        equippedFrame: propData.equippedFrame || propData.frame || 'none',
+        equippedBanner: propData.equippedBanner || 'none',
+        equippedTitle: propData.equippedTitle || 'title-rookie',
+        equippedBadges: propData.equippedBadges || ['first_login'],
+        equippedCosmetics: propData.equippedCosmetics || {},
+        bio: propData.bio || '',
+        status: propData.status || 'Active',
+        shortId: resolvedShortId,
+        studentId: resolvedShortId,
+        followersCount: Number(propData.followersCount ?? 0),
+        followingCount: Number(propData.followingCount ?? 0),
+        proBadge: propData.proBadge ?? null,
+        stats: propData.stats || {
+          streakDays: 1,
+          testsCompleted: 0,
+          questionsAnswered: 0,
+          accuracyRate: 0,
+          xp: 120,
+        },
+      });
+      setLoading(false);
       return;
     }
-    return subscribeIncomingChatRequests(currentUid, (reqs) => {
-      setIncomingRequestsCount(reqs.length);
-    });
-  }, [currentUid, isGuest]);
 
-  // Open chat/requests modal automatically if navigated from notification (?chat=requests or ?chat=open)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const chatParam = params.get('chat');
-    if (chatParam === 'requests') {
-      setDmInitialTab('requests');
-      setDmModalOpen(true);
-    } else if (chatParam === 'open') {
-      setDmInitialTab('chat');
-      setDmModalOpen(true);
+    if (!uid) {
+      setLoading(false);
+      return;
     }
-  }, [targetUid]);
-
-  const selfContextRef = useRef({
-    ownProfile,
-    authProfile,
-    ownEquipped,
-    authUserDisplayName: authUser?.displayName || null,
-    authUserEmail: authUser?.email || null,
-  });
-  selfContextRef.current = {
-    ownProfile,
-    authProfile,
-    ownEquipped,
-    authUserDisplayName: authUser?.displayName || null,
-    authUserEmail: authUser?.email || null,
-  };
-
-  useEffect(() => {
     let isMounted = true;
-    const resolvedUid = targetUid || currentUid;
-    if (!resolvedUid) {
-      setLoading(false);
-      return;
-    }
 
-    const {
-      ownProfile: curOwnProfile,
-      authProfile: curAuthProfile,
-      ownEquipped: curOwnEquipped,
-      authUserDisplayName,
-    } = selfContextRef.current;
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        if (isGuest && isOwnProfile) {
+          const activeGuestSource = (authProfile || ownProfile) as any;
+          const guestDisplayName =
+            activeGuestSource?.displayName ||
+            activeGuestSource?.nickname ||
+            activeGuestSource?.username ||
+            'Guest Student';
+          const guestUsername = (
+            activeGuestSource?.username ||
+            guestDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '')
+          ).slice(0, 24);
+          const guestShortId = String(
+            activeGuestSource?.shortId ||
+              activeGuestSource?.studentId ||
+              deriveDeterministicShortId(uid)
+          )
+            .replace(/^#+/, '')
+            .trim();
 
-    // For a guest viewing their own profile, build the profile from AuthContext + wallet + D1 state
-    const activeGuestSource = (curOwnProfile || curAuthProfile) as Record<string, any> | null;
-    if (
-      (isViewingSelf && (isGuest || resolvedUid.startsWith('guest_'))) ||
-      resolvedUid.startsWith('guest_')
-    ) {
-      const guestUsername =
-        activeGuestSource?.username ||
-        activeGuestSource?.displayName ||
-        authUserDisplayName ||
-        resolvedUid.replace(/^guest_/, '');
-      const guestDisplayName =
-        activeGuestSource?.displayName ||
-        activeGuestSource?.name ||
-        guestUsername;
-      const guestShortId = activeGuestSource?.shortId || 'GUEST';
-      const guestLayoutSnapshot = getProfileLayoutSnapshotForUid(resolvedUid);
-      const guestLayout = normalizeProfileLayout(
-        (guestLayoutSnapshot.known ? guestLayoutSnapshot.layout : null) ??
-          activeGuestSource?.profileLayout ??
-          activeGuestSource?.profile_layout ??
-          DEFAULT_PROFILE_LAYOUT
-      );
-      const guestAvatar =
-        resolveCosmeticItemId(curOwnEquipped?.avatar, 'avatar') ||
-        resolveCosmeticItemId(activeGuestSource?.equipped?.avatar, 'avatar') ||
-        resolveCosmeticItemId(activeGuestSource?.avatar, 'avatar') ||
-        activeGuestSource?.avatarKey ||
-        null;
-      const guestBanner =
-        curOwnEquipped?.banner ||
-        activeGuestSource?.equipped?.banner ||
-        activeGuestSource?.equippedBanner ||
-        activeGuestSource?.banner ||
-        null;
-      const guestFrame =
-        curOwnEquipped?.frame ||
-        activeGuestSource?.equipped?.frame ||
-        activeGuestSource?.equippedFrame ||
-        activeGuestSource?.frame ||
-        null;
-      const guestNameplate =
-        curOwnEquipped?.nameplate ||
-        activeGuestSource?.equipped?.nameplate ||
-        activeGuestSource?.equippedNameplate ||
-        activeGuestSource?.nameplate ||
-        null;
-      const guestEffect =
-        curOwnEquipped?.effect ||
-        activeGuestSource?.equipped?.effect ||
-        activeGuestSource?.effectId ||
-        null;
-
-      const guestPublicProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
-        uid: resolvedUid,
-        displayName: guestDisplayName,
-        username: guestUsername,
-        studentId: guestShortId,
-        shortId: guestShortId,
-        avatar: guestAvatar,
-        banner: guestBanner,
-        frame: guestFrame,
-        nameplate: guestNameplate,
-        effectId: guestEffect,
-        badges: [],
-        bio: activeGuestSource?.bio || '',
-        status: activeGuestSource?.status || 'active',
-        accent: activeGuestSource?.accent || '#D71921',
-        memberSince: null,
-        crewName: null,
-        stats: {
-          streak: Number(activeGuestSource?.streak ?? 0),
-          longestStreak: Number(activeGuestSource?.streak ?? 0),
-          mcqs: Number(activeGuestSource?.totalQuestionsSolved ?? 0),
-          accuracy: 0,
-        },
-        followersCount: 0,
-        followingCount: 0,
-        lastActiveAt: activeGuestSource?.lastActiveAt ? String(activeGuestSource.lastActiveAt) : new Date().toISOString(),
-        role: 'student',
-        customRole: 'Guest',
-        isGuest: true,
-        accountType: 'guest',
-        profileLayout: guestLayout,
-        profile_layout: guestLayout,
-        equipped: {
-          effect: guestEffect,
-          frame: guestFrame,
-          nameplate: guestNameplate,
-          avatar: guestAvatar,
-          banner: guestBanner,
-        },
-        avatarUrl: guestAvatar,
-        photoURL: null,
-        avatarKey: activeGuestSource?.avatarKey || null,
-        avatarVariant: activeGuestSource?.avatarVariant || null,
-      };
-
-      setProfile(guestPublicProfile);
-      profileMemoryCache.set(resolvedUid, { profile: guestPublicProfile, timestamp: Date.now() });
-      setLoading(false);
-      setFetchError(null);
-
-      const unsubGuestLive = subscribePublicProfile(resolvedUid, (updatedProf) => {
-        if (!isMounted || !updatedProf) return;
-        setProfile((prev) => {
-          if (!prev) return prev;
-          const nextLayout =
-            updatedProf.profileLayout || updatedProf.profile_layout
-              ? normalizeProfileLayout(updatedProf.profileLayout ?? updatedProf.profile_layout)
-              : prev.profileLayout || prev.profile_layout || DEFAULT_PROFILE_LAYOUT;
-          const merged: PublicProfile = {
-            ...prev,
-            displayName: updatedProf.displayName || prev.displayName,
-            ...(updatedProf.username ? { username: updatedProf.username } : {}),
-            bio: updatedProf.bio ?? prev.bio,
-            status: updatedProf.status ?? prev.status,
-            accent: updatedProf.accent || prev.accent,
-            avatar: updatedProf.avatar ?? updatedProf.equipped?.avatar ?? prev.avatar,
-            frame: updatedProf.frame ?? updatedProf.equipped?.frame ?? prev.frame,
-            banner: updatedProf.banner ?? updatedProf.equipped?.banner ?? prev.banner,
-            nameplate: updatedProf.nameplate ?? updatedProf.equipped?.nameplate ?? prev.nameplate,
-            effectId: updatedProf.effectId ?? updatedProf.equipped?.effect ?? prev.effectId,
-            profileLayout: nextLayout,
-            profile_layout: nextLayout,
-            equipped: {
-              ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
-              ...(updatedProf.equipped || {}),
+          if (!isMounted) return;
+          const enrichedGuest: EnrichedProfile = {
+            uid,
+            displayName: guestDisplayName,
+            username: guestUsername,
+            role: 'student',
+            customRole: activeGuestSource?.customRole || 'Student',
+            equippedAvatar: activeGuestSource?.equippedAvatar || 'avatar-1',
+            photoURL: activeGuestSource?.photoURL || '',
+            equippedFrame: activeGuestSource?.equippedFrame || 'none',
+            equippedBanner: activeGuestSource?.equippedBanner || 'none',
+            equippedTitle: activeGuestSource?.equippedTitle || 'title-rookie',
+            equippedBadges: activeGuestSource?.equippedBadges || ['first_login'],
+            equippedCosmetics: activeGuestSource?.equippedCosmetics || {},
+            bio: activeGuestSource?.bio || 'Exploring Boardly in Guest Mode.',
+            status: activeGuestSource?.status || 'Studying in Guest Mode',
+            shortId: guestShortId,
+            studentId: guestShortId,
+            followersCount: 0,
+            followingCount: 0,
+            isBanned: false,
+            stats: {
+              streakDays: activeGuestSource?.streakDays || 0,
+              testsCompleted: 0,
+              questionsAnswered: 0,
+              accuracyRate: 0,
+              xp: activeGuestSource?.xp || 0,
             },
           };
-          profileMemoryCache.set(resolvedUid, { profile: merged, timestamp: Date.now() });
-          return merged;
-        });
-      });
+          setProfile(enrichedGuest);
+          setEditNickname(enrichedGuest.displayName);
+          setEditUsername(enrichedGuest.username || '');
+          setEditBio(enrichedGuest.bio || '');
+          setEditStatus(enrichedGuest.status || '');
+          setEditCustomRole(enrichedGuest.customRole || 'Student');
+          setEditAvatar(enrichedGuest.equippedAvatar);
+          setEditFrame(enrichedGuest.equippedFrame || 'none');
+          setEditBanner(enrichedGuest.equippedBanner || 'none');
+          setEditEffect(enrichedGuest.equippedCosmetics?.profileEffect || 'none');
+          setEditBadges(enrichedGuest.equippedBadges || ['first_login']);
+          setLoading(false);
+          return;
+        }
 
-      return () => {
-        isMounted = false;
-        unsubGuestLive();
-      };
-    }
+        if (isOwnProfile && currentUser && ownProfile) {
+          await syncPublicProfile(uid, {
+            nickname:
+              (authProfile as any)?.displayName ||
+              ownProfile.nickname ||
+              currentUser.displayName ||
+              'Student',
+            username: (authProfile as any)?.username || ownProfile.username,
+            role: (authProfile as any)?.role || ownProfile.role,
+            customRole: (authProfile as any)?.customRole || (ownProfile as any).customRole,
+            equippedAvatar:
+              (authProfile as any)?.avatar || ownProfile.equippedAvatar || 'avatar-1',
+            photoURL: ownProfile.photoURL || currentUser.photoURL || '',
+            equippedFrame: (authProfile as any)?.frame || ownProfile.equippedFrame,
+            streak: ownProfile.streak,
+            score: ownProfile.score,
+            bio: (authProfile as any)?.bio ?? ownProfile.bio,
+            status: (authProfile as any)?.status ?? ownProfile.status,
+          }).catch(() => {});
+        }
 
-    // Instant cache restore: if this profile was previously viewed, display it immediately
-    const cached = profileMemoryCache.get(resolvedUid);
-    if (cached) {
-      setProfile(cached.profile);
-      setLoading(false);
-    } else {
-      setLoading(true);
-      setProfile(null);
-    }
-    setFetchError(null);
+        let d1Live: any = null;
+        try {
+          const d1Res = await fetch(
+            `/api/auth/resolve-profiles?uids=${encodeURIComponent(uid)}&_t=${Date.now()}`,
+            { cache: 'no-store' }
+          );
+          const d1Json = await d1Res.json().catch(() => null);
+          if (d1Res.ok && d1Json?.profiles?.[uid]) {
+            d1Live = d1Json.profiles[uid];
+          }
+        } catch {
+          // ignore
+        }
 
-    async function fetchProfileData() {
-      const uid = targetUid || currentUid;
-      if (!uid) return;
-
-      try {
-        // Read users/{uid}, publicProfiles/{uid}, wallets/{uid}, and D1 live profile in parallel.
-        const userDocRef = doc(db, 'users', uid);
-        const [userSnap, publicSnap, walletSnap, d1LiveRes] = await Promise.all([
-          getDoc(userDocRef).catch(() => null),
-          getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
-          getDoc(doc(db, 'wallets', uid)).catch(() => null),
-          fetch(`/api/auth/resolve-profiles?uids=${encodeURIComponent(uid)}`, {
-            headers: { Accept: 'application/json' },
-          })
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        ]);
-
-        const rawUData = userSnap && userSnap.exists() ? userSnap.data() : null;
-        const rawPubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
-        const walletData = walletSnap && walletSnap.exists() ? walletSnap.data() : null;
-        const d1Live = d1LiveRes?.ok && d1LiveRes?.profiles?.[uid] ? d1LiveRes.profiles[uid] : null;
-
-        const uData: Record<string, any> | null = rawUData || d1Live
-          ? {
-              ...(rawUData || {}),
-              ...(d1Live?.username ? { username: d1Live.username } : {}),
-              ...(d1Live?.displayName ? { displayName: d1Live.displayName } : {}),
-              ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
-              ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
-              ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
-              ...(d1Live?.profile_layout || d1Live?.profileLayout
-                ? {
-                    profileLayout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
-                    profile_layout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
-                  }
-                : {}),
-            }
-          : null;
-        const pubData: Record<string, any> | null = rawPubData || d1Live
-          ? {
-              ...(rawPubData || {}),
-              ...(d1Live?.username ? { username: d1Live.username } : {}),
-              ...(d1Live?.displayName ? { displayName: d1Live.displayName } : {}),
-              ...(d1Live?.avatar ? { avatar: d1Live.avatar, equippedAvatar: d1Live.avatar } : {}),
-              ...(d1Live?.frame ? { frame: d1Live.frame, equippedFrame: d1Live.frame } : {}),
-              ...(d1Live?.role ? { role: d1Live.role } : {}),
-              ...(d1Live?.customRole ? { customRole: d1Live.customRole } : {}),
-              ...(d1Live?.bio !== null && d1Live?.bio !== undefined ? { bio: d1Live.bio } : {}),
-              ...(d1Live?.status !== null && d1Live?.status !== undefined ? { status: d1Live.status } : {}),
-              ...(d1Live?.accent ? { accent: d1Live.accent } : {}),
-              ...(d1Live?.proBadge !== undefined ? { proBadge: d1Live.proBadge } : {}),
-              ...(d1Live?.profile_layout || d1Live?.profileLayout
-                ? {
-                    profileLayout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
-                    profile_layout: normalizeProfileLayout(d1Live.profile_layout ?? d1Live.profileLayout),
-                  }
-                : {}),
-            }
-          : null;
-
-        // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
-        let postAuthorName: string | null = null;
-        let postAuthorAvatar: string | null = null;
-        let postAuthorPhotoURL: string | null = null;
-        let postAuthorFrame: string | null = null;
-        let postAuthorEquippedAvatar: string | null = null;
-
-        if (!uData?.displayName && !pubData?.displayName) {
-          try {
-            const recentPosts = await fetchUserCommonsPosts(uid, false);
-            if (recentPosts.length > 0) {
-              const pData = recentPosts[0];
-              postAuthorName = pData.authorName || null;
-              postAuthorAvatar = pData.authorAvatar || null;
-              postAuthorPhotoURL =
-                pData.authorPhotoURL ||
-                (pData.authorAvatar?.includes('googleusercontent') ? pData.authorAvatar : null);
-              postAuthorFrame = pData.authorFrame || null;
-              postAuthorEquippedAvatar = pData.authorEquippedAvatar || null;
-            }
-          } catch (postErr) {
-            console.warn('[ProfileView] author post fallback notice:', postErr);
+        let pubData = await getPublicProfile(uid);
+        let uData: any = null;
+        try {
+          const uSnap = await getDoc(doc(db, 'users', uid));
+          if (uSnap.exists()) {
+            uData = uSnap.data();
+          }
+        } catch {
+          if (isOwnProfile && ownProfile) {
+            uData = ownProfile;
           }
         }
 
-        const {
-          ownProfile: latestOwnProfile,
-          authProfile: latestAuthProfile,
-          ownEquipped: latestOwnEquipped,
-          authUserDisplayName: latestAuthUserDisplayName,
-          authUserEmail: latestAuthUserEmail,
-        } = selfContextRef.current;
-
-        const candidateName =
-          (uid === currentUid
-            ? latestOwnProfile?.displayName ||
-              uData?.displayName ||
-              pubData?.displayName ||
-              latestOwnProfile?.username ||
-              uData?.username ||
-              pubData?.username ||
-              latestAuthProfile?.displayName ||
-              latestAuthProfile?.username ||
-              latestAuthUserDisplayName
-            : uData?.displayName ||
-              pubData?.displayName ||
-              uData?.username ||
-              pubData?.username ||
-              uData?.name) ||
-          postAuthorName;
-        const candidateUsername =
-          (uid === currentUid
-            ? latestOwnProfile?.username || uData?.username || pubData?.username || latestAuthProfile?.username
-            : uData?.username || pubData?.username) || null;
-        const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? latestAuthUserEmail : null);
-
-        // SECURITY: Never trust Firestore `role` or displayName substrings for admin/superAdmin.
-        // Only the signed-in user with a verified ID token claim (`isAdmin` / `authIsSuperAdmin`) is treated as admin.
-        const isSelfSuperAdmin = Boolean(uid === currentUid && !isGuest && authIsSuperAdmin);
-        const isAdminAccountUser = Boolean(uid === currentUid && !isGuest && isAdmin);
-
-        const rawDocRole = uData?.role || pubData?.role || d1Live?.role;
-        const safeNonAdminRole =
-          rawDocRole === 'captain' || rawDocRole === 'crew' || rawDocRole === 'ambassador'
-            ? rawDocRole
-            : 'student';
-
-        const trustedServerRole = isSelfSuperAdmin
-          ? 'superadmin'
-          : isAdminAccountUser
-          ? 'admin'
-          : safeNonAdminRole;
-
-        const shortCode =
-          uData?.studentId ||
-          uData?.shortId ||
-          pubData?.studentId ||
-          pubData?.shortId ||
-          deriveFallbackShortId(uid);
-
-        const cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
-
-        // Resolve each cosmetic slot using non-empty truthy priority so null in one doc never masks a valid equipped ID in another
-        const selfEq = uid === currentUid ? latestOwnEquipped : null;
-        const avatar =
-          resolveCosmeticItemId(selfEq?.avatar, 'avatar') ||
-          resolveCosmeticItemId(walletData?.equipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(uData?.equipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(pubData?.equipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(uData?.equippedAvatar, 'avatar') ||
-          resolveCosmeticItemId(pubData?.equippedAvatar, 'avatar') ||
-          resolveCosmeticItemId(uData?.avatar, 'avatar') ||
-          resolveCosmeticItemId(pubData?.avatar, 'avatar') ||
-          resolveCosmeticItemId(postAuthorEquippedAvatar, 'avatar') ||
-          resolveCosmeticItemId(postAuthorAvatar, 'avatar') ||
-          null;
-        const avatarUrl = avatar;
-        const photoURL = null;
-        const frame =
-          (selfEq?.frame as string) ||
-          (walletData?.equipped?.frame as string) ||
-          (uData?.equipped?.frame as string) ||
-          (pubData?.equipped?.frame as string) ||
-          (uData?.equippedFrame as string) ||
-          (pubData?.equippedFrame as string) ||
-          (uData?.frame as string) ||
-          (pubData?.frame as string) ||
-          postAuthorFrame ||
-          null;
-        const nameplate =
-          (selfEq?.nameplate as string) ||
-          (walletData?.equipped?.nameplate as string) ||
-          (uData?.equipped?.nameplate as string) ||
-          (pubData?.equipped?.nameplate as string) ||
-          (uData?.equippedNameplate as string) ||
-          (pubData?.equippedNameplate as string) ||
-          (uData?.nameplate as string) ||
-          (pubData?.nameplate as string) ||
-          null;
-        const banner =
-          (selfEq?.banner as string) ||
-          (walletData?.equipped?.banner as string) ||
-          (uData?.equipped?.banner as string) ||
-          (pubData?.equipped?.banner as string) ||
-          (uData?.equippedBanner as string) ||
-          (pubData?.equippedBanner as string) ||
-          (uData?.banner as string) ||
-          (pubData?.banner as string) ||
-          (d1Live?.banner as string) ||
-          null;
-        const effectId =
-          (selfEq?.effect as string) ||
-          (walletData?.equipped?.effect as string) ||
-          (uData?.equipped?.effect as string) ||
-          (pubData?.equipped?.effect as string) ||
-          (uData?.equippedEffect as string) ||
-          (pubData?.equippedEffect as string) ||
-          (uData?.effectId as string) ||
-          (pubData?.effectId as string) ||
-          (d1Live?.effect as string) ||
-          null;
-        const equipped = {
-          effect: effectId,
-          frame,
-          nameplate,
-          avatar,
-          banner,
-        };
-
-        const stats = {
-          streak: Number(uData?.streak ?? pubData?.stats?.streak ?? 0),
-          longestStreak: Number(uData?.longestStreak ?? pubData?.stats?.longestStreak ?? uData?.streak ?? 0),
-          mcqs: Number(uData?.totalQuestionsSolved ?? uData?.mcqsSolved ?? pubData?.stats?.mcqs ?? 0),
-          accuracy: Number(uData?.accuracy ?? pubData?.stats?.accuracy ?? 0),
-        };
-
-        const followCountsPromise = getFollowCounts(uid, uData, pubData);
-        const followRelationPromise =
-          currentUid && uid !== currentUid
-            ? Promise.all([isFollowing(currentUid, uid), isFollowing(uid, currentUid)])
-            : Promise.resolve([false, false] as [boolean, boolean]);
-        const chatPermPromise =
-          currentUid && uid !== currentUid
-            ? checkChatPermission(currentUid, uid).catch(() => null)
-            : Promise.resolve(null);
-
-        const [followCounts, [followingState, followsMeState], resolvedChatPerm] = await Promise.all([
-          followCountsPromise,
-          followRelationPromise,
-          chatPermPromise,
-        ]);
-
-        const resolvedBadges =
-          Array.isArray(uData?.badges) && uData.badges.length > 0
-            ? uData.badges
-            : Array.isArray(pubData?.badges)
-            ? pubData.badges
-            : [];
-
-        const resolvedProfile: PublicProfile & { username?: string } = {
+        const shortId = await ensureUserShortId(
           uid,
-          displayName: cleanName,
-          ...(candidateUsername ? { username: candidateUsername } : {}),
-          studentId: shortCode,
-          shortId: shortCode,
-          avatar,
-          banner,
-          frame,
-          nameplate,
-          effectId,
-          badges: resolvedBadges,
-          bio: uData?.bio || pubData?.bio || '',
-          status: uData?.status || pubData?.status || '',
-          accent: uData?.accent || pubData?.accent || '#D71921',
-          memberSince: uData?.createdAt || pubData?.memberSince || null,
-          crewName: uData?.crewName || pubData?.crewName || null,
-          stats,
-          followersCount: followCounts.followersCount,
-          followingCount: followCounts.followingCount,
-          lastActiveAt: uData?.lastActiveDate || pubData?.lastActiveAt || null,
-          role: trustedServerRole,
-          customRole: d1Live?.customRole || (trustedServerRole !== 'student' ? uData?.customRole || pubData?.customRole : undefined) || undefined,
-          equipped,
-          avatarUrl,
-          photoURL,
-          avatarKey: uData?.avatarKey || pubData?.avatarKey || null,
-          avatarVariant: uData?.avatarVariant || pubData?.avatarVariant || null,
-          proBadge: (() => {
-            if (uid.startsWith('guest_')) return null;
-            if (pubData?.proBadge && isValidProBadgeDesign(pubData.proBadge)) {
-              return normalizeProBadgeDesign(pubData.proBadge);
-            }
-            if (uData?.proBadgeVisible === false || pubData?.proBadgeVisible === false) {
-              return null;
-            }
-            const unified = resolveUnifiedPlanStatus({
-              uid,
-              email: null,
-              role: trustedServerRole,
-              isGuest: Boolean(uData?.isGuest || uid.startsWith('guest_')),
-              plan: uData?.plan ?? pubData?.plan ?? null,
-              isPremium: uData?.isPremium ?? pubData?.isPremium ?? null,
-              proPlanId: uData?.proPlanId ?? pubData?.proPlanId ?? null,
-              planStartedAt: uData?.planStartedAt ?? pubData?.planStartedAt,
-              updatedAt: uData?.updatedAt ?? pubData?.updatedAt,
-              planExpiresAt: uData?.planExpiresAt ?? pubData?.planExpiresAt,
-              premiumExpiresAt: uData?.premiumExpiresAt ?? pubData?.premiumExpiresAt,
-              isSuperAdmin: isSelfSuperAdmin,
-            });
-            const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
-            if (!isActivePro) return null;
-            if (pubData?.proBadge === null && !uData?.proBadgeDesign && !pubData?.proBadgeDesign) {
-              return DEFAULT_PRO_BADGE_DESIGN;
-            }
-            const candidateDesign = uData?.proBadgeDesign || pubData?.proBadgeDesign || pubData?.proBadge;
-            return isValidProBadgeDesign(candidateDesign)
-              ? normalizeProBadgeDesign(candidateDesign)
-              : DEFAULT_PRO_BADGE_DESIGN;
-          })(),
-          profileLayout: normalizeProfileLayout(
-            (getProfileLayoutSnapshotForUid(uid).known ? getProfileLayoutSnapshotForUid(uid).layout : null) ??
-              d1Live?.profile_layout ??
-              d1Live?.profileLayout ??
-              pubData?.profile_layout ??
-              pubData?.profileLayout ??
-              uData?.profile_layout ??
-              uData?.profileLayout ??
-              DEFAULT_PROFILE_LAYOUT
-          ),
-          profile_layout: normalizeProfileLayout(
-            (getProfileLayoutSnapshotForUid(uid).known ? getProfileLayoutSnapshotForUid(uid).layout : null) ??
-              d1Live?.profile_layout ??
-              d1Live?.profileLayout ??
-              pubData?.profile_layout ??
-              pubData?.profileLayout ??
-              uData?.profile_layout ??
-              uData?.profileLayout ??
-              DEFAULT_PROFILE_LAYOUT
-          ),
+          uData?.shortId || uData?.studentId || pubData?.studentId || pubData?.shortId
+        );
+
+        let fCount = uData?.followersCount || 0;
+        let fgCount = uData?.followingCount || 0;
+        try {
+          const fQuery = query(
+            collection(db, 'follows'),
+            where('followingId', '==', uid),
+            limit(500)
+          );
+          const fgQuery = query(
+            collection(db, 'follows'),
+            where('followerId', '==', uid),
+            limit(500)
+          );
+          const [fSnap, fgSnap] = await Promise.all([getDocs(fQuery), getDocs(fgQuery)]);
+          fCount = fSnap.size;
+          fgCount = fgSnap.size;
+
+          if (currentUser && !isOwnProfile && !isGuest) {
+            const myFollowDoc = await getDoc(
+              doc(db, 'follows', `${currentUser.uid}_${uid}`)
+            );
+            if (isMounted) setIsFollowing(myFollowDoc.exists());
+          }
+        } catch {
+          // fallback to stored count
+        }
+
+        if (!isMounted) return;
+
+        setFollowersCount(fCount);
+        setFollowingCount(fgCount);
+
+        const resolvedDisplayName =
+          d1Live?.displayName ||
+          (isOwnProfile ? (authProfile as any)?.displayName : undefined) ||
+          pubData?.displayName ||
+          uData?.nickname ||
+          uData?.displayName ||
+          'Student';
+        const resolvedUsername =
+          d1Live?.username ||
+          (isOwnProfile ? (authProfile as any)?.username : undefined) ||
+          pubData?.username ||
+          uData?.username ||
+          resolvedDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+
+        const rawEquippedCosmetics: EquippedCosmeticsMap = {
+          ...(pubData?.equippedCosmetics || {}),
+          ...(uData?.equippedCosmetics || {}),
         };
 
-        if (!isMounted) return;
-        setProfile(resolvedProfile);
-        profileMemoryCache.set(uid, { profile: resolvedProfile, timestamp: Date.now() });
+        const rawAvatarCandidate =
+          d1Live?.avatar ||
+          (isOwnProfile ? (authProfile as any)?.avatar : undefined) ||
+          rawEquippedCosmetics.avatar ||
+          uData?.equippedAvatar ||
+          pubData?.equippedAvatar ||
+          'avatar-1';
 
-        const initialPinned = (uData?.pinnedStamps as string[]) || (pubData?.pinnedStamps as string[]) || [];
-        if (Array.isArray(initialPinned)) {
-          setPinnedShowcase(initialPinned);
-        }
+        const isCustomUploadedAvatar =
+          typeof rawAvatarCandidate === 'string' &&
+          (rawAvatarCandidate.startsWith('/api/avatars/') ||
+            rawAvatarCandidate.startsWith('https://') ||
+            rawAvatarCandidate.startsWith('http://') ||
+            rawAvatarCandidate.startsWith('data:image/'));
 
-        const initialStreakBadges =
-          (uData?.equippedStreakBadges as string[]) ||
-          (pubData?.equippedStreakBadges as string[]) ||
-          (uid === currentUid ? ['badge_streak_7d'] : []);
-        if (Array.isArray(initialStreakBadges)) {
-          setEquippedStreakBadges(initialStreakBadges);
-        }
+        const resolvedEquippedAvatar = isCustomUploadedAvatar
+          ? 'custom'
+          : rawAvatarCandidate || 'avatar-1';
 
-        if (currentUid && uid !== currentUid) {
-          setIsFollowedByMe(followingState);
-          setFollowsMe(followsMeState);
-          setChatPermission(resolvedChatPerm);
-        } else {
-          setIsFollowedByMe(false);
-          setFollowsMe(false);
-          setChatPermission(null);
-        }
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.error('[ProfileView] error loading profile:', err?.code || 'ERROR', `users/${uid}`, err);
-        setFetchError(err?.message || 'Could not load student profile.');
+        const resolvedPhotoURL = isCustomUploadedAvatar
+          ? rawAvatarCandidate
+          : pubData?.photoURL ||
+            uData?.photoURL ||
+            (isOwnProfile ? currentUser?.photoURL || '' : '');
+
+        const resolvedFrame =
+          d1Live?.frame ||
+          (isOwnProfile ? (authProfile as any)?.frame : undefined) ||
+          rawEquippedCosmetics.avatarFrame ||
+          uData?.equippedFrame ||
+          pubData?.equippedFrame ||
+          'none';
+
+        const resolvedBanner =
+          rawEquippedCosmetics.profileBanner ||
+          uData?.equippedBanner ||
+          pubData?.equippedBanner ||
+          'none';
+
+        const resolvedTitle =
+          rawEquippedCosmetics.title ||
+          uData?.equippedTitle ||
+          pubData?.equippedTitle ||
+          'title-rookie';
+
+        const resolvedRole =
+          d1Live?.role ||
+          (isOwnProfile ? (authProfile as any)?.role : undefined) ||
+          pubData?.role ||
+          uData?.role ||
+          'student';
+
+        const resolvedCustomRole =
+          d1Live?.customRole ??
+          (isOwnProfile ? (authProfile as any)?.customRole : undefined) ??
+          pubData?.customRole ??
+          uData?.customRole ??
+          'Student';
+
+        const resolvedBio =
+          d1Live?.bio !== undefined && d1Live?.bio !== ''
+            ? d1Live.bio
+            : (isOwnProfile ? (authProfile as any)?.bio : undefined) ??
+              uData?.bio ??
+              pubData?.bio ??
+              '';
+
+        const resolvedStatus =
+          d1Live?.status !== undefined && d1Live?.status !== ''
+            ? d1Live.status
+            : (isOwnProfile ? (authProfile as any)?.status : undefined) ??
+              uData?.status ??
+              pubData?.status ??
+              '';
+
+        const resolvedProBadge: ProBadgeDesignId | null = isOwnProfile
+          ? myProBadgeVisible
+            ? myProBadgeDesign
+            : null
+          : d1Live?.proBadge
+          ? normalizeProBadgeDesign(d1Live.proBadge)
+          : pubData?.proBadge
+          ? normalizeProBadgeDesign(pubData.proBadge)
+          : uData?.proBadge
+          ? normalizeProBadgeDesign(uData.proBadge)
+          : null;
+
+        const enriched: EnrichedProfile = {
+          uid,
+          displayName: resolvedDisplayName,
+          username: resolvedUsername,
+          role: resolvedRole as any,
+          customRole: resolvedCustomRole || 'Student',
+          equippedAvatar: resolvedEquippedAvatar,
+          photoURL: resolvedPhotoURL,
+          equippedFrame: resolvedFrame,
+          equippedBanner: resolvedBanner,
+          equippedTitle: resolvedTitle,
+          equippedBadges: uData?.equippedBadges ||
+            pubData?.equippedBadges || ['first_login'],
+          equippedCosmetics: {
+            ...rawEquippedCosmetics,
+            avatar: isCustomUploadedAvatar ? undefined : resolvedEquippedAvatar,
+            avatarFrame: resolvedFrame !== 'none' ? resolvedFrame : undefined,
+            profileBanner: resolvedBanner !== 'none' ? resolvedBanner : undefined,
+            title: resolvedTitle,
+          },
+          bio: resolvedBio,
+          status: resolvedStatus,
+          shortId,
+          studentId: shortId,
+          followersCount: fCount,
+          followingCount: fgCount,
+          isBanned: uData?.isBanned || false,
+          proBadge: resolvedProBadge,
+          stats: {
+            streakDays: uData?.streakDays ?? pubData?.stats?.streakDays ?? 0,
+            testsCompleted: pubData?.stats?.testsCompleted ?? 0,
+            questionsAnswered: pubData?.stats?.questionsAnswered ?? 0,
+            accuracyRate: pubData?.stats?.accuracyRate ?? 0,
+            xp: uData?.xp ?? pubData?.stats?.xp ?? 0,
+          },
+        };
+
+        setProfile(enriched);
+        setEditNickname(enriched.displayName);
+        setEditUsername(enriched.username || '');
+        setEditBio(enriched.bio || '');
+        setEditStatus(enriched.status || '');
+        setEditCustomRole(enriched.customRole || 'Student');
+        setEditAvatar(enriched.equippedAvatar);
+        setEditFrame(enriched.equippedFrame || 'none');
+        setEditBanner(enriched.equippedBanner || 'none');
+        setEditEffect(enriched.equippedCosmetics?.profileEffect || 'none');
+        setEditBadges(enriched.equippedBadges || ['first_login']);
+      } catch (err) {
+        console.error('Error loading profile:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
-    }
+    };
 
-    fetchProfileData();
-
-    // Subscribe to live public profile broadcasts so any profile edit immediately updates this view
-    const unsubLiveProfile = subscribePublicProfile(resolvedUid, (updatedProf) => {
-      if (!isMounted || !updatedProf) return;
-      setProfile((prev) => {
-        if (!prev) return prev;
-        const nextLayout =
-          updatedProf.profileLayout || updatedProf.profile_layout
-            ? normalizeProfileLayout(updatedProf.profileLayout ?? updatedProf.profile_layout)
-            : prev.profileLayout || prev.profile_layout || DEFAULT_PROFILE_LAYOUT;
-        const merged: PublicProfile = {
-          ...prev,
-          displayName: updatedProf.displayName || prev.displayName,
-          ...(updatedProf.username ? { username: updatedProf.username } : {}),
-          bio: updatedProf.bio ?? prev.bio,
-          status: updatedProf.status ?? prev.status,
-          accent: updatedProf.accent || prev.accent,
-          avatar: updatedProf.avatar ?? updatedProf.equipped?.avatar ?? prev.avatar,
-          frame: updatedProf.frame ?? updatedProf.equipped?.frame ?? prev.frame,
-          banner: updatedProf.banner ?? updatedProf.equipped?.banner ?? prev.banner,
-          nameplate: updatedProf.nameplate ?? updatedProf.equipped?.nameplate ?? prev.nameplate,
-          effectId: updatedProf.effectId ?? updatedProf.equipped?.effect ?? prev.effectId,
-          proBadge: updatedProf.proBadge !== undefined ? updatedProf.proBadge : prev.proBadge,
-          profileLayout: nextLayout,
-          profile_layout: nextLayout,
-          equipped: {
-            ...(prev.equipped || { effect: null, frame: null, nameplate: null, avatar: null, banner: null }),
-            ...(updatedProf.equipped || {}),
-          },
-        };
-        profileMemoryCache.set(resolvedUid, { profile: merged, timestamp: Date.now() });
-        return merged;
-      });
-    });
-
+    void loadData();
     return () => {
       isMounted = false;
-      unsubLiveProfile();
-    };
-  }, [targetUid, currentUid, isAdmin, authIsSuperAdmin, isGuest, isViewingSelf]);
-
-  // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or follower counts
-  useEffect(() => {
-    if (isViewingSelf && (ownProfile || authProfile) && !previewAsPublic && (!walletLoading || isGuest)) {
-      const op = (ownProfile || authProfile) as any;
-      const isAdminAccountUser = Boolean(!isGuest && isAdmin);
-      const shortCode = op.studentId || op.shortId || (isGuest ? 'GUEST' : deriveFallbackShortId(currentUid || '0'));
-      const rawDisplayName = op.displayName || op.username || authProfile?.displayName || authProfile?.username || authUser?.displayName;
-      const safeSelfName =
-        !authIsSuperAdmin &&
-        typeof rawDisplayName === 'string' &&
-        rawDisplayName.trim().toLowerCase() === 'shs virtual academy'
-          ? op.username || authProfile?.username || 'Student'
-          : rawDisplayName;
-      const cleanName = isGuest
-        ? (safeSelfName || 'Guest')
-        : sanitizeStudentDisplayName(safeSelfName, shortCode);
-      const resolvedUsername = op.username || authProfile?.username || (isGuest ? cleanName : undefined);
-
-      setProfile((prev) => {
-        const resolvedAvatar =
-          resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(op.equipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(op.avatar, 'avatar') ||
-          resolveCosmeticItemId(prev?.avatar, 'avatar') ||
-          null;
-        const resolvedBanner =
-          (ownEquipped?.banner as string) ||
-          (op.equipped?.banner as string) ||
-          (op.banner as string) ||
-          prev?.banner ||
-          null;
-        const resolvedFrame =
-          (ownEquipped?.frame as string) ||
-          (op.equipped?.frame as string) ||
-          (op.frame as string) ||
-          prev?.frame ||
-          null;
-        const resolvedNameplate =
-          (ownEquipped?.nameplate as string) ||
-          (op.equipped?.nameplate as string) ||
-          (op.nameplate as string) ||
-          prev?.nameplate ||
-          null;
-        const resolvedEffectId =
-          (ownEquipped?.effect as string) ||
-          (op.equipped?.effect as string) ||
-          (op.effectId as string) ||
-          prev?.effectId ||
-          null;
-
-        const cachedSelf = currentUid ? profileMemoryCache.get(currentUid)?.profile : null;
-        const resolvedFollowersCount =
-          prev?.followersCount ??
-          cachedSelf?.followersCount ??
-          (typeof op.followersCount === 'number' ? op.followersCount : 0);
-        const resolvedFollowingCount =
-          prev?.followingCount ??
-          cachedSelf?.followingCount ??
-          (typeof op.followingCount === 'number' ? op.followingCount : 0);
-
-        const selfTrustedRole = authIsSuperAdmin
-          ? 'superadmin'
-          : isAdminAccountUser
-          ? 'admin'
-          : op.role === 'captain' || op.role === 'crew' || op.role === 'ambassador'
-          ? op.role
-          : 'student';
-
-        const nextProfile: PublicProfile & { username?: string; isGuest?: boolean; accountType?: string } = {
-          uid: currentUid || 'guest',
-          displayName: cleanName,
-          ...(resolvedUsername ? { username: resolvedUsername } : {}),
-          studentId: shortCode,
-          shortId: shortCode,
-          avatar: resolvedAvatar,
-          banner: resolvedBanner,
-          frame: resolvedFrame,
-          nameplate: resolvedNameplate,
-          effectId: resolvedEffectId,
-          badges: op.badges || prev?.badges || [],
-          bio: op.bio ?? prev?.bio ?? '',
-          status: op.status ?? prev?.status ?? '',
-          accent: op.accent || prev?.accent || '#D71921',
-          memberSince: op.createdAt || op.memberSince || prev?.memberSince || null,
-          crewName: op.crewName || prev?.crewName || null,
-          stats: {
-            streak: Number(op.streak ?? prev?.stats?.streak ?? 0),
-            longestStreak: Number(op.longestStreak ?? op.streak ?? prev?.stats?.longestStreak ?? 0),
-            mcqs: Number(op.totalQuestionsSolved ?? op.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
-            accuracy: Number(op.accuracy ?? prev?.stats?.accuracy ?? 0),
-          },
-          followersCount: resolvedFollowersCount,
-          followingCount: resolvedFollowingCount,
-          lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
-          role: selfTrustedRole,
-          customRole: isGuest ? 'Guest' : (selfTrustedRole !== 'student' ? op.customRole || prev?.customRole : undefined),
-          ...(isGuest ? { isGuest: true, accountType: 'guest' } : {}),
-          equipped: {
-            effect: resolvedEffectId,
-            frame: resolvedFrame,
-            nameplate: resolvedNameplate,
-            avatar: resolvedAvatar,
-            banner: resolvedBanner,
-          },
-          avatarUrl: resolvedAvatar,
-          photoURL: null,
-          avatarKey: op.avatarKey || prev?.avatarKey || null,
-          avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
-          profileLayout: normalizeProfileLayout(
-            (selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
-              prev?.profileLayout ??
-              prev?.profile_layout ??
-              (authProfile as any)?.profileLayout ??
-              (authProfile as any)?.profile_layout ??
-              op.profileLayout ??
-              op.profile_layout ??
-              DEFAULT_PROFILE_LAYOUT
-          ),
-          profile_layout: normalizeProfileLayout(
-            (selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
-              prev?.profileLayout ??
-              prev?.profile_layout ??
-              (authProfile as any)?.profileLayout ??
-              (authProfile as any)?.profile_layout ??
-              op.profileLayout ??
-              op.profile_layout ??
-              DEFAULT_PROFILE_LAYOUT
-          ),
-        };
-
-        if (currentUid) {
-          profileMemoryCache.set(currentUid, { profile: nextProfile, timestamp: Date.now() });
-          if (!isGuest && !currentUid.startsWith('guest_')) {
-            void syncPublicProfile(currentUid, {
-              ...op,
-              displayName: cleanName,
-              shortId: shortCode,
-              avatar: resolvedAvatar,
-              banner: resolvedBanner,
-              frame: resolvedFrame,
-              nameplate: resolvedNameplate,
-              effectId: resolvedEffectId,
-              equipped: nextProfile.equipped,
-              followersCount: resolvedFollowersCount,
-              followingCount: resolvedFollowingCount,
-            }).catch(() => {});
-          }
-        }
-
-        return nextProfile;
-      });
-    }
-  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, authIsSuperAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.known, selfLayoutStatus.ready]);
-
-  // Rank title computation
-  const rank = useMemo(() => {
-    const mcqs = profile?.stats?.mcqs ?? profile?.publicStats?.totalQuestionsSolved ?? (isViewingSelf ? ownProfile?.totalQuestionsSolved : 0) ?? 0;
-    const streak = profile?.stats?.streak ?? profile?.publicStats?.streak ?? (isViewingSelf ? ownProfile?.streak : 0) ?? 0;
-    return getRankTitle(mcqs, streak);
-  }, [profile, isViewingSelf, ownProfile]);
-
-  // Studying now active status (within 10 minutes)
-  const isStudyingNow = useMemo(() => {
-    if (isViewingSelf) return true;
-    const lastActive = profile?.lastActiveAt;
-    if (!lastActive) return false;
-    let ts = 0;
-    if (typeof lastActive === 'object' && 'seconds' in lastActive) {
-      ts = lastActive.seconds * 1000;
-    } else if (typeof lastActive === 'string' || typeof lastActive === 'number') {
-      ts = new Date(lastActive).getTime();
-    }
-    return Date.now() - ts < 10 * 60 * 1000;
-  }, [profile?.lastActiveAt, isViewingSelf]);
-
-  // Follow / Unfollow handler
-  const handleFollowToggle = async () => {
-    if (!currentUid) {
-      requireAuth(`follow ${profile?.displayName || 'this student'}`);
-      return;
-    }
-    if (!profile?.uid || followWorking || isViewingSelf || currentUid === profile.uid) return;
-    const targetId = profile.uid;
-
-    if (isFollowedByMe) {
-      setUnfollowModalOpen(true);
-      return;
-    }
-
-    // Optimistic follow
-    setFollowWorking(true);
-    setIsFollowedByMe(true);
-    setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
-
-    try {
-      await followUser(currentUid, targetId, {
-        followerName: ownProfile?.displayName || authUser?.displayName || 'Student',
-        followerAvatar:
-          resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId(ownProfile?.equipped?.avatar, 'avatar') ||
-          resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
-          null,
-        followerFrame:
-          (ownEquipped?.frame as string) || (ownProfile?.equipped?.frame as string) || null,
-      });
-      const [updatedCounts, updatedPerm] = await Promise.all([
-        getFollowCounts(targetId),
-        checkChatPermission(currentUid, targetId).catch(() => null),
-      ]);
-      if (updatedPerm) setChatPermission(updatedPerm);
-      setProfile((prev) => {
-        if (!prev) return null;
-        const updated = {
-          ...prev,
-          followersCount: updatedCounts.followersCount,
-          followingCount: updatedCounts.followingCount,
-        };
-        profileMemoryCache.set(targetId, { profile: updated, timestamp: Date.now() });
-        return updated;
-      });
-      // Also invalidate own profile cache so our own followingCount refreshes on next view
-      profileMemoryCache.delete(currentUid);
-    } catch (err: any) {
-      console.error('[ProfileView] followUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
-      // Rollback
-      setIsFollowedByMe(false);
-      setProfile((prev) => (prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null));
-    } finally {
-      setFollowWorking(false);
-    }
-  };
-
-  const confirmUnfollow = async () => {
-    if (!currentUid || !profile?.uid || isViewingSelf || currentUid === profile.uid) return;
-    const targetId = profile.uid;
-    setFollowWorking(true);
-
-    // Optimistic unfollow
-    setIsFollowedByMe(false);
-    setProfile((prev) => (prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null));
-
-    try {
-      await unfollowUser(currentUid, targetId);
-      const [updatedCounts, updatedPerm] = await Promise.all([
-        getFollowCounts(targetId),
-        checkChatPermission(currentUid, targetId).catch(() => null),
-      ]);
-      if (updatedPerm) setChatPermission(updatedPerm);
-      setProfile((prev) => {
-        if (!prev) return null;
-        const updated = {
-          ...prev,
-          followersCount: updatedCounts.followersCount,
-          followingCount: updatedCounts.followingCount,
-        };
-        profileMemoryCache.set(targetId, { profile: updated, timestamp: Date.now() });
-        return updated;
-      });
-      profileMemoryCache.delete(currentUid);
-      setUnfollowModalOpen(false);
-    } catch (err: any) {
-      console.error('[ProfileView] unfollowUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
-      // Rollback
-      setIsFollowedByMe(true);
-      setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
-    } finally {
-      setFollowWorking(false);
-    }
-  };
-
-  const handleMessageOrRequestClick = async () => {
-    if (!currentUid) {
-      requireAuth(`message ${profile?.displayName || 'this student'}`);
-      return;
-    }
-    if (!profile?.uid || isViewingSelf || currentUid === profile.uid) return;
-
-    const canChatDirectly =
-      (isFollowedByMe && followsMe) ||
-      Boolean(chatPermission?.canChat) ||
-      chatPermission?.outgoingRequest?.status === 'accepted' ||
-      chatPermission?.incomingRequest?.status === 'accepted';
-
-    if (canChatDirectly) {
-      setDmInitialTab('chat');
-      setDmModalOpen(true);
-      return;
-    }
-
-    if (chatPermission?.incomingRequest?.status === 'pending') {
-      setDmInitialTab('requests');
-      setDmModalOpen(true);
-      return;
-    }
-
-    if (
-      chatRequestWorking ||
-      chatPermission?.outgoingRequest?.status === 'pending' ||
-      chatPermission?.isCooldownActive
-    ) {
-      return;
-    }
-
-    setChatRequestWorking(true);
-    try {
-      const createdReq = await sendChatRequest(
-        currentUid,
-        profile.uid,
-        {
-          displayName: ownProfile?.displayName || authUser?.displayName || 'Student',
-          avatar:
-            resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
-            resolveCosmeticItemId(ownProfile?.equipped?.avatar, 'avatar') ||
-            resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
-            null,
-          frame:
-            (ownEquipped?.frame as string) ||
-            (ownProfile?.equipped?.frame as string) ||
-            null,
-          photoURL: null,
-          role: ownProfile?.role || 'student',
-        },
-        {
-          displayName: profile.displayName || 'Student',
-          avatar: resolveCosmeticItemId(profile.avatar, 'avatar') || null,
-          frame: profile.frame || null,
-          photoURL: null,
-        }
-      );
-
-      setChatPermission((prev) => ({
-        canChat: createdReq.status === 'accepted',
-        reason: createdReq.status === 'accepted' ? 'request_accepted' : 'none',
-        isMutualFollow: Boolean(isFollowedByMe && followsMe),
-        outgoingRequest: createdReq,
-        incomingRequest: prev?.incomingRequest || null,
-        cooldownEndsAtMs: null,
-        isCooldownActive: false,
-      }));
-
-      if (createdReq.status === 'accepted') {
-        setDmInitialTab('chat');
-        setDmModalOpen(true);
-      }
-    } catch (err) {
-      console.warn('[ProfileView] sendChatRequest notice:', err);
-      const updatedPerm = await checkChatPermission(currentUid, profile.uid).catch(() => null);
-      if (updatedPerm) setChatPermission(updatedPerm);
-    } finally {
-      setChatRequestWorking(false);
-    }
-  };
-
-  // Edit Profile submission (server-confirmed via updateProfileData)
-  const handleSaveProfileUpdates = async (updates: {
-    displayName: string;
-    bio: string;
-    status: string;
-    accent: string;
-  }) => {
-    if (!currentUid) return;
-    await updateProfileData(updates);
-    setProfile((prev) => {
-      if (!prev) return null;
-      const next = { ...prev, ...updates };
-      profileMemoryCache.set(currentUid, { profile: next, timestamp: Date.now() });
-      return next;
-    });
-    broadcastPublicProfileUpdate(currentUid, updates);
-  };
-
-  const handleSaveAvatar = async (newAvatarId: string | null) => {
-    if (!currentUid || !isViewingSelf) return;
-    const prevProfile = profile;
-
-    setProfile((prev) => {
-      if (!prev) return null;
-      const next: PublicProfile = {
-        ...prev,
-        avatar: newAvatarId,
-        avatarUrl: newAvatarId,
-        equipped: {
-          ...(prev.equipped || {
-            effect: null,
-            frame: null,
-            nameplate: null,
-            avatar: null,
-            banner: null,
-          }),
-          avatar: newAvatarId,
-        },
-      };
-      profileMemoryCache.set(currentUid, { profile: next, timestamp: Date.now() });
-      return next;
-    });
-
-    try {
-      await equipCosmetic('avatar', newAvatarId);
-      await updateProfileData({
-        avatar: newAvatarId ?? undefined,
-        equippedAvatar: newAvatarId,
-      });
-    } catch (err) {
-      if (prevProfile) {
-        setProfile(prevProfile);
-        profileMemoryCache.set(currentUid, { profile: prevProfile, timestamp: Date.now() });
-      }
-      throw err;
-    }
-  };
-
-  // Unequip cosmetic item
-  const handleUnequipItem = async (type: 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner') => {
-    if (!isViewingSelf) return;
-    try {
-      await equipCosmetic(type, null);
-      setProfile((prev) => (prev ? { ...prev, [type]: null } : null));
-    } catch (err) {
-      console.warn('[ProfileView] unequip error:', err);
-    }
-  };
-
-  // Student level calculation
-  const studentLevel = useMemo(() => {
-    const mcqs =
-      profile?.stats?.mcqs ??
-      profile?.publicStats?.totalQuestionsSolved ??
-      (isViewingSelf ? ownProfile?.totalQuestionsSolved : 0) ??
-      0;
-    return Math.max(1, Math.floor(Number(mcqs) / 25) + 1);
-  }, [profile, isViewingSelf, ownProfile]);
-
-  // All 12 flagship and catalog profile banners
-  const catalogBanners = useMemo(() => {
-    return COSMETICS_CATALOG.filter((item) => item.type === 'banner');
-  }, []);
-
-  // Equip banner handler with single source of truth sync
-  const handleEquipBanner = async (bannerId: string | null) => {
-    if (!isViewingSelf) return;
-    setEquippingBannerId(bannerId);
-    try {
-      await equipCosmetic('banner', bannerId);
-      setProfile((prev) => (prev ? { ...prev, banner: bannerId } : null));
-    } catch (err: any) {
-      console.warn('[ProfileView] Error equipping banner:', err);
-      alert(err?.message || 'Failed to equip banner.');
-    } finally {
-      setEquippingBannerId(null);
-    }
-  };
-
-  // Unlock and immediately equip banner
-  const handlePurchaseBanner = async (item: CosmeticItem) => {
-    if (!authUser?.uid) {
-      navigate('/login?redirect=/dashboard/profile');
-      return;
-    }
-    if (kobanBalance < item.priceKobans) {
-      navigate('/store');
-      return;
-    }
-    try {
-      setEquippingBannerId(item.id);
-      await purchaseCosmetic(item);
-      await equipCosmetic('banner', item.id);
-      setProfile((prev) => (prev ? { ...prev, banner: item.id } : null));
-    } catch (err: any) {
-      console.warn('[ProfileView] purchase banner error:', err);
-      alert(err?.message || 'Failed to purchase banner.');
-    } finally {
-      setEquippingBannerId(null);
-    }
-  };
-
-  // Toggle streak badge equip
-  const handleToggleStreakBadge = (badgeId: string) => {
-    if (!isViewingSelf) return;
-    setEquippedStreakBadges((prev) => {
-      if (prev.includes(badgeId)) {
-        return prev.filter((id) => id !== badgeId);
-      }
-      if (prev.length >= 3) {
-        return [...prev.slice(1), badgeId];
-      }
-      return [...prev, badgeId];
-    });
-  };
-
-  // Toggle showcase pin
-  const handleToggleShowcasePin = (id: string) => {
-    if (!isViewingSelf || !currentUid) return;
-    setPinnedShowcase((prev) => {
-      const next = prev.includes(id)
-        ? prev.filter((p) => p !== id)
-        : prev.length >= 3
-        ? [...prev.slice(1), id]
-        : [...prev, id];
-
-      if (!isGuest && !currentUid.startsWith('guest_')) {
-        setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'publicProfiles', currentUid), { uid: currentUid, pinnedStamps: next }, { merge: true }).catch(() => {});
-      }
-      return next;
-    });
-  };
-
-  const accentColor = propData?.accent || profile?.accent || '#D71921';
-  const effectiveEffectId =
-    propData?.effect ||
-    profile?.effectId ||
-    (isViewingSelf && !previewAsPublic ? ownEquipped?.effect : null) ||
-    null;
-
-  // Build the single shared profile data object resolved strictly by UID
-  const sharedProfileData: SharedProfileData = useMemo(() => {
-    if (propData) {
-      const resolvedOverride = propLayout
-        ? normalizeProfileLayout(propLayout)
-        : normalizeProfileLayout(propData.profile_layout ?? propData.profileLayout);
-      return {
-        ...propData,
-        profile_layout: resolvedOverride,
-        profileLayout: resolvedOverride,
-      };
-    }
-
-    const activeUid = String(profile?.uid || targetUid || currentUid || 'guest').trim();
-    const built = buildSharedProfileData({
-      uid: activeUid,
-      publicProfile: profile as any,
-      ownUserProfile: isViewingSelf && !previewAsPublic ? ((ownProfile || authProfile) as any) : null,
-      walletCoins: isViewingSelf ? kobanBalance : null,
-      walletEquipped: isViewingSelf && !previewAsPublic ? (ownEquipped as any) : null,
-      overrideLayout: propLayout ? normalizeProfileLayout(propLayout) : null,
-    });
-
-    const activeProBadge = isViewingSelf ? effectiveProBadge : profile?.proBadge;
-    return {
-      ...built,
-      level: studentLevel,
-      proBadge: activeProBadge || built.proBadge || null,
-      isPro: Boolean(activeProBadge || built.isPro),
-      followers: Number(profile?.followersCount ?? built.followers ?? 0),
-      following: Number(profile?.followingCount ?? built.following ?? 0),
     };
   }, [
+    uid,
+    currentUser,
+    isOwnProfile,
+    isGuest,
+    previewMode,
     propData,
-    propLayout,
-    profile,
-    targetUid,
-    currentUid,
-    isViewingSelf,
-    previewAsPublic,
-    ownProfile,
     authProfile,
-    kobanBalance,
-    ownEquipped,
-    effectiveProBadge,
-    studentLevel,
+    ownProfile,
+    myProBadgeDesign,
+    myProBadgeVisible,
   ]);
 
-  const resolvedLayoutId: ProfileLayoutId = useMemo(
-    () =>
-      normalizeProfileLayout(
-        propLayout ??
-          propData?.profile_layout ??
-          propData?.profileLayout ??
-          (isViewingSelf && selfLayoutStatus.known ? selfLayoutStatus.layout : null) ??
-          profile?.profileLayout ??
-          profile?.profile_layout ??
-          (isViewingSelf
-            ? (authProfile as any)?.profileLayout ??
-              (authProfile as any)?.profile_layout ??
-              (ownProfile as any)?.profileLayout ??
-              (ownProfile as any)?.profile_layout
-            : null) ??
-          DEFAULT_PROFILE_LAYOUT
-      ),
-    [propLayout, propData, isViewingSelf, selfLayoutStatus.known, selfLayoutStatus.layout, profile, authProfile, ownProfile]
+  // Real-time listener for publicProfiles/{uid}
+  useEffect(() => {
+    if (!uid || isGuest || previewMode) return;
+    const pubRef = doc(db, 'publicProfiles', uid);
+    const unsub = onSnapshot(
+      pubRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setProfile((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            displayName: data.displayName || prev.displayName,
+            username: data.username || prev.username,
+            customRole: data.customRole ?? prev.customRole,
+            bio: data.bio ?? prev.bio,
+            status: data.status ?? prev.status,
+            photoURL: data.photoURL ?? prev.photoURL,
+            equippedAvatar: data.equippedAvatar || prev.equippedAvatar,
+            equippedFrame: data.equippedFrame ?? prev.equippedFrame,
+            equippedBanner: data.equippedBanner ?? prev.equippedBanner,
+            equippedTitle: data.equippedTitle ?? prev.equippedTitle,
+            equippedCosmetics: {
+              ...(prev.equippedCosmetics || {}),
+              ...(data.equippedCosmetics || {}),
+            },
+          };
+        });
+      },
+      () => {}
+    );
+    return () => unsub();
+  }, [uid, isGuest, previewMode]);
+
+  // Keep own profile synced with live WalletContext & AuthContext
+  useEffect(() => {
+    if (!isOwnProfile || !ownProfile || previewMode) return;
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const op = ownProfile as any;
+      const liveEquipped = wallet.equipped || {};
+      const nextFrame =
+        liveEquipped.avatarFrame || op.equippedFrame || prev.equippedFrame || 'none';
+      const nextBanner =
+        liveEquipped.profileBanner || op.equippedBanner || prev.equippedBanner || 'none';
+      const nextTitle =
+        liveEquipped.title || op.equippedTitle || prev.equippedTitle || 'title-rookie';
+      const nextAvatar =
+        op.equippedAvatar === 'custom'
+          ? 'custom'
+          : liveEquipped.avatar || op.equippedAvatar || prev.equippedAvatar || 'avatar-1';
+
+      return {
+        ...prev,
+        displayName:
+          (authProfile as any)?.displayName || op.nickname || prev.displayName,
+        username: (authProfile as any)?.username || op.username || prev.username,
+        role: (authProfile as any)?.role || op.role || prev.role,
+        customRole:
+          (authProfile as any)?.customRole ?? op.customRole ?? prev.customRole,
+        bio: (authProfile as any)?.bio ?? op.bio ?? prev.bio,
+        status: (authProfile as any)?.status ?? op.status ?? prev.status,
+        equippedAvatar: nextAvatar,
+        photoURL: op.photoURL ?? prev.photoURL,
+        equippedFrame: nextFrame,
+        equippedBanner: nextBanner,
+        equippedTitle: nextTitle,
+        equippedBadges: op.equippedBadges ?? prev.equippedBadges,
+        proBadge: myProBadgeVisible ? myProBadgeDesign : null,
+        equippedCosmetics: {
+          ...(prev.equippedCosmetics || {}),
+          ...(op.equippedCosmetics || {}),
+          ...liveEquipped,
+          avatarFrame: nextFrame !== 'none' ? nextFrame : undefined,
+          profileBanner: nextBanner !== 'none' ? nextBanner : undefined,
+          title: nextTitle,
+        },
+      };
+    });
+  }, [
+    isOwnProfile,
+    ownProfile,
+    authProfile,
+    wallet.equipped,
+    myProBadgeDesign,
+    myProBadgeVisible,
+    previewMode,
+  ]);
+
+  const handleFollowToggle = async () => {
+    if (propOnFollow) {
+      propOnFollow();
+      return;
+    }
+    if (!currentUser || !uid || isOwnProfile || followLoading) return;
+    if (isGuest) {
+      navigate('/login');
+      return;
+    }
+    setFollowLoading(true);
+    const followDocId = `${currentUser.uid}_${uid}`;
+    const followRef = doc(db, 'follows', followDocId);
+
+    try {
+      if (isFollowing) {
+        await deleteDoc(followRef);
+        setIsFollowing(false);
+        setFollowersCount((c) => Math.max(0, c - 1));
+      } else {
+        await setDoc(followRef, {
+          followerId: currentUser.uid,
+          followingId: uid,
+          createdAt: serverTimestamp(),
+        });
+        setIsFollowing(true);
+        setFollowersCount((c) => c + 1);
+      }
+    } catch (err) {
+      console.error('Failed to toggle follow:', err);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const openFollowList = async (type: 'followers' | 'following') => {
+    if (!uid || previewMode) return;
+    setFollowListModal(type);
+    setFollowListLoading(true);
+    setFollowListUsers([]);
+    try {
+      const field = type === 'followers' ? 'followingId' : 'followerId';
+      const targetField = type === 'followers' ? 'followerId' : 'followingId';
+      const q = query(collection(db, 'follows'), where(field, '==', uid), limit(50));
+      const snap = await getDocs(q);
+      const targetUids = snap.docs
+        .map((d) => d.data()[targetField] as string)
+        .filter(Boolean);
+
+      const loaded: PublicProfile[] = [];
+      for (const tUid of targetUids) {
+        const p = await getPublicProfile(tUid);
+        if (p) loaded.push(p);
+      }
+      setFollowListUsers(loaded);
+    } catch (err) {
+      console.error('Error loading follow list:', err);
+    } finally {
+      setFollowListLoading(false);
+    }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser || !uid) return;
+
+    if (!file.type.startsWith('image/')) {
+      setEditError('Please select a valid image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setEditError('Image must be under 5MB.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setEditError('');
+
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 256;
+            let w = img.width;
+            let h = img.height;
+            if (w > h) {
+              if (w > maxDim) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              }
+            } else if (h > maxDim) {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject(new Error('Canvas context unavailable'));
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/webp', 0.85));
+          };
+          img.onerror = () => reject(new Error('Failed to decode image'));
+          img.src = ev.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+
+      const idToken = await currentUser.getIdToken();
+      const uploadResp = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ dataUrl }),
+      });
+
+      let finalPhotoUrl = dataUrl;
+      if (uploadResp.ok) {
+        const payload = await uploadResp.json();
+        if (payload?.avatarUrl) {
+          finalPhotoUrl = payload.avatarUrl;
+        }
+      }
+
+      if (!finalPhotoUrl.startsWith('data:')) {
+        try {
+          await updateProfile(currentUser, { photoURL: finalPhotoUrl });
+        } catch {
+          // ignore
+        }
+      }
+
+      setProfile((prev) =>
+        prev ? { ...prev, photoURL: finalPhotoUrl, equippedAvatar: 'custom' } : prev
+      );
+      setEditAvatar('custom');
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to upload image.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !uid || !isOwnProfile || !profile) return;
+
+    const cleanNick = editNickname.trim();
+    const cleanUser = editUsername
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '');
+
+    if (cleanNick.length < 2 || cleanNick.length > 32) {
+      setEditError('Display name must be between 2 and 32 characters.');
+      return;
+    }
+    if (cleanUser.length < 3 || cleanUser.length > 20) {
+      setEditError(
+        'Username must be 3–20 characters (letters, numbers, underscores).'
+      );
+      return;
+    }
+
+    setSaving(true);
+    setEditError('');
+
+    try {
+      const nextEquippedCosmetics: EquippedCosmeticsMap = {
+        ...(profile.equippedCosmetics || {}),
+        avatar: editAvatar !== 'custom' ? editAvatar : undefined,
+        avatarFrame: editFrame !== 'none' ? editFrame : undefined,
+        profileBanner: editBanner !== 'none' ? editBanner : undefined,
+        profileEffect: editEffect !== 'none' ? editEffect : undefined,
+      };
+
+      if (isGuest) {
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                displayName: cleanNick,
+                username: cleanUser,
+                customRole: editCustomRole,
+                bio: editBio.trim(),
+                status: editStatus.trim(),
+                equippedAvatar: editAvatar,
+                equippedFrame: editFrame,
+                equippedBanner: editBanner,
+                equippedBadges: editBadges,
+                equippedCosmetics: nextEquippedCosmetics,
+              }
+            : null
+        );
+        setIsEditing(false);
+        return;
+      }
+
+      try {
+        await wallet.equipMultipleCosmetics({
+          avatar: editAvatar !== 'custom' ? editAvatar : null,
+          frame: editFrame !== 'none' ? editFrame : null,
+          banner: editBanner !== 'none' ? editBanner : null,
+          effect: editEffect !== 'none' ? editEffect : null,
+        });
+      } catch {
+        // fallback below
+      }
+
+      await setDoc(
+        doc(db, 'users', uid),
+        {
+          displayName: cleanNick,
+          nickname: cleanNick,
+          username: cleanUser,
+          bio: editBio.trim(),
+          status: editStatus.trim(),
+          customRole: editCustomRole,
+          avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
+          equippedAvatar: editAvatar,
+          photoURL: editAvatar === 'custom' ? profile.photoURL || '' : '',
+          frame: editFrame,
+          equippedFrame: editFrame,
+          banner: editBanner,
+          equippedBanner: editBanner,
+          equippedBadges: editBadges,
+          equipped: nextEquippedCosmetics,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      await syncPublicProfile(uid, {
+        displayName: cleanNick,
+        nickname: cleanNick,
+        username: cleanUser,
+        bio: editBio.trim(),
+        status: editStatus.trim(),
+        customRole: editCustomRole,
+        avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
+        equippedAvatar: editAvatar,
+        frame: editFrame,
+        equippedFrame: editFrame,
+        banner: editBanner,
+        equippedBanner: editBanner,
+        badges: editBadges,
+        equipped: nextEquippedCosmetics,
+      }).catch(() => {});
+
+      await syncProfileToD1Backend(uid, {
+        displayName: cleanNick,
+        username: cleanUser,
+        customRole: editCustomRole,
+        avatar: editAvatar,
+        frame: editFrame,
+        banner: editBanner,
+      }).catch(() => {});
+
+      broadcastPublicProfileUpdate(uid, {
+        displayName: cleanNick,
+        username: cleanUser,
+        customRole: editCustomRole,
+        bio: editBio.trim(),
+        status: editStatus.trim(),
+        avatar: editAvatar,
+        equippedAvatar: editAvatar,
+        frame: editFrame,
+        equippedFrame: editFrame,
+        banner: editBanner,
+        equippedBanner: editBanner,
+      });
+
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              displayName: cleanNick,
+              username: cleanUser,
+              customRole: editCustomRole,
+              bio: editBio.trim(),
+              status: editStatus.trim(),
+              equippedAvatar: editAvatar,
+              equippedFrame: editFrame,
+              equippedBanner: editBanner,
+              equippedBadges: editBadges,
+              equippedCosmetics: nextEquippedCosmetics,
+            }
+          : null
+      );
+
+      await refreshUserProfile().catch(() => {});
+      setIsEditing(false);
+    } catch (err: any) {
+      setEditError(err?.message || 'Failed to save profile changes.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleShareProfile = () => {
+    if (propOnShare) {
+      propOnShare();
+      return;
+    }
+    if (!profile) return;
+    const handle = profile.username || profile.uid;
+    const url = `${window.location.origin}/u/${handle}`;
+    navigator.clipboard.writeText(url);
+    setCopiedToast(true);
+    setTimeout(() => setCopiedToast(false), 2500);
+  };
+
+  const handleAdminToggleBan = async () => {
+    if (!isAdmin || !uid || isOwnProfile || !profile) return;
+    const nextBan = !profile.isBanned;
+    try {
+      await updateDoc(doc(db, 'users', uid), { isBanned: nextBan }).catch((err) => {
+        console.error(`Failed to update users/${uid}:`, err);
+      });
+      setProfile((prev) => (prev ? { ...prev, isBanned: nextBan } : null));
+    } catch (err) {
+      console.error('Failed to update ban state:', err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 bg-[#050506]">
+        <div className="w-12 h-12 rounded-full border-2 border-[#D71921] border-t-transparent animate-spin mb-4" />
+        <p className="font-doto-title text-xs tracking-[0.2em] text-white/70">
+          LOADING PROFILE...
+        </p>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="p-8 text-center boardly-glass-card rounded-[32px] max-w-md mx-auto my-12">
+        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+        <h3 className="font-doto-title text-lg text-white mb-1">Profile Not Found</h3>
+        <p className="text-sm text-white/70">
+          This user profile could not be loaded or does not exist.
+        </p>
+      </div>
+    );
+  }
+
+  const levelInfo = computeLevelFromStats(profile.stats || {});
+  const isTargetPro = (() => {
+    if (isOwnProfile) {
+      return resolveEffectivePlan({
+        uid: currentUser?.uid,
+        email: currentUser?.email,
+        role: ownProfile?.role || profile.role,
+        isGuest,
+        plan: ownProfile?.plan,
+        isPremium: ownProfile?.isPremium,
+        planExpiresAt: ownProfile?.planExpiresAt,
+      }).isUnlimited;
+    }
+    return (
+      Boolean(profile.proBadge) ||
+      profile.role === 'superadmin' ||
+      profile.role === 'admin'
+    );
+  })();
+
+  const activeProBadgeDesign: ProBadgeDesignId | null = isTargetPro
+    ? isOwnProfile
+      ? myProBadgeVisible
+        ? myProBadgeDesign
+        : null
+      : normalizeProBadgeDesign(profile.proBadge || 'ember')
+    : null;
+
+  const equippedBannerId =
+    (isOwnProfile ? wallet.equipped?.banner : null) ||
+    profile.equippedCosmetics?.banner ||
+    profile.equippedCosmetics?.profileBanner ||
+    profile.equippedBanner ||
+    profile.banner ||
+    'none';
+  const equippedFrameId =
+    (isOwnProfile ? wallet.equipped?.frame : null) ||
+    profile.equippedCosmetics?.frame ||
+    profile.equippedCosmetics?.avatarFrame ||
+    profile.equippedFrame ||
+    profile.frame ||
+    'none';
+  const equippedEffectId =
+    (isOwnProfile ? wallet.equipped?.effect : null) ||
+    profile.equippedCosmetics?.effect ||
+    profile.equippedCosmetics?.profileEffect ||
+    profile.effectId ||
+    'none';
+  const equippedTitleId =
+    profile.equippedCosmetics?.title || profile.equippedTitle || 'title-rookie';
+  const equippedNameplateId =
+    (isOwnProfile ? wallet.equipped?.nameplate : null) ||
+    profile.equippedCosmetics?.nameplate ||
+    profile.nameplate ||
+    'none';
+
+  const canonicalShortId = String(
+    profile.shortId || profile.studentId || deriveDeterministicShortId(profile.uid)
+  )
+    .replace(/^#+/, '')
+    .trim();
+
+  const handleString = String(profile.username || 'student').replace(/^@+/, '');
+  const kobanDisplayCount = isOwnProfile
+    ? Number(wallet.balance || 0)
+    : Number((profile as any).kobans ?? (profile.stats?.xp || 0));
+
+  const openEditAction = () => {
+    if (propOnEditProfile) {
+      propOnEditProfile();
+    } else {
+      setIsEditing(true);
+    }
+  };
+
+  const TABS: { id: ProfileTabId; label: string }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'loadout', label: 'Loadout' },
+    { id: 'badges', label: 'Badges' },
+  ];
+  const activeTabIndex = Math.max(
+    0,
+    TABS.findIndex((t) => t.id === activeTab)
   );
 
-  // When rendered in Settings > Profile Layout live preview carousel, render the live profile card
-  if (previewMode && propData) {
-    return (
-      <div className="relative w-full bg-[var(--card)] text-[var(--text)] overflow-hidden flex flex-col">
-        <ProfileLayoutsRenderer
-          layout={resolvedLayoutId}
-          data={sharedProfileData}
-          previewMode={true}
-          shortId={deriveFallbackShortId(sharedProfileData.uid || '0')}
-        />
-        {resolvedLayoutId !== 'loadout-showcase' && (
-          <div className="px-4 py-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2.5">
-            <div className="flex items-center gap-5 border-b border-[var(--border)] pb-2 text-xs font-heading font-semibold">
-              <span className="text-[var(--text)] border-b-2 border-[#D71921] pb-1.5 -mb-2">
-                Overview
-              </span>
-              <span className="text-[var(--muted)]">Loadout</span>
-              <span className="text-[var(--muted)]">Badges</span>
-            </div>
-            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-heading font-semibold text-[11px] text-[var(--text)]">
-                  About Me
-                </span>
-                <span className="font-mono text-[10px] text-[var(--muted)]">
-                  #{deriveFallbackShortId(sharedProfileData.uid || '0')}
+  return (
+    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom overflow-x-hidden">
+      {/* Ambient blurred red (#D71921) and blue (#3a4cff) glows */}
+      <div
+        className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+        aria-hidden="true"
+      >
+        <div className="absolute -top-28 -left-24 w-[360px] h-[360px] rounded-full bg-[#D71921]/22 blur-[120px]" />
+        <div className="absolute top-1/3 -right-28 w-[340px] h-[340px] rounded-full bg-[#3a4cff]/18 blur-[130px]" />
+        <div className="absolute bottom-10 left-1/4 w-[280px] h-[280px] rounded-full bg-[#D71921]/12 blur-[120px]" />
+      </div>
+
+      <div className="relative z-10 max-w-2xl mx-auto px-3.5 sm:px-5 pt-3 pb-8 space-y-4">
+        {/* 1. FLOATING GLASS TOP BAR: back button, "Profile" in Doto, settings button */}
+        {!previewMode && (
+          <header className="boardly-glass-pill sticky top-3 z-30 h-14 px-2.5 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (isModal && onClose) {
+                  onClose();
+                } else if (window.history.length > 2) {
+                  navigate(-1);
+                } else {
+                  navigate('/dashboard');
+                }
+              }}
+              aria-label="Go back"
+              className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
+            <h1 className="font-doto-title text-[16px] tracking-[0.16em] text-white select-none truncate">
+              PROFILE
+            </h1>
+
+            {isOwnProfile ? (
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                aria-label="Open settings"
+                className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleShareProfile}
+                aria-label="Share profile"
+                className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              >
+                {copiedToast ? (
+                  <Check className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <Share2 className="w-5 h-5" />
+                )}
+              </button>
+            )}
+          </header>
+        )}
+
+        {/* 2. HERO GLASS CARD (radius 32) */}
+        <section className="boardly-glass-card relative rounded-[32px] overflow-hidden">
+          {/* Equipped profile effect overlay */}
+          {equippedEffectId && equippedEffectId !== 'none' && (
+            <ProfileCardEffect itemId={equippedEffectId} canAnimate />
+          )}
+
+          {/* Equipped Banner on top with a dotted texture */}
+          <div className="relative h-36 sm:h-44 w-full overflow-hidden bg-gradient-to-br from-[#D71921]/35 via-[#14141c] to-[#3a4cff]/30">
+            <BannerRenderer
+              bannerId={equippedBannerId === 'none' ? undefined : equippedBannerId}
+              showReadabilityOverlay={false}
+              className="h-36 sm:h-44"
+            />
+            {/* Nothing OS Dotted Texture Overlay */}
+            <div
+              className="pointer-events-none absolute inset-0 opacity-35"
+              style={{
+                backgroundImage:
+                  'radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px)',
+                backgroundSize: '10px 10px',
+              }}
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#09090c] via-transparent to-black/25" />
+          </div>
+
+          {/* Main Hero Body */}
+          <div className="relative px-4 sm:px-6 pb-5 pt-0">
+            {/* Overlapping Avatar with Equipped Frame Ring & Red LV Badge */}
+            <div className="relative -mt-14 sm:-mt-16 mb-3 flex items-end justify-between gap-3">
+              <div className="relative inline-flex items-center justify-center">
+                <div className="rounded-full p-1 bg-[#09090c]/90 backdrop-blur-md border border-white/15 shadow-[0_12px_30px_rgba(0,0,0,0.65)]">
+                  <BoardlyAvatar
+                    size={92}
+                    uid={profile.uid}
+                    equippedAvatar={
+                      (isOwnProfile ? wallet.equipped?.avatar : null) ||
+                      profile.equippedAvatar ||
+                      profile.avatar
+                    }
+                    customPhotoURL={profile.photoURL}
+                    equippedFrameId={equippedFrameId}
+                    alt={profile.displayName || 'Student'}
+                  />
+                </div>
+                {/* Red LV Badge */}
+                <span className="absolute -bottom-1.5 right-0 z-20 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#D71921] text-white font-doto-title text-[11px] tracking-wider border border-white/30 shadow-[0_4px_12px_rgba(215,25,33,0.55)]">
+                  LV {levelInfo.level}
                 </span>
               </div>
-              <p className="text-[11px] text-[var(--muted)] line-clamp-2 leading-relaxed">
-                {sharedProfileData.bio || 'Preparing for MDCAT, ECAT & board exams on Boardly.'}
-              </p>
+
+              {/* Gold-outlined Nameplate Chip ("pkig #89617") */}
+              {equippedNameplateId && equippedNameplateId !== 'none' ? (
+                <Nameplate
+                  itemId={equippedNameplateId}
+                  name={handleString}
+                  shortId={canonicalShortId}
+                />
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/15 border border-amber-400/55 shadow-[0_0_18px_rgba(245,158,11,0.2)]">
+                  <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                  <span className="text-[12px] font-bold tracking-wide text-amber-100 font-inter-num">
+                    {handleString} #{canonicalShortId}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Name + @handle + gold PRO pill */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-[22px] sm:text-[24px] font-extrabold tracking-tight text-white leading-tight">
+                  {profile.displayName}
+                </h2>
+                {isTargetPro && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-amber-400/25 via-yellow-300/20 to-amber-500/25 text-amber-200 border border-amber-400/60 shadow-[0_0_14px_rgba(245,158,11,0.28)]">
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    PRO
+                  </span>
+                )}
+                {activeProBadgeDesign && (
+                  <ProBadge design={activeProBadgeDesign} size="sm" animated />
+                )}
+              </div>
+              <p className="text-[14px] font-medium text-white/72">@{handleString}</p>
+            </div>
+
+            {/* Student and Active Chips */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-white/[0.08] border border-white/[0.16] text-white/90">
+                <Shield className="w-3.5 h-3.5 text-[#D71921]" />
+                {profile.customRole || 'Student'}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/12 border border-emerald-400/30 text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                {profile.status?.trim() || 'Active'}
+              </span>
+            </div>
+
+            {/* Stats Row in One Inset Card with Dotted Vertical Dividers: Level, Kobans (gold), Followers, Following */}
+            <div className="mt-4 boardly-glass-inset rounded-[22px] p-3 grid grid-cols-4 items-center text-center">
+              <div className="px-1.5 py-1">
+                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
+                  {levelInfo.level.toLocaleString()}
+                </div>
+                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
+                  LEVEL
+                </div>
+              </div>
+
+              <div className="px-1.5 py-1 nothing-dotted-divider-v">
+                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-amber-300">
+                  {kobanDisplayCount.toLocaleString()}
+                </div>
+                <div className="font-doto-title text-[10px] tracking-[0.12em] text-amber-300/80 mt-0.5">
+                  KOBANS
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => openFollowList('followers')}
+                className="px-1.5 py-1 nothing-dotted-divider-v hover:bg-white/[0.04] rounded-r-xl transition-colors cursor-pointer"
+              >
+                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
+                  {followersCount.toLocaleString()}
+                </div>
+                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
+                  FOLLOWERS
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openFollowList('following')}
+                className="px-1.5 py-1 nothing-dotted-divider-v hover:bg-white/[0.04] rounded-r-xl transition-colors cursor-pointer"
+              >
+                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
+                  {followingCount.toLocaleString()}
+                </div>
+                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
+                  FOLLOWING
+                </div>
+              </button>
+            </div>
+
+            {/* Dot-Matrix Barcode Strip with the ID Number */}
+            <div className="mt-3.5 px-3.5 py-2.5 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between gap-3">
+              <div
+                className="flex-1 h-5 opacity-75"
+                aria-hidden="true"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(90deg, rgba(255,255,255,0.85) 0px, rgba(255,255,255,0.85) 2px, transparent 2px, transparent 5px, rgba(215,25,33,0.85) 5px, rgba(215,25,33,0.85) 6px, transparent 6px, transparent 9px)',
+                  maskImage:
+                    'radial-gradient(circle, black 1.5px, transparent 1.5px)',
+                  WebkitMaskImage:
+                    'radial-gradient(circle, black 1.5px, transparent 1.5px)',
+                  maskSize: '4px 4px',
+                  WebkitMaskSize: '4px 4px',
+                }}
+              />
+              <span className="font-doto-title text-[12px] tracking-[0.18em] text-white/85 shrink-0">
+                ID #{canonicalShortId}
+              </span>
+            </div>
+
+            {/* Action Pill Buttons (50px tall): Edit profile (red), Locker (glass), Store (glass) */}
+            {!previewMode && (
+              <div className="mt-4 grid grid-cols-3 gap-2.5">
+                {isOwnProfile ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={openEditAction}
+                      className="boardly-red-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-bold tracking-wide cursor-pointer"
+                    >
+                      <Edit2 className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Edit profile</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate('/locker')}
+                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                    >
+                      <Package className="w-4 h-4 text-[#D71921] shrink-0" />
+                      <span className="truncate">Locker</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate('/store')}
+                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                    >
+                      <ShoppingBag className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="truncate">Store</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (propOnMessage) {
+                          propOnMessage();
+                        } else if (isGuest) {
+                          navigate('/login');
+                        } else {
+                          setIsChatOpen(true);
+                        }
+                      }}
+                      className="boardly-red-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-bold tracking-wide cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 shrink-0" />
+                      <span className="truncate">Message</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleFollowToggle}
+                      disabled={followLoading}
+                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                    >
+                      {isFollowing ? (
+                        <>
+                          <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="truncate">Following</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-4 h-4 text-[#D71921] shrink-0" />
+                          <span className="truncate">Follow</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleShareProfile}
+                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                    >
+                      {copiedToast ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="truncate">Copied</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-4 h-4 shrink-0" />
+                          <span className="truncate">Share</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Admin Moderation Bar (if viewing another user as Admin) */}
+            {isAdmin && !isOwnProfile && !previewMode && (
+              <div className="mt-3 pt-3 nothing-dotted-divider flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAdminToggleBan}
+                  className={`press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 border cursor-pointer ${
+                    profile.isBanned
+                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
+                      : 'bg-red-500/15 border-red-500/35 text-red-300'
+                  }`}
+                >
+                  <Ban className="w-3.5 h-3.5" />
+                  {profile.isBanned ? 'Unban User' : 'Ban User'}
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 3. iOS SEGMENTED TABS: Overview, Loadout, Badges (red-tinted active thumb) */}
+        <div
+          role="tablist"
+          aria-label="Profile sections"
+          className="boardly-glass-pill relative p-1.5 grid grid-cols-3 items-center h-[52px]"
+        >
+          {/* Shared sliding red-tinted active thumb */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-[#D71921]/90 to-[#b51219]/90 border border-white/25 shadow-[0_4px_16px_rgba(215,25,33,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            style={{
+              width: 'calc((100% - 12px) / 3)',
+              left: '6px',
+              transform: `translateX(${activeTabIndex * 100}%)`,
+            }}
+          />
+          {TABS.map((t) => {
+            const active = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(t.id)}
+                className={`relative z-10 h-full rounded-full text-[13px] font-bold tracking-wide transition-colors cursor-pointer ${
+                  active ? 'text-white' : 'text-white/70 hover:text-white'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 4. TAB PANELS */}
+        {activeTab === 'overview' && (
+          <div className="space-y-4">
+            {/* About me card (dashed "Add a bio..." placeholder when empty) */}
+            <div className="boardly-glass-card rounded-[24px] p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-doto-title text-[12px] tracking-[0.16em] text-white/80">
+                  ABOUT ME
+                </h3>
+                {isOwnProfile && !previewMode && (
+                  <button
+                    type="button"
+                    onClick={openEditAction}
+                    className="text-xs font-semibold text-[#D71921] hover:underline cursor-pointer"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+
+              {profile.bio && profile.bio.trim().length > 0 ? (
+                <p className="text-[14px] leading-relaxed text-white/90 whitespace-pre-wrap break-words font-sans">
+                  {profile.bio}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => isOwnProfile && !previewMode && openEditAction()}
+                  className="w-full text-left rounded-2xl p-3.5 border border-dashed border-white/25 bg-white/[0.02] text-[14px] text-white/55 hover:border-white/40 transition-colors cursor-pointer"
+                >
+                  {isOwnProfile ? 'Add a bio...' : 'No bio added yet.'}
+                </button>
+              )}
+            </div>
+
+            {/* Posts Section */}
+            {!previewMode && (
+              <ProfilePostsSection
+                targetUid={profile.uid}
+                isOwnProfile={isOwnProfile}
+                authorDisplayName={profile.displayName}
+                authorUsername={profile.username}
+                authorAvatar={
+                  profile.equippedAvatar === 'custom'
+                    ? profile.photoURL
+                    : profile.equippedAvatar
+                }
+                authorFrame={equippedFrameId}
+                authorRole={profile.role}
+                authorProBadge={activeProBadgeDesign}
+                isPro={isTargetPro}
+                onCountChange={setPostsCount}
+              />
+            )}
+          </div>
+        )}
+
+        {activeTab === 'loadout' && (
+          <div className="boardly-glass-card rounded-[28px] p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-doto-title text-[14px] tracking-[0.14em] text-white">
+                  EQUIPPED LOADOUT
+                </h3>
+                <p className="text-xs text-white/70 mt-0.5">
+                  Cosmetic items active on this student profile.
+                </p>
+              </div>
+              {isOwnProfile && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/locker')}
+                  className="boardly-red-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Open Locker</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {[
+                {
+                  slot: 'Avatar',
+                  item: getCosmeticById(profile.equippedAvatar),
+                  fallback:
+                    profile.equippedAvatar === 'custom'
+                      ? 'Custom Photo'
+                      : 'Default Avatar',
+                },
+                {
+                  slot: 'Avatar Frame',
+                  item: getCosmeticById(equippedFrameId),
+                  fallback: 'No Frame Equipped',
+                },
+                {
+                  slot: 'Profile Banner',
+                  item: getCosmeticById(equippedBannerId),
+                  fallback: 'Default Banner',
+                },
+                {
+                  slot: 'Nameplate',
+                  item: getCosmeticById(equippedNameplateId),
+                  fallback: 'Standard Gold Nameplate',
+                },
+                {
+                  slot: 'Title',
+                  item: getCosmeticById(equippedTitleId),
+                  fallback: 'Boardly Rookie',
+                },
+                {
+                  slot: 'Profile Effect',
+                  item: getCosmeticById(equippedEffectId),
+                  fallback: 'No Effect Equipped',
+                },
+              ].map((entry) => {
+                const rarity: CosmeticRarity = entry.item?.rarity || 'common';
+                const rStyle = RARITY_STYLES[rarity];
+                return (
+                  <div
+                    key={entry.slot}
+                    className="boardly-glass-inset rounded-2xl p-3.5 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-doto-title text-[10px] tracking-[0.14em] text-white/60">
+                        {entry.slot.toUpperCase()}
+                      </div>
+                      <div className="text-[14px] font-bold text-white truncate mt-0.5">
+                        {entry.item?.name || entry.fallback}
+                      </div>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border shrink-0 ${rStyle.badge}`}
+                    >
+                      {rarity}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'badges' && (
+          <div className="boardly-glass-card rounded-[28px] p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-doto-title text-[14px] tracking-[0.14em] text-white">
+                ACHIEVEMENT BADGES
+              </h3>
+              <span className="text-xs font-semibold font-inter-num text-white/70">
+                {(profile.equippedBadges || ['first_login']).length} unlocked
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {ALL_ACHIEVEMENT_BADGES.map((badge) => {
+                const unlocked = (profile.equippedBadges || ['first_login']).includes(
+                  badge.id
+                );
+                const rStyle = RARITY_STYLES[badge.rarity || 'common'];
+                return (
+                  <div
+                    key={badge.id}
+                    className={`rounded-2xl p-3.5 border transition-all ${
+                      unlocked
+                        ? 'boardly-glass-inset border-white/20'
+                        : 'bg-white/[0.02] border-dashed border-white/10 opacity-55'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="w-9 h-9 rounded-xl bg-[#D71921]/15 border border-[#D71921]/30 flex items-center justify-center text-[#D71921]">
+                        {unlocked ? (
+                          <Award className="w-5 h-5" />
+                        ) : (
+                          <Lock className="w-4 h-4 text-white/50" />
+                        )}
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${rStyle.badge}`}
+                      >
+                        {badge.rarity}
+                      </span>
+                    </div>
+                    <div className="text-[13px] font-bold text-white truncate">
+                      {badge.name}
+                    </div>
+                    <div className="text-[11px] text-white/65 line-clamp-2 mt-0.5">
+                      {badge.description}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
-    );
-  }
 
-  if (
-    (loading && !profile && !propData) ||
-    (isViewingSelf && !propData && !selfLayoutStatus.known && selfLayoutStatus.loading)
-  ) {
-    return (
-      <div
-        className={`relative w-full flex flex-col bg-[var(--background)] text-[var(--text)] ${
-          isFullPage ? 'max-w-4xl mx-auto py-2 sm:py-6 px-0 sm:px-4' : 'max-w-xl mx-auto'
-        }`}
-      >
-        <div className="relative w-full rounded-2xl sm:rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex flex-col animate-pulse">
-          <div className="w-full h-[160px] sm:h-[200px] bg-[var(--card-2)]" />
-          <div className="px-4 sm:px-6 pb-6 flex flex-col gap-4">
-            <div className="flex items-end justify-between -mt-[44px] sm:-mt-[60px]">
-              <div className="w-[84px] h-[84px] sm:w-[112px] sm:h-[112px] rounded-full bg-[var(--card-2)] border-4 border-[var(--card)]" />
+      {/* Followers / Following Modal */}
+      {followListModal && (
+        <div
+          data-modal-layer="true"
+          role="dialog"
+          aria-modal="true"
+          className="boardly-modal-backdrop fixed inset-0 flex items-center justify-center p-4"
+        >
+          <div className="boardly-glass-card rounded-[32px] w-full max-w-md max-h-[75vh] flex flex-col overflow-hidden">
+            <div className="p-4 nothing-dotted-divider flex items-center justify-between">
+              <h3 className="font-doto-title text-sm tracking-[0.14em] text-white uppercase">
+                {followListModal}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setFollowListModal(null)}
+                aria-label="Close list"
+                className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div className="h-6 w-48 rounded-lg bg-[var(--card-2)]" />
-            <div className="h-4 w-32 rounded-lg bg-[var(--card-2)]" />
-            <div className="grid grid-cols-3 gap-2.5 pt-2">
-              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
-              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
-              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Compute public mode chat button state
-  const canChatDirectly =
-    (isFollowedByMe && followsMe) ||
-    Boolean(chatPermission?.canChat) ||
-    chatPermission?.outgoingRequest?.status === 'accepted' ||
-    chatPermission?.incomingRequest?.status === 'accepted';
-  const isPendingOutgoing = chatPermission?.outgoingRequest?.status === 'pending';
-  const isPendingIncoming = chatPermission?.incomingRequest?.status === 'pending';
-  const isCooldown = Boolean(chatPermission?.isCooldownActive);
-  const messageButtonDisabled =
-    chatRequestWorking || (!canChatDirectly && (isPendingOutgoing || isCooldown));
-  let messageButtonLabel = 'Message';
-  if (chatRequestWorking) {
-    messageButtonLabel = 'Sending...';
-  } else if (canChatDirectly) {
-    messageButtonLabel = 'Message';
-  } else if (isPendingIncoming) {
-    messageButtonLabel = 'Respond to Request';
-  } else if (isPendingOutgoing || isCooldown) {
-    messageButtonLabel = 'Request Sent';
-  }
-
-  const badgeRowNode = (
-    <div className="relative flex items-center gap-1.5 flex-wrap pt-0.5">
-      {(profile?.role === 'captain' || profile?.badges?.includes('captain')) && (
-        <button
-          type="button"
-          onClick={() =>
-            setBadgePopover({
-              name: 'Nakama Captain',
-              meaning: 'Founder and leader of a verified study crew',
-            })
-          }
-          className="w-6 h-6 rounded-md bg-blue-500/10 border border-blue-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-          title="Nakama Captain"
-        >
-          <Award size={13} className="text-blue-500" />
-        </button>
-      )}
-      {profile?.crewName && (
-        <button
-          type="button"
-          onClick={() =>
-            setBadgePopover({
-              name: 'Crew Member',
-              meaning: `Enlisted in crew: ${profile.crewName}`,
-            })
-          }
-          className="w-6 h-6 rounded-md bg-purple-500/10 border border-purple-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-          title={`Crew: ${profile.crewName}`}
-        >
-          <Users size={13} className="text-purple-500" />
-        </button>
-      )}
-      {((isViewingSelf && isAdmin) || profile?.badges?.includes('staff')) && (
-        <button
-          type="button"
-          onClick={() =>
-            setBadgePopover({
-              name: 'Staff Proctor',
-              meaning: 'Official Boardly administrator and academic proctor',
-            })
-          }
-          className="w-6 h-6 rounded-md bg-red-500/10 border border-red-500/30 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-          title="Boardly Staff"
-        >
-          <Shield size={13} className="text-red-500" />
-        </button>
-      )}
-      {equippedStreakBadges.map((badgeId) => {
-        const b = STREAK_BADGES.find((s) => s.id === badgeId);
-        if (!b) return null;
-        return (
-          <button
-            key={b.id}
-            type="button"
-            onClick={() => setBadgePopover({ name: b.name, meaning: b.description })}
-            className="w-6 h-6 rounded-md border flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-            style={{
-              backgroundColor: `${b.color}15`,
-              borderColor: `${b.color}40`,
-            }}
-            title={b.name}
-          >
-            <Flame size={13} style={{ color: b.color }} />
-          </button>
-        );
-      })}
-      {pinnedShowcase.map((stampId) => {
-        const s = PASSPORT_STAMPS.find((p) => p.id === stampId);
-        if (!s) return null;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setBadgePopover({ name: s.name, meaning: s.requirement })}
-            className="w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
-            title={s.name}
-          >
-            <Award size={13} />
-          </button>
-        );
-      })}
-      {badgePopover && (
-        <div className="absolute left-0 bottom-full mb-2 z-50 p-2.5 rounded-xl floating-blur backdrop-blur-lg border border-[var(--border)] shadow-xl text-xs flex flex-col gap-1 min-w-[200px] animate-fade-in">
-          <div className="flex items-center justify-between">
-            <span className="font-heading font-bold text-[var(--text)]">{badgePopover.name}</span>
-            <button
-              onClick={() => setBadgePopover(null)}
-              className="text-[var(--muted)] hover:text-[var(--text)]"
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <p className="text-[11px] text-[var(--muted)]">{badgePopover.meaning}</p>
-        </div>
-      )}
-    </div>
-  );
-
-  return (
-    <div
-      className={`relative w-full flex flex-col bg-[var(--background)] text-[var(--text)] ${
-        isFullPage ? 'max-w-4xl mx-auto py-2 sm:py-6 px-0 sm:px-4' : 'max-w-xl mx-auto'
-      }`}
-    >
-      {/* ── PROFILE EFFECT (Confined to dialog on desktop, full screen on mobile) ── */}
-      {effectiveEffectId && (
-        <div key={effectPlayKey} className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-          <CosmeticErrorBoundary fallback={null}>
-            <ProfileCardEffect itemId={effectiveEffectId} size={500} />
-          </CosmeticErrorBoundary>
-        </div>
-      )}
-
-      {/* ── "VIEW AS OTHERS" PREVIEW BANNER (OWN MODE PREVIEW) ── */}
-      {isViewingSelf && previewAsPublic && (
-        <div className="sticky top-0 z-50 px-4 py-2 bg-[var(--red)] text-white text-xs font-heading font-semibold flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-2">
-            <Eye size={14} />
-            <span>Viewing your profile exactly as other students see it</span>
-          </div>
-          <button
-            onClick={() => setPreviewAsPublic(false)}
-            className="px-2.5 py-1 rounded bg-black/30 hover:bg-black/50 text-white font-mono text-xs transition-colors cursor-pointer"
-          >
-            Back to my view
-          </button>
-        </div>
-      )}
-
-      {/* ── MAIN CARD CONTAINER ── */}
-      <div className="relative w-full rounded-2xl sm:rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex flex-col">
-        {/* ── CONFIGURABLE 10-LAYOUT HEADER (Renders all 5 store items + buttons) ── */}
-        <ProfileLayoutsRenderer
-          layout={resolvedLayoutId}
-          data={sharedProfileData}
-          isPublicMode={isPublicMode}
-          previewMode={false}
-          shortId={
-            profile?.studentId ||
-            profile?.shortId ||
-            deriveFallbackShortId(sharedProfileData.uid || '0')
-          }
-          onClose={onClose ? () => onClose() : undefined}
-          onPreviewAsPublic={
-            isViewingSelf && !previewAsPublic ? () => setPreviewAsPublic(true) : undefined
-          }
-          onEditProfile={() => setEditSheetOpen(true)}
-          onChangeAvatar={
-            isViewingSelf && !isPublicMode ? () => setAvatarPickerOpen(true) : undefined
-          }
-          onOpenStore={() => {
-            if (onClose) onClose(true);
-            navigate('/store');
-          }}
-          onOpenSettings={() => {
-            if (onClose) onClose(true);
-            navigate('/settings');
-          }}
-          onOpenWallet={() => setWalletModalOpen(true)}
-          onOpenRewards={() => {
-            if (onClose) onClose(true);
-            navigate('/rewards');
-          }}
-          onOpenMessages={() => {
-            setDmInitialTab(incomingRequestsCount > 0 ? 'requests' : 'chat');
-            setDmModalOpen(true);
-          }}
-          onOpenFollowers={() => setFollowListTab('followers')}
-          onOpenFollowing={() => setFollowListTab('following')}
-          onFollowToggle={currentUid !== profile?.uid ? handleFollowToggle : undefined}
-          onMessageClick={
-            !isViewingSelf && currentUid !== profile?.uid ? handleMessageOrRequestClick : undefined
-          }
-          onShareProfile={() => setShareModalOpen(true)}
-          onViewCrew={profile?.crewName ? () => setCrewDetailModalOpen(true) : undefined}
-          onUpgradeGuest={isGuest ? () => setGuestUpgradeModalOpen(true) : undefined}
-          onProBadgeClick={() =>
-            setBadgePopover({
-              name: 'Pro Member',
-              meaning: 'Unlimited mock exams & AI assistance',
-            })
-          }
-          isFollowedByMe={isFollowedByMe}
-          followsMe={followsMe}
-          followWorking={followWorking}
-          incomingRequestsCount={incomingRequestsCount}
-          messageButtonLabel={messageButtonLabel}
-          messageButtonDisabled={messageButtonDisabled}
-          messageButtonHighlight={isPendingIncoming}
-          isGuest={isGuest}
-          crewName={profile?.crewName}
-          badgeRowNode={badgeRowNode}
-          effectPlayKey={effectPlayKey}
-        />
-
-        {/* ── 7. TABS WITH UNDERLINE STYLE ── */}
-        <div className="px-4 sm:px-6 border-b border-[var(--border)] flex items-center gap-6 overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`pb-3 text-xs sm:text-sm font-heading font-semibold transition-colors cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'overview'
-                ? 'border-[var(--red)] text-[var(--text)]'
-                : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            Overview
-          </button>
-
-          <button
-            onClick={() => setActiveTab('loadout')}
-            className={`pb-3 text-xs sm:text-sm font-heading font-semibold transition-colors cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'loadout'
-                ? 'border-[var(--red)] text-[var(--text)]'
-                : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            Loadout
-          </button>
-
-          <button
-            onClick={() => setActiveTab('badges')}
-            className={`pb-3 text-xs sm:text-sm font-heading font-semibold transition-colors cursor-pointer border-b-2 whitespace-nowrap ${
-              activeTab === 'badges'
-                ? 'border-[var(--red)] text-[var(--text)]'
-                : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            Badges
-          </button>
-        </div>
-
-        {/* ── TAB CONTENT BODY ── */}
-        <div className="p-4 sm:p-6 pb-28 sm:pb-36 flex flex-col gap-6">
-          {/* ══════════════════════════════════════════════════════════════
-              TAB 1: OVERVIEW
-             ══════════════════════════════════════════════════════════════ */}
-          {activeTab === 'overview' && (
-            <div className="flex flex-col gap-6">
-              {/* About Me & Metadata */}
-              <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-heading font-semibold text-xs text-[var(--text)]">About Me</span>
-                  {profile?.memberSince && (
-                    <span className="text-[11px] text-[var(--muted)] font-mono flex items-center gap-1">
-                      <Calendar size={12} />
-                      Member since{' '}
-                      {new Date(
-                        typeof profile.memberSince === 'object' && 'seconds' in profile.memberSince
-                          ? profile.memberSince.seconds * 1000
-                          : profile.memberSince
-                      ).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
-                    </span>
-                  )}
+            <div className="p-4 overflow-y-auto space-y-2.5 flex-1">
+              {followListLoading ? (
+                <div className="py-12 text-center text-white/65 text-sm">Loading...</div>
+              ) : followListUsers.length === 0 ? (
+                <div className="py-12 text-center text-white/60 text-sm">
+                  No {followListModal} yet.
                 </div>
-
-                {profile?.bio ? (
-                  <p className="text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-line">
-                    {profile.bio}
-                  </p>
-                ) : isViewingSelf && !isPublicMode ? (
-                  <button
-                    onClick={() => setEditSheetOpen(true)}
-                    className="py-3 px-4 rounded-lg border border-dashed border-[var(--border)] text-xs text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer text-left"
-                  >
-                    + Add a short bio so other students can get to know you.
-                  </button>
-                ) : (
-                  <p className="text-xs text-[var(--muted)] italic">No bio shared yet.</p>
-                )}
-
-                {/* Crew Tag */}
-                {profile?.crewName && (
-                  <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between text-xs font-mono">
-                    <span className="text-[var(--muted)]">Study Squad</span>
-                    <span className="font-bold text-[var(--text)]">{profile.crewName}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* ── POSTS SECTION ── */}
-              <ProfilePostsSection
-                targetUid={profile?.uid || targetUid || currentUid || ''}
-                isOwnProfile={Boolean(isViewingSelf && !previewAsPublic)}
-                readOnly={Boolean(isPublicMode)}
-                currentUserId={currentUid}
-                currentUserDisplayName={
-                  isViewingSelf
-                    ? ownProfile?.displayName || authUser?.displayName || profile?.displayName
-                    : profile?.displayName
-                }
-                currentUserAvatar={
-                  isViewingSelf
-                    ? resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
-                      resolveCosmeticItemId((ownProfile as any)?.avatar, 'avatar') ||
-                      resolveCosmeticItemId(profile?.avatar, 'avatar') ||
-                      null
-                    : resolveCosmeticItemId(profile?.avatar, 'avatar') || null
-                }
-                equippedAvatar={
-                  isViewingSelf
-                    ? resolveCosmeticItemId(ownEquipped?.avatar, 'avatar') ||
-                      resolveCosmeticItemId(profile?.equipped?.avatar, 'avatar') ||
-                      resolveCosmeticItemId(profile?.avatar, 'avatar')
-                    : resolveCosmeticItemId(profile?.equipped?.avatar, 'avatar') ||
-                      resolveCosmeticItemId(profile?.avatar, 'avatar')
-                }
-                accentColor={accentColor}
-              />
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════
-              TAB 2: LOADOUT
-             ══════════════════════════════════════════════════════════════ */}
-          {activeTab === 'loadout' && (
-            <div className="flex flex-col gap-5">
-              {/* Loadout Sub-Tabs: Equipped Slots vs Banners */}
-              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2 flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setLoadoutSubTab('slots')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-heading font-semibold transition-all cursor-pointer ${
-                      loadoutSubTab === 'slots'
-                        ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
-                        : 'text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    Equipped Slots
-                  </button>
-                  <button
+              ) : (
+                followListUsers.map((u) => (
+                  <div
+                    key={u.uid}
                     onClick={() => {
-                      setLoadoutSubTab('banners');
-                      if (!selectedBannerPreviewId) {
-                        setSelectedBannerPreviewId(profile?.banner || 'ban_midnight_torii');
-                      }
+                      setFollowListModal(null);
+                      navigate(`/u/${u.username || u.uid}`);
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-heading font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      loadoutSubTab === 'banners'
-                        ? 'bg-[var(--card-2)] text-[var(--text)] border border-amber-500/40 shadow-xs'
-                        : 'text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 cursor-pointer transition-colors"
                   >
-                    <span>Banners</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-500 font-bold">
-                      12 Flagships
-                    </span>
-                  </button>
-                </div>
-
-                {isViewingSelf && !isPublicMode && loadoutSubTab === 'slots' && (
-                  <button
-                    onClick={() => setEffectPlayKey((k) => k + 1)}
-                    className="text-xs font-heading font-semibold text-[var(--red)] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <RotateCcw size={12} />
-                    Replay effect
-                  </button>
-                )}
-              </div>
-
-              {/* ── SUB-VIEW A: ALL EQUIPPED SLOTS ── */}
-              {loadoutSubTab === 'slots' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* 1. Effect */}
-                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                        <Sparkles size={20} className="text-purple-400" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Effect</span>
-                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.effectId || '')?.name || 'Default Pulse'}
-                        </span>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BoardlyAvatar
+                        size={40}
+                        uid={u.uid}
+                        equippedAvatar={u.equippedAvatar}
+                        customPhotoURL={u.photoURL}
+                        equippedFrameId={u.equippedFrame}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-white truncate">
+                          {u.displayName}
+                        </div>
+                        <div className="text-xs text-white/60 truncate">
+                          @{u.username || 'student'}
+                        </div>
                       </div>
                     </div>
-
-                    {isViewingSelf && !isPublicMode && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => navigate('/store')}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                        >
-                          Change
-                        </button>
-                        {profile?.effectId && (
-                          <button
-                            onClick={() => handleUnequipItem('effect')}
-                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                          >
-                            Unequip
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <span className="text-xs font-bold text-[#D71921]">View</span>
                   </div>
-
-                  {/* 2. Banner */}
-                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] overflow-hidden shrink-0 shadow-xs">
-                        <BannerRenderer
-                          bannerId={profile?.banner}
-                          accentColor={accentColor}
-                          animated={false}
-                          showReadabilityOverlay={false}
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Banner Art</span>
-                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.banner || '')?.name || 'Signature Dot-Matrix'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isViewingSelf && !isPublicMode && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            setLoadoutSubTab('banners');
-                            setSelectedBannerPreviewId(profile?.banner || 'ban_midnight_torii');
-                          }}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer text-amber-500 hover:text-amber-400"
-                        >
-                          Change
-                        </button>
-                        {profile?.banner && (
-                          <button
-                            onClick={() => handleEquipBanner(null)}
-                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                          >
-                            Unequip
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 3. Picture */}
-                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                        <AvatarPicture
-                          uid={profile?.uid || currentUid}
-                          seed={profile?.uid || currentUid}
-                          avatarId={profile?.avatar}
-                          size={36}
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Picture</span>
-                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.avatar || '')?.name ||
-                            MATRIX_AVATARS.find((a) => a.key === profile?.avatar)?.label ||
-                            'Dot-Matrix Avatar'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isViewingSelf && !isPublicMode && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setAvatarPickerOpen(true)}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                        >
-                          Change
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4. Frame */}
-                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                        <AvatarFrame itemId={profile?.frame || 'none'} size={40}>
-                          <div className="w-6 h-6 rounded-full bg-[var(--border)]" />
-                        </AvatarFrame>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Avatar Frame</span>
-                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.frame || '')?.name || 'Classic Border'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isViewingSelf && !isPublicMode && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => navigate('/store')}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                        >
-                          Change
-                        </button>
-                        {profile?.frame && (
-                          <button
-                            onClick={() => handleUnequipItem('frame')}
-                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                          >
-                            Unequip
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 5. Nameplate */}
-                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 sm:col-span-2">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                        <Award size={20} className="text-amber-400" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Nameplate</span>
-                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                          {getCosmeticById(profile?.nameplate || '')?.name || 'Standard Badge'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {isViewingSelf && !isPublicMode && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => navigate('/store')}
-                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                        >
-                          Change
-                        </button>
-                        {profile?.nameplate && (
-                          <button
-                            onClick={() => handleUnequipItem('nameplate')}
-                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                          >
-                            Unequip
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                ))
               )}
-
-              {/* ── SUB-VIEW B: BANNERS WARDROBE & LIVE PREVIEW ── */}
-              {loadoutSubTab === 'banners' && (() => {
-                const activePreviewId = selectedBannerPreviewId ?? profile?.banner ?? 'ban_midnight_torii';
-                const previewItem = getCosmeticById(activePreviewId);
-                const isCurrentlyEquipped = (profile?.banner || ownEquipped?.banner) === activePreviewId;
-                const isOwned = (ownedCosmetics || []).includes(activePreviewId);
-
-                const filteredBanners = catalogBanners.filter((b) => {
-                  if (bannerFilter === 'static') return !b.animated;
-                  if (bannerFilter === 'animated') return b.animated;
-                  if (bannerFilter === 'owned') return (ownedCosmetics || []).includes(b.id);
-                  return true;
-                });
-
-                return (
-                  <div className="flex flex-col gap-5">
-                    {/* ── 1. LIVE PREVIEW STAGE ── */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] shadow-md space-y-4">
-                      <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-heading font-bold text-sm text-[var(--text)]">
-                            Live Banner Preview
-                          </span>
-                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-950/30 text-amber-400 font-bold">
-                            {previewItem?.rarity || 'legendary'}
-                          </span>
-                          {previewItem?.animated && (
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/40 text-cyan-400">
-                              ✦ Animated
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Theme preview switch */}
-                        <div className="flex items-center gap-1.5 text-xs font-mono">
-                          <span className="text-[var(--muted)]">Preview theme:</span>
-                          <button
-                            onClick={() => setPreviewThemeMode((m) => (m === 'dark' ? 'light' : 'dark'))}
-                            className="px-2.5 py-0.5 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-amber-500/40 text-[var(--text)] font-semibold transition-colors cursor-pointer"
-                          >
-                            {previewThemeMode === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Preview Container Window */}
-                      <div className={`relative rounded-2xl overflow-hidden border border-[var(--border)] ${
-                        previewThemeMode === 'light' ? 'bg-white text-zinc-900' : 'bg-[#0B0B10] text-white'
-                      } shadow-lg transition-colors`}>
-                        {/* Banner Cover Area (Responsive 130px mobile, 170px desktop) */}
-                        <div className="relative w-full h-[130px] sm:h-[170px] overflow-hidden select-none">
-                          <BannerRenderer
-                            bannerId={activePreviewId}
-                            accentColor={accentColor}
-                            animated={true}
-                            showReadabilityOverlay={true}
-                          />
-                        </div>
-
-                        {/* Avatar, Frame, Nameplate, and Lv badge overlay preview */}
-                        <div className="px-4 pb-4 -mt-[38px] sm:-mt-[48px] relative z-20 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-                          <div className="flex items-end gap-3 min-w-0">
-                            {/* Avatar & Lv Badge */}
-                            <div className="p-0.5 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative shadow-md">
-                              <AvatarFrame itemId={profile?.frame || 'none'} size={window.innerWidth < 640 ? 76 : 96}>
-                                <AvatarPicture
-                                  uid={profile?.uid || currentUid}
-                                  seed={profile?.uid || currentUid}
-                                  avatarId={profile?.avatar}
-                                  size={window.innerWidth < 640 ? 64 : 84}
-                                />
-                              </AvatarFrame>
-                              <div
-                                className="absolute -bottom-1 -right-1 z-30 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[9px] shadow-sm border border-[var(--card)] flex items-center gap-0.5"
-                              >
-                                <span className="text-[7px] font-extrabold text-amber-200">LV</span>
-                                <span>{studentLevel}</span>
-                              </div>
-                            </div>
-
-                            {/* Name & Identity */}
-                            <div className="min-w-0 pb-1 space-y-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <Nameplate
-                                  itemId={profile?.nameplate || 'none'}
-                                  name={profile?.displayName || 'Student'}
-                                />
-                              </div>
-                              <p className="text-[11px] font-heading font-semibold text-amber-400/90 truncate">
-                                {previewItem?.name || 'Default Cover'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Live Action Buttons */}
-                          {isViewingSelf && !isPublicMode && (
-                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto pb-1">
-                              {isCurrentlyEquipped ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5 shadow-xs">
-                                    <CheckCircle2 size={14} />
-                                    <span>Equipped</span>
-                                  </span>
-                                  <button
-                                    disabled={equippingBannerId === 'none'}
-                                    onClick={() => handleEquipBanner(null)}
-                                    className="px-3 py-1.5 rounded-xl border border-[var(--border)] hover:bg-[var(--card)] text-xs text-red-400 font-heading font-semibold transition-colors cursor-pointer"
-                                  >
-                                    Revert to Default
-                                  </button>
-                                </div>
-                              ) : isOwned ? (
-                                <button
-                                  disabled={equippingBannerId === activePreviewId}
-                                  onClick={() => handleEquipBanner(activePreviewId)}
-                                  className="btn-red text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-[1.02] transition-transform"
-                                >
-                                  {equippingBannerId === activePreviewId ? (
-                                    <span>Equipping...</span>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 size={14} />
-                                      <span>Equip to Profile</span>
-                                    </>
-                                  )}
-                                </button>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  {previewItem && (
-                                    <button
-                                      disabled={equippingBannerId === activePreviewId}
-                                      onClick={() => handlePurchaseBanner(previewItem)}
-                                      className="btn-red text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-[1.02] transition-transform"
-                                    >
-                                      <KobanIcon size={14} />
-                                      <span>Unlock ({previewItem.priceKobans} Kobans)</span>
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => navigate('/store')}
-                                    className="px-3 py-2 rounded-xl border border-[var(--border)] hover:bg-[var(--card)] text-xs font-heading font-semibold transition-colors cursor-pointer"
-                                  >
-                                    View in Store
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Description & Story */}
-                      {previewItem && (
-                        <div className="p-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div>
-                            <span className="font-heading font-bold text-[var(--text)] mr-2">
-                              {previewItem.name}:
-                            </span>
-                            <span className="text-[var(--muted)]">{previewItem.description}</span>
-                          </div>
-                          <span className="font-mono text-[11px] text-amber-500 font-bold shrink-0">
-                            {previewItem.priceKobans} Kobans
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* ── 2. FILTER PILLS & 12 BANNERS CATALOG ── */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <span className="text-xs font-heading font-bold text-[var(--text)]">
-                          Select a Banner ({filteredBanners.length})
-                        </span>
-
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {[
-                            { id: 'all' as const, label: 'All 12' },
-                            { id: 'static' as const, label: 'Static (6)' },
-                            { id: 'animated' as const, label: 'Animated (6)' },
-                            {
-                              id: 'owned' as const,
-                              label: `Owned (${
-                                catalogBanners.filter((b) => (ownedCosmetics || []).includes(b.id)).length
-                              })`,
-                            },
-                          ].map((f) => (
-                            <button
-                              key={f.id}
-                              onClick={() => setBannerFilter(f.id)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-heading font-semibold transition-colors cursor-pointer ${
-                                bannerFilter === f.id
-                                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
-                                  : 'border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
-                              }`}
-                            >
-                              {f.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Grid of Banners */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {filteredBanners.map((banner) => {
-                          const isSelected = activePreviewId === banner.id;
-                          const isEquipped = (profile?.banner || ownEquipped?.banner) === banner.id;
-                          const userOwns = (ownedCosmetics || []).includes(banner.id);
-
-                          return (
-                            <div
-                              key={banner.id}
-                              onClick={() => setSelectedBannerPreviewId(banner.id)}
-                              className={`p-3 rounded-2xl bg-[var(--card)] border transition-all cursor-pointer group flex flex-col justify-between gap-2.5 ${
-                                isSelected
-                                  ? 'border-amber-500 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/50'
-                                  : isEquipped
-                                  ? 'border-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
-                                  : banner.rarity === 'legendary'
-                                  ? 'border-amber-500/40 hover:border-amber-400'
-                                  : banner.rarity === 'epic'
-                                  ? 'border-purple-500/35 hover:border-purple-400'
-                                  : banner.rarity === 'rare'
-                                  ? 'border-blue-500/30 hover:border-blue-400'
-                                  : 'border-[var(--border)] hover:border-teal-500/40'
-                              }`}
-                            >
-                              {/* Rarity & Badges */}
-                              <div className="flex items-center justify-between text-[10px] font-mono">
-                                <span
-                                  className={`uppercase font-bold ${
-                                    banner.rarity === 'legendary'
-                                      ? 'text-amber-400'
-                                      : banner.rarity === 'epic'
-                                      ? 'text-purple-400'
-                                      : banner.rarity === 'rare'
-                                      ? 'text-blue-400'
-                                      : 'text-teal-400'
-                                  }`}
-                                >
-                                  {banner.rarity}
-                                </span>
-                                <div className="flex items-center gap-1.5">
-                                  {banner.animated && (
-                                    <span className="text-cyan-400 font-bold">✦ Animated</span>
-                                  )}
-                                  {isEquipped && (
-                                    <span className="text-emerald-400 font-bold flex items-center gap-0.5">
-                                      <CheckCircle2 size={11} /> Equipped
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Banner Thumbnail */}
-                              <div className="h-24 rounded-xl overflow-hidden border border-[var(--border)] relative bg-neutral-950 shadow-inner group-hover:scale-[1.02] transition-transform">
-                                <BannerRenderer
-                                  bannerId={banner.id}
-                                  animated={banner.animated}
-                                  className="w-full h-full"
-                                  showReadabilityOverlay={false}
-                                />
-                              </div>
-
-                              {/* Info */}
-                              <div>
-                                <h4 className="font-heading font-bold text-xs text-[var(--text)] group-hover:text-amber-400 transition-colors">
-                                  {banner.name}
-                                </h4>
-                                <p className="text-[10px] text-[var(--muted)] line-clamp-1 mt-0.5">
-                                  {banner.description}
-                                </p>
-                              </div>
-
-                              {/* Footer Action */}
-                              <div className="flex items-center justify-between pt-1 border-t border-[var(--border)] text-xs">
-                                <span className="font-mono text-[11px] font-bold text-[#E8A317]">
-                                  {userOwns ? 'Owned' : `${banner.priceKobans} Kobans`}
-                                </span>
-
-                                {isViewingSelf && !isPublicMode && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedBannerPreviewId(banner.id);
-                                      if (userOwns) {
-                                        handleEquipBanner(isEquipped ? null : banner.id);
-                                      } else {
-                                        handlePurchaseBanner(banner);
-                                      }
-                                    }}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-heading font-bold transition-all cursor-pointer ${
-                                      isEquipped
-                                        ? 'border border-[var(--border)] text-[var(--muted)] hover:text-white'
-                                        : userOwns
-                                        ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-xs'
-                                        : 'btn-red text-[11px] py-1 px-2.5'
-                                    }`}
-                                  >
-                                    {isEquipped ? 'Unequip' : userOwns ? 'Equip' : 'Unlock'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════════════
-              TAB 3: BADGES (Passport Stamp Grid & Streak Badges)
-             ══════════════════════════════════════════════════════════════ */}
-          {activeTab === 'badges' && (
-            <div className="flex flex-col gap-6">
-              {/* Passport Stamp Grid */}
-              <div className="flex flex-col gap-3">
-                <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                  Passport Study Stamps
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {PASSPORT_STAMPS.map((stamp) => {
-                    const isEarned = stamp.earned({
-                      mcqs: profile?.stats?.mcqs ?? profile?.publicStats?.totalQuestionsSolved,
-                      streak: profile?.stats?.streak ?? profile?.publicStats?.streak,
-                      longestStreak: profile?.stats?.longestStreak ?? profile?.publicStats?.longestStreak,
-                      crewName: profile?.crewName,
-                    });
-
-                    // In public mode, locked stamps are hidden
-                    if (isPublicMode && !isEarned) return null;
-
-                    const isPinned = pinnedShowcase.includes(stamp.id);
-
-                    return (
-                      <div
-                        key={stamp.id}
-                        className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition-all ${
-                          isEarned
-                            ? 'bg-[var(--card)] border-[var(--border)]'
-                            : 'bg-transparent border-dashed border-[var(--border)] opacity-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${
-                              isEarned
-                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
-                                : 'bg-[var(--card-2)] border-[var(--border)] text-[var(--muted)]'
-                            }`}
-                          >
-                            <Award size={20} />
-                          </div>
-
-                          <div className="flex flex-col min-w-0">
-                            <span className="font-heading font-bold text-xs text-[var(--text)] truncate">
-                              {stamp.name}
-                            </span>
-                            <span className="text-[11px] text-[var(--muted)] truncate">
-                              {stamp.requirement}
-                            </span>
-                            {!isEarned && (
-                              <span className="text-[10px] font-mono text-[var(--muted)] mt-0.5">
-                                Locked · Complete requirement to earn
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Pin to Showcase (OWN MODE ONLY) */}
-                        {isViewingSelf && !isPublicMode && isEarned && (
-                          <button
-                            onClick={() => handleToggleShowcasePin(stamp.id)}
-                            className={`h-8 px-2.5 rounded-lg border text-xs font-mono transition-colors cursor-pointer flex items-center gap-1 ${
-                              isPinned
-                                ? 'bg-[var(--red)] border-[var(--red)] text-white'
-                                : 'border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--muted)]'
-                            }`}
-                            title={isPinned ? 'Pinned in Showcase' : 'Pin in Showcase'}
-                          >
-                            <Pin size={12} />
-                            <span>{isPinned ? 'Pinned' : 'Pin'}</span>
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Streak Badges Section (Own Mode: Equip up to 3) */}
-              {isViewingSelf && !isPublicMode && (
-                <div className="flex flex-col gap-3 pt-2 border-t border-[var(--border)]">
-                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                    <span className="font-heading font-semibold text-[var(--text)]">Streak Flame Badges</span>
-                    <span className="font-mono text-[11px]">{equippedStreakBadges.length}/3 Equipped</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {STREAK_BADGES.map((badge) => {
-                      const userStreak = Math.max(
-                        profile?.stats?.streak ?? 0,
-                        profile?.stats?.longestStreak ?? 0
-                      );
-                      const isUnlocked = userStreak >= badge.days;
-                      const isEquipped = equippedStreakBadges.includes(badge.id);
-
-                      return (
-                        <div
-                          key={badge.id}
-                          className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                            isUnlocked
-                              ? 'bg-[var(--card-2)] border-[var(--border)]'
-                              : 'bg-transparent border-dashed border-[var(--border)] opacity-40'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className="w-9 h-9 rounded-lg border flex items-center justify-center shrink-0"
-                              style={{
-                                backgroundColor: isUnlocked ? `${badge.color}15` : 'transparent',
-                                borderColor: isUnlocked ? `${badge.color}40` : 'var(--border)',
-                              }}
-                            >
-                              <Flame size={17} style={{ color: isUnlocked ? badge.color : 'var(--muted)' }} />
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                                {badge.name}
-                              </span>
-                              <span className="text-[10px] text-[var(--muted)] font-mono">
-                                {badge.days} Day Milestone
-                              </span>
-                            </div>
-                          </div>
-
-                          {isUnlocked && (
-                            <button
-                              onClick={() => handleToggleStreakBadge(badge.id)}
-                              className={`h-8 px-3 rounded-lg text-xs font-heading font-semibold transition-colors cursor-pointer ${
-                                isEquipped
-                                  ? 'bg-[var(--red)] text-white'
-                                  : 'border border-[var(--border)] hover:bg-[var(--card)] text-[var(--text)]'
-                              }`}
-                            >
-                              {isEquipped ? 'Equipped' : 'Equip'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── FOLLOWERS & FOLLOWING LIST MODAL ── */}
-      {followListTab && (
-        <FollowListModal
-          isOpen={Boolean(followListTab)}
-          onClose={() => setFollowListTab(null)}
-          userId={profile?.uid || ''}
-          initialTab={followListTab}
-          currentUserId={currentUid}
-          onSelectUser={(uid) => {
-            setFollowListTab(null);
-            if (!isFullPage) {
-              openProfile(uid);
-            } else {
-              navigate(`/dashboard/profile?uid=${uid}`);
-            }
-          }}
-        />
-      )}
-
-      {/* ── EDIT PROFILE SHEET (OWN MODE) ── */}
-      {editSheetOpen && profile && (
-        <EditProfileSheet
-          isOpen={editSheetOpen}
-          onClose={() => setEditSheetOpen(false)}
-          profile={profile}
-          onChangePicture={
-            isViewingSelf && !isPublicMode ? () => setAvatarPickerOpen(true) : undefined
-          }
-          onSave={handleSaveProfileUpdates}
-        />
-      )}
-
-      {/* ── CHANGE PROFILE PICTURE PICKER MODAL (OWN MODE ONLY) ── */}
-      {isViewingSelf && !isPublicMode && currentUid && (
-        <ProfilePicturePickerModal
-          isOpen={avatarPickerOpen}
-          onClose={() => setAvatarPickerOpen(false)}
-          uid={currentUid}
-          currentAvatarId={profile?.avatar || ownEquipped?.avatar || null}
-          ownedIds={ownedCosmetics || []}
-          isSuperAdmin={isSuperAdmin}
-          onSaveAvatar={handleSaveAvatar}
-        />
-      )}
-
-      {/* ── SHARE PROFILE CARD MODAL ── */}
-      {shareModalOpen && profile && (
-        <ShareProfileCardModal
-          isOpen={shareModalOpen}
-          onClose={() => setShareModalOpen(false)}
-          profile={profile}
-        />
-      )}
-
-      {/* ── LIMITED CREW DETAIL MODAL (PUBLIC MODE) ── */}
-      {crewDetailModalOpen && profile?.crewName && (
-        <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <span className="font-heading font-bold text-base text-[var(--text)]">Study Squad</span>
-              <button
-                onClick={() => setCrewDetailModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-[var(--card-2)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-2">
-              <span className="font-heading font-bold text-sm text-[var(--text)]">{profile.crewName}</span>
-              <p className="text-xs text-[var(--muted)]">
-                A student crew working together towards exam excellence on Boardly.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-end">
-              <button
-                onClick={() => setCrewDetailModalOpen(false)}
-                className="h-10 px-4 rounded-lg bg-[var(--red)] text-white text-xs font-heading font-semibold"
-              >
-                Done
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── CONFIRMATION MODAL: Unfollow @name? ── */}
-      {unfollowModalOpen && profile && (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
-            <h3 className="font-heading font-bold text-base text-[var(--text)]">
-              Unfollow @{sanitizeStudentDisplayName(profile.displayName, profile.studentId)}?
-            </h3>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Their shared materials will no longer show in your Following feed.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setUnfollowModalOpen(false)}
-                disabled={followWorking}
-                className="h-10 px-4 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmUnfollow}
-                disabled={followWorking}
-                className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
-              >
-                {followWorking ? 'Unfollowing...' : 'Unfollow'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Koban Wallet Modal ── */}
-      <WalletModal
-        isOpen={walletModalOpen}
-        onClose={() => setWalletModalOpen(false)}
-        balance={kobanBalance}
-      />
-
-      {/* ── Guest Upgrade Modal ── */}
-      <GuestUpgradeModal
-        isOpen={guestUpgradeModalOpen}
-        onClose={() => setGuestUpgradeModalOpen(false)}
-      />
-
-      {/* ── 1-on-1 Direct Message & Chat Requests Modal ── */}
-      {profile && (
+      {/* Direct Message Modal */}
+      {isChatOpen && profile && (
         <DirectMessageModal
-          isOpen={dmModalOpen}
-          onClose={() => setDmModalOpen(false)}
-          initialTab={dmInitialTab}
-          targetUser={
-            !isViewingSelf && currentUid !== profile.uid
-              ? {
-                  uid: profile.uid,
-                  displayName: profile.displayName || 'Student',
-                  avatar: profile.avatar,
-                  frame: profile.frame,
-                  role: profile.role,
-                  photoURL: null,
-                }
-              : null
-          }
-          onPermissionChange={() => {
-            if (currentUid && profile.uid && currentUid !== profile.uid) {
-              void checkChatPermission(currentUid, profile.uid)
-                .then((perm) => setChatPermission(perm))
-                .catch(() => {});
-            }
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          partner={{
+            uid: profile.uid,
+            displayName: profile.displayName,
+            username: profile.username,
+            equippedAvatar: profile.equippedAvatar,
+            photoURL: profile.photoURL,
+            equippedFrame: profile.equippedFrame,
+            role: profile.role,
           }}
         />
+      )}
+
+      {/* Edit Profile Modal (z-index 2000) */}
+      {isEditing && isOwnProfile && (
+        <div
+          data-modal-layer="true"
+          role="dialog"
+          aria-modal="true"
+          className="boardly-modal-backdrop fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+        >
+          <div className="boardly-glass-card rounded-t-[36px] sm:rounded-[32px] w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 nothing-dotted-divider flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#D71921]" />
+                <h3 className="font-doto-title text-sm tracking-[0.14em] text-white">
+                  EDIT PROFILE
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                aria-label="Close edit profile"
+                className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSaveProfile}
+              className="p-5 overflow-y-auto space-y-5 flex-1"
+            >
+              {editError && (
+                <div className="p-3.5 bg-red-500/15 border border-red-500/35 rounded-2xl text-red-200 text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-[#D71921]" />
+                  {editError}
+                </div>
+              )}
+
+              {/* Custom Photo Upload */}
+              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-white/[0.04] border border-white/12">
+                <BoardlyAvatar
+                  size={64}
+                  uid={profile.uid}
+                  equippedAvatar={editAvatar}
+                  customPhotoURL={profile.photoURL}
+                  equippedFrameId={editFrame}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white">Profile Picture</div>
+                  <p className="text-xs text-white/65 mt-0.5">
+                    Upload a custom photo or equip a Boardly avatar in your Locker.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      disabled={uploadingPhoto}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="press-scale min-h-[44px] px-4 rounded-full text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer"
+                    >
+                      {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
+                    DISPLAY NAME
+                  </label>
+                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
+                    <input
+                      type="text"
+                      value={editNickname}
+                      onChange={(e) => setEditNickname(e.target.value)}
+                      maxLength={32}
+                      required
+                      className="w-full text-sm text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
+                    USERNAME (@HANDLE)
+                  </label>
+                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
+                    <span className="text-white/50 text-sm mr-1">@</span>
+                    <input
+                      type="text"
+                      value={editUsername}
+                      onChange={(e) =>
+                        setEditUsername(
+                          e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')
+                        )
+                      }
+                      maxLength={20}
+                      required
+                      className="w-full text-sm text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
+                    STATUS LINE
+                  </label>
+                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
+                    <input
+                      type="text"
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      placeholder="Studying for Finals..."
+                      maxLength={50}
+                      className="w-full text-sm text-white placeholder:text-white/40"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
+                    ACADEMIC ROLE CHIP
+                  </label>
+                  <select
+                    value={editCustomRole}
+                    onChange={(e) => setEditCustomRole(e.target.value)}
+                    className="w-full rounded-2xl bg-[#121216] border border-white/15 px-3.5 min-h-[48px] text-sm text-white outline-none"
+                  >
+                    {COSMETIC_ROLE_OPTIONS.map((roleOpt) => (
+                      <option key={roleOpt} value={roleOpt}>
+                        {roleOpt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
+                  ABOUT ME / BIO
+                </label>
+                <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 p-3.5">
+                  <textarea
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    placeholder="Add a bio..."
+                    rows={3}
+                    maxLength={240}
+                    className="w-full bg-transparent border-0 outline-none text-sm text-white placeholder:text-white/45 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 nothing-dotted-divider flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="boardly-glass-pill press-scale min-h-[48px] px-5 rounded-full text-xs font-bold text-white/80 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="boardly-red-pill press-scale min-h-[48px] px-6 rounded-full text-xs font-bold tracking-wide disabled:opacity-50 cursor-pointer"
+                >
+                  {saving ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

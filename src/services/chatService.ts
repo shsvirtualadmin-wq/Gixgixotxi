@@ -117,6 +117,8 @@ export interface ChatMessage {
   text: string;
   createdAt: any;
   createdAtMs?: number;
+  /** Client-side optimistic delivery status ('sending' | 'sent' | 'delivered' | 'read' | 'failed') */
+  deliveryStatus?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 }
 
 export type DirectMessage = ChatMessage;
@@ -610,6 +612,10 @@ export async function respondToChatRequest(
 
 const CHAT_CONVS_CACHE_PREFIX = 'chat_convs_v1:';
 const CHAT_REQS_CACHE_PREFIX = 'chat_reqs_v1:';
+const CHAT_MSGS_CACHE_PREFIX = 'chat_msgs_v1:';
+
+const CHAT_MSGS_MEMORY_CACHE = new Map<string, ChatMessage[]>();
+const CHAT_PERM_MEMORY_CACHE = new Map<string, ChatPermissionState>();
 
 export function getCachedUserConversations(uid?: string | null): Conversation[] | null {
   if (!uid || uid.startsWith('guest_')) return null;
@@ -621,6 +627,46 @@ export function getCachedIncomingChatRequests(uid?: string | null): ChatRequest[
   if (!uid || uid.startsWith('guest_')) return null;
   const entry = readSwrCache<ChatRequest[]>(`${CHAT_REQS_CACHE_PREFIX}${uid}`);
   return entry?.data || null;
+}
+
+export function getCachedConversationMessages(
+  conversationId?: string | null
+): ChatMessage[] | null {
+  if (!conversationId) return null;
+  const mem = CHAT_MSGS_MEMORY_CACHE.get(conversationId);
+  if (mem && mem.length > 0) return mem;
+  const swr = readSwrCache<ChatMessage[]>(`${CHAT_MSGS_CACHE_PREFIX}${conversationId}`);
+  if (swr?.data && Array.isArray(swr.data)) {
+    CHAT_MSGS_MEMORY_CACHE.set(conversationId, swr.data);
+    return swr.data;
+  }
+  return null;
+}
+
+export function seedConversationMessagesCache(
+  conversationId: string,
+  messages: ChatMessage[]
+): void {
+  if (!conversationId) return;
+  CHAT_MSGS_MEMORY_CACHE.set(conversationId, messages);
+  writeSwrCache(`${CHAT_MSGS_CACHE_PREFIX}${conversationId}`, messages.slice(-30), true);
+}
+
+export function getCachedChatPermission(
+  currentUid?: string | null,
+  targetUid?: string | null
+): ChatPermissionState | null {
+  if (!currentUid || !targetUid) return null;
+  return CHAT_PERM_MEMORY_CACHE.get(`${currentUid}_${targetUid}`) || null;
+}
+
+export function seedChatPermissionCache(
+  currentUid: string,
+  targetUid: string,
+  perm: ChatPermissionState
+): void {
+  if (!currentUid || !targetUid) return;
+  CHAT_PERM_MEMORY_CACHE.set(`${currentUid}_${targetUid}`, perm);
 }
 
 /**
@@ -1532,12 +1578,17 @@ export async function sendMessage(
     throw new Error('Valid recipient is required to send a message.');
   }
 
-  const perm = await checkChatPermission(senderId, recipientId);
+  // Fast-path permission check: use cached permission if already verified, otherwise check in parallel
+  const cachedPerm = getCachedChatPermission(senderId, recipientId);
+  const perm = cachedPerm?.canChat
+    ? cachedPerm
+    : await checkChatPermission(senderId, recipientId);
   if (!perm.canChat) {
     throw new Error(
       'Messaging requires mutual follow or an accepted chat request.'
     );
   }
+  seedChatPermissionCache(senderId, recipientId, perm);
 
   const senderName =
     senderMeta?.displayName ||
@@ -1556,126 +1607,106 @@ export async function sendMessage(
       recipientId === SUPER_ADMIN_UID
   );
 
-  const existingConvSnap = await withChatStoreFallback((fb) =>
-    getDoc(getConversationDocRef(conversationId, fb))
-  ).catch(() => null);
-  const existingDetails =
-    (existingConvSnap?.exists()
-      ? existingConvSnap.data()?.participantDetails
-      : null) || {};
   const cachedRecipientProf = getCachedPublicProfile(recipientId);
-  const recipientPrev = existingDetails[recipientId] || {};
   const recipientDisplayName =
     cachedRecipientProf?.displayName ||
-    recipientPrev.displayName ||
     (recipientId === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student');
 
   const mergedParticipantDetails: Record<string, ConversationParticipant> = {
-    ...existingDetails,
     [senderId]: {
       displayName: senderName,
-      avatar: senderAvatar || existingDetails[senderId]?.avatar || null,
-      frame: senderFrame || existingDetails[senderId]?.frame || null,
+      avatar: senderAvatar || null,
+      frame: senderFrame || null,
       role: senderRole,
       photoURL: null,
     },
     [recipientId]: {
       displayName: recipientDisplayName,
       avatar:
-        resolveCosmeticItemId(
-          cachedRecipientProf?.equippedAvatar || recipientPrev.avatar,
-          'avatar'
-        ) || null,
+        resolveCosmeticItemId(cachedRecipientProf?.equippedAvatar, 'avatar') || null,
       frame:
-        resolveCosmeticItemId(
-          cachedRecipientProf?.equippedFrame || recipientPrev.frame,
-          'frame'
-        ) || null,
+        resolveCosmeticItemId(cachedRecipientProf?.equippedFrame, 'frame') || null,
       role:
-        recipientPrev.role ||
         cachedRecipientProf?.role ||
         (recipientId === SUPER_ADMIN_UID ? 'admin' : 'student'),
       photoURL: null,
     },
   };
 
-  // 1. Upsert parent conversation document FIRST (using setDoc with merge: true, never updateDoc.catch)
-  // so `participants` array-contains queries and message subcollection rules always see a valid parent doc.
-  await withChatStoreFallback((fb) =>
-    setDoc(
-      getConversationDocRef(conversationId, fb),
-      {
-        id: conversationId,
-        participants: sortedParticipants,
-        status: 'accepted',
-        isOfficialChat: isOfficial,
-        participantDetails: mergedParticipantDetails,
-        lastMessage: trimmed,
-        lastMessageText: trimmed,
-        lastMessageSenderId: senderId,
-        lastSenderId: senderId,
-        lastMessageAt: serverTimestamp(),
-        lastMessageAtMs: nowMs,
-        updatedAt: serverTimestamp(),
-        ...(existingConvSnap?.exists() ? {} : { createdAt: serverTimestamp() }),
-        [`unreadCounts.${recipientId}`]: increment(1),
-      },
-      { merge: true }
-    )
-  );
-
-  // 2. Write the message document to conversations/{conversationId}/messages (or fallback messages collection)
-  const docRef = await withChatStoreFallback((fb) =>
-    addDoc(getMessagesCollection(conversationId, fb), {
-      conversationId,
-      senderId,
-      recipientId,
-      senderName,
-      senderAvatar,
-      senderFrame,
-      text: trimmed,
-      createdAtMs: nowMs,
-      createdAt: serverTimestamp(),
-    })
-  );
-
-  // 3. If sender is an official/admin account, ensure an accepted chatRequest record exists
-  if (perm.reason === 'official_account' || senderId === SUPER_ADMIN_UID) {
-    const reqId = getChatRequestId(senderId, recipientId);
-    await withChatStoreFallback((fb) =>
+  // Write parent conversation update and message document in parallel (no sequential round-trips)
+  const [, docRef] = await Promise.all([
+    withChatStoreFallback((fb) =>
       setDoc(
-        getChatRequestDocRef(reqId, fb),
+        getConversationDocRef(conversationId, fb),
         {
-          fromUid: senderId,
-          toUid: recipientId,
+          id: conversationId,
           participants: sortedParticipants,
-          fromName: senderName,
-          fromAvatar: senderAvatar,
-          fromFrame: senderFrame,
-          fromPhotoURL: null,
-          fromRole: 'admin',
-          toName: recipientDisplayName,
-          toAvatar: mergedParticipantDetails[recipientId]?.avatar || null,
-          toFrame: mergedParticipantDetails[recipientId]?.frame || null,
-          toPhotoURL: null,
-          message: trimmed,
-          conversationId,
           status: 'accepted',
-          createdAt: serverTimestamp(),
-          createdAtMs: nowMs,
+          isOfficialChat: isOfficial,
+          participantDetails: mergedParticipantDetails,
+          lastMessage: trimmed,
+          lastMessageText: trimmed,
+          lastMessageSenderId: senderId,
+          lastSenderId: senderId,
+          lastMessageAt: serverTimestamp(),
+          lastMessageAtMs: nowMs,
           updatedAt: serverTimestamp(),
-          declinedAt: null,
-          declinedAtMs: null,
+          [`unreadCounts.${recipientId}`]: increment(1),
         },
         { merge: true }
       )
-    ).catch(() => {});
-  }
+    ),
+    withChatStoreFallback((fb) =>
+      addDoc(getMessagesCollection(conversationId, fb), {
+        conversationId,
+        senderId,
+        recipientId,
+        senderName,
+        senderAvatar,
+        senderFrame,
+        text: trimmed,
+        createdAtMs: nowMs,
+        createdAt: serverTimestamp(),
+      })
+    ),
+  ]);
 
-  // 4. Send notification to recipient with direct link to the conversation in /dashboard/messages
-  try {
+  // Fire-and-forget post-send tasks (official chatRequest + notification) after message ack
+  setTimeout(() => {
+    if (perm.reason === 'official_account' || senderId === SUPER_ADMIN_UID) {
+      const reqId = getChatRequestId(senderId, recipientId);
+      void withChatStoreFallback((fb) =>
+        setDoc(
+          getChatRequestDocRef(reqId, fb),
+          {
+            fromUid: senderId,
+            toUid: recipientId,
+            participants: sortedParticipants,
+            fromName: senderName,
+            fromAvatar: senderAvatar,
+            fromFrame: senderFrame,
+            fromPhotoURL: null,
+            fromRole: 'admin',
+            toName: recipientDisplayName,
+            toAvatar: mergedParticipantDetails[recipientId]?.avatar || null,
+            toFrame: mergedParticipantDetails[recipientId]?.frame || null,
+            toPhotoURL: null,
+            message: trimmed,
+            conversationId,
+            status: 'accepted',
+            createdAt: serverTimestamp(),
+            createdAtMs: nowMs,
+            updatedAt: serverTimestamp(),
+            declinedAt: null,
+            declinedAtMs: null,
+          },
+          { merge: true }
+        )
+      ).catch(() => {});
+    }
+
     const notifRef = doc(collection(db, 'notifications'));
-    await setDoc(notifRef, {
+    void setDoc(notifRef, {
       userId: recipientId,
       recipientUid: recipientId,
       recipientId,
@@ -1693,19 +1724,69 @@ export async function sendMessage(
       read: false,
       isRead: false,
       createdAt: serverTimestamp(),
-    }).catch((err) => {
-      console.warn('[chatService] Failed to write message notification:', err);
-    });
-  } catch (err) {
-    console.warn('[chatService] Non-blocking notification error:', err);
-  }
+    }).catch(() => {});
+  }, 0);
 
   return docRef.id;
 }
 
+export const CHAT_MESSAGES_PAGE_SIZE = 30;
+
+// Enforce strictly ONE active Firestore listener per open conversation
+const activeMessageListenerCleanupByConv = new Map<string, () => void>();
+
 /**
- * Subscribes to real-time messages in a conversation.
- * Returns unsubscribe cleanup function.
+ * Loads older messages before `beforeCreatedAtMs` for scroll-up pagination.
+ */
+export async function loadOlderMessages(
+  conversationId: string,
+  beforeCreatedAtMs: number,
+  pageSize = CHAT_MESSAGES_PAGE_SIZE
+): Promise<ChatMessage[]> {
+  if (!conversationId || !beforeCreatedAtMs) return [];
+  try {
+    const snap = await withChatStoreFallback((fb) => {
+      const col = getMessagesCollection(conversationId, fb);
+      return getDocs(
+        query(
+          col,
+          where('createdAtMs', '<', beforeCreatedAtMs),
+          orderBy('createdAtMs', 'desc'),
+          limit(pageSize)
+        )
+      );
+    });
+    const older: ChatMessage[] = [];
+    snap.forEach((d) => {
+      const data = d.data();
+      older.push({
+        id: d.id,
+        conversationId,
+        senderId: data.senderId || data.senderUid,
+        recipientId: data.recipientId || undefined,
+        senderName: data.senderName || 'Student',
+        senderAvatar: data.senderAvatar || null,
+        senderFrame: data.senderFrame || null,
+        text: data.text || '',
+        createdAt: data.createdAt,
+        createdAtMs: data.createdAtMs || toTimestampMs(data.createdAt),
+        deliveryStatus: 'read',
+      });
+    });
+    older.sort(
+      (a, b) =>
+        toTimestampMs(a.createdAt, a.createdAtMs) -
+        toTimestampMs(b.createdAt, b.createdAtMs)
+    );
+    return older;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Subscribes to the latest 30 real-time messages in a conversation.
+ * Emits cached messages immediately (< 10ms) and enforces a single listener per open chat.
  */
 export function subscribeMessages(
   conversationId: string,
@@ -1714,57 +1795,53 @@ export function subscribeMessages(
 ): () => void {
   if (!conversationId) return () => {};
 
-  let latestMsgs: ChatMessage[] = [];
+  // Ensure any stale listener on the same conversationId is torn down first
+  const prevCleanup = activeMessageListenerCleanupByConv.get(conversationId);
+  if (prevCleanup) {
+    prevCleanup();
+    activeMessageListenerCleanupByConv.delete(conversationId);
+  }
 
-  const emitMsgsWithLiveProfiles = (msgs: ChatMessage[]) => {
-    const senderUids = Array.from(
-      new Set(
-        msgs
-          .map((m) => m.senderId)
-          .filter((id): id is string => Boolean(id && !id.startsWith('anon_')))
-      )
-    );
-    if (senderUids.length === 0) {
-      onUpdate(msgs);
-      return;
-    }
-    getPublicProfiles(senderUids)
-      .then((liveMap) => {
-        const enriched = msgs.map((m) => {
-          const live = liveMap.get(m.senderId);
-          if (!live) return m;
-          return {
-            ...m,
-            senderName: live.displayName || m.senderName || 'Student',
-            senderAvatar:
-              resolveCosmeticItemId(
-                live.equippedAvatar || live.equipped?.avatar || live.avatar,
-                'avatar'
-              ) || m.senderAvatar || null,
-            senderFrame:
-              resolveCosmeticItemId(
-                live.equippedFrame || live.equipped?.frame || live.frame,
-                'frame'
-              ) || m.senderFrame || null,
-          };
-        });
-        onUpdate(enriched);
-      })
-      .catch(() => {
-        onUpdate(msgs);
-      });
-  };
+  // 1. Emit cached messages synchronously so header + cached bubbles draw in <100ms
+  const cachedInitial = getCachedConversationMessages(conversationId);
+  if (cachedInitial && cachedInitial.length > 0) {
+    onUpdate(cachedInitial);
+  }
 
   let unsubSnap: (() => void) | null = null;
   let isUnsubscribed = false;
 
+  const enrichWithCachedProfiles = (msgs: ChatMessage[]): ChatMessage[] => {
+    return msgs.map((m) => {
+      const cachedProf = getCachedPublicProfile(m.senderId);
+      if (!cachedProf) return m;
+      return {
+        ...m,
+        senderName: cachedProf.displayName || m.senderName || 'Student',
+        senderAvatar:
+          resolveCosmeticItemId(cachedProf.equippedAvatar, 'avatar') ||
+          m.senderAvatar ||
+          null,
+        senderFrame:
+          resolveCosmeticItemId(cachedProf.equippedFrame, 'frame') ||
+          m.senderFrame ||
+          null,
+      };
+    });
+  };
+
   const startSubscription = (useFallback: boolean) => {
     if (isUnsubscribed) return;
     const messagesCol = getMessagesCollection(conversationId, useFallback);
-    const qPrimary = query(messagesCol, orderBy('createdAt', 'asc'), limit(150));
+    // Limit the query to the latest 30 messages (ordered descending, then sorted ascending for UI)
+    const qLatest30 = query(
+      messagesCol,
+      orderBy('createdAt', 'desc'),
+      limit(CHAT_MESSAGES_PAGE_SIZE)
+    );
 
     unsubSnap = onSnapshot(
-      qPrimary,
+      qLatest30,
       (snap) => {
         const msgs: ChatMessage[] = [];
         snap.forEach((d) => {
@@ -1779,7 +1856,8 @@ export function subscribeMessages(
             senderFrame: data.senderFrame || null,
             text: data.text || '',
             createdAt: data.createdAt,
-            createdAtMs: data.createdAtMs,
+            createdAtMs: data.createdAtMs || toTimestampMs(data.createdAt),
+            deliveryStatus: d.metadata.hasPendingWrites ? 'sending' : 'read',
           });
         });
         msgs.sort(
@@ -1787,8 +1865,9 @@ export function subscribeMessages(
             toTimestampMs(a.createdAt, a.createdAtMs) -
             toTimestampMs(b.createdAt, b.createdAtMs)
         );
-        latestMsgs = msgs;
-        emitMsgsWithLiveProfiles(msgs);
+        const fastEnriched = enrichWithCachedProfiles(msgs);
+        seedConversationMessagesCache(conversationId, fastEnriched);
+        onUpdate(fastEnriched);
       },
       (err) => {
         if (!useFallback && isPermissionDeniedError(err)) {
@@ -1813,15 +1892,17 @@ export function subscribeMessages(
 
   startSubscription(useFallbackChatStore);
 
-  const unsubProfiles = subscribeAllPublicProfiles(() => {
-    if (latestMsgs.length > 0) {
-      emitMsgsWithLiveProfiles(latestMsgs);
-    }
-  });
-
-  return () => {
+  const cleanup = () => {
     isUnsubscribed = true;
-    if (unsubSnap) unsubSnap();
-    unsubProfiles();
+    if (unsubSnap) {
+      unsubSnap();
+      unsubSnap = null;
+    }
+    if (activeMessageListenerCleanupByConv.get(conversationId) === cleanup) {
+      activeMessageListenerCleanupByConv.delete(conversationId);
+    }
   };
+
+  activeMessageListenerCleanupByConv.set(conversationId, cleanup);
+  return cleanup;
 }
