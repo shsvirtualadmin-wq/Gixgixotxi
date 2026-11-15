@@ -14,8 +14,6 @@ import {
   AlertTriangle,
   RefreshCw,
 } from 'lucide-react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { showApiToast } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -30,6 +28,7 @@ import {
   sendChatRequest,
   respondToChatRequest,
   subscribeIncomingChatRequests,
+  subscribeOutgoingChatRequests,
   subscribeUserConversations,
   getCachedUserConversations,
   getCachedIncomingChatRequests,
@@ -164,32 +163,15 @@ export function useOutgoingChatRequests(
       return;
     }
 
-    const q = query(
-      collection(db, 'chatRequests'),
-      where('fromUid', '==', uid),
-      where('status', '==', 'pending')
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list: ChatRequest[] = [];
-        snap.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...(docSnap.data() as Omit<ChatRequest, 'id'>) });
-        });
-        list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
+    return subscribeOutgoingChatRequests(
+      uid,
+      (list) => {
         setOutgoing(list);
       },
       (err) => {
-        console.error(
-          `[Messages] Outgoing chatRequests query failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
-          err
-        );
         if (onErrorRef.current) onErrorRef.current(err);
       }
     );
-
-    return () => unsub();
   }, [uid, retryNonce]);
 
   return outgoing;

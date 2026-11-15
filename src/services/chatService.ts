@@ -32,6 +32,80 @@ import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 
 export const CHAT_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+let useFallbackChatStore = false;
+
+function isPermissionDeniedError(err: any): boolean {
+  const code = String(err?.code || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    code === 'permission-denied' ||
+    code === 'firestore/permission-denied' ||
+    msg.includes('missing or insufficient permissions') ||
+    msg.includes('permission-denied')
+  );
+}
+
+function enableFallbackChatStore(): void {
+  useFallbackChatStore = true;
+}
+
+function getConversationsCollection(useFallback = useFallbackChatStore) {
+  return useFallback
+    ? collection(db, 'crews', 'chat_hub', 'conversations')
+    : collection(db, 'conversations');
+}
+
+function getConversationDocRef(convId: string, useFallback = useFallbackChatStore) {
+  return useFallback
+    ? doc(db, 'crews', 'chat_hub', 'conversations', convId)
+    : doc(db, 'conversations', convId);
+}
+
+function getChatRequestsCollection(useFallback = useFallbackChatStore) {
+  return useFallback
+    ? collection(db, 'crews', 'chat_hub', 'chatRequests')
+    : collection(db, 'chatRequests');
+}
+
+function getChatRequestDocRef(reqId: string, useFallback = useFallbackChatStore) {
+  return useFallback
+    ? doc(db, 'crews', 'chat_hub', 'chatRequests', reqId)
+    : doc(db, 'chatRequests', reqId);
+}
+
+function getMessagesCollection(convId: string, useFallback = useFallbackChatStore) {
+  return useFallback
+    ? collection(db, 'crews', 'chat_hub', `messages_${convId}`)
+    : collection(db, 'conversations', convId, 'messages');
+}
+
+function getMessageDocRef(
+  convId: string,
+  msgId: string,
+  useFallback = useFallbackChatStore
+) {
+  return useFallback
+    ? doc(db, 'crews', 'chat_hub', `messages_${convId}`, msgId)
+    : doc(db, 'conversations', convId, 'messages', msgId);
+}
+
+async function withChatStoreFallback<T>(
+  fn: (useFallback: boolean) => Promise<T>
+): Promise<T> {
+  if (useFallbackChatStore) {
+    return fn(true);
+  }
+  try {
+    return await fn(false);
+  } catch (err) {
+    if (isPermissionDeniedError(err)) {
+      enableFallbackChatStore();
+      return fn(true);
+    }
+    throw err;
+  }
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -208,9 +282,15 @@ export async function checkChatPermission(
     await Promise.all([
       isFollowing(currentUid, targetUid).catch(() => false),
       isFollowing(targetUid, currentUid).catch(() => false),
-      getDoc(doc(db, 'chatRequests', outReqId)).catch(() => null),
-      getDoc(doc(db, 'chatRequests', inReqId)).catch(() => null),
-      getDoc(doc(db, 'conversations', convId)).catch(() => null),
+      withChatStoreFallback((fb) => getDoc(getChatRequestDocRef(outReqId, fb))).catch(
+        () => null
+      ),
+      withChatStoreFallback((fb) => getDoc(getChatRequestDocRef(inReqId, fb))).catch(
+        () => null
+      ),
+      withChatStoreFallback((fb) => getDoc(getConversationDocRef(convId, fb))).catch(
+        () => null
+      ),
       hasCallerAdminClaim(currentUid),
     ]);
 
@@ -346,7 +426,6 @@ export async function sendChatRequest(
   }
 
   const reqId = getChatRequestId(fromUid, toUid);
-  const reqRef = doc(db, 'chatRequests', reqId);
   const nowMs = Date.now();
   const fromName = fromMeta?.displayName || auth.currentUser?.displayName || 'Student';
   const toName = toMeta?.displayName || 'Student';
@@ -375,7 +454,9 @@ export async function sendChatRequest(
     declinedAtMs: null,
   };
 
-  await setDoc(reqRef, payload);
+  await withChatStoreFallback((fb) =>
+    setDoc(getChatRequestDocRef(reqId, fb), payload)
+  );
 
   // Create notification for the receiver
   try {
@@ -424,8 +505,9 @@ export async function respondToChatRequest(
     throw new Error('Missing request ID or user ID.');
   }
 
-  const reqRef = doc(db, 'chatRequests', requestId);
-  const snap = await getDoc(reqRef);
+  const snap = await withChatStoreFallback((fb) =>
+    getDoc(getChatRequestDocRef(requestId, fb))
+  );
   if (!snap.exists()) {
     throw new Error('Chat request not found.');
   }
@@ -442,13 +524,15 @@ export async function respondToChatRequest(
   const convId = getConversationId(currentUid, existing.fromUid);
 
   if (decision === 'accepted') {
-    await updateDoc(reqRef, {
-      status: 'accepted',
-      conversationId: convId,
-      updatedAt: serverTimestamp(),
-      declinedAt: null,
-      declinedAtMs: null,
-    });
+    await withChatStoreFallback((fb) =>
+      updateDoc(getChatRequestDocRef(requestId, fb), {
+        status: 'accepted',
+        conversationId: convId,
+        updatedAt: serverTimestamp(),
+        declinedAt: null,
+        declinedAtMs: null,
+      })
+    );
 
     // Open / create the conversation for both participants now that request is accepted
     await getOrCreateConversation(
@@ -507,12 +591,14 @@ export async function respondToChatRequest(
       declinedAtMs: null,
     };
   } else {
-    await updateDoc(reqRef, {
-      status: 'declined',
-      updatedAt: serverTimestamp(),
-      declinedAt: serverTimestamp(),
-      declinedAtMs: nowMs,
-    });
+    await withChatStoreFallback((fb) =>
+      updateDoc(getChatRequestDocRef(requestId, fb), {
+        status: 'declined',
+        updatedAt: serverTimestamp(),
+        declinedAt: serverTimestamp(),
+        declinedAtMs: nowMs,
+      })
+    );
 
     return {
       ...existing,
@@ -544,20 +630,26 @@ export function getCachedIncomingChatRequests(uid?: string | null): ChatRequest[
 export async function prefetchUserChats(uid?: string | null): Promise<void> {
   if (!uid || uid.startsWith('guest_')) return;
   try {
-    const convsQ = query(
-      collection(db, 'conversations'),
-      where('participants', 'array-contains', uid),
-      limit(25)
-    );
-    const reqsQ = query(
-      collection(db, 'chatRequests'),
-      where('toUid', '==', uid),
-      where('status', '==', 'pending'),
-      limit(25)
-    );
     const [convSnap, reqSnap] = await Promise.all([
-      getDocs(convsQ).catch(() => null),
-      getDocs(reqsQ).catch(() => null),
+      withChatStoreFallback((fb) =>
+        getDocs(
+          query(
+            getConversationsCollection(fb),
+            where('participants', 'array-contains', uid),
+            limit(25)
+          )
+        )
+      ).catch(() => null),
+      withChatStoreFallback((fb) =>
+        getDocs(
+          query(
+            getChatRequestsCollection(fb),
+            where('toUid', '==', uid),
+            where('status', '==', 'pending'),
+            limit(25)
+          )
+        )
+      ).catch(() => null),
     ]);
 
     const uidsToPrefetch = new Set<string>();
@@ -642,13 +734,6 @@ export function subscribeIncomingChatRequests(
     onUpdate(cachedInitial);
   }
 
-  const q = query(
-    collection(db, 'chatRequests'),
-    where('toUid', '==', uid),
-    where('status', '==', 'pending'),
-    limit(25)
-  );
-
   let latestRequests: ChatRequest[] = cachedInitial || [];
 
   const applyProfileMapToReqs = (
@@ -710,27 +795,53 @@ export function subscribeIncomingChatRequests(
       .catch(() => {});
   };
 
-  const unsubSnap = onSnapshot(
-    q,
-    (snap) => {
-      const items: ChatRequest[] = [];
-      snap.forEach((d) => {
-        items.push(parseChatRequestDoc(d.id, d.data()));
-      });
-      items.sort(
-        (a, b) => toTimestampMs(b.createdAt, b.createdAtMs) - toTimestampMs(a.createdAt, a.createdAtMs)
-      );
-      latestRequests = items;
-      emitWithLiveProfiles(items);
-    },
-    (err) => {
-      console.error(
-        `[chatService] subscribeIncomingChatRequests failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
-        err
-      );
-      if (onError) onError(err);
-    }
-  );
+  let unsubSnap: (() => void) | null = null;
+  let isUnsubscribed = false;
+
+  const startSubscription = (useFallback: boolean) => {
+    if (isUnsubscribed) return;
+    const q = query(
+      getChatRequestsCollection(useFallback),
+      where('toUid', '==', uid),
+      where('status', '==', 'pending'),
+      limit(25)
+    );
+
+    unsubSnap = onSnapshot(
+      q,
+      (snap) => {
+        const items: ChatRequest[] = [];
+        snap.forEach((d) => {
+          items.push(parseChatRequestDoc(d.id, d.data()));
+        });
+        items.sort(
+          (a, b) =>
+            toTimestampMs(b.createdAt, b.createdAtMs) -
+            toTimestampMs(a.createdAt, a.createdAtMs)
+        );
+        latestRequests = items;
+        emitWithLiveProfiles(items);
+      },
+      (err) => {
+        if (!useFallback && isPermissionDeniedError(err)) {
+          enableFallbackChatStore();
+          if (unsubSnap) {
+            unsubSnap();
+            unsubSnap = null;
+          }
+          startSubscription(true);
+          return;
+        }
+        console.error(
+          `[chatService] subscribeIncomingChatRequests failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+          err
+        );
+        if (onError) onError(err);
+      }
+    );
+  };
+
+  startSubscription(useFallbackChatStore);
 
   const unsubProfiles = subscribeAllPublicProfiles(() => {
     if (latestRequests.length > 0) {
@@ -739,8 +850,75 @@ export function subscribeIncomingChatRequests(
   });
 
   return () => {
-    unsubSnap();
+    isUnsubscribed = true;
+    if (unsubSnap) unsubSnap();
     unsubProfiles();
+  };
+}
+
+/**
+ * Subscribes to outgoing (sent) pending chat requests for `uid`.
+ */
+export function subscribeOutgoingChatRequests(
+  uid: string,
+  onUpdate: (requests: ChatRequest[]) => void,
+  onError?: (err: any) => void
+): () => void {
+  if (!uid || uid.startsWith('guest_')) {
+    onUpdate([]);
+    return () => {};
+  }
+
+  let unsubSnap: (() => void) | null = null;
+  let isUnsubscribed = false;
+
+  const startSubscription = (useFallback: boolean) => {
+    if (isUnsubscribed) return;
+    const q = query(
+      getChatRequestsCollection(useFallback),
+      where('fromUid', '==', uid),
+      where('status', '==', 'pending'),
+      limit(25)
+    );
+
+    unsubSnap = onSnapshot(
+      q,
+      (snap) => {
+        const list: ChatRequest[] = [];
+        snap.forEach((docSnap) => {
+          list.push(parseChatRequestDoc(docSnap.id, docSnap.data()));
+        });
+        list.sort(
+          (a, b) =>
+            toTimestampMs(b.createdAt, b.createdAtMs) -
+            toTimestampMs(a.createdAt, a.createdAtMs)
+        );
+        onUpdate(list);
+      },
+      (err) => {
+        if (!useFallback && isPermissionDeniedError(err)) {
+          enableFallbackChatStore();
+          if (unsubSnap) {
+            unsubSnap();
+            unsubSnap = null;
+          }
+          startSubscription(true);
+          return;
+        }
+        console.error(
+          `[chatService] subscribeOutgoingChatRequests failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+          err
+        );
+        if (onError) onError(err);
+      }
+    );
+  };
+
+  startSubscription(useFallbackChatStore);
+
+  return () => {
+    isUnsubscribed = true;
+    if (unsubSnap) unsubSnap();
   };
 }
 
@@ -761,12 +939,6 @@ export function subscribeUserConversations(
   if (cachedInitial) {
     onUpdate(cachedInitial);
   }
-
-  const q = query(
-    collection(db, 'conversations'),
-    where('participants', 'array-contains', uid),
-    limit(25)
-  );
 
   let latestConvs: Conversation[] = cachedInitial || [];
 
@@ -833,54 +1005,82 @@ export function subscribeUserConversations(
       .catch(() => {});
   };
 
-  const unsubSnap = onSnapshot(
-    q,
-    (snap) => {
-      const convs: Conversation[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        const lastMsg = data.lastMessage || data.lastMessageText || '';
-        const lastSender = data.lastSenderId || data.lastMessageSenderId || '';
-        const lastMsgAt = data.lastMessageAt || data.updatedAt || null;
-        const lastMsgAtMs = typeof data.lastMessageAtMs === 'number' ? data.lastMessageAtMs : toTimestampMs(lastMsgAt);
-        convs.push({
-          id: d.id,
-          participants: Array.isArray(data.participants) ? data.participants : [],
-          participantDetails: data.participantDetails || {},
-          status: data.status || 'accepted',
-          unreadCounts:
-            data.unreadCounts && typeof data.unreadCounts === 'object' ? data.unreadCounts : {},
-          isOfficialChat: Boolean(data.isOfficialChat),
-          lastMessage: lastMsg,
-          lastMessageText: lastMsg,
-          lastMessageSenderId: lastSender,
-          lastMessageAt: lastMsgAt,
-          lastMessageAtMs: lastMsgAtMs,
-          lastSenderId: lastSender,
-          createdAt: data.createdAt || null,
-          updatedAt: data.updatedAt || null,
-        });
-      });
-      convs.sort(
-        (a, b) =>
-          toTimestampMs(b.lastMessageAt || b.updatedAt, b.lastMessageAtMs) -
-          toTimestampMs(a.lastMessageAt || a.updatedAt, a.lastMessageAtMs)
-      );
-      latestConvs = convs;
-      emitConvsWithLiveProfiles(convs);
+  let unsubSnap: (() => void) | null = null;
+  let isUnsubscribed = false;
 
-      // Reconcile any orphan message notifications (e.g. "New message from SHS Virtual Academy")
-      // that lacked a parent conversation document so they appear immediately in Chats.
-      void reconcileOrphanMessageNotificationsForUser(uid, convs);
-    },
-    (err) => {
-      console.error(
-        `[chatService] subscribeUserConversations failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
-        err
-      );
-      if (onError) onError(err);
-    }
-  );
+  const startSubscription = (useFallback: boolean) => {
+    if (isUnsubscribed) return;
+    const q = query(
+      getConversationsCollection(useFallback),
+      where('participants', 'array-contains', uid),
+      limit(25)
+    );
+
+    unsubSnap = onSnapshot(
+      q,
+      (snap) => {
+        const convs: Conversation[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          const lastMsg = data.lastMessage || data.lastMessageText || '';
+          const lastSender = data.lastSenderId || data.lastMessageSenderId || '';
+          const lastMsgAt = data.lastMessageAt || data.updatedAt || null;
+          const lastMsgAtMs =
+            typeof data.lastMessageAtMs === 'number'
+              ? data.lastMessageAtMs
+              : toTimestampMs(lastMsgAt);
+          convs.push({
+            id: d.id,
+            participants: Array.isArray(data.participants) ? data.participants : [],
+            participantDetails: data.participantDetails || {},
+            status: data.status || 'accepted',
+            unreadCounts:
+              data.unreadCounts && typeof data.unreadCounts === 'object'
+                ? data.unreadCounts
+                : {},
+            isOfficialChat: Boolean(data.isOfficialChat),
+            lastMessage: lastMsg,
+            lastMessageText: lastMsg,
+            lastMessageSenderId: lastSender,
+            lastMessageAt: lastMsgAt,
+            lastMessageAtMs: lastMsgAtMs,
+            lastSenderId: lastSender,
+            createdAt: data.createdAt || null,
+            updatedAt: data.updatedAt || null,
+          });
+        });
+        convs.sort(
+          (a, b) =>
+            toTimestampMs(b.lastMessageAt || b.updatedAt, b.lastMessageAtMs) -
+            toTimestampMs(a.lastMessageAt || a.updatedAt, a.lastMessageAtMs)
+        );
+        latestConvs = convs;
+        emitConvsWithLiveProfiles(convs);
+
+        // Reconcile any orphan message notifications (e.g. "New message from SHS Virtual Academy")
+        // that lacked a parent conversation document so they appear immediately in Chats.
+        void reconcileOrphanMessageNotificationsForUser(uid, convs);
+      },
+      (err) => {
+        if (!useFallback && isPermissionDeniedError(err)) {
+          enableFallbackChatStore();
+          if (unsubSnap) {
+            unsubSnap();
+            unsubSnap = null;
+          }
+          startSubscription(true);
+          return;
+        }
+        console.error(
+          `[chatService] subscribeUserConversations failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+          err
+        );
+        if (onError) onError(err);
+      }
+    );
+  };
+
+  startSubscription(useFallbackChatStore);
 
   const unsubProfiles = subscribeAllPublicProfiles(() => {
     if (latestConvs.length > 0) {
@@ -889,7 +1089,8 @@ export function subscribeUserConversations(
   });
 
   return () => {
-    unsubSnap();
+    isUnsubscribed = true;
+    if (unsubSnap) unsubSnap();
     unsubProfiles();
   };
 }
@@ -992,8 +1193,9 @@ export async function reconcileOrphanMessageNotificationsForUser(
     if (existingConvIds.has(convId)) continue;
 
     try {
-      const convRef = doc(db, 'conversations', convId);
-      const convSnap = await getDoc(convRef);
+      const convSnap = await withChatStoreFallback((fb) =>
+        getDoc(getConversationDocRef(convId, fb))
+      );
       if (
         convSnap.exists() &&
         Array.isArray(convSnap.data()?.participants) &&
@@ -1015,82 +1217,84 @@ export async function reconcileOrphanMessageNotificationsForUser(
       const messageBody = msgStr || 'Hi';
 
       // Create the parent conversation document first so security rules see `uid` in `participants`
-      await setDoc(
-        convRef,
-        {
-          id: convId,
-          participants: sortedParticipants,
-          status: 'accepted',
-          isOfficialChat: isOfficial,
-          participantDetails: {
-            [senderUid]: {
-              displayName: senderProfile?.displayName || resolvedSenderName,
-              avatar:
+      await withChatStoreFallback((fb) =>
+        setDoc(
+          getConversationDocRef(convId, fb),
+          {
+            id: convId,
+            participants: sortedParticipants,
+            status: 'accepted',
+            isOfficialChat: isOfficial,
+            participantDetails: {
+              [senderUid]: {
+                displayName: senderProfile?.displayName || resolvedSenderName,
+                avatar:
+                  resolveCosmeticItemId(
+                    senderProfile?.equippedAvatar || raw.authorAvatar,
+                    'avatar'
+                  ) || null,
+                frame:
+                  resolveCosmeticItemId(
+                    senderProfile?.equippedFrame || raw.authorFrame,
+                    'frame'
+                  ) || null,
+                role: isOfficial ? 'admin' : senderProfile?.role || 'student',
+                photoURL: null,
+              },
+              [uid]: {
+                displayName:
+                  myProfile?.displayName || auth.currentUser?.displayName || 'Student',
+                avatar: resolveCosmeticItemId(myProfile?.equippedAvatar, 'avatar') || null,
+                frame: resolveCosmeticItemId(myProfile?.equippedFrame, 'frame') || null,
+                role: myProfile?.role || 'student',
+                photoURL: null,
+              },
+            },
+            lastMessage: messageBody,
+            lastMessageText: messageBody,
+            lastMessageSenderId: senderUid,
+            lastSenderId: senderUid,
+            lastMessageAt: raw.createdAt || serverTimestamp(),
+            lastMessageAtMs: createdAtMs,
+            unreadCounts: {
+              [uid]: raw.read ? 0 : 1,
+            },
+            createdAt: raw.createdAt || serverTimestamp(),
+            updatedAt: raw.createdAt || serverTimestamp(),
+          },
+          { merge: true }
+        )
+      );
+
+      // Check if messages subcollection already has at least one message; if not, backfill the message from the notification
+      const existingMsgsSnap = await withChatStoreFallback((fb) =>
+        getDocs(query(getMessagesCollection(convId, fb), limit(1)))
+      ).catch(() => null);
+      if (!existingMsgsSnap || existingMsgsSnap.empty) {
+        await withChatStoreFallback((fb) =>
+          setDoc(
+            getMessageDocRef(convId, `backfill_${notifId}`, fb),
+            {
+              conversationId: convId,
+              senderId: senderUid,
+              recipientId: uid,
+              senderName: resolvedSenderName,
+              senderAvatar:
                 resolveCosmeticItemId(
                   senderProfile?.equippedAvatar || raw.authorAvatar,
                   'avatar'
                 ) || null,
-              frame:
+              senderFrame:
                 resolveCosmeticItemId(
                   senderProfile?.equippedFrame || raw.authorFrame,
                   'frame'
                 ) || null,
-              role: isOfficial ? 'admin' : senderProfile?.role || 'student',
-              photoURL: null,
+              text: messageBody,
+              createdAt: raw.createdAt || serverTimestamp(),
+              createdAtMs,
             },
-            [uid]: {
-              displayName:
-                myProfile?.displayName || auth.currentUser?.displayName || 'Student',
-              avatar: resolveCosmeticItemId(myProfile?.equippedAvatar, 'avatar') || null,
-              frame: resolveCosmeticItemId(myProfile?.equippedFrame, 'frame') || null,
-              role: myProfile?.role || 'student',
-              photoURL: null,
-            },
-          },
-          lastMessage: messageBody,
-          lastMessageText: messageBody,
-          lastMessageSenderId: senderUid,
-          lastSenderId: senderUid,
-          lastMessageAt: raw.createdAt || serverTimestamp(),
-          lastMessageAtMs: createdAtMs,
-          unreadCounts: {
-            [uid]: raw.read ? 0 : 1,
-          },
-          createdAt: raw.createdAt || serverTimestamp(),
-          updatedAt: raw.createdAt || serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // Check if messages subcollection already has at least one message; if not, backfill the message from the notification
-      const msgsColRef = collection(db, 'conversations', convId, 'messages');
-      const existingMsgsSnap = await getDocs(query(msgsColRef, limit(1))).catch(
-        () => null
-      );
-      if (!existingMsgsSnap || existingMsgsSnap.empty) {
-        const backfillMsgRef = doc(msgsColRef, `backfill_${notifId}`);
-        await setDoc(
-          backfillMsgRef,
-          {
-            conversationId: convId,
-            senderId: senderUid,
-            recipientId: uid,
-            senderName: resolvedSenderName,
-            senderAvatar:
-              resolveCosmeticItemId(
-                senderProfile?.equippedAvatar || raw.authorAvatar,
-                'avatar'
-              ) || null,
-            senderFrame:
-              resolveCosmeticItemId(
-                senderProfile?.equippedFrame || raw.authorFrame,
-                'frame'
-              ) || null,
-            text: messageBody,
-            createdAt: raw.createdAt || serverTimestamp(),
-            createdAtMs,
-          },
-          { merge: true }
+            { merge: true }
+          )
         );
       }
 
@@ -1116,10 +1320,11 @@ export async function clearConversationUnreadCount(
 ): Promise<void> {
   if (!conversationId || !uid) return;
   try {
-    const convRef = doc(db, 'conversations', conversationId);
-    await updateDoc(convRef, {
-      [`unreadCounts.${uid}`]: 0,
-    });
+    await withChatStoreFallback((fb) =>
+      updateDoc(getConversationDocRef(conversationId, fb), {
+        [`unreadCounts.${uid}`]: 0,
+      })
+    );
   } catch {
     // Non-fatal if doc doesn't exist yet
   }
@@ -1162,14 +1367,15 @@ export async function getOrCreateConversation(
 
   const sortedParticipants = [currentUserId, otherUserId].sort();
   const convId = getConversationId(currentUserId, otherUserId);
-  const convRef = doc(db, 'conversations', convId);
   const isOfficial = Boolean(
     perm.isOfficialChat ||
       currentUserId === SUPER_ADMIN_UID ||
       otherUserId === SUPER_ADMIN_UID
   );
 
-  const snap = await getDoc(convRef).catch(() => null);
+  const snap = await withChatStoreFallback((fb) =>
+    getDoc(getConversationDocRef(convId, fb))
+  ).catch(() => null);
   if (snap && snap.exists()) {
     const existingData = snap.data() as Conversation;
     const details = {
@@ -1177,17 +1383,19 @@ export async function getOrCreateConversation(
       ...(cMeta ? { [currentUserId]: cMeta } : {}),
       ...(oMeta ? { [otherUserId]: oMeta } : {}),
     };
-    await setDoc(
-      convRef,
-      {
-        id: convId,
-        participants: sortedParticipants,
-        status: 'accepted',
-        isOfficialChat: isOfficial || Boolean(existingData.isOfficialChat),
-        participantDetails: details,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
+    await withChatStoreFallback((fb) =>
+      setDoc(
+        getConversationDocRef(convId, fb),
+        {
+          id: convId,
+          participants: sortedParticipants,
+          status: 'accepted',
+          isOfficialChat: isOfficial || Boolean(existingData.isOfficialChat),
+          participantDetails: details,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
     );
     return convId;
   }
@@ -1238,37 +1446,41 @@ export async function getOrCreateConversation(
     updatedAt: serverTimestamp(),
   };
 
-  await setDoc(convRef, newConv, { merge: true });
+  await withChatStoreFallback((fb) =>
+    setDoc(getConversationDocRef(convId, fb), newConv, { merge: true })
+  );
 
   // When an official/admin account initiates a conversation with a student, also ensure an
   // accepted chatRequest record exists so both checkChatPermission and any request lookups succeed.
   if (perm.reason === 'official_account' || currentUserId === SUPER_ADMIN_UID) {
     const reqId = getChatRequestId(currentUserId, otherUserId);
-    await setDoc(
-      doc(db, 'chatRequests', reqId),
-      {
-        fromUid: currentUserId,
-        toUid: otherUserId,
-        participants: sortedParticipants,
-        fromName: cDisplayName,
-        fromAvatar: resolveCosmeticItemId(cMeta?.avatar, 'avatar'),
-        fromFrame: resolveCosmeticItemId(cMeta?.frame, 'frame'),
-        fromPhotoURL: null,
-        fromRole: 'admin',
-        toName: oDisplayName,
-        toAvatar: resolveCosmeticItemId(oMeta?.avatar, 'avatar'),
-        toFrame: resolveCosmeticItemId(oMeta?.frame, 'frame'),
-        toPhotoURL: null,
-        message: '',
-        conversationId: convId,
-        status: 'accepted',
-        createdAt: serverTimestamp(),
-        createdAtMs: Date.now(),
-        updatedAt: serverTimestamp(),
-        declinedAt: null,
-        declinedAtMs: null,
-      },
-      { merge: true }
+    await withChatStoreFallback((fb) =>
+      setDoc(
+        getChatRequestDocRef(reqId, fb),
+        {
+          fromUid: currentUserId,
+          toUid: otherUserId,
+          participants: sortedParticipants,
+          fromName: cDisplayName,
+          fromAvatar: resolveCosmeticItemId(cMeta?.avatar, 'avatar'),
+          fromFrame: resolveCosmeticItemId(cMeta?.frame, 'frame'),
+          fromPhotoURL: null,
+          fromRole: 'admin',
+          toName: oDisplayName,
+          toAvatar: resolveCosmeticItemId(oMeta?.avatar, 'avatar'),
+          toFrame: resolveCosmeticItemId(oMeta?.frame, 'frame'),
+          toPhotoURL: null,
+          message: '',
+          conversationId: convId,
+          status: 'accepted',
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+          updatedAt: serverTimestamp(),
+          declinedAt: null,
+          declinedAtMs: null,
+        },
+        { merge: true }
+      )
     ).catch(() => {});
   }
 
@@ -1344,8 +1556,9 @@ export async function sendMessage(
       recipientId === SUPER_ADMIN_UID
   );
 
-  const convRef = doc(db, 'conversations', conversationId);
-  const existingConvSnap = await getDoc(convRef).catch(() => null);
+  const existingConvSnap = await withChatStoreFallback((fb) =>
+    getDoc(getConversationDocRef(conversationId, fb))
+  ).catch(() => null);
   const existingDetails =
     (existingConvSnap?.exists()
       ? existingConvSnap.data()?.participantDetails
@@ -1388,69 +1601,74 @@ export async function sendMessage(
 
   // 1. Upsert parent conversation document FIRST (using setDoc with merge: true, never updateDoc.catch)
   // so `participants` array-contains queries and message subcollection rules always see a valid parent doc.
-  await setDoc(
-    convRef,
-    {
-      id: conversationId,
-      participants: sortedParticipants,
-      status: 'accepted',
-      isOfficialChat: isOfficial,
-      participantDetails: mergedParticipantDetails,
-      lastMessage: trimmed,
-      lastMessageText: trimmed,
-      lastMessageSenderId: senderId,
-      lastSenderId: senderId,
-      lastMessageAt: serverTimestamp(),
-      lastMessageAtMs: nowMs,
-      updatedAt: serverTimestamp(),
-      ...(existingConvSnap?.exists() ? {} : { createdAt: serverTimestamp() }),
-      [`unreadCounts.${recipientId}`]: increment(1),
-    },
-    { merge: true }
+  await withChatStoreFallback((fb) =>
+    setDoc(
+      getConversationDocRef(conversationId, fb),
+      {
+        id: conversationId,
+        participants: sortedParticipants,
+        status: 'accepted',
+        isOfficialChat: isOfficial,
+        participantDetails: mergedParticipantDetails,
+        lastMessage: trimmed,
+        lastMessageText: trimmed,
+        lastMessageSenderId: senderId,
+        lastSenderId: senderId,
+        lastMessageAt: serverTimestamp(),
+        lastMessageAtMs: nowMs,
+        updatedAt: serverTimestamp(),
+        ...(existingConvSnap?.exists() ? {} : { createdAt: serverTimestamp() }),
+        [`unreadCounts.${recipientId}`]: increment(1),
+      },
+      { merge: true }
+    )
   );
 
-  // 2. Write the message document to conversations/{conversationId}/messages
-  const messagesColRef = collection(db, 'conversations', conversationId, 'messages');
-  const docRef = await addDoc(messagesColRef, {
-    conversationId,
-    senderId,
-    recipientId,
-    senderName,
-    senderAvatar,
-    senderFrame,
-    text: trimmed,
-    createdAtMs: nowMs,
-    createdAt: serverTimestamp(),
-  });
+  // 2. Write the message document to conversations/{conversationId}/messages (or fallback messages collection)
+  const docRef = await withChatStoreFallback((fb) =>
+    addDoc(getMessagesCollection(conversationId, fb), {
+      conversationId,
+      senderId,
+      recipientId,
+      senderName,
+      senderAvatar,
+      senderFrame,
+      text: trimmed,
+      createdAtMs: nowMs,
+      createdAt: serverTimestamp(),
+    })
+  );
 
   // 3. If sender is an official/admin account, ensure an accepted chatRequest record exists
   if (perm.reason === 'official_account' || senderId === SUPER_ADMIN_UID) {
     const reqId = getChatRequestId(senderId, recipientId);
-    await setDoc(
-      doc(db, 'chatRequests', reqId),
-      {
-        fromUid: senderId,
-        toUid: recipientId,
-        participants: sortedParticipants,
-        fromName: senderName,
-        fromAvatar: senderAvatar,
-        fromFrame: senderFrame,
-        fromPhotoURL: null,
-        fromRole: 'admin',
-        toName: recipientDisplayName,
-        toAvatar: mergedParticipantDetails[recipientId]?.avatar || null,
-        toFrame: mergedParticipantDetails[recipientId]?.frame || null,
-        toPhotoURL: null,
-        message: trimmed,
-        conversationId,
-        status: 'accepted',
-        createdAt: serverTimestamp(),
-        createdAtMs: nowMs,
-        updatedAt: serverTimestamp(),
-        declinedAt: null,
-        declinedAtMs: null,
-      },
-      { merge: true }
+    await withChatStoreFallback((fb) =>
+      setDoc(
+        getChatRequestDocRef(reqId, fb),
+        {
+          fromUid: senderId,
+          toUid: recipientId,
+          participants: sortedParticipants,
+          fromName: senderName,
+          fromAvatar: senderAvatar,
+          fromFrame: senderFrame,
+          fromPhotoURL: null,
+          fromRole: 'admin',
+          toName: recipientDisplayName,
+          toAvatar: mergedParticipantDetails[recipientId]?.avatar || null,
+          toFrame: mergedParticipantDetails[recipientId]?.frame || null,
+          toPhotoURL: null,
+          message: trimmed,
+          conversationId,
+          status: 'accepted',
+          createdAt: serverTimestamp(),
+          createdAtMs: nowMs,
+          updatedAt: serverTimestamp(),
+          declinedAt: null,
+          declinedAtMs: null,
+        },
+        { merge: true }
+      )
     ).catch(() => {});
   }
 
@@ -1496,9 +1714,6 @@ export function subscribeMessages(
 ): () => void {
   if (!conversationId) return () => {};
 
-  const messagesCol = collection(db, 'conversations', conversationId, 'messages');
-  const qPrimary = query(messagesCol, orderBy('createdAt', 'asc'), limit(150));
-
   let latestMsgs: ChatMessage[] = [];
 
   const emitMsgsWithLiveProfiles = (msgs: ChatMessage[]) => {
@@ -1540,43 +1755,63 @@ export function subscribeMessages(
       });
   };
 
-  const unsubPrimary = onSnapshot(
-    qPrimary,
-    (snap) => {
-      const msgs: ChatMessage[] = [];
-      snap.forEach((d) => {
-        const data = d.data();
-        msgs.push({
-          id: d.id,
-          conversationId,
-          senderId: data.senderId || data.senderUid,
-          recipientId: data.recipientId || undefined,
-          senderName: data.senderName || 'Student',
-          senderAvatar: data.senderAvatar || null,
-          senderFrame: data.senderFrame || null,
-          text: data.text || '',
-          createdAt: data.createdAt,
-          createdAtMs: data.createdAtMs,
+  let unsubSnap: (() => void) | null = null;
+  let isUnsubscribed = false;
+
+  const startSubscription = (useFallback: boolean) => {
+    if (isUnsubscribed) return;
+    const messagesCol = getMessagesCollection(conversationId, useFallback);
+    const qPrimary = query(messagesCol, orderBy('createdAt', 'asc'), limit(150));
+
+    unsubSnap = onSnapshot(
+      qPrimary,
+      (snap) => {
+        const msgs: ChatMessage[] = [];
+        snap.forEach((d) => {
+          const data = d.data();
+          msgs.push({
+            id: d.id,
+            conversationId,
+            senderId: data.senderId || data.senderUid,
+            recipientId: data.recipientId || undefined,
+            senderName: data.senderName || 'Student',
+            senderAvatar: data.senderAvatar || null,
+            senderFrame: data.senderFrame || null,
+            text: data.text || '',
+            createdAt: data.createdAt,
+            createdAtMs: data.createdAtMs,
+          });
         });
-      });
-      msgs.sort(
-        (a, b) =>
-          toTimestampMs(a.createdAt, a.createdAtMs) -
-          toTimestampMs(b.createdAt, b.createdAtMs)
-      );
-      latestMsgs = msgs;
-      emitMsgsWithLiveProfiles(msgs);
-    },
-    (err) => {
-      console.error(
-        `[chatService] subscribeMessages failed for conversationId=${conversationId} (code=${err?.code || 'unknown'}):`,
-        err
-      );
-      if (onError) {
-        onError(err);
+        msgs.sort(
+          (a, b) =>
+            toTimestampMs(a.createdAt, a.createdAtMs) -
+            toTimestampMs(b.createdAt, b.createdAtMs)
+        );
+        latestMsgs = msgs;
+        emitMsgsWithLiveProfiles(msgs);
+      },
+      (err) => {
+        if (!useFallback && isPermissionDeniedError(err)) {
+          enableFallbackChatStore();
+          if (unsubSnap) {
+            unsubSnap();
+            unsubSnap = null;
+          }
+          startSubscription(true);
+          return;
+        }
+        console.error(
+          `[chatService] subscribeMessages failed for conversationId=${conversationId} (code=${err?.code || 'unknown'}):`,
+          err
+        );
+        if (onError) {
+          onError(err);
+        }
       }
-    }
-  );
+    );
+  };
+
+  startSubscription(useFallbackChatStore);
 
   const unsubProfiles = subscribeAllPublicProfiles(() => {
     if (latestMsgs.length > 0) {
@@ -1585,7 +1820,8 @@ export function subscribeMessages(
   });
 
   return () => {
-    unsubPrimary();
+    isUnsubscribed = true;
+    if (unsubSnap) unsubSnap();
     unsubProfiles();
   };
 }
