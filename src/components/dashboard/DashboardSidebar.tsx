@@ -28,7 +28,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 
 export function DashboardSidebar() {
-  const { isAdmin, isGuest, signOutUser } = useAuth();
+  const { isAdmin, isGuest, signOutUser, isSigningOut } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
   const { openProfile } = useProfileModal();
@@ -38,8 +38,14 @@ export function DashboardSidebar() {
   const { theme, toggle: toggleTheme } = useTheme();
 
   const handleSignOut = async () => {
-    await signOutUser();
-    navigate('/login');
+    if (isSigningOut) return;
+    await signOutUser({ force: true });
+    try {
+      sessionStorage.removeItem('boardly_post_login_redirect');
+    } catch {
+      // ignore
+    }
+    navigate('/login', { replace: true });
   };
 
   const isPro = !isGuest && effectivePlan.isUnlimited;

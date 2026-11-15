@@ -2075,6 +2075,10 @@ export function subscribeToNotificationStore(
   };
 }
 
+export function teardownNotificationStore(): void {
+  attachUserRealtimeStore('');
+}
+
 /**
  * Mark a single user notification as read with immediate optimistic update and persistence across all alias IDs.
  */

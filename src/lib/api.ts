@@ -307,15 +307,31 @@ export async function apiRequest<T = any>(
     const serverCode =
       typeof data?.code === 'string' && data.code.trim() ? data.code.trim() : undefined;
 
+    const isSigningOutActive =
+      typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut);
+
     let serverError = rawServerError;
-    if (
+    const isGuestExpiredOrInvalid =
       response.status === 401 &&
       (serverCode === 'GUEST_SESSION_EXPIRED' ||
         Boolean(guestSessionToken) ||
         /^unauthorized$/i.test(rawServerError) ||
-        (!auth.currentUser && rawServerError.toLowerCase().includes('authentication required')))
-    ) {
-      serverError = 'Your guest session expired, please choose your username again.';
+        (!auth.currentUser && rawServerError.toLowerCase().includes('authentication required')));
+
+    if (isGuestExpiredOrInvalid) {
+      // Requirement 4: If a guest session is expired or invalid, treat it as signed-out:
+      // sign out, clear it, show the sign-in screen. Never show a "guest expired / permission denied" error.
+      setStoredGuestSessionToken(null);
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('boardly_guest_session_token');
+          window.sessionStorage.removeItem('boardly_guest_session_token');
+          window.dispatchEvent(new CustomEvent('boardly:guest-expired'));
+        }
+      } catch {
+        // Ignore storage error
+      }
+      serverError = 'Session ended. Please sign in to continue.';
     } else if (/^unauthorized$/i.test(rawServerError)) {
       serverError = 'Your session has expired or you are not signed in. Please sign in to continue.';
     } else if (serverCode === 'EMAIL_VERIFICATION_REQUIRED') {
@@ -323,7 +339,7 @@ export async function apiRequest<T = any>(
     }
 
     const fullMessage =
-      serverCode && serverCode !== 'EMAIL_VERIFICATION_REQUIRED'
+      serverCode && serverCode !== 'EMAIL_VERIFICATION_REQUIRED' && !isGuestExpiredOrInvalid
         ? `${serverError} (${serverCode})`
         : serverError;
     const err: ApiError = new Error(fullMessage);
@@ -333,7 +349,12 @@ export async function apiRequest<T = any>(
     err.attemptId = data?.attemptId;
     err.attempt = data?.attempt;
     err.data = data;
-    if (!silentErrorToast && serverCode !== 'EMAIL_VERIFICATION_REQUIRED') {
+    if (
+      !silentErrorToast &&
+      !isSigningOutActive &&
+      !isGuestExpiredOrInvalid &&
+      serverCode !== 'EMAIL_VERIFICATION_REQUIRED'
+    ) {
       showApiToast(fullMessage, 'error');
     }
     throw err;

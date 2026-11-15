@@ -235,6 +235,32 @@ function notifyPaymentRequestsSubscribers(uid: string) {
   }
 }
 
+export function teardownEffectivePlanListeners(): void {
+  for (const [, entry] of paymentRequestsRegistry) {
+    if (entry.unsub) {
+      try {
+        entry.unsub();
+      } catch {
+        // Ignore
+      }
+      entry.unsub = null;
+    }
+  }
+  paymentRequestsRegistry.clear();
+
+  for (const [, entry] of crewSubscriptionRegistry) {
+    if (entry.unsub) {
+      try {
+        entry.unsub();
+      } catch {
+        // Ignore
+      }
+      entry.unsub = null;
+    }
+  }
+  crewSubscriptionRegistry.clear();
+}
+
 export async function forceRefreshPaymentRequests(uid?: string | null): Promise<void> {
   if (!uid || uid.startsWith('guest_')) return;
   const entry = paymentRequestsRegistry.get(uid);

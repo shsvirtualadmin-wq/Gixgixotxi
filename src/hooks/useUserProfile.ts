@@ -355,6 +355,35 @@ function releaseSubscription() {
   }, 15000);
 }
 
+export function teardownSharedUserProfile(): void {
+  if (teardownTimeout) {
+    clearTimeout(teardownTimeout);
+    teardownTimeout = null;
+  }
+  if (activeTimeoutTimer) {
+    clearTimeout(activeTimeoutTimer);
+    activeTimeoutTimer = null;
+  }
+  if (activeUnsub) {
+    try {
+      activeUnsub();
+    } catch {
+      // Ignore unsub error
+    }
+    activeUnsub = null;
+  }
+  activeUid = null;
+  sharedState = {
+    profile: null,
+    docExists: null,
+    fetchStatus: 'idle',
+    fetchDurationMs: null,
+    error: null,
+    hasReceivedSnapshot: false,
+  };
+  broadcastState();
+}
+
 export function seedSharedUserProfileCache(uid: string, profile: UserProfile): void {
   if (!uid || !profile) return;
   const clean: UserProfile = {

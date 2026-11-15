@@ -59,6 +59,10 @@ export function clearCachedAuthAndAdminStorage() {
   try {
     const lsKeysToRemove: string[] = [
       'boardly_user_authenticated',
+      'boardly_guest_session_token',
+      'boardly_guest_session_backup_v1',
+      'boardly_last_known_user_v1',
+      'boardly_last_known_wallet_v1',
       'boardly_cached_role',
       'boardly_admin_token',
       'boardly_admin_cache',
@@ -75,13 +79,18 @@ export function clearCachedAuthAndAdminStorage() {
           k.startsWith('boardly_role') ||
           k.startsWith('boardly_auth') ||
           k.startsWith('boardly_token') ||
-          k.startsWith('boardly_security_status_v1_') ||
-          k.startsWith('boardly_rewards_summary_v1_') ||
-          k.startsWith('boardly_profile_layout_v1_') ||
-          k.startsWith('boardly_settings_plan_v1_') ||
-          k.startsWith('boardly_notif_prefs_v1_') ||
-          k.startsWith('boardly_pro_badge_v1_') ||
-          k.startsWith('boardly_koban_style_v1_') ||
+          k.startsWith('boardly_guest') ||
+          k.startsWith('cached_profile_') ||
+          k.startsWith('boardly_user_profile_') ||
+          k.startsWith('boardly_swr_v2:') ||
+          k.startsWith('boardly_read_notifs_v2_') ||
+          k.startsWith('boardly_security_status_') ||
+          k.startsWith('boardly_rewards_summary_') ||
+          k.startsWith('boardly_profile_layout_') ||
+          k.startsWith('boardly_settings_plan_') ||
+          k.startsWith('boardly_notif_prefs_') ||
+          k.startsWith('boardly_pro_badge_') ||
+          k.startsWith('boardly_koban_style_') ||
           k.startsWith('firebase:authUser'))
       ) {
         lsKeysToRemove.push(k);
@@ -199,7 +208,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   hideProfileHeader = false,
 }) => {
   const location = useLocation();
-  const { user, profileLoading, isAdmin, isSuperAdmin, isGuest } = useAuth();
+  const { user, profileLoading, isAdmin, isSuperAdmin, isGuest, isSigningOut } = useAuth();
   const { profile } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
@@ -1277,16 +1286,14 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
             <button
               type="button"
               data-menu-item="sign-out"
+              disabled={isSigningOut}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (user) {
-                  onSignOut();
-                } else {
-                  onNavigate('/login');
-                }
+                if (isSigningOut) return;
+                onSignOut();
               }}
-              className="fsm-row fsm-row--danger"
+              className="fsm-row fsm-row--danger disabled:opacity-50 disabled:pointer-events-none"
             >
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
                 <span className="fsm-row-icon">
@@ -1511,15 +1518,21 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
   // Sign out
   const handleSignOut = async () => {
+    if (isSigningOut) return;
     pushedHistoryRef.current = false;
     setIsSigningOut(true);
-    clearCachedAuthAndAdminStorage();
+    if (typeof window !== 'undefined') {
+      (window as any).__boardlySigningOut = true;
+    }
     try {
-      await Promise.all([
-        signOutUser(),
-        new Promise((resolve) => setTimeout(resolve, 450)),
-      ]);
+      await signOutUser({ force: true });
+      clearCachedAuthAndAdminStorage();
     } finally {
+      try {
+        sessionStorage.removeItem('boardly_post_login_redirect');
+      } catch {
+        // ignore
+      }
       setIsSigningOut(false);
       setIsRendered(false);
       onClose();

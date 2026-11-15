@@ -501,9 +501,17 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     ? 'Request accepted · Direct chat'
     : 'Request accepted · Direct chat';
 
+  const [backPulsing, setBackPulsing] = useState(false);
+  const handleBackTap = () => {
+    setBackPulsing(true);
+    window.setTimeout(() => {
+      onBack();
+    }, 130);
+  };
+
   return (
     <div
-      className="conv-screen"
+      className="conv-screen page-slide-right"
       data-fullscreen-modal="true"
       role="dialog"
       aria-modal="true"
@@ -514,8 +522,8 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
         <header className="conv-header-pill">
           <button
             type="button"
-            onClick={onBack}
-            className="conv-icon-btn"
+            onClick={handleBackTap}
+            className={`conv-icon-btn ${backPulsing ? 'nav-back-pulse' : ''}`}
             aria-label="Back to messages"
             title="Back"
           >
@@ -1184,6 +1192,17 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     });
   }, [conversations, searchQuery, currentUid, resolvedUsers]);
 
+  const [segStretching, setSegStretching] = useState(false);
+  const triggerSegStretch = () => {
+    setSegStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setSegStretching(true);
+        window.setTimeout(() => setSegStretching(false), 475);
+      });
+    }
+  };
+
   // If a conversation is open, render the full-screen Conversation Screen
   if (selectedPartner) {
     return (
@@ -1205,7 +1224,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   }
 
   return (
-    <div className="msg-page space-y-5">
+    <div className="msg-page space-y-5 page-slide-left">
       {/* Page Title & Description */}
       <header className="flex items-start justify-between gap-3 pt-1">
         <div>
@@ -1230,13 +1249,19 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
       <div className="rs-seg-scroll">
         <div className="rs-seg-track" role="tablist" aria-label="Messages sections">
           <div
-            className="rs-seg-slider"
+            className="rs-seg-slider !bg-transparent !shadow-none"
             style={{
               width: sliderRect.width > 0 ? `${sliderRect.width}px` : '50%',
-              transform: `translateX(${sliderRect.left - 4}px)`,
+              transform: `translate3d(${sliderRect.left - 4}px, 0, 0)`,
             }}
             aria-hidden="true"
-          />
+          >
+            <div
+              className={`w-full h-full rounded-full ios-seg-thumb-inner ${
+                segStretching ? 'is-stretching' : ''
+              }`}
+            />
+          </div>
           <button
             ref={(el) => {
               tabButtonRefs.current.chat = el;
@@ -1244,7 +1269,10 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
             type="button"
             role="tab"
             aria-selected={activeTab === 'chat'}
-            onClick={() => setActiveTab('chat')}
+            onClick={() => {
+              if (activeTab !== 'chat') triggerSegStretch();
+              setActiveTab('chat');
+            }}
             className={`rs-seg-tab ${activeTab === 'chat' ? 'rs-seg-tab--active' : ''}`}
           >
             <span>Chats</span>
@@ -1259,7 +1287,10 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
             type="button"
             role="tab"
             aria-selected={activeTab === 'requests'}
-            onClick={() => setActiveTab('requests')}
+            onClick={() => {
+              if (activeTab !== 'requests') triggerSegStretch();
+              setActiveTab('requests');
+            }}
             className={`rs-seg-tab ${activeTab === 'requests' ? 'rs-seg-tab--active' : ''}`}
           >
             <span>Requests</span>
@@ -1387,7 +1418,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 stagger-list">
               {filteredConversations.map((conv) => {
                 const otherUid =
                   conv.participants.find((p) => p !== currentUid) || '';
@@ -1537,7 +1568,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                 </p>
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 stagger-list">
                 {incomingRequests.map((req) => {
                   const resolved = resolvedUsers[req.fromUid];
                   const senderName =

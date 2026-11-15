@@ -287,6 +287,7 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
         bottom: 0,
         width: '100vw',
         height: '100vh',
+        backgroundColor: isDark ? '#050506' : undefined,
         contain: 'strict',
       }}
     >
@@ -297,11 +298,31 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
           {wallpaper === 'ember-grid' && <EmberGridArtwork />}
           {wallpaper === 'midnight' && <MidnightArtwork />}
 
-          {/* 58% Dark Overlay to guarantee >= 4.5:1 text contrast for foreground text */}
+          {/* Dark Overlay to guarantee >= 4.5:1 text contrast on #050506 */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
-              backgroundColor: 'rgba(0, 0, 0, 0.58)',
+              backgroundColor: 'rgba(5, 5, 6, 0.72)',
+            }}
+          />
+
+          {/* Part 2 Ambient Blurred Glows: Red #D71921 top-left, Blue #3a4cff right, 70px blur, low opacity */}
+          <div
+            className="boardly-ambient-glow absolute -top-24 -left-24 w-[360px] h-[360px] rounded-full pointer-events-none"
+            style={{
+              backgroundColor: '#D71921',
+              opacity: 0.16,
+              filter: 'blur(70px)',
+              WebkitFilter: 'blur(70px)',
+            }}
+          />
+          <div
+            className="boardly-ambient-glow absolute top-[22%] -right-28 w-[380px] h-[380px] rounded-full pointer-events-none"
+            style={{
+              backgroundColor: '#3a4cff',
+              opacity: 0.14,
+              filter: 'blur(70px)',
+              WebkitFilter: 'blur(70px)',
             }}
           />
         </>

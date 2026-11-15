@@ -94,6 +94,18 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const [generalError, setGeneralError] = useState('');
   const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
 
+  // Segmented thumb liquid stretch state
+  const [segStretching, setSegStretching] = useState(false);
+  const triggerSegStretch = useCallback(() => {
+    setSegStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setSegStretching(true);
+        window.setTimeout(() => setSegStretching(false), 475);
+      });
+    }
+  }, []);
+
   // Visual-only password strength indicator for Signup
   const passwordStrength = useMemo(() => {
     if (!password) return { level: 0, label: '' };
@@ -490,10 +502,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       guestCheckState.status !== 'checking';
 
     return (
-      <div
-        className="w-full rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7 flex flex-col gap-5"
-        style={{ boxShadow: 'none', backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
-      >
+      <div className="glass glass-panel w-full rounded-[32px] p-6 sm:p-8 flex flex-col gap-5">
         <div className="flex items-center justify-between">
           <button
             type="button"
@@ -501,12 +510,15 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               setMode('signin');
               setGeneralError('');
             }}
-            className="inline-flex items-center gap-1.5 min-h-[40px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 min-h-[44px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
           >
             <ArrowLeft size={15} />
             <span>Back to Sign In</span>
           </button>
-          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)]">
+          <span
+            className="px-3 py-1 rounded-full text-[11px] uppercase bg-white/[0.06] border border-white/[0.15] text-[var(--text-muted)]"
+            style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+          >
             Guest Mode
           </span>
         </div>
@@ -517,7 +529,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             style={{
               fontFamily: "'Doto', var(--font-dot), sans-serif",
               fontWeight: 800,
-              fontSize: '20px',
+              fontSize: '22px',
               lineHeight: 1,
               letterSpacing: '0.02em',
               color: 'var(--cw-red-text, #D71921)',
@@ -526,8 +538,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             Boardly
           </span>
           <h1
-            className="text-2xl font-bold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-2xl font-extrabold text-[var(--text)] tracking-tight"
+            style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
           >
             Pick a guest username
           </h1>
@@ -625,8 +637,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           <button
             type="submit"
             disabled={!canSubmitGuest}
-            className="btn-red relative overflow-hidden w-full inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{ height: '50px' }}
+            className="btn-primary relative overflow-hidden w-full min-h-[52px] rounded-full inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {guestSubmitting && <Loader2 size={16} className="animate-spin shrink-0" />}
             <span>Continue as guest</span>
@@ -657,55 +668,58 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   // 6. Continue with Google
   // 7. Continue as guest (ONE button only, secondary below main action)
   return (
-    <div
-      className="w-full rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7 flex flex-col gap-5"
-      style={{
-        boxShadow: 'none',
-        backdropFilter: 'none',
-        WebkitBackdropFilter: 'none',
-      }}
-    >
-      {/* 1. Dot-matrix "Boardly" Wordmark (same as dashboard header) */}
+    <div className="glass glass-panel w-full rounded-[32px] p-6 sm:p-8 flex flex-col gap-5">
+      {/* 1. Dot-matrix "Boardly" Wordmark + COMMONS / Student label */}
       <div className="flex items-center justify-between">
         <span
           style={{
             fontFamily: "'Doto', var(--font-dot), sans-serif",
             fontWeight: 800,
-            fontSize: '22px',
+            fontSize: '26px',
             lineHeight: 1,
-            letterSpacing: '0.02em',
+            letterSpacing: '0.03em',
             color: 'var(--cw-red-text, #D71921)',
           }}
         >
           Boardly
         </span>
-        <span className="text-[11px] font-mono font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-          Student Cockpit
+        <span
+          className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.15] text-[10px] uppercase tracking-[0.14em] text-[var(--text-primary)]"
+          style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_#D71921]" />
+          COMMONS
         </span>
       </div>
 
-      {/* 2. Segmented Tabs: "Sign in" & "Create account" */}
+      {/* 2. Segmented Tabs in a Glass Track with Shared Sliding Red Thumb */}
       <div
         role="tablist"
         aria-label="Authentication mode"
-        className="w-full h-11 p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 gap-1 items-center"
+        className="ios-seg-track w-full grid grid-cols-2 items-center"
       >
+        <div
+          aria-hidden="true"
+          className="ios-seg-thumb"
+          style={{
+            width: 'calc((100% - 8px) / 2)',
+            transform: mode === 'signup' ? 'translate3d(100%, 0, 0)' : 'translate3d(0%, 0, 0)',
+          }}
+        >
+          <div className={`ios-seg-thumb-inner ${segStretching ? 'is-stretching' : ''}`} />
+        </div>
         <button
           type="button"
           role="tab"
           aria-selected={mode === 'signin'}
           onClick={() => {
+            if (mode !== 'signin') triggerSegStretch();
             setMode('signin');
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', `/login${window.location.search}`);
             }
           }}
-          className={`h-full rounded-lg text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
-            mode === 'signin'
-              ? 'bg-[#D71921] text-white'
-              : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-          }`}
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
+          className={`ios-seg-btn ${mode === 'signin' ? 'is-active' : ''}`}
         >
           Sign in
         </button>
@@ -714,17 +728,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           role="tab"
           aria-selected={mode === 'signup'}
           onClick={() => {
+            if (mode !== 'signup') triggerSegStretch();
             setMode('signup');
             if (typeof window !== 'undefined') {
               window.history.replaceState(null, '', `/signup${window.location.search}`);
             }
           }}
-          className={`h-full rounded-lg text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
-            mode === 'signup'
-              ? 'bg-[#D71921] text-white'
-              : 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
-          }`}
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
+          className={`ios-seg-btn ${mode === 'signup' ? 'is-active' : ''}`}
         >
           Create account
         </button>
@@ -733,10 +743,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       {/* 3. Heading & Subtext */}
       <div className="text-left">
         <h1
-          className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight"
-          style={{ fontFamily: 'var(--font-dot)' }}
+          className="text-xl sm:text-2xl text-[var(--text)] tracking-tight"
+          style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
         >
-          {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+          {mode === 'signin' ? 'Sign in to continue' : 'Create your account'}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
           {mode === 'signin'
@@ -1182,37 +1192,36 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           </div>
         )}
 
-        {/* Primary Button (Spinner + disabled when loading, same label, no layout shift) */}
+        {/* Primary Button (Solid red pill with glow, min 52px tall) */}
         <button
           type="submit"
           disabled={loading || googleLoading}
-          className="btn-red relative overflow-hidden w-full mt-1 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-65 disabled:cursor-not-allowed"
-          style={{ height: '50px' }}
+          className="btn-primary relative overflow-hidden w-full min-h-[52px] rounded-full mt-1 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-65 disabled:cursor-not-allowed"
         >
           {loading && <Loader2 size={17} className="animate-spin shrink-0" />}
-          <span>{mode === 'signin' ? 'Sign In' : 'Create Account'}</span>
+          <span>{mode === 'signin' ? 'Sign in' : 'Create account'}</span>
         </button>
       </form>
 
-      {/* 5. Divider: "or" */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 border-t border-[var(--border)]" />
+      {/* 5. Dotted Divider: "OR" */}
+      <div className="flex items-center gap-3 py-0.5" aria-hidden="true">
+        <div className="flex-1 dotted-divider" />
         <span
-          className="text-xs font-medium text-[var(--text-muted)] lowercase"
-          style={{ fontFamily: 'var(--font-heading)' }}
+          className="text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
+          style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
         >
-          or
+          OR
         </span>
-        <div className="flex-1 border-t border-[var(--border)]" />
+        <div className="flex-1 dotted-divider" />
       </div>
 
-      {/* 6. Continue with Google, then 7. Continue as guest (ONE guest button only) */}
-      <div className="flex flex-col gap-2.5">
+      {/* 6. Continue with Google (white pill), then 7. Continue as guest (glass pill) */}
+      <div className="flex flex-col gap-3">
         <button
           type="button"
           onClick={handleGoogleSignIn}
           disabled={googleLoading || loading}
-          className="auth-google-btn relative overflow-hidden"
+          className="auth-google-btn relative overflow-hidden min-h-[52px] rounded-full"
           aria-label="Continue with Google"
         >
           {googleLoading ? (
@@ -1244,8 +1253,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           type="button"
           onClick={handleStartGuestMode}
           disabled={googleLoading || loading}
-          className="w-full min-h-[48px] px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[#D71921]/55 text-xs sm:text-sm font-semibold text-[var(--text)] transition-colors cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{ fontFamily: 'var(--font-heading)', height: '48px' }}
+          className="btn-secondary w-full min-h-[52px] px-5 rounded-full text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer inline-flex items-center justify-center gap-2.5 disabled:opacity-50"
         >
           <UserCheck size={16} className="text-[#D71921] shrink-0" />
           <span>Continue as guest</span>

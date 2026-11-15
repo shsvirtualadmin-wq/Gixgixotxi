@@ -122,6 +122,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     [searchParams, setSearchParams]
   );
 
+  // Segmented control liquid stretch state
+  const [segStretching, setSegStretching] = useState(false);
+  const triggerSegStretch = useCallback(() => {
+    setSegStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setSegStretching(true);
+        window.setTimeout(() => setSegStretching(false), 475);
+      });
+    }
+  }, []);
+  const feedTabIndex = feedTab === 'all' ? 0 : feedTab === 'trending' ? 1 : 2;
+
   // Posts State — initialize synchronously from memory/SWR cache so tab revisits & warm starts render in 0ms
   const initialCached = useMemo(
     () => getInitialCachedCommonsFeed(feedTab === 'following' ? 'following' : 'all', user?.uid),
@@ -405,24 +418,31 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         />
       )}
 
-      {/* ── Sticky Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
-      <header className="sticky top-2 z-30 glass-card allow-backdrop-blur rounded-[24px] px-3.5 sm:px-4 py-3 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-colors">
+      {/* ── Floating Glass Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
+      <header className="sticky top-2 z-30 glass glass-card allow-backdrop-blur rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-2.5 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-colors">
         <div className="min-w-0 flex-1">
-          <h1
-            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-dot truncate"
-          >
-            Boardly Commons
-          </h1>
-          <p className="text-xs text-muted truncate">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full bg-[#D71921] shadow-[0_0_10px_#D71921] shrink-0"
+              aria-hidden="true"
+            />
+            <h1
+              className="text-lg sm:text-xl tracking-tight text-primary truncate"
+              style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+            >
+              Boardly Commons
+            </h1>
+          </div>
+          <p className="text-xs text-muted truncate mt-0.5">
             Share notes, papers and doubts. Learn together.
           </p>
         </div>
 
-        {/* Right Action Icons: Material Library, Search, Guidelines, Refresh */}
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        {/* Right Action Icons: Material Library, Search, Guidelines, Notifications, Refresh (all >= 44px circular glass buttons) */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <Link
             to="/material"
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            className="ios-circle-btn text-secondary hover:text-primary"
             title="Study Material Library"
             aria-label="Study Material Library"
           >
@@ -430,8 +450,9 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           </Link>
 
           <button
+            type="button"
             onClick={() => setSearchModalOpen(true)}
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            className="ios-circle-btn text-secondary hover:text-primary cursor-pointer"
             title="Search Commons"
             aria-label="Search"
           >
@@ -440,7 +461,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
           <Link
             to="/guidelines"
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            className="ios-circle-btn text-secondary hover:text-primary"
             title="Community Guidelines"
             aria-label="Guidelines"
           >
@@ -449,22 +470,23 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
           <Link
             to="/dashboard/notifications"
-            className="relative p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            className="relative ios-circle-btn text-secondary hover:text-primary"
             title="Notifications"
             aria-label="Notifications"
           >
             <Bell size={18} />
             {unreadNotifCount > 0 && (
-              <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
+              <span className="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
                 {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
               </span>
             )}
           </Link>
 
           <button
+            type="button"
             onClick={() => loadPosts()}
             disabled={loading}
-            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[38px] min-h-[38px] sm:min-w-[40px] sm:min-h-[40px] flex items-center justify-center"
+            className="ios-circle-btn text-secondary hover:text-primary cursor-pointer"
             title="Refresh feed"
             aria-label="Refresh feed"
           >
@@ -520,8 +542,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           </button>
         </div>
 
+        <div className="dotted-divider my-1" aria-hidden="true" />
+
         {/* Quick action buttons row: Photo, File, Doubt, Anonymous */}
-        <div className="flex flex-wrap items-center justify-between gap-1 pt-2 border-t border-border w-full max-w-full min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-1 pt-1 w-full max-w-full min-w-0">
           <button
             type="button"
             onClick={() =>
@@ -530,7 +554,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 triggerUploadOnMount: 'photo',
               })
             }
-            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <ImageIcon size={15} className="text-emerald-500 shrink-0" />
             <span className="truncate">Photo</span>
@@ -544,7 +568,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 triggerUploadOnMount: 'file',
               })
             }
-            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <Paperclip size={15} className="text-blue-500 shrink-0" />
             <span className="truncate">File</span>
@@ -558,7 +582,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 initialType: 'doubt',
               })
             }
-            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <HelpCircle size={15} className="text-amber-500 shrink-0" />
             <span className="truncate">Doubt</span>
@@ -572,7 +596,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 initialAnonymous: true,
               })
             }
-            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
+            className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <EyeOff size={15} className="text-purple-500 shrink-0" />
             <span className="truncate">Anonymous</span>
@@ -631,44 +655,63 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         </select>
       </div>
 
-      {/* ── Feed Tabs: "Newest", "Trending", and "Following" ── */}
-      <div className="sticky top-[58px] z-20 floating-blur backdrop-blur-lg border-b border-border px-2 sm:px-3 flex flex-wrap items-center justify-between gap-2 w-full max-w-full min-w-0 box-border overflow-x-hidden">
-        <div className="flex items-center gap-4 sm:gap-6 min-w-0">
-          <button
-            onClick={() => setFeedTab('all')}
-            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
-              feedTab === 'all'
-                ? 'border-b-2 border-accent text-accent font-bold'
-                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
-            }`}
+      {/* ── Segmented Control in a Glass Track: "All", "Trending", and "Following" ── */}
+      <div className="sticky top-[68px] z-20 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border">
+        <div
+          role="tablist"
+          aria-label="Commons feed filter"
+          className="ios-seg-track flex-1 grid grid-cols-3 items-center"
+        >
+          <div
+            aria-hidden="true"
+            className="ios-seg-thumb"
+            style={{
+              width: 'calc((100% - 8px) / 3)',
+              transform: `translate3d(${feedTabIndex * 100}%, 0, 0)`,
+            }}
           >
-            Newest
+            <div className={`ios-seg-thumb-inner ${segStretching ? 'is-stretching' : ''}`} />
+          </div>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={feedTab === 'all'}
+            onClick={() => {
+              if (feedTab !== 'all') triggerSegStretch();
+              setFeedTab('all');
+            }}
+            className={`ios-seg-btn ${feedTab === 'all' ? 'is-active' : ''}`}
+          >
+            All
           </button>
 
           <button
-            onClick={() => setFeedTab('trending')}
-            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
-              feedTab === 'trending'
-                ? 'border-b-2 border-accent text-accent font-bold'
-                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
-            }`}
+            type="button"
+            role="tab"
+            aria-selected={feedTab === 'trending'}
+            onClick={() => {
+              if (feedTab !== 'trending') triggerSegStretch();
+              setFeedTab('trending');
+            }}
+            className={`ios-seg-btn ${feedTab === 'trending' ? 'is-active' : ''}`}
           >
             Trending
           </button>
 
           <button
+            type="button"
+            role="tab"
+            aria-selected={feedTab === 'following'}
             onClick={() => {
               if (!user) {
                 requireAuth('view posts from students you follow');
                 return;
               }
+              if (feedTab !== 'following') triggerSegStretch();
               setFeedTab('following');
             }}
-            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
-              feedTab === 'following'
-                ? 'border-b-2 border-accent text-accent font-bold'
-                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
-            }`}
+            className={`ios-seg-btn ${feedTab === 'following' ? 'is-active' : ''}`}
           >
             Following
           </button>
@@ -676,14 +719,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
         <Link
           to="/search"
-          className="text-xs text-muted hover:text-accent font-medium transition-colors shrink-0"
+          className="px-3.5 min-h-[44px] rounded-full glass-pill inline-flex items-center justify-center text-xs text-muted hover:text-primary font-semibold transition-colors shrink-0"
         >
-          Full Search →
+          Search →
         </Link>
       </div>
 
-      {/* ── Posts Stream (15 at a time, Facebook-style post skeletons, zero text loaders) ── */}
-      <div className="boardly-feed-container w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
+      {/* ── Posts Stream (15 at a time, staggered entry, Facebook-style post skeletons) ── */}
+      <div className="boardly-feed-container stagger-list w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
         {loading && displayedPosts.length === 0 ? (
           <FeedPostSkeletonList count={3} />
         ) : loadError ? (

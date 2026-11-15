@@ -175,6 +175,17 @@ export function CommonsSearchModal({
       });
   }, [debouncedQuery, initialFeedPosts, currentUserId, isOpen]);
 
+  const [segStretching, setSegStretching] = useState(false);
+  const triggerSegStretch = () => {
+    setSegStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setSegStretching(true);
+        window.setTimeout(() => setSegStretching(false), 475);
+      });
+    }
+  };
+
   if (!isOpen) return null;
 
   const hasQuery = debouncedQuery.length >= 2;
@@ -207,29 +218,39 @@ export function CommonsSearchModal({
   const handleSelectRecent = (term: string) => {
     setSearchQuery(term);
     setDebouncedQuery(term);
+    saveRecentSearch(term);
   };
+
+  const TRY_SUGGESTIONS = [
+    'Quadratic equations',
+    "Newton's laws",
+    'MDCAT Biology',
+    'Electrochemistry',
+    'Organic Chemistry',
+    'Solved Past Papers',
+  ];
 
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-14 px-3 sm:px-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-12 px-3 sm:px-4 overlay-blur bg-black/65 backdrop-blur-md animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl rounded-[28px] glass-panel text-primary flex flex-col max-h-[88vh] overflow-hidden"
+        className="w-full max-w-2xl rounded-[34px] glass glass-panel text-primary flex flex-col max-h-[88vh] overflow-hidden"
       >
-        {/* Search Input Bar */}
-        <div className="p-3.5 sm:p-4 border-b border-[var(--glass-border)] space-y-3">
+        {/* Glass Pill Search Bar with Red Focus Ring + Cancel */}
+        <div className="p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center gap-2.5">
-            <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl glass-row focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 transition-all">
-              <Search size={18} className="text-muted shrink-0" />
+            <div className="flex-1 flex items-center gap-2.5 px-4 min-h-[50px] rounded-full bg-white/[0.07] border border-white/[0.18] focus-within:border-[#D71921] focus-within:ring-2 focus-within:ring-[#D71921]/40 transition-all">
+              <Search size={18} className="text-[#D71921] shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search Commons"
+                placeholder="Search Commons..."
                 className="flex-1 text-base sm:text-sm bg-transparent border-none text-primary placeholder:text-muted focus:outline-none"
               />
               {searchQuery && (
@@ -240,10 +261,11 @@ export function CommonsSearchModal({
                     setDebouncedQuery('');
                     inputRef.current?.focus();
                   }}
-                  className="p-1 rounded-full text-muted hover:text-primary transition-colors cursor-pointer"
+                  className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer"
                   title="Clear input"
+                  aria-label="Clear search query"
                 >
-                  <X size={15} />
+                  <X size={14} />
                 </button>
               )}
             </div>
@@ -251,66 +273,99 @@ export function CommonsSearchModal({
             <button
               type="button"
               onClick={onClose}
-              className="w-10 h-10 rounded-full glass-pill flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer shrink-0"
-              title="Close search"
+              className="min-h-[48px] px-4 rounded-full glass-pill flex items-center justify-center text-xs sm:text-sm font-semibold text-muted hover:text-primary transition-colors cursor-pointer shrink-0"
+              title="Cancel search"
             >
-              <X size={18} />
+              Cancel
             </button>
           </div>
 
-          {/* Search Tabs: Posts vs People (Counts shown only when there is a query) */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('posts')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'posts'
-                  ? 'bg-accent-soft text-accent border border-accent/30 font-bold'
-                  : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
-              }`}
+          {/* Segmented Control in a Glass Track: Posts vs People */}
+          <div
+            role="tablist"
+            aria-label="Search category"
+            className="ios-seg-track w-full grid grid-cols-2 items-center"
+          >
+            <div
+              aria-hidden="true"
+              className="ios-seg-thumb"
+              style={{
+                width: 'calc((100% - 8px) / 2)',
+                transform:
+                  activeTab === 'people'
+                    ? 'translate3d(100%, 0, 0)'
+                    : 'translate3d(0%, 0, 0)',
+              }}
             >
-              <BookOpen size={13} />
+              <div className={`ios-seg-thumb-inner ${segStretching ? 'is-stretching' : ''}`} />
+            </div>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'posts'}
+              onClick={() => {
+                if (activeTab !== 'posts') triggerSegStretch();
+                setActiveTab('posts');
+              }}
+              className={`ios-seg-btn gap-1.5 ${activeTab === 'posts' ? 'is-active' : ''}`}
+            >
+              <BookOpen size={14} />
               <span>{hasQuery ? `Posts (${postResults.length})` : 'Posts'}</span>
             </button>
 
             <button
-              onClick={() => setActiveTab('people')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'people'
-                  ? 'bg-accent-soft text-accent border border-accent/30 font-bold'
-                  : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
-              }`}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'people'}
+              onClick={() => {
+                if (activeTab !== 'people') triggerSegStretch();
+                setActiveTab('people');
+              }}
+              className={`ios-seg-btn gap-1.5 ${activeTab === 'people' ? 'is-active' : ''}`}
             >
-              <User size={13} />
+              <User size={14} />
               <span>{hasQuery ? `People (${peopleResults.length})` : 'People'}</span>
             </button>
           </div>
+
+          <div className="dotted-divider" aria-hidden="true" />
         </div>
 
         {/* Results / Empty / Loading Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 pb-5 sm:px-5 space-y-3">
           {/* Case 1: Empty box (< 2 chars) */}
           {!hasQuery ? (
-            <div className="py-8 px-4 text-center space-y-5">
+            <div className="py-4 px-2 text-center space-y-6">
               <div className="space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-surface-muted border border-border flex items-center justify-center mx-auto text-muted">
+                <div className="w-14 h-14 rounded-full glass-pill flex items-center justify-center mx-auto text-[#D71921] shadow-[0_0_24px_rgba(215,25,33,0.22)]">
                   <Search size={24} />
                 </div>
-                <h3 className="text-base font-bold text-primary">Search Commons</h3>
-                <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
+                <h3
+                  className="text-xl sm:text-2xl text-primary tracking-tight"
+                  style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                >
+                  Search Commons
+                </h3>
+                <p className="text-xs sm:text-sm text-muted max-w-sm mx-auto leading-relaxed">
                   Find study material, formulas, past papers, doubts or classmates.
                 </p>
               </div>
 
-              {/* Recent searches */}
+              {/* RECENT searches chips + Clear */}
               {recentSearches.length > 0 && (
-                <div className="pt-2 text-left max-w-md mx-auto">
-                  <div className="flex items-center justify-between text-xs text-muted mb-2 px-1">
-                    <span className="font-semibold flex items-center gap-1.5">
-                      <Clock size={12} /> Recent searches
+                <div className="text-left max-w-lg mx-auto space-y-2.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span
+                      className="text-[11px] uppercase tracking-[0.14em] text-muted flex items-center gap-1.5"
+                      style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                    >
+                      <Clock size={12} className="text-[#D71921]" /> RECENT
                     </span>
                     <button
+                      type="button"
                       onClick={clearRecentSearches}
-                      className="text-muted hover:text-accent cursor-pointer text-[11px]"
+                      className="min-h-[32px] px-2.5 rounded-full text-muted hover:text-[#D71921] cursor-pointer text-xs font-semibold transition-colors"
                     >
                       Clear
                     </button>
@@ -319,15 +374,42 @@ export function CommonsSearchModal({
                     {recentSearches.map((term, i) => (
                       <button
                         key={i}
+                        type="button"
                         onClick={() => handleSelectRecent(term)}
-                        className="px-3 py-1.5 rounded-xl text-xs bg-surface-muted hover:bg-surface-raised border border-border text-secondary hover:text-primary transition-colors cursor-pointer flex items-center gap-1.5"
+                        className="min-h-[44px] px-4 py-2 rounded-full text-xs font-semibold glass-pill text-secondary hover:text-primary hover:border-[#D71921]/45 transition-all cursor-pointer flex items-center gap-1.5"
                       >
+                        <Clock size={12} className="text-muted shrink-0" />
                         <span>{term}</span>
                       </button>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* TRY suggestion chips */}
+              <div className="text-left max-w-lg mx-auto space-y-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <span
+                    className="text-[11px] uppercase tracking-[0.14em] text-muted flex items-center gap-1.5"
+                    style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" /> TRY
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {TRY_SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleSelectRecent(suggestion)}
+                      className="min-h-[44px] px-4 py-2 rounded-full text-xs font-semibold glass-pill text-secondary hover:text-primary hover:border-[#D71921]/45 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Search size={12} className="text-[#D71921] shrink-0" />
+                      <span>{suggestion}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : loading ? (
             /* Case 2: Loading */
@@ -342,7 +424,10 @@ export function CommonsSearchModal({
             /* Case 3: Posts Tab Results */
             postResults.length === 0 ? (
               <div className="py-12 text-center space-y-2">
-                <p className="text-sm font-semibold text-primary">
+                <p
+                  className="text-base text-primary"
+                  style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                >
                   No results for "{debouncedQuery}"
                 </p>
                 <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
@@ -350,7 +435,7 @@ export function CommonsSearchModal({
                 </p>
               </div>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 stagger-list">
                 {postResults.map((post) => {
                   const typeMeta =
                     COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;

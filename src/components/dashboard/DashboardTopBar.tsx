@@ -188,11 +188,19 @@ export function DashboardTopBar({
     if (isSigningOut) return;
     setMenuOpen(false);
     setIsSigningOut(true);
-    clearCachedAuthAndAdminStorage();
-    clearOptimisticUserSnapshot();
+    if (typeof window !== 'undefined') {
+      (window as any).__boardlySigningOut = true;
+    }
     try {
-      await signOutUser();
+      await signOutUser({ force: true });
+      clearCachedAuthAndAdminStorage();
+      clearOptimisticUserSnapshot();
     } finally {
+      try {
+        sessionStorage.removeItem('boardly_post_login_redirect');
+      } catch {
+        // ignore
+      }
       setIsSigningOut(false);
       navigate('/login', { replace: true });
     }

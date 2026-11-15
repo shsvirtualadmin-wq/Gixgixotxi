@@ -881,6 +881,17 @@ export function NotificationsPage() {
     width: 0,
   });
 
+  const [segStretching, setSegStretching] = useState(false);
+  const triggerSegStretch = useCallback(() => {
+    setSegStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setSegStretching(true);
+        window.setTimeout(() => setSegStretching(false), 475);
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const updateSlider = () => {
       const activeBtn = tabButtonRefs.current[filter];
@@ -897,7 +908,7 @@ export function NotificationsPage() {
   }, [filter, counts.all, counts.following, counts.announcements, counts.rewards]);
 
   return (
-    <div className="notif-page">
+    <div className="notif-page page-slide-right">
       {/* Header & Action Row */}
       <header className="notif-header">
         <div className="notif-heading-group">
@@ -918,7 +929,7 @@ export function NotificationsPage() {
             type="button"
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0 || isLoading}
-            className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 text-xs font-bold"
+            className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-xs font-bold"
           >
             <CheckCheck className="w-4 h-4 shrink-0" strokeWidth={2} />
             <span>Mark all as read</span>
@@ -928,7 +939,7 @@ export function NotificationsPage() {
             type="button"
             onClick={handleRefresh}
             disabled={refreshing || isLoading}
-            className="rs-glass-btn w-[42px] h-[42px] min-w-[42px] min-h-[42px] inline-flex items-center justify-center shrink-0"
+            className="rs-glass-btn w-[44px] h-[44px] min-w-[44px] min-h-[44px] inline-flex items-center justify-center shrink-0"
             aria-label="Refresh notifications"
             title="Refresh notifications"
           >
@@ -945,13 +956,19 @@ export function NotificationsPage() {
         <div className="rs-seg-track" role="tablist" aria-label="Notification filters">
           {sliderRect.width > 0 && (
             <span
-              className="rs-seg-slider"
+              className="rs-seg-slider !bg-transparent !shadow-none"
               aria-hidden="true"
               style={{
                 width: `${sliderRect.width}px`,
                 transform: `translate3d(${sliderRect.left}px, 0, 0)`,
               }}
-            />
+            >
+              <span
+                className={`block w-full h-full rounded-full ios-seg-thumb-inner ${
+                  segStretching ? 'is-stretching' : ''
+                }`}
+              />
+            </span>
           )}
           {(
             [
@@ -972,6 +989,7 @@ export function NotificationsPage() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => {
+                  if (filter !== tab.id) triggerSegStretch();
                   setFilter(tab.id);
                   setVisibleCount(INITIAL_VISIBLE_COUNT);
                 }}
@@ -999,7 +1017,7 @@ export function NotificationsPage() {
               type="button"
               onClick={handleRefresh}
               disabled={refreshing}
-              className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 text-xs font-bold"
+              className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-xs font-bold"
             >
               <RefreshCw
                 className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
@@ -1057,7 +1075,7 @@ export function NotificationsPage() {
               >
                 <h2 className="notif-group-header">{group.label}</h2>
 
-                <ul className="notif-list">
+                <ul className="notif-list stagger-list">
                   {group.items.map((notif) => {
                     const category = resolveDisplayCategory(notif);
                     const isAnnouncement = category === 'announcement';

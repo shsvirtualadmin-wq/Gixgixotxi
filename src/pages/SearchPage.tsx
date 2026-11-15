@@ -136,32 +136,82 @@ export const SearchPage: React.FC = () => {
       <div className="max-w-5xl mx-auto">
         <Breadcrumbs items={[{ label: 'Search' }]} />
 
-        <section className="glass-panel p-6 sm:p-8 mb-8">
-          <h1 className="font-dot text-2xl sm:text-4xl font-bold text-[var(--text)] mb-4">
-            Search Boardly
+        <section className="glass glass-panel rounded-[32px] p-6 sm:p-8 mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-2 h-2 rounded-full bg-[#D71921] shadow-[0_0_10px_#D71921]" />
+            <span
+              className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted)]"
+              style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+            >
+              COMMONS SEARCH
+            </span>
+          </div>
+          <h1
+            className="text-2xl sm:text-4xl text-[var(--text)] mb-5"
+            style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+          >
+            Search Commons
           </h1>
 
           <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 mb-5">
-            <div className="relative flex-1">
-              <Search
-                size={17}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)]"
-              />
+            <div className="relative flex-1 flex items-center rounded-full bg-white/[0.07] border border-white/[0.18] focus-within:border-[#D71921] focus-within:ring-2 focus-within:ring-[#D71921]/40 transition-all min-h-[52px] px-4">
+              <Search size={18} className="text-[#D71921] shrink-0 mr-3" />
               <input
                 type="search"
                 value={queryText}
                 onChange={(e) => setQueryText(e.target.value)}
                 placeholder="Search chapters (e.g. Vectors, Stoichiometry), past papers, or doubts..."
-                className="w-full pl-11 pr-4 py-3 rounded-xl glass-input text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+                className="w-full bg-transparent border-none text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus:outline-none"
               />
             </div>
-            <button
-              type="submit"
-              className="btn-primary px-6 py-3 text-xs sm:text-sm font-semibold cursor-pointer"
-            >
-              Search
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                className="btn-primary min-h-[52px] px-7 rounded-full text-xs sm:text-sm font-semibold cursor-pointer"
+              >
+                Search
+              </button>
+              {queryText && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQueryText('');
+                    setSearchParams({});
+                  }}
+                  className="btn-secondary min-h-[52px] px-5 rounded-full text-xs sm:text-sm font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </form>
+
+          {/* TRY Suggestion Chips */}
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <span
+              className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted)] mr-1"
+              style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+            >
+              TRY:
+            </span>
+            {['Quadratic equations', "Newton's laws", 'Electrochemistry', 'MDCAT Biology'].map(
+              (chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => {
+                    setQueryText(chip);
+                    setSearchParams({ q: chip });
+                  }}
+                  className="min-h-[38px] px-3.5 py-1.5 rounded-full glass-pill text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  {chip}
+                </button>
+              )
+            )}
+          </div>
+
+          <div className="dotted-divider mb-4" aria-hidden="true" />
 
           {/* Filters */}
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -178,9 +228,9 @@ export const SearchPage: React.FC = () => {
                   key={tab.id}
                   type="button"
                   onClick={() => setTypeFilter(tab.id)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                  className={`min-h-[44px] px-4 py-2 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
                     typeFilter === tab.id
-                      ? 'bg-[#D71921] text-white border-[#D71921]'
+                      ? 'bg-[#D71921] text-white border-[#D71921] shadow-[0_6px_20px_rgba(215,25,33,0.35)]'
                       : 'glass-pill text-[var(--muted)] hover:text-[var(--text)]'
                   }`}
                 >
@@ -193,7 +243,7 @@ export const SearchPage: React.FC = () => {
               value={subjectFilter}
               onChange={(e) => setSubjectFilter(e.target.value)}
               aria-label="Filter by subject"
-              className="px-3.5 py-1.5 rounded-full glass-pill text-xs text-[var(--text)] focus:outline-none"
+              className="min-h-[44px] px-4 py-2 rounded-full glass-pill text-xs text-[var(--text)] focus:outline-none"
             >
               <option value="all" className="bg-[var(--surface)] text-[var(--text)]">All Subjects</option>
               <option value="math" className="bg-[var(--surface)] text-[var(--text)]">Mathematics</option>

@@ -24,7 +24,15 @@ function KeepAliveTabsOutlet() {
 }
 
 export function DashboardShell() {
-  const { user, profile, isGuest, profileLoading, isSessionVerified, otpVerificationState } = useAuth();
+  const {
+    user,
+    profile,
+    isGuest,
+    profileLoading,
+    isSessionVerified,
+    otpVerificationState,
+    isSigningOut,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
@@ -57,6 +65,12 @@ export function DashboardShell() {
   }, [user?.uid]);
 
   useEffect(() => {
+    const signingOutNow =
+      isSigningOut ||
+      (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
+    if (signingOutNow) {
+      return;
+    }
     if (!isAuthenticated && !profileLoading && !user) {
       const target = `${location.pathname}${location.search}${location.hash}`;
       try {
@@ -66,10 +80,25 @@ export function DashboardShell() {
       }
       navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [isAuthenticated, user, profileLoading, navigate, location.pathname, location.search, location.hash]);
+  }, [
+    isSigningOut,
+    isAuthenticated,
+    user,
+    profileLoading,
+    navigate,
+    location.pathname,
+    location.search,
+    location.hash,
+  ]);
 
   // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL
   if (!isAuthenticated && !profileLoading && !user) {
+    const signingOutNow =
+      isSigningOut ||
+      (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
+    if (signingOutNow) {
+      return <Navigate to="/login" replace />;
+    }
     const target = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
   }

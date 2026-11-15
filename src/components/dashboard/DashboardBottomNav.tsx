@@ -297,7 +297,35 @@ function DashboardBottomNavComponent() {
   const [isInstant, setIsInstant] = useState<boolean>(true);
   const [isPressed, setIsPressed] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isStretching, setIsStretching] = useState<boolean>(false);
   const [dragHighlightId, setDragHighlightId] = useState<BottomNavTabId | null>(null);
+  const stretchTimerRef = useRef<number | null>(null);
+  const prevTabIdRef = useRef<BottomNavTabId>(activeTabId);
+
+  const triggerBubbleStretch = useCallback(() => {
+    if (prefersReducedMotion()) return;
+    if (stretchTimerRef.current !== null && typeof window !== 'undefined') {
+      window.clearTimeout(stretchTimerRef.current);
+    }
+    setIsStretching(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        setIsStretching(true);
+        stretchTimerRef.current = window.setTimeout(() => {
+          setIsStretching(false);
+          stretchTimerRef.current = null;
+        }, 480);
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (stretchTimerRef.current !== null && typeof window !== 'undefined') {
+        window.clearTimeout(stretchTimerRef.current);
+      }
+    };
+  }, []);
 
   const dragRef = useRef<{
     active: boolean;
@@ -354,7 +382,11 @@ function DashboardBottomNavComponent() {
     const targetTx = m.slotOffsets[idx] ?? m.pad;
     setIsInstant(prefersReducedMotion());
     setTranslateX(targetTx);
-  }, [activeTabId]);
+    if (prevTabIdRef.current !== activeTabId) {
+      prevTabIdRef.current = activeTabId;
+      triggerBubbleStretch();
+    }
+  }, [activeTabId, triggerBubbleStretch]);
 
   // Cache geometry on window resize / ResizeObserver (zero layout reads during pointer interactions)
   useEffect(() => {
@@ -399,6 +431,8 @@ function DashboardBottomNavComponent() {
 
   const executeTabAction = useCallback(
     (item: DockTabItem) => {
+      const changed = prevTabIdRef.current !== item.id;
+      prevTabIdRef.current = item.id;
       markNavTapStart(item.id);
       setOptimisticNavTab(item.id, item.id === 'menu');
       prefetchTabRouteAndData(item.id, user?.uid);
@@ -407,6 +441,9 @@ function DashboardBottomNavComponent() {
       const idx = BOTTOM_NAV_TAB_INDEX[item.id] ?? 1;
       setIsInstant(prefersReducedMotion());
       setTranslateX(m.slotOffsets[idx] ?? m.pad);
+      if (changed) {
+        triggerBubbleStretch();
+      }
 
       if (item.onClick) {
         item.onClick();
@@ -418,7 +455,7 @@ function DashboardBottomNavComponent() {
         }
       }
     },
-    [user?.uid, location.pathname, navigate]
+    [user?.uid, location.pathname, navigate, triggerBubbleStretch]
   );
 
   // Respond immediately on pointerdown: move bubble + set active tab + navigate right away!
@@ -613,7 +650,11 @@ function DashboardBottomNavComponent() {
           transform: `translate3d(${translateX}px, 0, 0)`,
         }}
       >
-        <div className={`gi dark-surface-preserve ${isPressed || isDragging ? 'out' : ''}`} />
+        <div
+          className={`gi dark-surface-preserve ${isStretching ? 'is-stretching' : ''} ${
+            isPressed || isDragging ? 'out' : ''
+          }`}
+        />
       </div>
 
       {/* (c) .tabs: the 6 evenly-spaced buttons, position relative, z-index above .g */}

@@ -1001,14 +1001,20 @@ export function SettingsPage() {
 
   // Handler for Sign Out
   const handleSignOut = async () => {
+    if (isSigningOut) return;
     setIsSigningOut(true);
-    clearCachedAuthAndAdminStorage();
+    if (typeof window !== 'undefined') {
+      (window as any).__boardlySigningOut = true;
+    }
     try {
-      await Promise.all([
-        signOutUser(),
-        new Promise((resolve) => setTimeout(resolve, 400)),
-      ]);
+      await signOutUser({ force: true });
+      clearCachedAuthAndAdminStorage();
     } finally {
+      try {
+        sessionStorage.removeItem('boardly_post_login_redirect');
+      } catch {
+        // ignore
+      }
       setIsSigningOut(false);
       navigate('/login', { replace: true });
     }

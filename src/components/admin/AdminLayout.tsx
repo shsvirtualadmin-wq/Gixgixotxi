@@ -156,8 +156,13 @@ export function AdminLayout() {
 
   const handleSignOut = async () => {
     setIsMoreOpen(false);
-    await signOutUser();
-    navigate('/login');
+    await signOutUser({ force: true });
+    try {
+      sessionStorage.removeItem('boardly_post_login_redirect');
+    } catch {
+      // ignore
+    }
+    navigate('/login', { replace: true });
   };
 
   const userInitial = (user?.displayName || user?.email || 'A')[0].toUpperCase();
@@ -308,13 +313,16 @@ export function AdminLayout() {
         </div>
       </aside>
 
-      {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-14 w-full max-w-full min-w-0 box-border glass allow-backdrop-blur border-b border-[var(--glass-border)] px-3.5 flex items-center justify-between gap-2">
+      {/* ─── MOBILE FLOATING GLASS TOP BAR ──────────────────────────────────── */}
+      <header className="md:hidden sticky top-2 z-30 mx-3 mt-2 min-h-[54px] rounded-[28px] glass glass-panel allow-backdrop-blur px-4 py-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 shrink">
           <Link to="/admin" className="flex items-center shrink-0" aria-label="Boardly Admin">
             <Logo size="admin" className="!h-[28px] min-[400px]:!h-[30px] w-auto shrink-0" />
           </Link>
-          <span className="badge-pill-red text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
+          <span
+            className="badge-pill-red text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap"
+            style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+          >
             {isSuperAdmin ? 'SUPER ADMIN' : 'ADMIN'}
           </span>
         </div>
@@ -322,15 +330,15 @@ export function AdminLayout() {
           {isSuperAdmin && pendingRequestsCount > 0 && (
             <Link
               to="/admin/access-requests"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--red)] text-white text-[11px] font-heading font-bold shrink-0"
+              className="inline-flex items-center gap-1 min-h-[38px] px-3 py-1 rounded-full bg-[var(--red)] text-white text-[11px] font-heading font-bold shrink-0"
             >
-              <KeyRound size={11} />
+              <KeyRound size={12} />
               <span>{pendingRequestsCount}</span>
             </Link>
           )}
           <Link
             to="/dashboard"
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full glass-pill text-[11px] font-heading font-semibold text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 min-h-[40px] px-3.5 py-1.5 rounded-full glass-pill text-[11px] font-heading font-semibold text-[var(--text-muted)] hover:text-[var(--text)] shrink-0 whitespace-nowrap"
           >
             <ExternalLink size={12} className="shrink-0" />
             <span>Student Home</span>
@@ -346,7 +354,7 @@ export function AdminLayout() {
           <Navigate to="/login?redirect=/admin" replace />
         ) : !isAdmin ? (
           <div className="flex items-center justify-center py-12 px-4">
-            <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[28px] glass-card text-center">
+            <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[32px] glass glass-panel text-center">
               <div className="w-14 h-14 rounded-full glass-row border border-[var(--red)]/40 text-[var(--red)] flex items-center justify-center mx-auto mb-5">
                 <ShieldAlert size={28} />
               </div>
@@ -367,11 +375,11 @@ export function AdminLayout() {
         ) : (
           <div
             key={location.pathname}
-            className="w-full min-h-[calc(100vh-5rem)] bg-[var(--bg)] relative isolate"
+            className="w-full min-h-[calc(100vh-5rem)] bg-transparent relative isolate page-slide-right"
           >
             <Suspense
               fallback={
-                <div className="w-full min-h-[60vh] bg-[var(--bg)]">
+                <div className="w-full min-h-[60vh] bg-transparent">
                   <RoutePageSkeleton pathname={location.pathname} />
                 </div>
               }
@@ -396,7 +404,7 @@ export function AdminLayout() {
           >
             <nav
               role="tablist"
-              className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px] pointer-events-auto"
+              className="rounded-[32px] glass dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between select-none relative h-[62px] pointer-events-auto"
             >
               {visiblePrimaryNav.slice(0, 5).map((item) => {
                 const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
@@ -425,7 +433,7 @@ export function AdminLayout() {
                             style={{
                               backgroundColor: '#D71921',
                               boxShadow:
-                                '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                                '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
                             }}
                             transition={{
                               type: 'spring',
@@ -488,7 +496,7 @@ export function AdminLayout() {
                     style={{
                       backgroundColor: '#D71921',
                       boxShadow:
-                        '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                        '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
                     }}
                     transition={{
                       type: 'spring',
@@ -533,7 +541,7 @@ export function AdminLayout() {
           >
             <div
               style={{ pointerEvents: 'auto' }}
-              className="fixed inset-0 z-0 pointer-events-auto bg-black/45 backdrop-blur-sm more-sheet-backdrop transition-opacity cursor-pointer"
+              className="fixed inset-0 z-0 pointer-events-auto bg-black/55 backdrop-blur-md more-sheet-backdrop transition-opacity cursor-pointer"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -552,13 +560,16 @@ export function AdminLayout() {
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
               onTouchEnd={(e) => e.stopPropagation()}
-              className="relative z-10 pointer-events-auto w-full max-h-[80dvh] glass more-sheet-panel allow-backdrop-blur rounded-t-[28px] p-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200"
+              className="relative z-10 pointer-events-auto w-full max-h-[82dvh] glass glass-panel ios-bottom-sheet more-sheet-panel allow-backdrop-blur p-5 pb-[calc(24px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto"
             >
               {/* Grab handle */}
-              <div className="w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-1 shrink-0" />
+              <div className="ios-sheet-grabber" />
 
               <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)] shrink-0">
-                <h2 className="font-dot font-bold text-[15px] text-[var(--text)]">
+                <h2
+                  className="text-base text-[var(--text)]"
+                  style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                >
                   More admin sections
                 </h2>
                 <button
@@ -568,13 +579,13 @@ export function AdminLayout() {
                     e.stopPropagation();
                     setIsMoreOpen(false);
                   }}
-                  className="p-1.5 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                  className="ios-circle-btn text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 stagger-list">
                 {[...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].map((item) => {
                   const { to, label, icon: Icon } = item;
                   const locked = isNavItemLocked(item);

@@ -42,6 +42,25 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }>({ status: 'idle' });
   const [guestBusy, setGuestBusy] = useState(false);
 
+  const [isClosing, setIsClosing] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [isDraggingSheet, setIsDraggingSheet] = useState(false);
+  const dragStateRef = useRef<{
+    active: boolean;
+    pointerId: number | null;
+    startY: number;
+    lastY: number;
+    lastTime: number;
+    velocityY: number;
+  }>({
+    active: false,
+    pointerId: null,
+    startY: 0,
+    lastY: 0,
+    lastTime: 0,
+    velocityY: 0,
+  });
+
   const openSignInModal = useCallback(
     (label = 'continue', customRedirect?: string) => {
       const targetUrl = customRedirect || `${location.pathname}${location.search}${location.hash}`;
@@ -51,6 +70,9 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setGuestUsername('');
       setGuestCheck({ status: 'idle' });
       setErrorMsg(null);
+      setIsClosing(false);
+      setDragY(0);
+      setIsDraggingSheet(false);
       try {
         sessionStorage.setItem('boardly_post_login_redirect', targetUrl);
       } catch {
@@ -62,18 +84,85 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 
   const closeSignInModal = useCallback(() => {
-    setIsOpen(false);
-    setStep('options');
-    setErrorMsg(null);
+    setIsClosing(true);
+    setDragY(0);
+    setIsDraggingSheet(false);
     pendingCallbackRef.current = undefined;
+    window.setTimeout(() => {
+      setIsOpen(false);
+      setIsClosing(false);
+      setStep('options');
+      setErrorMsg(null);
+    }, 240);
   }, []);
 
   // Ensure the sign-in modal never stays mounted over a newly navigated route
   useEffect(() => {
     setIsOpen(false);
+    setIsClosing(false);
+    setDragY(0);
+    setIsDraggingSheet(false);
     setStep('options');
     setErrorMsg(null);
   }, [location.pathname]);
+
+  const handleGrabberPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    const now = performance.now();
+    dragStateRef.current = {
+      active: true,
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      lastY: e.clientY,
+      lastTime: now,
+      velocityY: 0,
+    };
+    setIsDraggingSheet(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleGrabberPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const ds = dragStateRef.current;
+    if (!ds.active || ds.pointerId !== e.pointerId) return;
+    const now = performance.now();
+    const dt = Math.max(1, now - ds.lastTime);
+    const dyFromLast = e.clientY - ds.lastY;
+    ds.velocityY = dyFromLast / dt; // px/ms
+    ds.lastY = e.clientY;
+    ds.lastTime = now;
+
+    const rawDelta = e.clientY - ds.startY;
+    const clampedDelta = rawDelta < 0 ? rawDelta * 0.2 : rawDelta;
+    setDragY(clampedDelta);
+  };
+
+  const handleGrabberPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const ds = dragStateRef.current;
+    if (!ds.active || ds.pointerId !== e.pointerId) return;
+    ds.active = false;
+    ds.pointerId = null;
+    setIsDraggingSheet(false);
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+
+    const totalDy = e.clientY - ds.startY;
+    const vy = ds.velocityY;
+    // Snap closed if dragged down > 95px or flicked downward with velocity > 0.55 px/ms
+    if (totalDy > 95 || vy > 0.55) {
+      closeSignInModal();
+    } else {
+      setDragY(0);
+    }
+  };
 
   const requireAuth = useCallback(
     (label: string, onAuthorized?: () => void, customRedirect?: string): boolean => {
@@ -128,6 +217,8 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const finishAuthSuccess = useCallback(() => {
     setIsOpen(false);
+    setIsClosing(false);
+    setDragY(0);
     setStep('options');
     try {
       sessionStorage.removeItem('boardly_post_login_redirect');
@@ -219,33 +310,86 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         typeof document !== 'undefined' &&
         createPortal(
           <div
-            className="fixed inset-0 z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center sm:p-4"
             role="dialog"
             aria-modal="true"
             aria-labelledby="auth-gate-title"
           >
             <div
               onClick={closeSignInModal}
-              className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
+              className={`fixed inset-0 z-0 bg-black/55 backdrop-blur-md glass-backdrop cursor-pointer transition-opacity duration-250 ${
+                isClosing ? 'opacity-0' : 'opacity-100'
+              }`}
               aria-hidden="true"
             />
             <div
-              className="glass glass-panel relative z-10 w-full max-w-md rounded-[28px] p-6 sm:p-8 text-left"
+              className={`glass glass-panel ios-bottom-sheet relative z-10 w-full max-w-md px-6 pt-3 pb-7 sm:p-8 text-left ${
+                isClosing ? 'is-closing' : ''
+              }`}
+              style={
+                dragY !== 0 || isDraggingSheet
+                  ? {
+                      transform: `translate3d(0, ${dragY}px, 0)`,
+                      transition: isDraggingSheet
+                        ? 'none'
+                        : 'transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    }
+                  : undefined
+              }
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                onClick={closeSignInModal}
-                className="absolute top-4 right-4 w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                aria-label="Close sign in prompt"
+              {/* Draggable iOS Sheet Grabber */}
+              <div
+                onPointerDown={handleGrabberPointerDown}
+                onPointerMove={handleGrabberPointerMove}
+                onPointerUp={handleGrabberPointerUp}
+                onPointerCancel={handleGrabberPointerUp}
+                className="w-full py-2 flex items-center justify-center cursor-grab active:cursor-grabbing select-none touch-none"
+                aria-label="Drag handle to dismiss"
               >
-                <X size={16} />
-              </button>
+                <div className="ios-sheet-grabber !my-0" />
+              </div>
 
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-[#D71921]/15 border border-[#D71921]/35 flex items-center justify-center text-[#D71921]">
-                  <Lock size={18} />
+              {/* Top Header Row: COMMONS label with red dot + circular glass close button */}
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/[0.14]">
+                  <span
+                    className="w-2 h-2 rounded-full bg-[#D71921] shadow-[0_0_10px_#D71921]"
+                    aria-hidden="true"
+                  />
+                  <span
+                    className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-primary)]"
+                    style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                  >
+                    COMMONS
+                  </span>
                 </div>
-                <Logo size="md" />
+
+                <button
+                  type="button"
+                  onClick={closeSignInModal}
+                  className="ios-circle-btn text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                  aria-label="Close sign in prompt"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Dot-matrix "Boardly" wordmark */}
+              <div className="mb-2">
+                <span
+                  className="block select-none"
+                  style={{
+                    fontFamily: "'Doto', var(--font-dot), monospace",
+                    fontWeight: 800,
+                    fontSize: '28px',
+                    lineHeight: 1.05,
+                    letterSpacing: '0.03em',
+                    color: '#D71921',
+                  }}
+                >
+                  Boardly
+                </span>
               </div>
 
               {step === 'guest' ? (
@@ -256,26 +400,29 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       setStep('options');
                       setErrorMsg(null);
                     }}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 min-h-[44px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                   >
-                    <ArrowLeft size={14} />
+                    <ArrowLeft size={15} />
                     <span>Back</span>
                   </button>
 
                   <div>
                     <h2
                       id="auth-gate-title"
-                      className="font-dot text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight mb-1.5"
+                      className="text-xl sm:text-2xl text-[var(--text-primary)] tracking-tight mb-1.5"
+                      style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                     >
                       Continue as guest
                     </h2>
-                    <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-                      Pick a unique username to <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span> and return right to this page.
+                    <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
+                      Pick a unique username to{' '}
+                      <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span>{' '}
+                      and return right to this page.
                     </p>
                   </div>
 
                   {errorMsg && (
-                    <div className="p-3 rounded-xl bg-[#D71921]/15 border border-[#D71921]/40 text-xs text-[var(--text-primary)]">
+                    <div className="p-3.5 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/40 text-xs text-[var(--text-primary)]">
                       {errorMsg}
                     </div>
                   )}
@@ -295,7 +442,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           </span>
                         )}
                         {guestCheck.status === 'available' && (
-                          <span className="text-[11px] font-mono font-bold text-emerald-500 inline-flex items-center gap-1">
+                          <span className="text-[11px] font-mono font-bold text-emerald-400 inline-flex items-center gap-1">
                             <CheckCircle2 size={12} />
                             <span>Available</span>
                           </span>
@@ -309,7 +456,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       </div>
 
                       <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm">
                           @
                         </span>
                         <input
@@ -321,7 +468,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           maxLength={20}
                           autoFocus
                           autoComplete="off"
-                          className="w-full h-11 pl-8 pr-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[#D71921]"
+                          className="w-full h-12 pl-9 pr-4 rounded-full bg-white/[0.06] border border-white/[0.18] font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/35"
                         />
                       </div>
 
@@ -336,7 +483,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       </p>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--text-muted)] leading-relaxed">
+                    <div className="p-3 rounded-2xl bg-white/[0.05] border border-white/[0.14] text-[11px] text-[var(--text-muted)] leading-relaxed">
                       You&apos;ll stay signed in on this device.
                     </div>
 
@@ -363,7 +510,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     <button
                       type="submit"
                       disabled={!canSubmitGuest}
-                      className="btn-primary relative overflow-hidden w-full py-3 px-4 rounded-xl text-sm font-semibold cursor-pointer disabled:opacity-60"
+                      className="btn-primary relative overflow-hidden w-full min-h-[52px] px-5 rounded-full text-sm font-semibold cursor-pointer disabled:opacity-60"
                     >
                       <span>{guestBusy ? 'Starting guest session...' : 'Continue as guest'}</span>
                       {guestBusy && <ButtonLineLoader />}
@@ -381,29 +528,33 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 <>
                   <h2
                     id="auth-gate-title"
-                    className="font-dot text-xl sm:text-2xl font-bold text-[var(--text-primary)] tracking-tight mb-2"
+                    className="text-2xl sm:text-[26px] text-[var(--text-primary)] tracking-tight mb-2"
+                    style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   >
                     Sign in to continue
                   </h2>
 
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-6">
-                    Sign in or continue as a guest to <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span>. You will stay right on this page.
+                  <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
+                    Sign in or continue as a guest to{' '}
+                    <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span>.
+                    You will stay right on this page.
                   </p>
 
                   {errorMsg && (
-                    <div className="mb-4 p-3 rounded-xl bg-[#D71921]/15 border border-[#D71921]/40 text-xs text-[var(--text-primary)]">
+                    <div className="mb-4 p-3.5 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/40 text-xs text-[var(--text-primary)]">
                       {errorMsg}
                     </div>
                   )}
 
-                  <div className="space-y-2.5">
+                  <div className="space-y-3">
+                    {/* Continue with Google (white pill) */}
                     <button
                       type="button"
                       onClick={handleGoogleSignIn}
                       disabled={googleBusy}
-                      className="relative overflow-hidden w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white text-black border border-black/15 font-semibold text-sm hover:bg-neutral-100 transition-all cursor-pointer disabled:opacity-75 shadow-xs"
+                      className="auth-google-btn relative overflow-hidden w-full min-h-[52px] flex items-center justify-center gap-3 px-5 rounded-full font-semibold text-sm cursor-pointer disabled:opacity-75"
                     >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                         <path
                           fill="#4285F4"
                           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -425,43 +576,58 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       {googleBusy && <ButtonLineLoader />}
                     </button>
 
+                    {/* Continue as guest (glass pill) */}
                     <button
                       type="button"
                       onClick={() => {
                         setStep('guest');
                         setErrorMsg(null);
                       }}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] hover:border-[#D71921]/60 text-[var(--text-primary)] font-semibold text-sm transition-all cursor-pointer"
+                      className="btn-secondary w-full min-h-[52px] flex items-center justify-center gap-2.5 px-5 rounded-full text-[var(--text-primary)] font-semibold text-sm cursor-pointer"
                     >
                       <UserCheck size={16} className="text-[#D71921]" />
                       <span>Continue as guest</span>
                     </button>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    {/* Dotted OR divider */}
+                    <div className="flex items-center gap-3 py-1.5" aria-hidden="true">
+                      <div className="flex-1 dotted-divider" />
+                      <span
+                        className="text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
+                        style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                      >
+                        OR
+                      </span>
+                      <div className="flex-1 dotted-divider" />
+                    </div>
+
+                    {/* Sign in (glass) + Create account (red) side by side */}
+                    <div className="grid grid-cols-2 gap-3">
                       <Link
                         to={`/login?redirect=${encodedRedirect}`}
                         onClick={closeSignInModal}
-                        className="btn-secondary w-full flex items-center justify-center gap-2 py-3 px-4 text-sm font-semibold"
+                        className="btn-secondary w-full min-h-[50px] rounded-full flex items-center justify-center gap-2 px-4 text-sm font-semibold"
                       >
                         <Mail size={15} />
-                        <span>Sign In</span>
+                        <span>Sign in</span>
                       </Link>
 
                       <Link
                         to={`/signup?redirect=${encodedRedirect}`}
                         onClick={closeSignInModal}
-                        className="btn-primary w-full flex items-center justify-center gap-2 py-3 px-4 text-sm font-semibold"
+                        className="btn-primary w-full min-h-[50px] rounded-full flex items-center justify-center gap-2 px-4 text-sm font-semibold"
                       >
                         <UserPlus size={15} />
                         <span>Create account</span>
                       </Link>
                     </div>
 
-                    <div className="pt-2 flex justify-center">
+                    {/* Cancel */}
+                    <div className="pt-1 flex justify-center">
                       <button
                         type="button"
                         onClick={closeSignInModal}
-                        className="w-full py-2.5 px-4 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer"
+                        className="w-full min-h-[48px] px-4 rounded-full text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors cursor-pointer"
                       >
                         Cancel
                       </button>

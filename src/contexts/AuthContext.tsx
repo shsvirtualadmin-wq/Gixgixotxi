@@ -38,6 +38,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import {
+  getStoredGuestSessionToken,
   setStoredGuestSessionToken,
   getStoredTrustedDeviceToken,
   setStoredTrustedDeviceToken,
@@ -51,13 +52,16 @@ import {
   LEGAL_DOCUMENT_VERSION,
   recordLegalConsentOnServer,
 } from '@/constants/legalConsent';
-import { seedSharedUserProfileCache } from '@/hooks/useUserProfile';
+import { seedSharedUserProfileCache, teardownSharedUserProfile } from '@/hooks/useUserProfile';
+import { teardownNotificationStore } from '@/services/notificationService';
+import { teardownEffectivePlanListeners } from '@/hooks/useEffectivePlan';
 import {
   readOptimisticUserSnapshot,
   writeOptimisticUserSnapshot,
   clearOptimisticUserSnapshot,
   readOptimisticWalletSnapshot,
   writeOptimisticWalletSnapshot,
+  invalidateSwrCache,
 } from '@/lib/swrCache';
 import {
   seedSecurityStatusFromServer,
@@ -266,7 +270,8 @@ interface AuthContextValue {
   signIn: (identifier: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string, username?: string) => Promise<void>;
   signInWithGoogle: () => Promise<User | null>;
-  signOutUser: (opts?: { force?: boolean }) => Promise<void>;
+  signOutUser: (opts?: { force?: boolean; confirmGuest?: boolean }) => Promise<void>;
+  isSigningOut: boolean;
   sendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   retryProfile: () => void;
@@ -388,6 +393,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showGuestLogoutConfirm, setShowGuestLogoutConfirm] = useState(false);
   const [guestLogoutLoading, setGuestLogoutLoading] = useState(false);
   const [showGuestUpgradeFromLogout, setShowGuestUpgradeFromLogout] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const isSigningOutRef = useRef(false);
+  const inFlightSignOutRef = useRef<Promise<void> | null>(null);
   const pendingGuestLogoutResolversRef = useRef<Array<() => void>>([]);
   const signingOutGuestUidRef = useRef<string | null>(null);
   const [usernamePromptState, setUsernamePromptState] = useState<{
@@ -979,11 +987,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Helper to resolve current user/guest from the unified `/api/auth/me` endpoint
   const resolveServerGuestSession = useCallback(async (): Promise<boolean> => {
     try {
-      const savedGuestToken = localStorage.getItem(GUEST_TOKEN_LS_KEY) || '';
-      const headers: Record<string, string> = {};
-      if (savedGuestToken) {
-        headers['X-Guest-Session'] = savedGuestToken;
+      if (
+        isSigningOutRef.current ||
+        (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut))
+      ) {
+        return false;
       }
+
+      // Requirement 3: Never auto-create or auto-restore a guest session on sign-out or when
+      // no explicit client guest session token exists. Guest mode starts ONLY when the user
+      // explicitly taps "Continue as guest".
+      const savedGuestToken =
+        (typeof window !== 'undefined'
+          ? localStorage.getItem(GUEST_TOKEN_LS_KEY) || getStoredGuestSessionToken() || ''
+          : '') || '';
+      if (!savedGuestToken) {
+        return false;
+      }
+
+      const headers: Record<string, string> = {
+        'X-Guest-Session': savedGuestToken,
+      };
       const meRes = await fetch('/api/auth/me', {
         method: 'GET',
         credentials: 'include',
@@ -1023,7 +1047,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const g = meData.guest || (meData.user?.accountType === 'guest' ? meData.user : null);
       if (meRes.ok && meData.authenticated && g && g.uid) {
-        if (signingOutGuestUidRef.current === g.uid) {
+        if (
+          isSigningOutRef.current ||
+          signingOutGuestUidRef.current === g.uid ||
+          (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut))
+        ) {
           return false;
         }
         const guestUsername = g.username || g.displayName || 'Guest';
@@ -1135,20 +1163,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      // Only clear guest state if server explicitly responded that there is no valid guest session
-      if (meRes.ok && meData.authenticated === false) {
+      // Requirement 4: If a guest session is expired or invalid, treat it as signed-out:
+      // clear it, do not set any error, and return false so the sign-in screen is shown.
+      if (meRes.status === 401 || (meRes.ok && meData.authenticated === false)) {
+        try {
+          localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+          localStorage.removeItem('boardly_user_authenticated');
+          sessionStorage.removeItem(GUEST_TOKEN_LS_KEY);
+        } catch {
+          // Ignore
+        }
+        setStoredGuestSessionToken(null);
+        setGuestSessionToken(null);
+        clearOptimisticUserSnapshot();
+        setAuthError(null);
+        setProfileError(null);
+        if (userRef.current && (userRef.current as any).isGuest) {
+          setUser(null);
+          setProfile(null);
+        }
         return false;
       }
 
-      // On transient server error, keep any existing in-memory guest session alive
-      if (userRef.current && (userRef.current as any).isGuest) {
+      // On transient server error, keep any existing in-memory guest session alive unless signing out
+      if (!isSigningOutRef.current && userRef.current && (userRef.current as any).isGuest) {
         setProfileLoading(false);
         return true;
       }
       return false;
     } catch {
-      // Network failure: do not destroy an already-loaded guest session
-      if (userRef.current && (userRef.current as any).isGuest) {
+      // Network failure: do not destroy an already-loaded guest session unless signing out
+      if (!isSigningOutRef.current && userRef.current && (userRef.current as any).isGuest) {
         setProfileLoading(false);
         return true;
       }
@@ -1335,6 +1380,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!isMounted) return;
+      if (
+        isSigningOutRef.current ||
+        (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut))
+      ) {
+        if (!firebaseUser) {
+          setUser(null);
+          setProfile(null);
+          setProfileLoading(false);
+          setProfileError(null);
+          setAuthError(null);
+        }
+        return;
+      }
 
       if (firebaseUser) {
         setUser(firebaseUser);
@@ -2547,74 +2605,193 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile, evaluateUserVerificationGate]);
 
   const executeForceSignOut = useCallback(async () => {
-    setAuthError(null);
-    const savedGuestToken =
-      guestSessionToken ||
-      (typeof window !== 'undefined' ? localStorage.getItem(GUEST_TOKEN_LS_KEY) : '') ||
-      '';
-    const currentUid = user?.uid || profile?.uid || '';
-    const guestUid = isGuest ? currentUid : '';
-    const wasGuest = Boolean(savedGuestToken || isGuest);
-
-    if (guestUid) {
-      signingOutGuestUidRef.current = guestUid;
+    if (inFlightSignOutRef.current) {
+      return inFlightSignOutRef.current;
     }
 
-    // 1. Immediately clear local caches & update React state so sign-out feels instant (0ms lag)
-    clearOptimisticUserSnapshot();
-    clearSecurityStatusCache(currentUid || null);
-    try {
-      localStorage.removeItem('boardly_user_authenticated');
-      localStorage.removeItem(GUEST_TOKEN_LS_KEY);
-      if (guestUid) {
-        localStorage.removeItem(`cached_profile_${guestUid}`);
+    const doSignOut = async () => {
+      isSigningOutRef.current = true;
+      setIsSigningOut(true);
+      if (typeof window !== 'undefined') {
+        (window as any).__boardlySigningOut = true;
       }
-    } catch {
-      // Ignore storage errors
-    }
-    setStoredGuestSessionToken(null);
-    setGuestSessionToken(null);
-    setOtpVerificationState({
-      status: 'idle',
-      purpose: null,
-      email: '',
-      maskedEmail: '',
-      cooldownSeconds: 0,
-      error: null,
-    });
-    setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
-    setShowGuestLogoutConfirm(false);
-    setGuestLogoutLoading(false);
-    setUser(null);
-    setProfile(null);
 
-    // 2. Run server-side guest session revocation and Firebase signOut in the background without blocking UI
-    void (async () => {
+      setAuthError(null);
+      setProfileError(null);
+
+      const savedGuestToken =
+        guestSessionToken ||
+        (typeof window !== 'undefined'
+          ? localStorage.getItem(GUEST_TOKEN_LS_KEY) || getStoredGuestSessionToken() || ''
+          : '') ||
+        '';
+      const currentUid = userRef.current?.uid || profileRef.current?.uid || auth.currentUser?.uid || '';
+      const guestUid =
+        isGuest || currentUid.startsWith('guest_') ? currentUid : '';
+
+      if (guestUid) {
+        signingOutGuestUidRef.current = guestUid;
+      }
+
+      // 1. Unsubscribe all Firestore & realtime listeners BEFORE signing out of Firebase
+      //    so no listener fires a permission-denied error when auth.currentUser becomes null.
       try {
-        if (wasGuest) {
-          await fetch('/api/auth/guest/logout', {
-            method: 'POST',
-            credentials: 'include',
-            keepalive: true,
-            headers: {
-              'Content-Type': 'application/json',
-              ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
-            },
-            body: JSON.stringify({ uid: guestUid }),
-          }).catch(() => {});
+        teardownSharedUserProfile();
+      } catch {
+        // Ignore
+      }
+      try {
+        teardownNotificationStore();
+      } catch {
+        // Ignore
+      }
+      try {
+        teardownEffectivePlanListeners();
+      } catch {
+        // Ignore
+      }
+
+      // 2. Clear all cached user/guest state (localStorage, sessionStorage, SWR/query cache, in-memory state)
+      clearOptimisticUserSnapshot();
+      clearSecurityStatusCache(currentUid || null);
+      invalidateSwrCache();
+      setStoredGuestSessionToken(null);
+
+      try {
+        if (typeof window !== 'undefined') {
+          const preservedTheme = window.localStorage.getItem('boardly-theme');
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (!key || key === 'boardly-theme') continue;
+            if (
+              key === 'boardly_user_authenticated' ||
+              key === GUEST_TOKEN_LS_KEY ||
+              key === 'boardly_guest_session_backup_v1' ||
+              key === 'boardly_last_known_user_v1' ||
+              key === 'boardly_last_known_wallet_v1' ||
+              key.startsWith('cached_profile_') ||
+              key.startsWith('boardly_user_profile_') ||
+              key.startsWith('boardly_swr_v2:') ||
+              key.startsWith('boardly_read_notifs_v2_') ||
+              key.startsWith('boardly_security_status_') ||
+              key.startsWith('boardly_profile_layout_') ||
+              key.startsWith('boardly_plan_cache_') ||
+              key.startsWith('boardly_wallet_') ||
+              key.startsWith('firebase:authUser:')
+            ) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+          if (preservedTheme) {
+            window.localStorage.setItem('boardly-theme', preservedTheme);
+          }
+
+          window.sessionStorage.removeItem('boardly_post_login_redirect');
+          window.sessionStorage.removeItem(GUEST_TOKEN_LS_KEY);
+          window.sessionStorage.removeItem('boardly_guest_session_backup_v1');
+          const sessionKeysToRemove: string[] = [];
+          for (let i = 0; i < window.sessionStorage.length; i++) {
+            const sk = window.sessionStorage.key(i);
+            if (
+              sk &&
+              (sk.startsWith('boardly_') ||
+                sk.startsWith('cached_') ||
+                sk.startsWith('firebase:'))
+            ) {
+              sessionKeysToRemove.push(sk);
+            }
+          }
+          sessionKeysToRemove.forEach((sk) => window.sessionStorage.removeItem(sk));
         }
-        await firebaseSignOut(auth).catch(() => {});
+      } catch {
+        // Ignore storage errors
+      }
+
+      setGuestSessionToken(null);
+      setActiveGrants([]);
+      setTokenClaims({ admin: false, superAdmin: false, verified: false });
+      setOtpVerificationState({
+        status: 'idle',
+        purpose: null,
+        email: '',
+        maskedEmail: '',
+        cooldownSeconds: 0,
+        error: null,
+      });
+      setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
+      setShowGuestLogoutConfirm(false);
+      setGuestLogoutLoading(false);
+      setUser(null);
+      setProfile(null);
+      setProfileLoading(false);
+
+      // 3. Best-effort server session / cookie revocation AND awaited Firebase signOut with timeouts
+      //    Always call /api/auth/guest/logout (even for email/Google/admin users) so any lingering
+      //    HttpOnly `boardly_guest_session` cookie is cleared and can never resurrect a guest session.
+      try {
+        await Promise.all([
+          Promise.race([
+            fetch('/api/auth/guest/logout', {
+              method: 'POST',
+              credentials: 'include',
+              keepalive: true,
+              headers: {
+                'Content-Type': 'application/json',
+                ...(savedGuestToken ? { 'X-Guest-Session': savedGuestToken } : {}),
+              },
+              body: JSON.stringify({ uid: guestUid }),
+            }).catch(() => null),
+            new Promise((resolve) => setTimeout(resolve, 1500)),
+          ]),
+          Promise.race([
+            firebaseSignOut(auth).catch(() => null),
+            new Promise((resolve) => setTimeout(resolve, 2500)),
+          ]),
+        ]);
+      } catch {
+        // Never allow cleanup errors to block or abort sign-out
       } finally {
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem('boardly_user_authenticated');
+            window.localStorage.removeItem(GUEST_TOKEN_LS_KEY);
+            window.localStorage.removeItem('boardly_guest_session_backup_v1');
+            window.sessionStorage.removeItem('boardly_post_login_redirect');
+            window.sessionStorage.removeItem(GUEST_TOKEN_LS_KEY);
+            window.sessionStorage.removeItem('boardly_guest_session_backup_v1');
+          }
+        } catch {
+          // Ignore
+        }
+        setStoredGuestSessionToken(null);
+        setGuestSessionToken(null);
+        setUser(null);
+        setProfile(null);
+        setAuthError(null);
+        setProfileError(null);
         if (signingOutGuestUidRef.current === guestUid) {
           signingOutGuestUidRef.current = null;
         }
+        isSigningOutRef.current = false;
+        setIsSigningOut(false);
+        if (typeof window !== 'undefined') {
+          (window as any).__boardlySigningOut = false;
+        }
       }
-    })();
-  }, [guestSessionToken, isGuest, profile?.uid, user?.uid]);
+    };
+
+    const p = doSignOut().finally(() => {
+      inFlightSignOutRef.current = null;
+    });
+    inFlightSignOutRef.current = p;
+    return p;
+  }, [guestSessionToken, isGuest]);
 
   const signOutUser = useCallback(
-    async (opts?: { force?: boolean }) => {
-      if (isGuest && !opts?.force) {
+    async (opts?: { force?: boolean; confirmGuest?: boolean }) => {
+      if (isGuest && opts?.confirmGuest === true && !opts?.force) {
         setShowGuestLogoutConfirm(true);
         return new Promise<void>((resolve) => {
           pendingGuestLogoutResolversRef.current.push(resolve);
@@ -2624,6 +2801,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [isGuest, executeForceSignOut]
   );
+
+  // Listen for expired/invalid guest session event from API layer and treat as signed-out cleanly
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onGuestExpired = () => {
+      if (!isSigningOutRef.current) {
+        void executeForceSignOut();
+      }
+    };
+    window.addEventListener('boardly:guest-expired', onGuestExpired);
+    return () => window.removeEventListener('boardly:guest-expired', onGuestExpired);
+  }, [executeForceSignOut]);
 
   const handleConfirmGuestLogout = useCallback(async () => {
     setGuestLogoutLoading(true);
@@ -2906,6 +3095,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signInWithGoogle,
       signOutUser,
+      isSigningOut,
       sendVerificationEmail,
       resetPassword,
       retryProfile,
@@ -2944,6 +3134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signInWithGoogle,
       signOutUser,
+      isSigningOut,
       sendVerificationEmail,
       resetPassword,
       retryProfile,
