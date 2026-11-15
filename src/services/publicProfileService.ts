@@ -448,7 +448,10 @@ export function normalizePublicProfileDoc(
   const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
   const trustedD1Role = typeof p.d1Role === 'string' ? p.d1Role.trim().toLowerCase() : '';
   const isSuperAdmin =
-    isAdminAccount(uid) || trustedD1Role === 'superadmin' || trustedD1Role === 'admin';
+    uid === SUPER_ADMIN_UID ||
+    isAdminAccount(uid) ||
+    trustedD1Role === 'superadmin' ||
+    trustedD1Role === 'admin';
 
   const shortId =
     u.studentId ||

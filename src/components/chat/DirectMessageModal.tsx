@@ -11,9 +11,12 @@ import {
   Inbox,
   UserPlus,
   Sparkles,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { showApiToast } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
@@ -137,11 +140,23 @@ export function formatRoleChipLabel(
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+function formatFirestoreError(collectionName: string, err: any): string {
+  const code = err?.code ? String(err.code) : 'unknown-error';
+  const msg = err?.message ? String(err.message) : 'Query failed.';
+  return `Firestore error on "${collectionName}" (${code}): ${msg}`;
+}
+
 /**
  * Subscribes to outgoing (sent) pending chat requests for the current user.
  */
-export function useOutgoingChatRequests(uid?: string | null): ChatRequest[] {
+export function useOutgoingChatRequests(
+  uid?: string | null,
+  retryNonce = 0,
+  onError?: (err: any) => void
+): ChatRequest[] {
   const [outgoing, setOutgoing] = useState<ChatRequest[]>([]);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     if (!uid || uid.startsWith('guest_')) {
@@ -165,13 +180,17 @@ export function useOutgoingChatRequests(uid?: string | null): ChatRequest[] {
         list.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
         setOutgoing(list);
       },
-      () => {
-        setOutgoing([]);
+      (err) => {
+        console.error(
+          `[Messages] Outgoing chatRequests query failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+          err
+        );
+        if (onErrorRef.current) onErrorRef.current(err);
       }
     );
 
     return () => unsub();
-  }, [uid]);
+  }, [uid, retryNonce]);
 
   return outgoing;
 }
@@ -214,6 +233,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   const [checkingPermission, setCheckingPermission] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -371,15 +391,29 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   useEffect(() => {
     if (!activeConversationId) {
       setMessages([]);
+      setMessagesError(null);
       return;
     }
-    return subscribeMessages(activeConversationId, (msgs) => {
-      setMessages(msgs);
-      void markConversationNotificationsRead(partner.uid, activeConversationId);
-      setTimeout(() => {
-        scrollToNewest('smooth');
-      }, 40);
-    });
+    setMessagesError(null);
+    return subscribeMessages(
+      activeConversationId,
+      (msgs) => {
+        setMessagesError(null);
+        setMessages(msgs);
+        void markConversationNotificationsRead(partner.uid, activeConversationId);
+        setTimeout(() => {
+          scrollToNewest('smooth');
+        }, 40);
+      },
+      (err) => {
+        const formatted = formatFirestoreError(
+          `conversations/${activeConversationId}/messages`,
+          err
+        );
+        setMessagesError(formatted);
+        showApiToast(formatted, 'error');
+      }
+    );
   }, [activeConversationId, partner.uid, markConversationNotificationsRead, scrollToNewest]);
 
   // Scroll to newest on initial open
@@ -573,7 +607,32 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
         <>
           <div ref={messagesAreaRef} className="conv-messages-area">
             <div className="conv-messages-inner">
-              {messages.length === 0 ? (
+              {messagesError ? (
+                <div className="msg-empty-box my-8" data-testid="messages-query-error">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
+                    style={{
+                      backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
+                      boxShadow: 'inset 0 0 0 1px var(--rs-red)',
+                      color: 'var(--rs-red-text)',
+                    }}
+                  >
+                    <AlertTriangle size={20} />
+                  </div>
+                  <p
+                    className="text-[15px] font-bold m-0"
+                    style={{ color: 'var(--rs-text)' }}
+                  >
+                    Unable to load messages
+                  </p>
+                  <p
+                    className="text-[12.5px] max-w-md m-0 leading-relaxed font-mono break-all"
+                    style={{ color: 'var(--rs-red-text)' }}
+                  >
+                    {messagesError}
+                  </p>
+                </div>
+              ) : messages.length === 0 ? (
                 <div className="msg-empty-box my-8">
                   <div
                     className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
@@ -852,6 +911,8 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
 export interface MessagesDashboardContentProps {
   initialTab?: 'chat' | 'requests';
   initialPartner?: TargetChatUser | null;
+  initialConversationId?: string | null;
+  initialRequestId?: string | null;
   onCloseModal?: () => void;
   onPermissionChange?: () => void;
   isModalWrapper?: boolean;
@@ -864,6 +925,8 @@ export interface MessagesDashboardContentProps {
 export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> = ({
   initialTab = 'chat',
   initialPartner = null,
+  initialConversationId = null,
+  initialRequestId = null,
   onCloseModal,
   onPermissionChange,
   isModalWrapper = false,
@@ -872,6 +935,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   const { profile: ownProfile } = useUserProfile();
   const { equipped: ownEquipped } = useWallet();
   const {
+    unreadChatNotificationsCount,
     unreadBySenderUid,
     unreadByConversationId,
     markConversationNotificationsRead,
@@ -891,7 +955,15 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     if (!currentUid || isGuest || currentUid.startsWith('guest_')) return false;
     return getCachedUserConversations(currentUid) === null;
   });
-  const outgoingRequests = useOutgoingChatRequests(currentUid);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState<number>(0);
+
+  const outgoingRequests = useOutgoingChatRequests(currentUid, retryNonce, (err) => {
+    const formatted = formatFirestoreError('chatRequests (outgoing)', err);
+    setRequestsError(formatted);
+    showApiToast(formatted, 'error');
+  });
 
   const [selectedPartner, setSelectedPartner] = useState<TargetChatUser | null>(
     initialPartner
@@ -905,6 +977,26 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   useEffect(() => {
     setSelectedPartner(initialPartner || null);
   }, [initialPartner]);
+
+  // If deep-linked via ?conversationId=conv_... without a resolved initialPartner, resolve from loaded conversations
+  useEffect(() => {
+    if (selectedPartner || !initialConversationId || !currentUid) return;
+    const match = conversations.find((c) => c.id === initialConversationId);
+    if (match) {
+      const otherUid = match.participants.find((p) => p !== currentUid) || '';
+      if (otherUid) {
+        const details = match.participantDetails?.[otherUid];
+        setSelectedPartner({
+          uid: otherUid,
+          displayName: details?.displayName || 'Student',
+          avatar: details?.avatar || null,
+          frame: details?.frame || null,
+          role: details?.role || 'student',
+          photoURL: null,
+        });
+      }
+    }
+  }, [conversations, initialConversationId, selectedPartner, currentUid]);
 
   const mySenderProfile = useMemo(() => {
     const op = (ownProfile || authProfile) as any;
@@ -929,8 +1021,13 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   useEffect(() => {
     if (!currentUid || isGuest || currentUid.startsWith('guest_')) {
       setLoadingConversations(false);
+      setConversationsError(null);
+      setRequestsError(null);
       return;
     }
+
+    setConversationsError(null);
+    setRequestsError(null);
 
     const cachedConvs = getCachedUserConversations(currentUid);
     if (cachedConvs) {
@@ -948,22 +1045,35 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
     const unsubConvs = subscribeUserConversations(
       currentUid,
       (convs) => {
+        setConversationsError(null);
         setConversations(convs);
         setLoadingConversations(false);
       },
-      () => {
+      (err) => {
+        const formatted = formatFirestoreError('conversations', err);
+        setConversationsError(formatted);
         setLoadingConversations(false);
+        showApiToast(formatted, 'error');
       }
     );
-    const unsubReqs = subscribeIncomingChatRequests(currentUid, (reqs) => {
-      setIncomingRequests(reqs);
-    });
+    const unsubReqs = subscribeIncomingChatRequests(
+      currentUid,
+      (reqs) => {
+        setRequestsError(null);
+        setIncomingRequests(reqs);
+      },
+      (err) => {
+        const formatted = formatFirestoreError('chatRequests (incoming)', err);
+        setRequestsError(formatted);
+        showApiToast(formatted, 'error');
+      }
+    );
 
     return () => {
       unsubConvs();
       unsubReqs();
     };
-  }, [currentUid, isGuest]);
+  }, [currentUid, isGuest, retryNonce]);
 
   // Build seeds for all users across conversations, received requests, and sent requests
   const allUserSeeds = useMemo<ChatUserSeed[]>(() => {
@@ -1156,7 +1266,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
             className={`rs-seg-tab ${activeTab === 'chat' ? 'rs-seg-tab--active' : ''}`}
           >
             <span>Chats</span>
-            <span className="rs-seg-badge">{conversations.length}</span>
+            <span className="rs-seg-badge">
+              {Math.max(conversations.length, unreadChatNotificationsCount)}
+            </span>
           </button>
           <button
             ref={(el) => {
@@ -1200,7 +1312,40 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           </div>
 
           {/* Conversation Rows */}
-          {loadingConversations && conversations.length === 0 ? (
+          {conversationsError ? (
+            <div className="msg-empty-box" data-testid="conversations-query-error">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
+                style={{
+                  backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
+                  boxShadow: 'inset 0 0 0 1px var(--rs-red)',
+                  color: 'var(--rs-red-text)',
+                }}
+              >
+                <AlertTriangle size={20} />
+              </div>
+              <p
+                className="text-[15px] font-bold m-0"
+                style={{ color: 'var(--rs-text)' }}
+              >
+                Failed to load conversations
+              </p>
+              <p
+                className="text-[12.5px] max-w-md m-0 leading-relaxed font-mono break-all"
+                style={{ color: 'var(--rs-red-text)' }}
+              >
+                {conversationsError}
+              </p>
+              <button
+                type="button"
+                onClick={() => setRetryNonce((n) => n + 1)}
+                className="rs-glass-btn rs-glass-btn--red h-9 px-4 text-xs inline-flex items-center gap-1.5 mt-2"
+              >
+                <RefreshCw size={14} />
+                <span>Retry</span>
+              </button>
+            </div>
+          ) : loadingConversations && conversations.length === 0 ? (
             <div className="space-y-2.5" data-testid="chats-loading-skeleton">
               {[1, 2, 3, 4].map((i) => (
                 <div
@@ -1351,7 +1496,40 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           {/* RECEIVED GROUP */}
           <section>
             <h2 className="msg-group-heading">Received</h2>
-            {incomingRequests.length === 0 ? (
+            {requestsError ? (
+              <div className="msg-empty-box py-7" data-testid="requests-query-error">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center mb-0.5"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--rs-red) 14%, var(--rs-card2))',
+                    boxShadow: 'inset 0 0 0 1px var(--rs-red)',
+                    color: 'var(--rs-red-text)',
+                  }}
+                >
+                  <AlertTriangle size={18} />
+                </div>
+                <p
+                  className="text-[14px] font-bold m-0"
+                  style={{ color: 'var(--rs-text)' }}
+                >
+                  Failed to load chat requests
+                </p>
+                <p
+                  className="text-[12px] max-w-md m-0 font-mono break-all"
+                  style={{ color: 'var(--rs-red-text)' }}
+                >
+                  {requestsError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRetryNonce((n) => n + 1)}
+                  className="rs-glass-btn rs-glass-btn--red h-9 px-4 text-xs inline-flex items-center gap-1.5 mt-2"
+                >
+                  <RefreshCw size={14} />
+                  <span>Retry</span>
+                </button>
+              </div>
+            ) : incomingRequests.length === 0 ? (
               <div className="msg-empty-box py-7">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center mb-0.5"
@@ -1382,9 +1560,15 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                   const resolved = resolvedUsers[req.fromUid];
                   const senderName =
                     resolved?.displayName || req.fromName || 'Student';
+                  const isHighlighted = Boolean(
+                    initialRequestId && req.id === initialRequestId
+                  );
 
                   return (
-                    <div key={req.id} className="msg-req-card">
+                    <div
+                      key={req.id}
+                      className={`msg-req-card ${isHighlighted ? 'msg-conv-card--unread' : ''}`}
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3.5 min-w-0 flex-1">
                           <div className="shrink-0" style={{ width: 48, height: 48 }}>

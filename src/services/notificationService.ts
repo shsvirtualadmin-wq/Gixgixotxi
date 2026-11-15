@@ -69,6 +69,11 @@ export interface AppNotification {
   isAnnouncement?: boolean;
   announcementId?: string;
   publishedBy?: string;
+  // Specific to messages & chat requests:
+  rawType?: string;
+  conversationId?: string;
+  requestId?: string;
+  senderId?: string;
 }
 
 export interface AnnouncementItem {
@@ -287,12 +292,34 @@ export function extractNotificationActorMeta(
   const titleStr = String(raw.title || '').trim();
   if (!rawName && titleStr) {
     const postMatch = titleStr.match(/^(.+?)\s+posted:\s*/i);
+    const followMatch = titleStr.match(/^(.+?)\s+started following you/i);
+    const newMsgMatch = titleStr.match(/^New message from\s+(.+)$/i);
+    const msgReqMatch = titleStr.match(/^(.+?)\s+sent you a message request/i);
+    const msgAccMatch = titleStr.match(/^(.+?)\s+accepted your message request/i);
     if (postMatch && postMatch[1]) {
       rawName = postMatch[1].trim();
-    } else {
-      const followMatch = titleStr.match(/^(.+?)\s+started following you/i);
-      if (followMatch && followMatch[1]) {
-        rawName = followMatch[1].trim();
+    } else if (followMatch && followMatch[1]) {
+      rawName = followMatch[1].trim();
+    } else if (newMsgMatch && newMsgMatch[1]) {
+      rawName = newMsgMatch[1].trim();
+    } else if (msgReqMatch && msgReqMatch[1]) {
+      rawName = msgReqMatch[1].trim();
+    } else if (msgAccMatch && msgAccMatch[1]) {
+      rawName = msgAccMatch[1].trim();
+    }
+  }
+
+  let extractedConvUid = '';
+  const convIdStr = String(raw.conversationId || raw.conversation_id || '').trim();
+  const recipientUidStr = String(raw.userId || raw.recipientUid || raw.recipientId || '').trim();
+  if (convIdStr.startsWith('conv_')) {
+    const convParts = convIdStr.slice('conv_'.length).split('_');
+    if (convParts.length === 2) {
+      const [u1, u2] = convParts;
+      if (recipientUidStr && u1 === recipientUidStr && u2) {
+        extractedConvUid = u2;
+      } else if (recipientUidStr && u2 === recipientUidStr && u1) {
+        extractedConvUid = u1;
       }
     }
   }
@@ -306,8 +333,10 @@ export function extractNotificationActorMeta(
     raw.follower_id ||
     raw.authorUid ||
     raw.senderId ||
+    raw.senderUid ||
     raw.fromUid ||
     extractedFollowUid ||
+    extractedConvUid ||
     undefined;
 
   if (!resolvedUid && rawName) {
@@ -336,6 +365,7 @@ export function extractNotificationActorMeta(
     resolveCosmeticItemId(raw.author_avatar, 'avatar') ||
     resolveCosmeticItemId(raw.followerAvatar, 'avatar') ||
     resolveCosmeticItemId(raw.actorAvatar, 'avatar') ||
+    resolveCosmeticItemId(raw.senderAvatar, 'avatar') ||
     resolveCosmeticItemId(raw.avatar, 'avatar') ||
     resolveCosmeticItemId(raw.avatarUrl, 'avatar') ||
     null;
@@ -346,6 +376,7 @@ export function extractNotificationActorMeta(
         raw.author_frame ||
         raw.followerFrame ||
         raw.actorFrame ||
+        raw.senderFrame ||
         raw.equippedFrame ||
         raw.frame,
       'frame'
@@ -653,6 +684,10 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
         postId: existing.postId || n.postId,
         postSlug: existing.postSlug || n.postSlug,
         postType: existing.postType || n.postType,
+        rawType: existing.rawType || n.rawType,
+        conversationId: existing.conversationId || n.conversationId,
+        requestId: existing.requestId || n.requestId,
+        senderId: existing.senderId || n.senderId,
       };
       semanticMap.set(semKey, merged);
       dedupIdAliases.set(primaryId, aliasSet);
@@ -1713,6 +1748,10 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             postId: actorMeta.postId,
             postSlug: item.postSlug,
             postType: item.postType,
+            rawType: item.type ? String(item.type) : undefined,
+            conversationId: item.conversationId || item.conversation_id || undefined,
+            requestId: item.requestId || item.request_id || undefined,
+            senderId: item.senderId || item.senderUid || actorMeta.authorId || undefined,
           };
 
           if (isPostNotificationItem(notifItem)) {
@@ -1769,6 +1808,10 @@ export async function syncUserNotificationsStore(userId: string): Promise<void> 
             postId: actorMeta.postId,
             postSlug: data.postSlug,
             postType: data.postType,
+            rawType: data.type ? String(data.type) : undefined,
+            conversationId: data.conversationId || data.conversation_id || undefined,
+            requestId: data.requestId || data.request_id || undefined,
+            senderId: data.senderId || data.senderUid || actorMeta.authorId || undefined,
           };
 
           if (isPostNotificationItem(notifItem)) {
@@ -1942,6 +1985,10 @@ function attachUserRealtimeStore(userId: string): void {
             postId: actorMeta.postId,
             postSlug: data.postSlug,
             postType: data.postType,
+            rawType: data.type ? String(data.type) : undefined,
+            conversationId: data.conversationId || data.conversation_id || undefined,
+            requestId: data.requestId || data.request_id || undefined,
+            senderId: data.senderId || data.senderUid || actorMeta.authorId || undefined,
           };
 
           if (activeStore.followingLoaded && isPostNotificationItem(notifItem)) {
@@ -2369,6 +2416,10 @@ export async function fetchUserNotificationsPage(params: {
           postId: actorMeta.postId,
           postSlug: data.postSlug,
           postType: data.postType,
+          rawType: data.type ? String(data.type) : undefined,
+          conversationId: data.conversationId || data.conversation_id || undefined,
+          requestId: data.requestId || data.request_id || undefined,
+          senderId: data.senderId || data.senderUid || actorMeta.authorId || undefined,
         };
       })
       .filter((n) => {

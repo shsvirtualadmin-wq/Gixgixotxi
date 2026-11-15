@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME } from '@/constants/superAdmin';
 import {
   MessagesDashboardContent,
   type TargetChatUser,
@@ -14,18 +15,43 @@ export function MessagesPage() {
 
   const initialTab = useMemo<'chat' | 'requests'>(() => {
     const tab = searchParams.get('tab') || searchParams.get('chat');
-    return tab === 'requests' ? 'requests' : 'chat';
+    if (tab === 'requests' || searchParams.get('requestId')) {
+      return 'requests';
+    }
+    return 'chat';
+  }, [searchParams]);
+
+  const initialConversationId = useMemo<string | null>(() => {
+    return searchParams.get('conversationId') || null;
+  }, [searchParams]);
+
+  const initialRequestId = useMemo<string | null>(() => {
+    return searchParams.get('requestId') || null;
   }, [searchParams]);
 
   const initialPartner = useMemo<TargetChatUser | null>(() => {
-    const uid = searchParams.get('uid') || searchParams.get('user');
+    // If explicitly opening the Requests tab, show the Requests list so user can accept/decline
+    if (initialTab === 'requests') return null;
+
+    let uid = searchParams.get('uid') || searchParams.get('user') || '';
+    const convId = searchParams.get('conversationId') || '';
+
+    if (!uid && convId.startsWith('conv_') && user?.uid) {
+      const parts = convId.slice('conv_'.length).split('_');
+      if (parts.length === 2) {
+        uid = parts[0] === user.uid ? parts[1] : parts[1] === user.uid ? parts[0] : '';
+      }
+    }
+
     if (!uid || uid === user?.uid) return null;
-    const name = searchParams.get('name') || 'Student';
+    const defaultName = uid === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student';
+    const name = searchParams.get('name') || defaultName;
     return {
       uid,
       displayName: name,
+      role: uid === SUPER_ADMIN_UID ? 'admin' : undefined,
     };
-  }, [searchParams, user?.uid]);
+  }, [searchParams, user?.uid, initialTab]);
 
   if (isGuest || (user?.uid && user.uid.startsWith('guest_'))) {
     return (
@@ -79,9 +105,12 @@ export function MessagesPage() {
       <MessagesDashboardContent
         initialTab={initialTab}
         initialPartner={initialPartner}
+        initialConversationId={initialConversationId}
+        initialRequestId={initialRequestId}
       />
     </>
   );
 }
 
 export default MessagesPage;
+

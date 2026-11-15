@@ -170,6 +170,18 @@ function extractActorNameFromNotification(notif: AppNotification): string {
   if (followMatch && followMatch[1]) {
     return followMatch[1].trim();
   }
+  const newMsgMatch = rawTitle.match(/^New message from\s+(.+)$/i);
+  if (newMsgMatch && newMsgMatch[1]) {
+    return newMsgMatch[1].trim();
+  }
+  const msgReqMatch = rawTitle.match(/^(.+?)\s+sent you a message request/i);
+  if (msgReqMatch && msgReqMatch[1]) {
+    return msgReqMatch[1].trim();
+  }
+  const msgAccMatch = rawTitle.match(/^(.+?)\s+accepted your message request/i);
+  if (msgAccMatch && msgAccMatch[1]) {
+    return msgAccMatch[1].trim();
+  }
   return '';
 }
 
@@ -186,6 +198,7 @@ function extractPostIdFromNotification(notif: AppNotification): string {
 
 function resolveDirectActorUid(notif: AppNotification): string {
   let uid =
+    notif.senderId ||
     notif.authorId ||
     notif.actorId ||
     notif.followerId ||
@@ -769,16 +782,24 @@ export function NotificationsPage() {
         }
       }
 
-      // 3. Post, Reward, Crew, and System notifications navigate to their target page
+      // 3. Post, Message, Reward, Crew, and System notifications navigate to their target page
+      const resolvedActorUid = resolveDirectActorUid(notif);
+      const resolvedActorName = extractActorNameFromNotification(notif);
       const destination = resolveNotificationDestination({
         id: notif.id,
         type: notif.type,
+        rawType: notif.rawType,
         title: notif.title,
         message: notif.message,
         link: notif.link,
-        authorId: notif.authorId,
-        actorId: notif.actorId || notif.authorId,
-        followerId: notif.followerId || notif.authorId,
+        userId: user?.uid,
+        authorId: resolvedActorUid || notif.authorId,
+        actorId: notif.actorId || resolvedActorUid || notif.authorId,
+        followerId: notif.followerId || resolvedActorUid || notif.authorId,
+        senderId: notif.senderId || resolvedActorUid,
+        authorName: resolvedActorName || notif.authorName,
+        conversationId: notif.conversationId,
+        requestId: notif.requestId,
         postId: notif.postId,
         postSlug: notif.postSlug,
         postTitle: notif.title,
@@ -791,7 +812,7 @@ export function NotificationsPage() {
         navigate(destination);
       }
     },
-    [handleMarkOneRead, navigate, openProfile]
+    [handleMarkOneRead, navigate, openProfile, user?.uid]
   );
 
   const handleMarkAllRead = useCallback(async () => {

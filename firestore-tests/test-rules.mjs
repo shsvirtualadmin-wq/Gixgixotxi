@@ -131,10 +131,12 @@ async function runTests() {
   const aliceDb = testEnv.authenticatedContext('alice-123', { email: 'alice@example.com' }).firestore();
   const bobDb = testEnv.authenticatedContext('bob-456', { email: 'bob@example.com' }).firestore();
   const modDb = testEnv.authenticatedContext('mod-777', { email: 'mod@example.com', role: 'moderator' }).firestore();
+  const charlieDb = testEnv.authenticatedContext('charlie-789', { email: 'charlie@example.com' }).firestore();
   const adminDb = testEnv.authenticatedContext('jJfb1nThG1X9phL8fFDZ0G0J7m33', {
     email: 'shsvirtualadmin@gmail.com',
     email_verified: true,
-    role: 'Super Admin',
+    admin: true,
+    superAdmin: true,
   }).firestore();
 
   console.log('\n=== RUNNING SECURITY RULE TEST CASES ===\n');
@@ -608,6 +610,84 @@ async function runTests() {
   await test('11b. Default-deny catch-all blocks unknown collections', async () => {
     await assertFails(aliceDb.collection('unknown_secret_collection').doc('doc1').get());
     await assertFails(aliceDb.collection('unknown_secret_collection').doc('doc1').set({ a: 1 }));
+  });
+
+  // ---------------------------------------------------------------------------
+  // CASE 12: Direct Messages (conversations, messages, chatRequests)
+  // ---------------------------------------------------------------------------
+  await test('12a. Participants (Alice & Bob) CAN create/read conversations, messages, and chatRequests; outsider (Charlie) is DENIED', async () => {
+    // Alice sends a chat request to Bob
+    await assertSucceeds(
+      aliceDb.collection('chatRequests').doc('alice-123_bob-456').set({
+        fromUid: 'alice-123',
+        toUid: 'bob-456',
+        participants: ['alice-123', 'bob-456'],
+        status: 'pending',
+        message: 'Hi Bob!',
+      })
+    );
+
+    // Bob (recipient) and Alice (sender) CAN read the chatRequest
+    await assertSucceeds(bobDb.collection('chatRequests').doc('alice-123_bob-456').get());
+    await assertSucceeds(aliceDb.collection('chatRequests').doc('alice-123_bob-456').get());
+
+    // Charlie (outsider) CANNOT read or update the chatRequest
+    await assertFails(charlieDb.collection('chatRequests').doc('alice-123_bob-456').get());
+    await assertFails(
+      charlieDb.collection('chatRequests').doc('alice-123_bob-456').update({ status: 'accepted' })
+    );
+
+    // Bob accepts the chatRequest and creates the conversation
+    await assertSucceeds(
+      bobDb.collection('chatRequests').doc('alice-123_bob-456').update({ status: 'accepted' })
+    );
+    await assertSucceeds(
+      bobDb.collection('conversations').doc('conv_alice-123_bob-456').set({
+        id: 'conv_alice-123_bob-456',
+        participants: ['alice-123', 'bob-456'],
+        status: 'accepted',
+        lastMessage: 'Salam!',
+        lastMessageText: 'Salam!',
+        lastMessageSenderId: 'bob-456',
+      })
+    );
+
+    // Both Alice and Bob CAN read the conversation and send/read messages inside it
+    await assertSucceeds(aliceDb.collection('conversations').doc('conv_alice-123_bob-456').get());
+    await assertSucceeds(bobDb.collection('conversations').doc('conv_alice-123_bob-456').get());
+    await assertSucceeds(
+      bobDb
+        .collection('conversations')
+        .doc('conv_alice-123_bob-456')
+        .collection('messages')
+        .doc('msg-1')
+        .set({
+          conversationId: 'conv_alice-123_bob-456',
+          senderId: 'bob-456',
+          recipientId: 'alice-123',
+          text: 'Salam!',
+        })
+    );
+    await assertSucceeds(
+      aliceDb
+        .collection('conversations')
+        .doc('conv_alice-123_bob-456')
+        .collection('messages')
+        .doc('msg-1')
+        .get()
+    );
+
+    // Outsider (Charlie) and unauthenticated user CANNOT read the conversation or its messages
+    await assertFails(charlieDb.collection('conversations').doc('conv_alice-123_bob-456').get());
+    await assertFails(unauthDb.collection('conversations').doc('conv_alice-123_bob-456').get());
+    await assertFails(
+      charlieDb
+        .collection('conversations')
+        .doc('conv_alice-123_bob-456')
+        .collection('messages')
+        .doc('msg-1')
+        .get()
+    );
   });
 
   await testEnv.cleanup();

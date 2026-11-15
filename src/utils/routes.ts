@@ -417,6 +417,11 @@ export interface NotificationRouteParams {
   commentId?: string | null;
   isAnnouncement?: boolean;
   announcementId?: string | null;
+  rawType?: string | null;
+  conversationId?: string | null;
+  requestId?: string | null;
+  senderId?: string | null;
+  authorName?: string | null;
 }
 
 /**
@@ -525,18 +530,55 @@ export function resolveNotificationDestination(notif: NotificationRouteParams): 
     return '/dashboard/profile';
   }
 
-  // 1b. Chat request or Direct Message notification
-  if (type === 'chat_request' || type === 'chat_request_accepted' || type === 'new_message') {
-    const senderUid = notif.authorId || notif.actorId;
-    if (senderUid) {
-      const tabParam = type === 'chat_request' ? 'requests' : 'open';
-      return `${routes.profile(senderUid)}?chat=${tabParam}`;
+  // 1b. Chat request or Direct Message notification -> open matching chat or request in /dashboard/messages
+  const rawType = String(notif.rawType || notif.type || '').toLowerCase();
+  const isChatRequest =
+    rawType === 'chat_request' ||
+    combinedText.includes('sent you a message request') ||
+    (notif.link && notif.link.includes('tab=requests')) ||
+    (notif.link && notif.link.includes('chat=requests'));
+
+  if (
+    type === 'chat_request' ||
+    type === 'chat_request_accepted' ||
+    type === 'new_message' ||
+    type === 'message' ||
+    isChatRequest ||
+    combinedText.includes('new message from')
+  ) {
+    let senderUid = notif.senderId || notif.authorId || notif.actorId || '';
+    const convId = notif.conversationId || '';
+    if (!senderUid && convId.startsWith('conv_')) {
+      const parts = convId.slice('conv_'.length).split('_');
+      if (parts.length === 2) {
+        const [u1, u2] = parts;
+        if (notif.userId && u1 === notif.userId) senderUid = u2;
+        else if (notif.userId && u2 === notif.userId) senderUid = u1;
+      }
     }
+
+    if (isChatRequest) {
+      const params = new URLSearchParams();
+      params.set('tab', 'requests');
+      if (senderUid) params.set('uid', senderUid);
+      if (notif.requestId) params.set('requestId', notif.requestId);
+      return `/dashboard/messages?${params.toString()}`;
+    }
+
+    const params = new URLSearchParams();
+    params.set('tab', 'chat');
+    if (senderUid) params.set('uid', senderUid);
+    if (notif.authorName) params.set('name', notif.authorName);
+    if (convId) params.set('conversationId', convId);
+    if (senderUid || convId) {
+      return `/dashboard/messages?${params.toString()}`;
+    }
+
     if (notif.link) {
       const mapped = mapLegacyNotificationPath(notif.link);
-      if (mapped) return mapped;
+      if (mapped && mapped.startsWith('/dashboard/messages')) return mapped;
     }
-    return '/dashboard/profile?chat=requests';
+    return '/dashboard/messages?tab=chat';
   }
 
   // 2. Post notifications (someone you follow posted something new)

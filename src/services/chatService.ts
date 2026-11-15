@@ -12,6 +12,7 @@ import {
   limit,
   onSnapshot,
   serverTimestamp,
+  increment,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { isFollowing } from '@/services/followService';
@@ -21,6 +22,12 @@ import {
   getCachedPublicProfile,
   subscribeAllPublicProfiles,
 } from '@/services/publicProfileService';
+import {
+  getNotificationStoreSnapshot,
+  extractNotificationActorMeta,
+  type AppNotification,
+} from '@/services/notificationService';
+import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME } from '@/constants/superAdmin';
 import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 
 export const CHAT_REQUEST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -52,6 +59,9 @@ export interface Conversation {
   id: string;
   participants: string[];
   participantDetails: Record<string, ConversationParticipant>;
+  status?: 'accepted' | 'pending';
+  unreadCounts?: Record<string, number>;
+  isOfficialChat?: boolean;
   lastMessage?: string;
   lastMessageText?: string;
   lastMessageSenderId?: string;
@@ -73,6 +83,7 @@ export interface ChatRequest {
   id: string;
   fromUid: string;
   toUid: string;
+  participants?: string[];
   fromName: string;
   fromAvatar?: string | null;
   fromFrame?: string | null;
@@ -94,13 +105,27 @@ export interface ChatRequest {
 
 export interface ChatPermissionState {
   canChat: boolean;
-  reason: 'mutual_follow' | 'request_accepted' | 'none';
+  reason: 'mutual_follow' | 'request_accepted' | 'official_account' | 'none';
   isMutualFollow: boolean;
   hasAcceptedRequest?: boolean;
+  isOfficialChat?: boolean;
   outgoingRequest: ChatRequest | null;
   incomingRequest: ChatRequest | null;
   cooldownEndsAtMs: number | null;
   isCooldownActive: boolean;
+}
+
+async function hasCallerAdminClaim(uid: string): Promise<boolean> {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid !== uid) return false;
+    const tokenResult = await currentUser.getIdTokenResult();
+    return Boolean(
+      tokenResult?.claims?.admin === true || tokenResult?.claims?.superAdmin === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -177,13 +202,17 @@ export async function checkChatPermission(
 
   const outReqId = getChatRequestId(currentUid, targetUid);
   const inReqId = getChatRequestId(targetUid, currentUid);
+  const convId = getConversationId(currentUid, targetUid);
 
-  const [iFollowThem, theyFollowMe, outSnap, inSnap] = await Promise.all([
-    isFollowing(currentUid, targetUid).catch(() => false),
-    isFollowing(targetUid, currentUid).catch(() => false),
-    getDoc(doc(db, 'chatRequests', outReqId)).catch(() => null),
-    getDoc(doc(db, 'chatRequests', inReqId)).catch(() => null),
-  ]);
+  const [iFollowThem, theyFollowMe, outSnap, inSnap, convSnap, callerIsAdmin] =
+    await Promise.all([
+      isFollowing(currentUid, targetUid).catch(() => false),
+      isFollowing(targetUid, currentUid).catch(() => false),
+      getDoc(doc(db, 'chatRequests', outReqId)).catch(() => null),
+      getDoc(doc(db, 'chatRequests', inReqId)).catch(() => null),
+      getDoc(doc(db, 'conversations', convId)).catch(() => null),
+      hasCallerAdminClaim(currentUid),
+    ]);
 
   const isMutualFollow = Boolean(iFollowThem && theyFollowMe);
   const outgoingRequest =
@@ -192,7 +221,20 @@ export async function checkChatPermission(
     inSnap && inSnap.exists() ? parseChatRequestDoc(inSnap.id, inSnap.data()) : null;
 
   const isRequestAccepted =
-    outgoingRequest?.status === 'accepted' || incomingRequest?.status === 'accepted';
+    outgoingRequest?.status === 'accepted' ||
+    outgoingRequest?.status === 'auto_accepted' ||
+    outgoingRequest?.status === 'already_allowed' ||
+    incomingRequest?.status === 'accepted' ||
+    incomingRequest?.status === 'auto_accepted' ||
+    incomingRequest?.status === 'already_allowed';
+
+  const hasExistingConversation = Boolean(
+    convSnap &&
+      convSnap.exists() &&
+      Array.isArray(convSnap.data()?.participants) &&
+      convSnap.data()?.participants.includes(currentUid) &&
+      convSnap.data()?.participants.includes(targetUid)
+  );
 
   let cooldownEndsAtMs: number | null = null;
   let isCooldownActive = false;
@@ -220,12 +262,15 @@ export async function checkChatPermission(
     };
   }
 
-  if (isRequestAccepted) {
+  if (isRequestAccepted || hasExistingConversation || callerIsAdmin) {
     return {
       canChat: true,
-      reason: 'request_accepted',
+      reason: callerIsAdmin ? 'official_account' : 'request_accepted',
       isMutualFollow: false,
       hasAcceptedRequest: true,
+      isOfficialChat: Boolean(
+        callerIsAdmin || currentUid === SUPER_ADMIN_UID || targetUid === SUPER_ADMIN_UID
+      ),
       outgoingRequest,
       incomingRequest,
       cooldownEndsAtMs,
@@ -306,9 +351,11 @@ export async function sendChatRequest(
   const fromName = fromMeta?.displayName || auth.currentUser?.displayName || 'Student';
   const toName = toMeta?.displayName || 'Student';
 
+  const sortedParticipants = [fromUid, toUid].sort();
   const payload = {
     fromUid,
     toUid,
+    participants: sortedParticipants,
     fromName,
     fromAvatar: resolveCosmeticItemId(fromMeta?.avatar, 'avatar'),
     fromFrame: resolveCosmeticItemId(fromMeta?.frame, 'frame'),
@@ -336,6 +383,7 @@ export async function sendChatRequest(
     await setDoc(notifRef, {
       userId: toUid,
       recipientUid: toUid,
+      recipientId: toUid,
       type: 'chat_request',
       title: `${fromName} sent you a message request`,
       message: `${fromName} wants to chat with you. Open Requests in Messages to accept or decline.`,
@@ -346,13 +394,16 @@ export async function sendChatRequest(
       authorAvatar: fromMeta?.avatar || null,
       authorFrame: fromMeta?.frame || null,
       requestId: reqId,
-      link: `/profile/${fromUid}?chat=requests`,
+      conversationId: getConversationId(fromUid, toUid),
+      link: `/dashboard/messages?tab=requests&uid=${encodeURIComponent(fromUid)}&requestId=${encodeURIComponent(reqId)}`,
       read: false,
       isRead: false,
       createdAt: serverTimestamp(),
-    }).catch(() => {});
-  } catch {
-    // Non-blocking notification error
+    }).catch((err) => {
+      console.warn('[chatService] Failed to create chat_request notification:', err);
+    });
+  } catch (err) {
+    console.warn('[chatService] Non-blocking notification error:', err);
   }
 
   return parseChatRequestDoc(reqId, payload);
@@ -425,6 +476,7 @@ export async function respondToChatRequest(
       await setDoc(notifRef, {
         userId: existing.fromUid,
         recipientUid: existing.fromUid,
+        recipientId: existing.fromUid,
         type: 'chat_request_accepted',
         title: `${responderName} accepted your message request`,
         message: `You can now chat directly with ${responderName}.`,
@@ -435,11 +487,14 @@ export async function respondToChatRequest(
         authorAvatar: responderMeta?.avatar ?? existing.toAvatar ?? null,
         authorFrame: responderMeta?.frame ?? existing.toFrame ?? null,
         requestId,
-        link: `/profile/${currentUid}?chat=open`,
+        conversationId: convId,
+        link: `/dashboard/messages?tab=chat&uid=${encodeURIComponent(currentUid)}&conversationId=${encodeURIComponent(convId)}`,
         read: false,
         isRead: false,
         createdAt: serverTimestamp(),
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn('[chatService] Failed to create chat_request_accepted notification:', err);
+      });
     } catch {
       // Non-blocking
     }
@@ -669,6 +724,10 @@ export function subscribeIncomingChatRequests(
       emitWithLiveProfiles(items);
     },
     (err) => {
+      console.error(
+        `[chatService] subscribeIncomingChatRequests failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+        err
+      );
       if (onError) onError(err);
     }
   );
@@ -788,6 +847,10 @@ export function subscribeUserConversations(
           id: d.id,
           participants: Array.isArray(data.participants) ? data.participants : [],
           participantDetails: data.participantDetails || {},
+          status: data.status || 'accepted',
+          unreadCounts:
+            data.unreadCounts && typeof data.unreadCounts === 'object' ? data.unreadCounts : {},
+          isOfficialChat: Boolean(data.isOfficialChat),
           lastMessage: lastMsg,
           lastMessageText: lastMsg,
           lastMessageSenderId: lastSender,
@@ -805,8 +868,16 @@ export function subscribeUserConversations(
       );
       latestConvs = convs;
       emitConvsWithLiveProfiles(convs);
+
+      // Reconcile any orphan message notifications (e.g. "New message from SHS Virtual Academy")
+      // that lacked a parent conversation document so they appear immediately in Chats.
+      void reconcileOrphanMessageNotificationsForUser(uid, convs);
     },
     (err) => {
+      console.error(
+        `[chatService] subscribeUserConversations failed for uid=${uid} (code=${err?.code || 'unknown'}):`,
+        err
+      );
       if (onError) onError(err);
     }
   );
@@ -823,9 +894,240 @@ export function subscribeUserConversations(
   };
 }
 
+const reconciledNotificationIdsByUser = new Map<string, Set<string>>();
+
+/**
+ * Finds message notifications for `uid` (e.g. "New message from SHS Virtual Academy", body "Hi")
+ * that do not have a matching `conversations/{convId}` document and creates the missing
+ * conversation and message document so the chat appears in `/dashboard/messages`.
+ */
+export async function reconcileOrphanMessageNotificationsForUser(
+  uid: string,
+  existingConvs?: Conversation[]
+): Promise<number> {
+  if (!uid || uid.startsWith('guest_')) return 0;
+
+  let processedSet = reconciledNotificationIdsByUser.get(uid);
+  if (!processedSet) {
+    processedSet = new Set<string>();
+    reconciledNotificationIdsByUser.set(uid, processedSet);
+  }
+
+  const existingConvIds = new Set<string>((existingConvs || []).map((c) => c.id));
+  const candidateNotifs = new Map<string, Record<string, any>>();
+
+  // 1. Collect from in-memory NotificationStore
+  try {
+    const storeSnap = getNotificationStoreSnapshot(uid);
+    for (const n of storeSnap.userNotifications) {
+      if (n.id && !processedSet.has(n.id)) {
+        candidateNotifs.set(n.id, n as Record<string, any>);
+      }
+    }
+  } catch {
+    // Ignore store snapshot read error
+  }
+
+  // 2. Also query Firestore `notifications` directly in case NotificationStore hasn't synced yet
+  try {
+    const notifQ = query(
+      collection(db, 'notifications'),
+      where('userId', '==', uid),
+      limit(50)
+    );
+    const notifSnap = await getDocs(notifQ);
+    notifSnap.forEach((d) => {
+      if (!processedSet!.has(d.id) && !candidateNotifs.has(d.id)) {
+        candidateNotifs.set(d.id, { id: d.id, ...d.data() });
+      }
+    });
+  } catch {
+    // Ignore query error
+  }
+
+  let backfilledCount = 0;
+
+  for (const [notifId, raw] of candidateNotifs.entries()) {
+    processedSet.add(notifId);
+
+    const rawType = String(raw.rawType || raw.type || '').trim().toLowerCase();
+    const titleStr = String(raw.title || '').trim();
+    const msgStr = String(raw.message || raw.body || '').trim();
+    const isMsgNotif =
+      rawType === 'new_message' ||
+      rawType === 'message' ||
+      /^New message from\s+(.+)$/i.test(titleStr);
+
+    if (!isMsgNotif) continue;
+
+    const meta = extractNotificationActorMeta(raw, notifId);
+    let senderUid = String(
+      raw.senderId || raw.senderUid || raw.authorId || raw.actorId || meta.authorId || ''
+    ).trim();
+    let senderName = String(
+      raw.senderName || raw.authorName || meta.authorName || ''
+    ).trim();
+
+    if (!senderName) {
+      const m = titleStr.match(/^New message from\s+(.+)$/i);
+      if (m && m[1]) senderName = m[1].trim();
+    }
+
+    if (
+      !senderUid &&
+      senderName &&
+      (senderName.toLowerCase() === 'shs virtual academy' ||
+        senderName.toLowerCase() === SUPER_ADMIN_NAME.toLowerCase())
+    ) {
+      senderUid = SUPER_ADMIN_UID;
+    }
+
+    if (!senderUid || senderUid === uid) continue;
+
+    const convId =
+      typeof raw.conversationId === 'string' && raw.conversationId.startsWith('conv_')
+        ? raw.conversationId
+        : getConversationId(uid, senderUid);
+
+    if (existingConvIds.has(convId)) continue;
+
+    try {
+      const convRef = doc(db, 'conversations', convId);
+      const convSnap = await getDoc(convRef);
+      if (
+        convSnap.exists() &&
+        Array.isArray(convSnap.data()?.participants) &&
+        convSnap.data()?.participants.includes(uid)
+      ) {
+        existingConvIds.add(convId);
+        continue;
+      }
+
+      const sortedParticipants = [uid, senderUid].sort();
+      const createdAtMs =
+        toTimestampMs(raw.createdAt, raw.createdAtMs) || Date.now();
+      const resolvedSenderName =
+        senderName ||
+        (senderUid === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student');
+      const isOfficial = senderUid === SUPER_ADMIN_UID;
+      const myProfile = getCachedPublicProfile(uid);
+      const senderProfile = getCachedPublicProfile(senderUid);
+      const messageBody = msgStr || 'Hi';
+
+      // Create the parent conversation document first so security rules see `uid` in `participants`
+      await setDoc(
+        convRef,
+        {
+          id: convId,
+          participants: sortedParticipants,
+          status: 'accepted',
+          isOfficialChat: isOfficial,
+          participantDetails: {
+            [senderUid]: {
+              displayName: senderProfile?.displayName || resolvedSenderName,
+              avatar:
+                resolveCosmeticItemId(
+                  senderProfile?.equippedAvatar || raw.authorAvatar,
+                  'avatar'
+                ) || null,
+              frame:
+                resolveCosmeticItemId(
+                  senderProfile?.equippedFrame || raw.authorFrame,
+                  'frame'
+                ) || null,
+              role: isOfficial ? 'admin' : senderProfile?.role || 'student',
+              photoURL: null,
+            },
+            [uid]: {
+              displayName:
+                myProfile?.displayName || auth.currentUser?.displayName || 'Student',
+              avatar: resolveCosmeticItemId(myProfile?.equippedAvatar, 'avatar') || null,
+              frame: resolveCosmeticItemId(myProfile?.equippedFrame, 'frame') || null,
+              role: myProfile?.role || 'student',
+              photoURL: null,
+            },
+          },
+          lastMessage: messageBody,
+          lastMessageText: messageBody,
+          lastMessageSenderId: senderUid,
+          lastSenderId: senderUid,
+          lastMessageAt: raw.createdAt || serverTimestamp(),
+          lastMessageAtMs: createdAtMs,
+          unreadCounts: {
+            [uid]: raw.read ? 0 : 1,
+          },
+          createdAt: raw.createdAt || serverTimestamp(),
+          updatedAt: raw.createdAt || serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // Check if messages subcollection already has at least one message; if not, backfill the message from the notification
+      const msgsColRef = collection(db, 'conversations', convId, 'messages');
+      const existingMsgsSnap = await getDocs(query(msgsColRef, limit(1))).catch(
+        () => null
+      );
+      if (!existingMsgsSnap || existingMsgsSnap.empty) {
+        const backfillMsgRef = doc(msgsColRef, `backfill_${notifId}`);
+        await setDoc(
+          backfillMsgRef,
+          {
+            conversationId: convId,
+            senderId: senderUid,
+            recipientId: uid,
+            senderName: resolvedSenderName,
+            senderAvatar:
+              resolveCosmeticItemId(
+                senderProfile?.equippedAvatar || raw.authorAvatar,
+                'avatar'
+              ) || null,
+            senderFrame:
+              resolveCosmeticItemId(
+                senderProfile?.equippedFrame || raw.authorFrame,
+                'frame'
+              ) || null,
+            text: messageBody,
+            createdAt: raw.createdAt || serverTimestamp(),
+            createdAtMs,
+          },
+          { merge: true }
+        );
+      }
+
+      existingConvIds.add(convId);
+      backfilledCount++;
+    } catch (err) {
+      console.warn(
+        `[chatService] Failed to reconcile orphan notification ${notifId} into conversation ${convId}:`,
+        err
+      );
+    }
+  }
+
+  return backfilledCount;
+}
+
+/**
+ * Resets the unread counter on `conversations/{conversationId}` for `uid`.
+ */
+export async function clearConversationUnreadCount(
+  conversationId: string,
+  uid: string
+): Promise<void> {
+  if (!conversationId || !uid) return;
+  try {
+    const convRef = doc(db, 'conversations', conversationId);
+    await updateDoc(convRef, {
+      [`unreadCounts.${uid}`]: 0,
+    });
+  } catch {
+    // Non-fatal if doc doesn't exist yet
+  }
+}
+
 /**
  * Gets or creates a one-to-one conversation between two users.
- * Requires mutual follow or an accepted chat request.
+ * Requires mutual follow, an accepted chat request, or an official/admin account.
  */
 export async function getOrCreateConversation(
   currentUserId: string,
@@ -861,38 +1163,64 @@ export async function getOrCreateConversation(
   const sortedParticipants = [currentUserId, otherUserId].sort();
   const convId = getConversationId(currentUserId, otherUserId);
   const convRef = doc(db, 'conversations', convId);
+  const isOfficial = Boolean(
+    perm.isOfficialChat ||
+      currentUserId === SUPER_ADMIN_UID ||
+      otherUserId === SUPER_ADMIN_UID
+  );
 
-  const snap = await getDoc(convRef);
-  if (snap.exists()) {
-    if (cMeta || oMeta) {
-      const existingData = snap.data() as Conversation;
-      const details = {
-        ...(existingData.participantDetails || {}),
-        ...(cMeta ? { [currentUserId]: cMeta } : {}),
-        ...(oMeta ? { [otherUserId]: oMeta } : {}),
-      };
-      await updateDoc(convRef, {
+  const snap = await getDoc(convRef).catch(() => null);
+  if (snap && snap.exists()) {
+    const existingData = snap.data() as Conversation;
+    const details = {
+      ...(existingData.participantDetails || {}),
+      ...(cMeta ? { [currentUserId]: cMeta } : {}),
+      ...(oMeta ? { [otherUserId]: oMeta } : {}),
+    };
+    await setDoc(
+      convRef,
+      {
+        id: convId,
+        participants: sortedParticipants,
+        status: 'accepted',
+        isOfficialChat: isOfficial || Boolean(existingData.isOfficialChat),
         participantDetails: details,
         updatedAt: serverTimestamp(),
-      }).catch(() => {});
-    }
+      },
+      { merge: true }
+    );
     return convId;
   }
 
-  const newConv: Conversation = {
+  const cDisplayName =
+    cMeta?.displayName ||
+    (currentUserId === SUPER_ADMIN_UID
+      ? SUPER_ADMIN_NAME
+      : auth.currentUser?.displayName || 'Student');
+  const oDisplayName =
+    oMeta?.displayName ||
+    (otherUserId === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student');
+
+  const newConv: Record<string, any> = {
     id: convId,
     participants: sortedParticipants,
+    status: 'accepted',
+    isOfficialChat: isOfficial,
     participantDetails: {
       [currentUserId]: {
-        displayName: cMeta?.displayName || auth.currentUser?.displayName || 'Student',
+        displayName: cDisplayName,
         avatar: resolveCosmeticItemId(cMeta?.avatar, 'avatar'),
         frame: resolveCosmeticItemId(cMeta?.frame, 'frame'),
+        role:
+          cMeta?.role || (currentUserId === SUPER_ADMIN_UID ? 'admin' : 'student'),
         photoURL: null,
       },
       [otherUserId]: {
-        displayName: oMeta?.displayName || 'Student',
+        displayName: oDisplayName,
         avatar: resolveCosmeticItemId(oMeta?.avatar, 'avatar'),
         frame: resolveCosmeticItemId(oMeta?.frame, 'frame'),
+        role:
+          oMeta?.role || (otherUserId === SUPER_ADMIN_UID ? 'admin' : 'student'),
         photoURL: null,
       },
     },
@@ -902,17 +1230,55 @@ export async function getOrCreateConversation(
     lastSenderId: currentUserId,
     lastMessageAt: serverTimestamp(),
     lastMessageAtMs: Date.now(),
+    unreadCounts: {
+      [currentUserId]: 0,
+      [otherUserId]: 0,
+    },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
-  await setDoc(convRef, newConv);
+  await setDoc(convRef, newConv, { merge: true });
+
+  // When an official/admin account initiates a conversation with a student, also ensure an
+  // accepted chatRequest record exists so both checkChatPermission and any request lookups succeed.
+  if (perm.reason === 'official_account' || currentUserId === SUPER_ADMIN_UID) {
+    const reqId = getChatRequestId(currentUserId, otherUserId);
+    await setDoc(
+      doc(db, 'chatRequests', reqId),
+      {
+        fromUid: currentUserId,
+        toUid: otherUserId,
+        participants: sortedParticipants,
+        fromName: cDisplayName,
+        fromAvatar: resolveCosmeticItemId(cMeta?.avatar, 'avatar'),
+        fromFrame: resolveCosmeticItemId(cMeta?.frame, 'frame'),
+        fromPhotoURL: null,
+        fromRole: 'admin',
+        toName: oDisplayName,
+        toAvatar: resolveCosmeticItemId(oMeta?.avatar, 'avatar'),
+        toFrame: resolveCosmeticItemId(oMeta?.frame, 'frame'),
+        toPhotoURL: null,
+        message: '',
+        conversationId: convId,
+        status: 'accepted',
+        createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
+        updatedAt: serverTimestamp(),
+        declinedAt: null,
+        declinedAtMs: null,
+      },
+      { merge: true }
+    ).catch(() => {});
+  }
+
   return convId;
 }
 
 /**
- * Sends a message in a conversation and notifies recipient.
- * Enforces mutual follow or accepted chat request before writing.
+ * Sends a message in a conversation, guarantees the parent conversation document exists
+ * with both `participants` and `participantDetails`, increments recipient unreadCounts,
+ * and notifies the recipient.
  */
 export async function sendMessage(
   conversationId: string,
@@ -961,13 +1327,90 @@ export async function sendMessage(
     );
   }
 
-  const senderName = senderMeta?.displayName || auth.currentUser?.displayName || 'Student';
-  const senderAvatar = senderMeta?.avatar || null;
-  const senderFrame = senderMeta?.frame || null;
+  const senderName =
+    senderMeta?.displayName ||
+    (senderId === SUPER_ADMIN_UID
+      ? SUPER_ADMIN_NAME
+      : auth.currentUser?.displayName || 'Student');
+  const senderAvatar = resolveCosmeticItemId(senderMeta?.avatar, 'avatar') || null;
+  const senderFrame = resolveCosmeticItemId(senderMeta?.frame, 'frame') || null;
+  const senderRole =
+    senderMeta?.role || (senderId === SUPER_ADMIN_UID ? 'admin' : 'student');
   const nowMs = Date.now();
+  const sortedParticipants = [senderId, recipientId].sort();
+  const isOfficial = Boolean(
+    perm.isOfficialChat ||
+      senderId === SUPER_ADMIN_UID ||
+      recipientId === SUPER_ADMIN_UID
+  );
 
-  const messagesColRef = collection(db, 'conversations', conversationId, 'messages');
   const convRef = doc(db, 'conversations', conversationId);
+  const existingConvSnap = await getDoc(convRef).catch(() => null);
+  const existingDetails =
+    (existingConvSnap?.exists()
+      ? existingConvSnap.data()?.participantDetails
+      : null) || {};
+  const cachedRecipientProf = getCachedPublicProfile(recipientId);
+  const recipientPrev = existingDetails[recipientId] || {};
+  const recipientDisplayName =
+    cachedRecipientProf?.displayName ||
+    recipientPrev.displayName ||
+    (recipientId === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student');
+
+  const mergedParticipantDetails: Record<string, ConversationParticipant> = {
+    ...existingDetails,
+    [senderId]: {
+      displayName: senderName,
+      avatar: senderAvatar || existingDetails[senderId]?.avatar || null,
+      frame: senderFrame || existingDetails[senderId]?.frame || null,
+      role: senderRole,
+      photoURL: null,
+    },
+    [recipientId]: {
+      displayName: recipientDisplayName,
+      avatar:
+        resolveCosmeticItemId(
+          cachedRecipientProf?.equippedAvatar || recipientPrev.avatar,
+          'avatar'
+        ) || null,
+      frame:
+        resolveCosmeticItemId(
+          cachedRecipientProf?.equippedFrame || recipientPrev.frame,
+          'frame'
+        ) || null,
+      role:
+        recipientPrev.role ||
+        cachedRecipientProf?.role ||
+        (recipientId === SUPER_ADMIN_UID ? 'admin' : 'student'),
+      photoURL: null,
+    },
+  };
+
+  // 1. Upsert parent conversation document FIRST (using setDoc with merge: true, never updateDoc.catch)
+  // so `participants` array-contains queries and message subcollection rules always see a valid parent doc.
+  await setDoc(
+    convRef,
+    {
+      id: conversationId,
+      participants: sortedParticipants,
+      status: 'accepted',
+      isOfficialChat: isOfficial,
+      participantDetails: mergedParticipantDetails,
+      lastMessage: trimmed,
+      lastMessageText: trimmed,
+      lastMessageSenderId: senderId,
+      lastSenderId: senderId,
+      lastMessageAt: serverTimestamp(),
+      lastMessageAtMs: nowMs,
+      updatedAt: serverTimestamp(),
+      ...(existingConvSnap?.exists() ? {} : { createdAt: serverTimestamp() }),
+      [`unreadCounts.${recipientId}`]: increment(1),
+    },
+    { merge: true }
+  );
+
+  // 2. Write the message document to conversations/{conversationId}/messages
+  const messagesColRef = collection(db, 'conversations', conversationId, 'messages');
   const docRef = await addDoc(messagesColRef, {
     conversationId,
     senderId,
@@ -980,22 +1423,44 @@ export async function sendMessage(
     createdAt: serverTimestamp(),
   });
 
-  await updateDoc(convRef, {
-    lastMessage: trimmed,
-    lastMessageText: trimmed,
-    lastMessageSenderId: senderId,
-    lastSenderId: senderId,
-    lastMessageAt: serverTimestamp(),
-    lastMessageAtMs: nowMs,
-    updatedAt: serverTimestamp(),
-  }).catch(() => {});
+  // 3. If sender is an official/admin account, ensure an accepted chatRequest record exists
+  if (perm.reason === 'official_account' || senderId === SUPER_ADMIN_UID) {
+    const reqId = getChatRequestId(senderId, recipientId);
+    await setDoc(
+      doc(db, 'chatRequests', reqId),
+      {
+        fromUid: senderId,
+        toUid: recipientId,
+        participants: sortedParticipants,
+        fromName: senderName,
+        fromAvatar: senderAvatar,
+        fromFrame: senderFrame,
+        fromPhotoURL: null,
+        fromRole: 'admin',
+        toName: recipientDisplayName,
+        toAvatar: mergedParticipantDetails[recipientId]?.avatar || null,
+        toFrame: mergedParticipantDetails[recipientId]?.frame || null,
+        toPhotoURL: null,
+        message: trimmed,
+        conversationId,
+        status: 'accepted',
+        createdAt: serverTimestamp(),
+        createdAtMs: nowMs,
+        updatedAt: serverTimestamp(),
+        declinedAt: null,
+        declinedAtMs: null,
+      },
+      { merge: true }
+    ).catch(() => {});
+  }
 
-  // Send notification to recipient
+  // 4. Send notification to recipient with direct link to the conversation in /dashboard/messages
   try {
     const notifRef = doc(collection(db, 'notifications'));
     await setDoc(notifRef, {
       userId: recipientId,
       recipientUid: recipientId,
+      recipientId,
       type: 'new_message',
       title: `New message from ${senderName}`,
       message: trimmed.length > 80 ? `${trimmed.slice(0, 77)}...` : trimmed,
@@ -1006,13 +1471,15 @@ export async function sendMessage(
       authorAvatar: senderAvatar,
       authorFrame: senderFrame,
       conversationId,
-      link: `/profile/${senderId}?chat=open`,
+      link: `/dashboard/messages?tab=chat&uid=${encodeURIComponent(senderId)}&conversationId=${encodeURIComponent(conversationId)}`,
       read: false,
       isRead: false,
       createdAt: serverTimestamp(),
-    }).catch(() => {});
-  } catch {
-    // Non-blocking notification error
+    }).catch((err) => {
+      console.warn('[chatService] Failed to write message notification:', err);
+    });
+  } catch (err) {
+    console.warn('[chatService] Non-blocking notification error:', err);
   }
 
   return docRef.id;
@@ -1101,6 +1568,10 @@ export function subscribeMessages(
       emitMsgsWithLiveProfiles(msgs);
     },
     (err) => {
+      console.error(
+        `[chatService] subscribeMessages failed for conversationId=${conversationId} (code=${err?.code || 'unknown'}):`,
+        err
+      );
       if (onError) {
         onError(err);
       }

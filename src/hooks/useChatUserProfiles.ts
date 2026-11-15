@@ -5,7 +5,7 @@ import {
   type PublicProfile,
 } from '@/services/publicProfileService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
-import { isAdminAccount } from '@/constants/superAdmin';
+import { isAdminAccount, SUPER_ADMIN_UID, SUPER_ADMIN_NAME } from '@/constants/superAdmin';
 
 export interface ResolvedChatUser {
   uid: string;
@@ -138,18 +138,21 @@ export function useChatUserProfiles(seeds: ChatUserSeed[]): Record<string, Resol
       const prof = profilesByUid[uid] || getCachedPublicProfile(uid) || null;
       const isLoadingProfile = !prof && !fetchedUids.has(uid);
 
+      const isSuperAdmin = Boolean(
+        uid === SUPER_ADMIN_UID ||
+          isAdminAccount(uid) ||
+          prof?.role === 'admin' ||
+          prof?.role === 'superadmin' ||
+          seed.role === 'admin' ||
+          seed.role === 'superadmin'
+      );
+
       const displayName =
         prof?.displayName ||
         seed.displayName ||
-        'Student';
+        (isSuperAdmin ? SUPER_ADMIN_NAME : 'Student');
 
-      const role = prof?.role || 'student';
-
-      const isSuperAdmin = Boolean(
-        isAdminAccount(uid) ||
-          prof?.role === 'admin' ||
-          prof?.role === 'superadmin'
-      );
+      const role = prof?.role || seed.role || 'student';
 
       const equippedAvatar =
         resolveCosmeticItemId(prof?.equipped?.avatar, 'avatar') ||
