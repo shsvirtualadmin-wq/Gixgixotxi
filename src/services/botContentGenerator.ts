@@ -1,9 +1,31 @@
-import { BOARDLY_BOT_ACCOUNTS, BotAccountConfig } from '../config/botsConfig';
+import {
+  BOARDLY_BOT_ACCOUNTS,
+  BOT_GEMINI_CONFIG,
+  BotAccountConfig,
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  DELAY_BETWEEN_BOT_RUNS_MS,
+  MAX_GEMINI_TRIES,
+  MAX_STORED_BOT_ERROR_LENGTH,
+  MIN_SAME_KEY_DELAY_MS,
+  resolvePinnedGeminiModels,
+} from '../config/botsConfig';
 import {
   repairLatexLocally,
   validateMathInText,
   validatePostMath,
 } from '../utils/katexValidator';
+
+export {
+  BOT_GEMINI_CONFIG,
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  DELAY_BETWEEN_BOT_RUNS_MS,
+  MAX_GEMINI_TRIES,
+  MAX_STORED_BOT_ERROR_LENGTH,
+  MIN_SAME_KEY_DELAY_MS,
+  resolvePinnedGeminiModels,
+};
 
 export interface GeneratedBotPost {
   title: string;
@@ -19,14 +41,6 @@ export interface GeneratedBotComment {
   text: string;
   katexSegmentsVerified: number;
 }
-
-/**
- * STEP 4: Pinned stable Gemini models (never use moving alias 'gemini-flash-latest' or invalid 'gemini-3.5-flash').
- * Primary: 'gemini-2.5-flash' (Google's current GA stable Flash model on generativelanguage.googleapis.com)
- * Fallback: 'gemini-2.5-flash-lite' (Google's current GA stable Flash-Lite model)
- */
-export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
-export const DEFAULT_GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 
 export type BotKeyStatusType = 'available' | 'cooling_down' | 'daily_quota_hit';
 
@@ -69,22 +83,293 @@ export interface BotKeyPoolState {
   callsThisRun: number;
   quotaDate: string;
   lastCallTimestampMs: number;
+  botCooldowns?: Record<string, number>; // botUid -> retryAfter epoch ms when marked quota_exceeded
 }
 
-export class AllGeminiKeysExhaustedError extends Error {
-  public readonly exhaustedUntilMs: number;
-  constructor(exhaustedUntilMs: number, detail?: string) {
-    const retryTimeStr = new Date(exhaustedUntilMs).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Karachi',
-    });
-    super(
-      detail
-        ? `All Gemini API keys are cooling down until ${retryTimeStr} PKT (${new Date(exhaustedUntilMs).toISOString()}). Last error: ${detail}`
-        : `All Gemini API keys are cooling down until ${retryTimeStr} PKT (${new Date(exhaustedUntilMs).toISOString()}).`
+/**
+ * Formats a retry timestamp into a short, readable label (e.g. "45s" or "4:25 PM PKT").
+ */
+export function formatRetryAfterShort(retryUntilMs?: number | null, nowMs = Date.now()): string {
+  if (!retryUntilMs || !Number.isFinite(retryUntilMs) || retryUntilMs <= 0) {
+    return 'cooldown';
+  }
+  const diffMs = retryUntilMs - nowMs;
+  const clockStr = new Date(retryUntilMs).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Karachi',
+  });
+  if (diffMs > 0 && diffMs <= 120_000) {
+    const secs = Math.max(1, Math.ceil(diffMs / 1000));
+    return `${secs}s (${clockStr} PKT)`;
+  }
+  return `${clockStr} PKT`;
+}
+
+/**
+ * Parses any retryDelay / Retry-After duration in milliseconds from headers or Gemini error text/JSON.
+ */
+export function extractGeminiRetryDelayMs(
+  retryAfterHeader: string | null | undefined,
+  errBodyText: string,
+  nowMs = Date.now()
+): number {
+  let retryDelayMs = 0;
+
+  // 1. Standard HTTP Retry-After header
+  if (retryAfterHeader) {
+    const trimmed = retryAfterHeader.trim();
+    const seconds = Number(trimmed);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      retryDelayMs = Math.ceil(seconds * 1000);
+    } else {
+      const parsedDate = Date.parse(trimmed);
+      if (Number.isFinite(parsedDate) && parsedDate > nowMs) {
+        retryDelayMs = parsedDate - nowMs;
+      }
+    }
+  }
+
+  // 2. JSON error payload from generativelanguage.googleapis.com (error.details[].retryDelay or error.retryDelay)
+  const parseDurationStr = (raw: string): number => {
+    const m = String(raw || '').trim().match(/^([0-9.]+)\s*(ms|s|sec|seconds|m|min|minutes|h|hr|hours)?$/i);
+    if (!m) return 0;
+    const val = parseFloat(m[1]);
+    if (!Number.isFinite(val) || val <= 0) return 0;
+    const unit = (m[2] || 's').toLowerCase();
+    const mult =
+      unit === 'ms'
+        ? 1
+        : unit.startsWith('m')
+          ? 60_000
+          : unit.startsWith('h')
+            ? 3_600_000
+            : 1000;
+    return Math.ceil(val * mult);
+  };
+
+  try {
+    const parsed = JSON.parse(errBodyText);
+    const errObj = parsed?.error || parsed;
+    if (typeof errObj?.retryDelay === 'string') {
+      retryDelayMs = Math.max(retryDelayMs, parseDurationStr(errObj.retryDelay));
+    } else if (typeof errObj?.retryDelay === 'number' && errObj.retryDelay > 0) {
+      retryDelayMs = Math.max(retryDelayMs, Math.ceil(errObj.retryDelay * 1000));
+    }
+    const details = Array.isArray(errObj?.details) ? errObj.details : [];
+    for (const d of details) {
+      if (typeof d?.retryDelay === 'string') {
+        retryDelayMs = Math.max(retryDelayMs, parseDurationStr(d.retryDelay));
+      } else if (typeof d?.retryDelay === 'number' && d.retryDelay > 0) {
+        retryDelayMs = Math.max(retryDelayMs, Math.ceil(d.retryDelay * 1000));
+      }
+    }
+  } catch {
+    // Not full JSON; fall through to regex extraction
+  }
+
+  // 3. Regex fallback for "retryDelay": "42s" or "retry in 42s" / "retry after 42s"
+  if (!retryDelayMs && errBodyText) {
+    const jsonFieldMatch = errBodyText.match(/"retryDelay"\s*:\s*"([0-9.]+\s*(?:ms|s|m|h)?)"/i);
+    if (jsonFieldMatch) {
+      retryDelayMs = Math.max(retryDelayMs, parseDurationStr(jsonFieldMatch[1]));
+    }
+  }
+
+  if (!retryDelayMs && errBodyText) {
+    const inlineMatch = errBodyText.match(
+      /retry\s+(?:in|after)\s+([0-9.]+)\s*(ms|s|sec|seconds|m|min|minutes|h|hr|hours)/i
     );
+    if (inlineMatch) {
+      retryDelayMs = Math.max(
+        retryDelayMs,
+        parseDurationStr(`${inlineMatch[1]}${inlineMatch[2]}`)
+      );
+    }
+  }
+
+  return retryDelayMs;
+}
+
+/**
+ * Formats any raw Gemini / HTTP / bot error into a short, clean human-readable message
+ * (e.g. "Gemini quota exceeded (Key #1), retry after 4:25 PM PKT") with zero raw JSON.
+ */
+export interface FormatCleanBotErrorOptions {
+  retryAfterMs?: number | null;
+  retryUntilMs?: number | null;
+  keyLabel?: string | null;
+  keyNumber?: number | null;
+  nowMs?: number;
+}
+
+export function formatCleanBotErrorMessage(
+  rawError: string | null | undefined,
+  retryUntilMsOrOpts?: number | FormatCleanBotErrorOptions | null,
+  keyNumberArg?: number | null,
+  nowMsArg?: number
+): string {
+  const raw = String(rawError || '').trim();
+  if (!raw) return '';
+
+  const opts: FormatCleanBotErrorOptions =
+    retryUntilMsOrOpts && typeof retryUntilMsOrOpts === 'object'
+      ? retryUntilMsOrOpts
+      : {
+          retryUntilMs: typeof retryUntilMsOrOpts === 'number' ? retryUntilMsOrOpts : null,
+          keyNumber: keyNumberArg ?? null,
+          nowMs: nowMsArg,
+        };
+
+  const nowMs = typeof opts.nowMs === 'number' ? opts.nowMs : Date.now();
+  const retryUntilMs = opts.retryUntilMs ?? opts.retryAfterMs ?? null;
+
+  // Extract Key #N if present in keyLabel, keyNumber, or raw error
+  const labelKeyMatch = String(opts.keyLabel || '').match(/Key\s*#?(\d+)/i);
+  const rawKeyMatch = raw.match(/Key\s*#(\d+)/i);
+  const effectiveKeyNum =
+    typeof opts.keyNumber === 'number' && opts.keyNumber > 0
+      ? opts.keyNumber
+      : labelKeyMatch
+        ? Number(labelKeyMatch[1])
+        : rawKeyMatch
+          ? Number(rawKeyMatch[1])
+          : null;
+  const keyPrefix = effectiveKeyNum ? ` (Key #${effectiveKeyNum})` : '';
+
+  // Detect 429 / quota / rate-limit errors
+  const isQuotaOr429 =
+    /\b429\b|quota[_\s-]?exceeded|quota[_\s-]?exhausted|exceeded your current quota|resource_exhausted|cooling down|rate limit/i.test(
+      raw
+    );
+
+  if (isQuotaOr429) {
+    let retryLabel = '';
+    if (retryUntilMs && Number.isFinite(retryUntilMs) && retryUntilMs > 0) {
+      retryLabel = formatRetryAfterShort(retryUntilMs, nowMs);
+    } else {
+      const delayMs = extractGeminiRetryDelayMs(null, raw, nowMs);
+      if (delayMs > 0) {
+        retryLabel = formatRetryAfterShort(nowMs + delayMs, nowMs);
+      } else {
+        const isoMatch = raw.match(/(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)/);
+        if (isoMatch) {
+          const parsedIso = Date.parse(isoMatch[1]);
+          if (Number.isFinite(parsedIso)) {
+            retryLabel = formatRetryAfterShort(parsedIso, nowMs);
+          }
+        }
+        if (!retryLabel) {
+          const timeMatch = raw.match(
+            /(?:until|after)\s+([0-9]{1,2}:[0-9]{2}\s*(?:AM|PM)(?:\s*PKT)?|[0-9]+s(?:\s*\([^)]+\))?)/i
+          );
+          if (timeMatch) {
+            retryLabel = timeMatch[1].trim();
+          }
+        }
+      }
+    }
+    return `Gemini quota exceeded${keyPrefix}, retry after ${retryLabel || 'cooldown'}`;
+  }
+
+  // Detect 503 / temporary unavailability
+  if (/\b503\b|service unavailable|overloaded|UNAVAILABLE/i.test(raw)) {
+    const delayMs = extractGeminiRetryDelayMs(null, raw, nowMs);
+    const retryLabel =
+      retryUntilMs && retryUntilMs > 0
+        ? formatRetryAfterShort(retryUntilMs, nowMs)
+        : delayMs > 0
+          ? formatRetryAfterShort(nowMs + delayMs, nowMs)
+          : 'a moment';
+    return `Gemini service unavailable${keyPrefix}, retry after ${retryLabel}`;
+  }
+
+  // Strip embedded JSON payloads if present
+  let cleaned = raw;
+  const braceStart = cleaned.indexOf('{');
+  if (braceStart !== -1) {
+    const jsonPart = cleaned.slice(braceStart);
+    const prefixPart = cleaned.slice(0, braceStart).replace(/[:\s-]+$/, '').trim();
+    try {
+      const parsed = JSON.parse(jsonPart);
+      const innerMsg = String(parsed?.error?.message || parsed?.message || '').trim();
+      const firstSentence = innerMsg.split(/[.\n]/)[0]?.trim();
+      cleaned = firstSentence
+        ? prefixPart
+          ? `${prefixPart}: ${firstSentence}`
+          : firstSentence
+        : prefixPart || 'Gemini request failed';
+    } catch {
+      cleaned = prefixPart || cleaned.slice(0, braceStart).trim() || 'Gemini request failed';
+    }
+  }
+
+  // Replace any legacy "gemini-flash-latest" mention in stored strings
+  cleaned = cleaned.replace(/gemini-flash-latest/gi, DEFAULT_GEMINI_MODEL);
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  return cleaned;
+}
+
+/**
+ * Redacts API keys, formats into a clean non-JSON summary, and truncates to a short length for storage.
+ */
+export function truncateBotErrorMessage(
+  rawError: string | null | undefined,
+  keys: string[] = [],
+  maxLength = MAX_STORED_BOT_ERROR_LENGTH
+): string {
+  if (!rawError) return '';
+  const redacted = redactApiKeysFromText(String(rawError), keys);
+  const cleaned = formatCleanBotErrorMessage(redacted);
+  const singleLine = cleaned.replace(/\s+/g, ' ').trim();
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, Math.max(20, maxLength - 3)).trim()}...`;
+}
+
+export class GeminiQuotaExceededError extends Error {
+  public readonly status = 'quota_exceeded' as const;
+  public readonly cooldownUntilMs: number;
+  public readonly retryDelayMs: number;
+  public readonly keyIndex: number;
+  public readonly allKeysExhausted: boolean;
+
+  constructor(params: {
+    cooldownUntilMs: number;
+    retryDelayMs?: number;
+    keyIndex?: number;
+    allKeysExhausted?: boolean;
+    message?: string;
+  }) {
+    const keyNum = typeof params.keyIndex === 'number' && params.keyIndex >= 0 ? params.keyIndex + 1 : null;
+    const cleanMsg = truncateBotErrorMessage(
+      params.message ||
+        formatCleanBotErrorMessage('Gemini HTTP 429 quota exceeded', params.cooldownUntilMs, keyNum)
+    );
+    super(cleanMsg);
+    this.name = 'GeminiQuotaExceededError';
+    this.cooldownUntilMs = params.cooldownUntilMs;
+    this.retryDelayMs = params.retryDelayMs ?? Math.max(0, params.cooldownUntilMs - Date.now());
+    this.keyIndex = params.keyIndex ?? 0;
+    this.allKeysExhausted = Boolean(params.allKeysExhausted);
+  }
+}
+
+export class AllGeminiKeysExhaustedError extends GeminiQuotaExceededError {
+  public readonly exhaustedUntilMs: number;
+  constructor(exhaustedUntilMs: number, detail?: string, keyIndex?: number) {
+    const keyNum = typeof keyIndex === 'number' && keyIndex >= 0 ? keyIndex + 1 : null;
+    const cleanMsg = truncateBotErrorMessage(
+      formatCleanBotErrorMessage(detail || 'Gemini HTTP 429 quota exceeded', exhaustedUntilMs, keyNum)
+    );
+    super({
+      cooldownUntilMs: exhaustedUntilMs,
+      keyIndex,
+      allKeysExhausted: true,
+      message: cleanMsg,
+    });
     this.name = 'AllGeminiKeysExhaustedError';
     this.exhaustedUntilMs = exhaustedUntilMs;
   }
@@ -125,28 +410,6 @@ export function redactApiKeysFromText(text: string, keys: string[] = []): string
   return out;
 }
 
-export function resolvePinnedGeminiModels(
-  envModel?: string | null,
-  envFallbackModel?: string | null
-): { model: string; primaryModel: string; fallbackModel: string } {
-  let primary = String(envModel || '').trim();
-  // Never use moving alias 'gemini-flash-latest' or non-existent 'gemini-3.5-flash'
-  if (!primary || primary === 'gemini-flash-latest' || primary === 'gemini-3.5-flash') {
-    primary = DEFAULT_GEMINI_MODEL;
-  }
-
-  let fallback = String(envFallbackModel || '').trim();
-  if (!fallback || fallback === 'gemini-flash-latest' || fallback === 'gemini-3.5-flash') {
-    fallback = DEFAULT_GEMINI_FALLBACK_MODEL;
-  }
-
-  return {
-    model: primary,
-    primaryModel: primary,
-    fallbackModel: fallback,
-  };
-}
-
 /**
  * Computes the next daily quota reset timestamp (Google Gemini daily quotas reset at midnight Pacific Time, ~07:00/08:00 UTC).
  */
@@ -168,29 +431,17 @@ export function getNextDailyQuotaResetMs(nowMs = Date.now()): number {
 export function parseGemini429Cooldown(
   retryAfterHeader: string | null | undefined,
   errBodyText: string,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  keyNumber?: number | null
 ): {
   status: 'cooling_down' | 'daily_quota_hit';
   cooldownUntilMs: number;
+  retryDelayMs: number;
+  isHardQuota: boolean;
   cleanMessage: string;
 } {
-  let retryDelayMs = 0;
+  const retryDelayMs = extractGeminiRetryDelayMs(retryAfterHeader, errBodyText, nowMs);
 
-  // 1. Check standard Retry-After HTTP header
-  if (retryAfterHeader) {
-    const trimmed = retryAfterHeader.trim();
-    const seconds = Number(trimmed);
-    if (Number.isFinite(seconds) && seconds > 0) {
-      retryDelayMs = Math.ceil(seconds * 1000);
-    } else {
-      const parsedDate = Date.parse(trimmed);
-      if (Number.isFinite(parsedDate) && parsedDate > nowMs) {
-        retryDelayMs = parsedDate - nowMs;
-      }
-    }
-  }
-
-  // 2. Parse JSON error payload from generativelanguage.googleapis.com
   let parsedMessage = '';
   let isDailyQuota = false;
 
@@ -202,16 +453,6 @@ export function parseGemini429Cooldown(
     }
     const details = Array.isArray(errObj?.details) ? errObj.details : [];
     for (const d of details) {
-      if (typeof d?.retryDelay === 'string') {
-        const m = d.retryDelay.match(/^([0-9.]+)\s*(s|ms|m|h)?$/i);
-        if (m) {
-          const val = parseFloat(m[1]);
-          const unit = (m[2] || 's').toLowerCase();
-          const mult =
-            unit === 'ms' ? 1 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 1000;
-          retryDelayMs = Math.max(retryDelayMs, Math.ceil(val * mult));
-        }
-      }
       if (Array.isArray(d?.violations)) {
         for (const v of d.violations) {
           const qId = String(v?.quotaId || v?.subject || '');
@@ -225,25 +466,12 @@ export function parseGemini429Cooldown(
     // Not JSON or partial JSON
   }
 
-  // 3. Also check text patterns for "Please retry in Xs" or daily quota mentions
-  if (!retryDelayMs) {
-    const inlineMatch = errBodyText.match(/retry\s+in\s+([0-9.]+)\s*(ms|s|sec|seconds|m|min|minutes)/i);
-    if (inlineMatch) {
-      const val = parseFloat(inlineMatch[1]);
-      const unit = inlineMatch[2].toLowerCase();
-      const mult = unit === 'ms' ? 1 : unit.startsWith('m') ? 60_000 : 1000;
-      retryDelayMs = Math.ceil(val * mult);
-    }
-  }
-
   if (
     /perday|per_day|requests\s+per\s+day|daily\s+quota|quota\s+exceeded.*day/i.test(errBodyText)
   ) {
     isDailyQuota = true;
   }
 
-  // If the message is "You exceeded your current quota, please check your plan and billing details."
-  // and no short per-minute retryDelay was returned, treat as a long quota cooldown (or daily quota).
   const isBillingOrProjectQuotaMsg =
     /exceeded your current quota,\s*please check your plan and billing details/i.test(
       parsedMessage || errBodyText
@@ -254,27 +482,40 @@ export function parseGemini429Cooldown(
     return {
       status: 'daily_quota_hit',
       cooldownUntilMs: resetMs,
-      cleanMessage: parsedMessage || errBodyText.trim(),
+      retryDelayMs,
+      isHardQuota: true,
+      cleanMessage: truncateBotErrorMessage(
+        formatCleanBotErrorMessage('Gemini HTTP 429 quota exceeded', resetMs, keyNumber, nowMs)
+      ),
     };
   }
 
   if (isBillingOrProjectQuotaMsg && retryDelayMs === 0) {
-    // Project/key quota exhausted without a short per-minute retry window -> cool down for 2 hours (or until daily reset if sooner)
     const twoHoursMs = nowMs + 2 * 60 * 60 * 1000;
     const nextResetMs = getNextDailyQuotaResetMs(nowMs);
+    const cooldownUntilMs = Math.min(twoHoursMs, nextResetMs);
     return {
       status: 'daily_quota_hit',
-      cooldownUntilMs: Math.min(twoHoursMs, nextResetMs),
-      cleanMessage: parsedMessage || errBodyText.trim(),
+      cooldownUntilMs,
+      retryDelayMs: 0,
+      isHardQuota: true,
+      cleanMessage: truncateBotErrorMessage(
+        formatCleanBotErrorMessage('Gemini HTTP 429 quota exceeded', cooldownUntilMs, keyNumber, nowMs)
+      ),
     };
   }
 
-  // Per-minute rate limit cooldown (at least 65 seconds, or the server's requested retryDelay + 2s buffer)
-  const effectiveDelayMs = retryDelayMs > 0 ? retryDelayMs + 2000 : 65_000;
+  // Per-minute rate limit cooldown (respect server retryDelay + 1s buffer, or default 65s)
+  const effectiveDelayMs = retryDelayMs > 0 ? retryDelayMs + 1000 : 65_000;
+  const cooldownUntilMs = nowMs + effectiveDelayMs;
   return {
     status: 'cooling_down',
-    cooldownUntilMs: nowMs + effectiveDelayMs,
-    cleanMessage: parsedMessage || errBodyText.trim(),
+    cooldownUntilMs,
+    retryDelayMs,
+    isHardQuota: false,
+    cleanMessage: truncateBotErrorMessage(
+      formatCleanBotErrorMessage('Gemini HTTP 429 quota exceeded', cooldownUntilMs, keyNumber, nowMs)
+    ),
   };
 }
 
@@ -290,6 +531,7 @@ export function buildBotKeyPoolState(params: {
   callsToday?: number;
   callsLastRun?: number;
   quotaDate?: string;
+  botCooldowns?: Record<string, number>;
   nowMs?: number;
 }): BotKeyPoolState {
   const nowMs = params.nowMs ?? Date.now();
@@ -329,7 +571,9 @@ export function buildBotKeyPoolState(params: {
       callsTotal: Number(existing?.callsTotal || 0),
       quotaDate: todayUtc,
       callsDayKey: todayUtc,
-      lastError: existing?.lastError || null,
+      lastError: existing?.lastError
+        ? truncateBotErrorMessage(existing.lastError, keys)
+        : null,
     };
   });
 
@@ -348,6 +592,15 @@ export function buildBotKeyPoolState(params: {
   const sumCallsToday = keyStatuses.reduce((sum, k) => sum + k.callsToday, 0);
   const callsToday = Math.max(sameQuotaDay ? Number(params.callsToday || 0) : 0, sumCallsToday);
 
+  const activeBotCooldowns: Record<string, number> = {};
+  if (params.botCooldowns && typeof params.botCooldowns === 'object') {
+    for (const [bUid, untilMs] of Object.entries(params.botCooldowns)) {
+      if (typeof untilMs === 'number' && untilMs > nowMs) {
+        activeBotCooldowns[bUid] = untilMs;
+      }
+    }
+  }
+
   return {
     keys,
     keyStatuses,
@@ -359,6 +612,7 @@ export function buildBotKeyPoolState(params: {
     callsThisRun: 0,
     quotaDate: todayUtc,
     lastCallTimestampMs: 0,
+    botCooldowns: activeBotCooldowns,
   };
 }
 
@@ -367,7 +621,8 @@ export function getTotalGeminiCallsToday(pool: BotKeyPoolState): number {
 }
 
 /**
- * Formats key statuses for the Admin UI without ever exposing any key characters.
+ * Formats key statuses for the Admin UI without ever exposing any key characters,
+ * ensuring all error messages are clean and truncated.
  */
 export function toPublicKeyStatusList(
   pool: BotKeyPoolState,
@@ -397,7 +652,7 @@ export function toPublicKeyStatusList(
       });
       statusText =
         effectiveStatus === 'daily_quota_hit'
-          ? `Daily quota hit (until ${untilTime})`
+          ? `Quota exceeded (retry after ${untilTime})`
           : `Cooling down until ${untilTime}`;
     }
 
@@ -414,7 +669,12 @@ export function toPublicKeyStatusList(
       lastUsedAt: k.lastUsedAt ? new Date(k.lastUsedAt).toISOString() : null,
       callsToday: k.callsToday,
       callsTotal: k.callsTotal,
-      lastError: k.lastError ? redactApiKeysFromText(k.lastError, pool.keys) : null,
+      lastError: k.lastError
+        ? truncateBotErrorMessage(
+            formatCleanBotErrorMessage(k.lastError, k.cooldownUntil, k.keyIndex + 1, nowMs),
+            pool.keys
+          )
+        : null,
     };
   });
 }
@@ -451,7 +711,6 @@ export function selectNextAvailableKey(
   let startIdx = 0;
   if (!forceRoundRobinAdvance && typeof botIndex === 'number' && botIndex >= 0) {
     const botAssignedIdx = botIndex % numKeys;
-    // Use the bot's assigned key unless it was the exact key just used (when multiple keys exist)
     if (botAssignedIdx !== pool.lastUsedKeyIndex || numKeys === 1) {
       startIdx = botAssignedIdx;
     } else {
@@ -506,18 +765,73 @@ function extractJsonObject(rawText: string): any {
   }
 }
 
-async function sleep(ms: number): Promise<void> {
+export async function sleep(ms: number): Promise<void> {
   if (ms <= 0) return;
   await new Promise((r) => setTimeout(r, ms));
 }
 
 /**
+ * Per-key execution queues and completion timestamps so two bots NEVER run at the same time on the same key.
+ */
+const keyExecutionQueues = new Map<string, Promise<void>>();
+const keyLastFinishedAtMs = new Map<string, number>();
+
+export async function enqueueOnGeminiKey<T>(
+  keyId: string,
+  minDelayBetweenSameKeyCallsMs: number,
+  lastUsedAtMs: number | null | undefined,
+  task: () => Promise<T>
+): Promise<T> {
+  const prevQueue = keyExecutionQueues.get(keyId) || Promise.resolve();
+  let releaseCurrent!: () => void;
+  const currentGate = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  keyExecutionQueues.set(
+    keyId,
+    prevQueue.then(() => currentGate, () => currentGate)
+  );
+
+  await prevQueue.catch(() => {});
+
+  try {
+    const lastFinish = Math.max(
+      keyLastFinishedAtMs.get(keyId) || 0,
+      typeof lastUsedAtMs === 'number' && lastUsedAtMs > 0 ? lastUsedAtMs : 0
+    );
+    if (lastFinish > 0 && minDelayBetweenSameKeyCallsMs > 0) {
+      const elapsed = Date.now() - lastFinish;
+      if (elapsed < minDelayBetweenSameKeyCallsMs) {
+        await sleep(minDelayBetweenSameKeyCallsMs - elapsed);
+      }
+    }
+    return await task();
+  } finally {
+    keyLastFinishedAtMs.set(keyId, Date.now());
+    releaseCurrent();
+  }
+}
+
+/**
+ * Global bot-run queue so concurrent cron/admin bot runs execute sequentially with a gap between runs.
+ */
+let botRunQueuePromise: Promise<any> = Promise.resolve();
+
+export function enqueueBotRun<T>(task: () => Promise<T>): Promise<T> {
+  const next = botRunQueuePromise.then(
+    () => task(),
+    () => task()
+  );
+  botRunQueuePromise = next.catch(() => {});
+  return next;
+}
+
+/**
  * Executes a Gemini JSON generation request with:
- * - 1.2s–1.8s sequential pacing delay between calls
- * - Multi-key round-robin & bot-index key assignment
- * - Immediate failover to the next available key on HTTP 429 (recording retryDelay / Retry-After cooldown)
- * - Max 2 retries per request (3 attempts total) with exponential backoff + jitter
- * - Full untruncated error logging (with API keys strictly redacted)
+ * - Pinned model resolved from single config (`DEFAULT_GEMINI_MODEL`)
+ * - Per-key serialization queue + minimum delay so two bots never run at the same time on the same key
+ * - Retry with exponential backoff for HTTP 429 and 503 responses (max 3 tries total), respecting `retryDelay` if present
+ * - Marks 429 failures as `quota_exceeded` with retry time and clean, truncated error messages
  */
 export async function callGeminiJsonWithPool(params: {
   pool: BotKeyPoolState;
@@ -528,6 +842,9 @@ export async function callGeminiJsonWithPool(params: {
   prompt: string;
   temperature?: number;
   minDelayBetweenCallsMs?: number;
+  maxTries?: number;
+  baseBackoffMs?: number;
+  maxInlineRetryDelayMs?: number;
   onStateChange?: (pool: BotKeyPoolState) => Promise<void> | void;
 }): Promise<any> {
   const {
@@ -536,7 +853,10 @@ export async function callGeminiJsonWithPool(params: {
     systemInstruction,
     prompt,
     temperature = 0.4,
-    minDelayBetweenCallsMs = 1400,
+    minDelayBetweenCallsMs = MIN_SAME_KEY_DELAY_MS,
+    maxTries = MAX_GEMINI_TRIES,
+    baseBackoffMs = 1000,
+    maxInlineRetryDelayMs = 15_000,
     onStateChange,
   } = params;
 
@@ -552,12 +872,12 @@ export async function callGeminiJsonWithPool(params: {
   );
   let activeModel = primaryModel;
 
-  // Retry at most 2 times per request (attempt 0 = initial, attempt 1 = retry 1, attempt 2 = retry 2)
-  const maxRetries = 2;
+  const totalTries = Math.min(MAX_GEMINI_TRIES, Math.max(1, maxTries));
   let lastError: Error | null = null;
+  let lastQuotaError: GeminiQuotaExceededError | null = null;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const selected = selectNextAvailableKey(pool, botIndex, attempt > 0);
+  for (let tryIdx = 0; tryIdx < totalTries; tryIdx++) {
+    const selected = selectNextAvailableKey(pool, botIndex, tryIdx > 0);
     if (!selected) {
       if (onStateChange) await onStateChange(pool);
       throw new AllGeminiKeysExhaustedError(
@@ -566,126 +886,197 @@ export async function callGeminiJsonWithPool(params: {
       );
     }
 
-    // Enforce 1-2 second sequential pacing between Gemini calls
-    const nowBeforeWait = Date.now();
-    if (pool.lastCallTimestampMs > 0) {
-      const elapsed = nowBeforeWait - pool.lastCallTimestampMs;
-      const targetGap = minDelayBetweenCallsMs + Math.floor(Math.random() * 400); // 1.4s - 1.8s
-      if (elapsed < targetGap) {
-        await sleep(targetGap - elapsed);
-      }
-    }
-
-    const callNow = Date.now();
-    pool.lastCallTimestampMs = callNow;
-    pool.callsLastRun += 1;
-    pool.callsThisRun += 1;
-    pool.callsToday += 1;
-    selected.entry.callsToday += 1;
-    selected.entry.callsTotal += 1;
-    selected.entry.lastUsedAt = callNow;
+    const keyQueueId = `key_${selected.keyIndex}`;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        activeModel
-      )}:generateContent?key=${encodeURIComponent(selected.apiKey)}`;
+      const responseResult = await enqueueOnGeminiKey(
+        keyQueueId,
+        minDelayBetweenCallsMs,
+        selected.entry.lastUsedAt,
+        async () => {
+          const callNow = Date.now();
+          pool.lastCallTimestampMs = callNow;
+          pool.callsLastRun += 1;
+          pool.callsThisRun += 1;
+          pool.callsToday += 1;
+          selected.entry.callsToday += 1;
+          selected.entry.callsTotal += 1;
+          selected.entry.lastUsedAt = callNow;
 
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'aistudio-build',
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: systemInstruction }],
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            activeModel
+          )}:generateContent?key=${encodeURIComponent(selected.apiKey)}`;
+
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'aistudio-build',
             },
-          ],
-          generationConfig: {
-            temperature,
-            responseMimeType: 'application/json',
-          },
-        }),
-      });
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemInstruction }],
+              },
+              contents: [
+                {
+                  role: 'user',
+                  parts: [{ text: prompt }],
+                },
+              ],
+              generationConfig: {
+                temperature,
+                responseMimeType: 'application/json',
+              },
+            }),
+          });
 
-      if (!resp.ok) {
-        const rawErrBody = await resp.text().catch(() => '');
-        const safeErrBody = redactApiKeysFromText(rawErrBody, pool.keys);
+          const rawBody = await resp.text().catch(() => '');
+          return {
+            ok: resp.ok,
+            status: resp.status,
+            retryAfterHeader: resp.headers.get('Retry-After'),
+            rawBody,
+          };
+        }
+      );
 
-        if (resp.status === 429) {
-          const retryAfterHeader = resp.headers.get('Retry-After');
-          const parsed429 = parseGemini429Cooldown(retryAfterHeader, safeErrBody, Date.now());
+      if (!responseResult.ok) {
+        const safeErrBody = redactApiKeysFromText(responseResult.rawBody, pool.keys);
+        const isLastTry = tryIdx >= totalTries - 1;
+        const expBackoffMs = Math.round(
+          baseBackoffMs * Math.pow(2, tryIdx) + Math.random() * 200
+        );
+
+        if (responseResult.status === 429) {
+          const nowAfter429 = Date.now();
+          const parsed429 = parseGemini429Cooldown(
+            responseResult.retryAfterHeader,
+            safeErrBody,
+            nowAfter429,
+            selected.keyIndex + 1
+          );
+
+          const shortCleanMsg = parsed429.cleanMessage;
+          selected.entry.lastError = shortCleanMsg;
+          console.error(
+            `[BotGeminiPool] Try ${tryIdx + 1}/${totalTries} HTTP 429 on Key #${
+              selected.keyIndex + 1
+            } (${activeModel}): ${shortCleanMsg}`
+          );
+
+          // Check if another key in the pool is currently available for failover
+          const hasOtherAvailableKey = pool.keyStatuses.some(
+            (k, idx) =>
+              idx !== selected.keyIndex &&
+              (!k.cooldownUntil || k.cooldownUntil <= nowAfter429)
+          );
+
+          // Respect retryDelay from the 429 response if it exists, otherwise use exponential backoff
+          const requestedWaitMs =
+            parsed429.retryDelayMs > 0
+              ? Math.max(parsed429.retryDelayMs, expBackoffMs)
+              : expBackoffMs;
+
+          // Can we retry on another key or after waiting retryDelay?
+          const canRetrySameKeyInline =
+            !isLastTry &&
+            !parsed429.isHardQuota &&
+            requestedWaitMs <= maxInlineRetryDelayMs;
+
+          if (!isLastTry && hasOtherAvailableKey) {
+            // Mark current key cooling down and retry immediately after backoff on the next key
+            selected.entry.status = parsed429.status;
+            selected.entry.cooldownUntil = parsed429.cooldownUntilMs;
+            if (onStateChange) await onStateChange(pool);
+            await sleep(Math.min(requestedWaitMs, maxInlineRetryDelayMs));
+            continue;
+          }
+
+          if (canRetrySameKeyInline) {
+            // Single key or all other keys busy, but retryDelay is short enough to wait and retry (max 3 tries)
+            if (onStateChange) await onStateChange(pool);
+            await sleep(requestedWaitMs);
+            continue;
+          }
+
+          // Mark key as cooling down until retry time and stop retrying in a loop
           selected.entry.status = parsed429.status;
           selected.entry.cooldownUntil = parsed429.cooldownUntilMs;
 
-          const cooldownIso = new Date(parsed429.cooldownUntilMs).toISOString();
-          const fullMsg = `Gemini HTTP 429 (${activeModel}, Key #${
-            selected.keyIndex + 1
-          } marked ${parsed429.status} until ${cooldownIso}): ${parsed429.cleanMessage}`;
-
-          selected.entry.lastError = fullMsg;
-          lastError = new Error(fullMsg);
-          console.error(`[BotGeminiPool] ${fullMsg}`);
-
-          // Check if all keys are now cooling down
-          const nowAfter429 = Date.now();
           const allExhausted = pool.keyStatuses.every(
-            (k) => k.cooldownUntil !== null && k.cooldownUntil > nowAfter429
+            (k) => k.cooldownUntil !== null && k.cooldownUntil > Date.now()
           );
           if (allExhausted) {
             pool.allKeysExhaustedUntil = Math.min(
-              ...pool.keyStatuses.map((k) => Number(k.cooldownUntil || nowAfter429 + 60_000))
+              ...pool.keyStatuses.map((k) => Number(k.cooldownUntil || Date.now() + 60_000))
             );
-            if (onStateChange) await onStateChange(pool);
-            throw new AllGeminiKeysExhaustedError(pool.allKeysExhaustedUntil, fullMsg);
           }
 
           if (onStateChange) await onStateChange(pool);
 
-          if (attempt < maxRetries) {
-            // Exponential backoff + jitter before retrying with the next available key
-            const backoffMs = Math.round(900 * Math.pow(2, attempt) + Math.random() * 450);
-            await sleep(backoffMs);
+          lastQuotaError = allExhausted
+            ? new AllGeminiKeysExhaustedError(
+                pool.allKeysExhaustedUntil || parsed429.cooldownUntilMs,
+                shortCleanMsg,
+                selected.keyIndex
+              )
+            : new GeminiQuotaExceededError({
+                cooldownUntilMs: parsed429.cooldownUntilMs,
+                retryDelayMs: parsed429.retryDelayMs,
+                keyIndex: selected.keyIndex,
+                allKeysExhausted: false,
+                message: shortCleanMsg,
+              });
+
+          throw lastQuotaError;
+        }
+
+        if (responseResult.status === 503 || responseResult.status === 404) {
+          const retryDelayMs = extractGeminiRetryDelayMs(
+            responseResult.retryAfterHeader,
+            safeErrBody,
+            Date.now()
+          );
+          const waitMs =
+            retryDelayMs > 0
+              ? Math.min(Math.max(retryDelayMs, expBackoffMs), maxInlineRetryDelayMs)
+              : expBackoffMs;
+
+          if (fallbackModel && activeModel !== fallbackModel) {
+            activeModel = fallbackModel;
+          }
+
+          const short503Msg = truncateBotErrorMessage(
+            formatCleanBotErrorMessage(
+              `Gemini HTTP ${responseResult.status}: ${safeErrBody}`,
+              retryDelayMs > 0 ? Date.now() + retryDelayMs : null,
+              selected.keyIndex + 1
+            ),
+            pool.keys
+          );
+          selected.entry.lastError = short503Msg;
+          lastError = new Error(short503Msg);
+          if (onStateChange) await onStateChange(pool);
+
+          if (!isLastTry && (responseResult.status === 503 || responseResult.status === 404)) {
+            await sleep(waitMs);
             continue;
           }
           throw lastError;
         }
 
-        // If the primary model returned 404 (not found / unsupported) and a fallback model exists, switch model
-        if ((resp.status === 404 || resp.status === 503) && fallbackModel && activeModel !== fallbackModel) {
-          const prevModel = activeModel;
-          activeModel = fallbackModel;
-          const switchMsg = `Gemini HTTP ${resp.status} on model ${prevModel}; switching to fallback model ${activeModel}. Details: ${safeErrBody}`;
-          console.warn(`[BotGeminiPool] ${switchMsg}`);
-          selected.entry.lastError = switchMsg;
-          lastError = new Error(switchMsg);
-          if (onStateChange) await onStateChange(pool);
-          if (attempt < maxRetries) {
-            const backoffMs = Math.round(800 * Math.pow(2, attempt) + Math.random() * 350);
-            await sleep(backoffMs);
-            continue;
-          }
-          throw lastError;
-        }
-
-        const fullHttpErr = `Gemini HTTP ${resp.status} (${activeModel}, Key #${
-          selected.keyIndex + 1
-        }): ${safeErrBody}`;
-        selected.entry.lastError = fullHttpErr;
-        lastError = new Error(fullHttpErr);
-        console.error(`[BotGeminiPool] ${fullHttpErr}`);
+        // Non-retryable HTTP status (e.g. 400, 401, 403)
+        const shortHttpErr = truncateBotErrorMessage(
+          formatCleanBotErrorMessage(
+            `Gemini HTTP ${responseResult.status} (Key #${selected.keyIndex + 1}): ${safeErrBody}`,
+            null,
+            selected.keyIndex + 1
+          ),
+          pool.keys
+        );
+        selected.entry.lastError = shortHttpErr;
+        lastError = new Error(shortHttpErr);
         if (onStateChange) await onStateChange(pool);
-
-        if (attempt < maxRetries) {
-          const backoffMs = Math.round(1000 * Math.pow(2, attempt) + Math.random() * 450);
-          await sleep(backoffMs);
-          continue;
-        }
         throw lastError;
       }
 
@@ -695,33 +1086,37 @@ export async function callGeminiJsonWithPool(params: {
       selected.entry.lastError = null;
       if (onStateChange) await onStateChange(pool);
 
-      const data = (await resp.json()) as {
+      const data = JSON.parse(responseResult.rawBody) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       };
       const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return extractJsonObject(rawText);
     } catch (err: any) {
-      if (err instanceof AllGeminiKeysExhaustedError) {
+      if (err instanceof GeminiQuotaExceededError) {
         throw err;
       }
-      const safeMsg = redactApiKeysFromText(err?.message || String(err), pool.keys);
+      const safeMsg = truncateBotErrorMessage(err?.message || String(err), pool.keys);
       lastError = new Error(safeMsg);
       selected.entry.lastError = safeMsg;
-      console.error(
-        `[BotGeminiPool] Attempt ${attempt + 1}/${maxRetries + 1} failed on Key #${
-          selected.keyIndex + 1
-        }: ${safeMsg}`
-      );
       if (onStateChange) await onStateChange(pool);
 
-      if (attempt < maxRetries) {
-        const backoffMs = Math.round(1000 * Math.pow(2, attempt) + Math.random() * 450);
+      // Do not loop on non-retryable client HTTP errors
+      if (/Gemini HTTP 40[0134]/i.test(safeMsg)) {
+        throw lastError;
+      }
+
+      if (tryIdx < totalTries - 1) {
+        const backoffMs = Math.round(baseBackoffMs * Math.pow(2, tryIdx) + Math.random() * 200);
         await sleep(backoffMs);
       }
     }
   }
 
-  throw lastError || new Error('Gemini JSON generation failed after maximum retries.');
+  throw (
+    lastQuotaError ||
+    lastError ||
+    new Error('Gemini generation failed after 3 tries.')
+  );
 }
 
 const POST_FORMATS = [
@@ -732,8 +1127,8 @@ const POST_FORMATS = [
 ] as const;
 
 /**
- * STEP 2: Single-call post generation + merged self-check + local KaTeX repair & strict katex.renderToString validation.
- * Makes exactly 1 Gemini API call per post (down from 2-3 logical / 6-18 HTTP calls).
+ * Single-call post generation + merged self-check + local KaTeX repair & strict katex.renderToString validation.
+ * Makes 1 logical Gemini API call per post.
  */
 export async function generateVerifiedBotStudyPost(params: {
   bot: BotAccountConfig;
@@ -747,6 +1142,10 @@ export async function generateVerifiedBotStudyPost(params: {
   onStateChange?: (pool: BotKeyPoolState) => Promise<void> | void;
 }): Promise<{
   post: GeneratedBotPost | null;
+  status?: 'ok' | 'quota_exceeded' | 'error' | 'discarded';
+  quotaExceeded?: boolean;
+  retryAfterMs?: number;
+  retryAfterIso?: string;
   discardReason?: string;
   exhaustedUntilMs?: number;
   allKeysExhausted?: boolean;
@@ -812,18 +1211,25 @@ Return JSON with this exact structure:
     });
   } catch (err: any) {
     const callsUsed = Math.max(0, effectivePool.callsThisRun - callsBefore);
-    if (err instanceof AllGeminiKeysExhaustedError) {
+    if (err instanceof GeminiQuotaExceededError) {
+      if (!effectivePool.botCooldowns) effectivePool.botCooldowns = {};
+      effectivePool.botCooldowns[bot.uid] = err.cooldownUntilMs;
       return {
         post: null,
-        discardReason: err.message,
-        exhaustedUntilMs: err.exhaustedUntilMs,
-        allKeysExhausted: true,
+        status: 'quota_exceeded',
+        quotaExceeded: true,
+        retryAfterMs: err.cooldownUntilMs,
+        retryAfterIso: new Date(err.cooldownUntilMs).toISOString(),
+        discardReason: truncateBotErrorMessage(err.message, effectivePool.keys),
+        exhaustedUntilMs: err.cooldownUntilMs,
+        allKeysExhausted: err.allKeysExhausted,
         geminiCallsUsed: callsUsed,
       };
     }
     return {
       post: null,
-      discardReason: `Gemini generation error: ${err?.message || String(err)}`,
+      status: 'error',
+      discardReason: truncateBotErrorMessage(err?.message || String(err), effectivePool.keys),
       geminiCallsUsed: callsUsed,
     };
   }
@@ -838,6 +1244,7 @@ Return JSON with this exact structure:
   if (!title || !description || description.length < 80) {
     return {
       post: null,
+      status: 'discarded',
       discardReason: 'Generated title or description was empty or too short',
       geminiCallsUsed: callsUsed,
     };
@@ -846,6 +1253,7 @@ Return JSON with this exact structure:
   if (rawDraft?.selfCheckVerified === false) {
     return {
       post: null,
+      status: 'discarded',
       discardReason: 'Discarded: Model self-check marked draft as unverified',
       geminiCallsUsed: callsUsed,
     };
@@ -855,7 +1263,6 @@ Return JSON with this exact structure:
   let katexCheck = validatePostMath(title, description);
 
   if (!katexCheck.valid) {
-    // Attempt deterministic local LaTeX syntax repair first (0 Gemini calls)
     const locallyRepairedTitle = repairLatexLocally(title);
     const locallyRepairedDesc = repairLatexLocally(description);
     const recheckLocal = validatePostMath(locallyRepairedTitle, locallyRepairedDesc);
@@ -867,7 +1274,10 @@ Return JSON with this exact structure:
     } else {
       return {
         post: null,
-        discardReason: `Discarded: KaTeX validation failed (${recheckLocal.errors.join('; ')})`,
+        status: 'discarded',
+        discardReason: truncateBotErrorMessage(
+          `Discarded: KaTeX validation failed (${recheckLocal.errors.join('; ')})`
+        ),
         geminiCallsUsed: callsUsed,
       };
     }
@@ -883,6 +1293,7 @@ Return JSON with this exact structure:
       verifiedBySelfCheck: true,
       katexSegmentsVerified: katexCheck.mathSegmentsCount,
     },
+    status: 'ok',
     geminiCallsUsed: callsUsed,
   };
 }
@@ -903,6 +1314,10 @@ export async function generateVerifiedBotComment(params: {
   onStateChange?: (pool: BotKeyPoolState) => Promise<void> | void;
 }): Promise<{
   comment: GeneratedBotComment | null;
+  status?: 'ok' | 'quota_exceeded' | 'error' | 'discarded';
+  quotaExceeded?: boolean;
+  retryAfterMs?: number;
+  retryAfterIso?: string;
   discardReason?: string;
   exhaustedUntilMs?: number;
   allKeysExhausted?: boolean;
@@ -948,6 +1363,7 @@ Return JSON:
     if (!text || text.length < 10) {
       return {
         comment: null,
+        status: 'discarded',
         discardReason: 'Empty comment generated',
         geminiCallsUsed: callsUsed,
       };
@@ -963,7 +1379,10 @@ Return JSON:
       } else {
         return {
           comment: null,
-          discardReason: `Discarded comment: KaTeX invalid (${recheck.errors.join('; ')})`,
+          status: 'discarded',
+          discardReason: truncateBotErrorMessage(
+            `Discarded comment: KaTeX invalid (${recheck.errors.join('; ')})`
+          ),
           geminiCallsUsed: callsUsed,
         };
       }
@@ -974,23 +1393,32 @@ Return JSON:
         text,
         katexSegmentsVerified: check.mathSegmentsCount,
       },
+      status: 'ok',
       geminiCallsUsed: callsUsed,
     };
   } catch (err: any) {
     const callsUsed = Math.max(0, effectivePool.callsThisRun - callsBefore);
-    if (err instanceof AllGeminiKeysExhaustedError) {
+    if (err instanceof GeminiQuotaExceededError) {
+      if (!effectivePool.botCooldowns) effectivePool.botCooldowns = {};
+      effectivePool.botCooldowns[bot.uid] = err.cooldownUntilMs;
       return {
         comment: null,
-        discardReason: err.message,
-        exhaustedUntilMs: err.exhaustedUntilMs,
-        allKeysExhausted: true,
+        status: 'quota_exceeded',
+        quotaExceeded: true,
+        retryAfterMs: err.cooldownUntilMs,
+        retryAfterIso: new Date(err.cooldownUntilMs).toISOString(),
+        discardReason: truncateBotErrorMessage(err.message, effectivePool.keys),
+        exhaustedUntilMs: err.cooldownUntilMs,
+        allKeysExhausted: err.allKeysExhausted,
         geminiCallsUsed: callsUsed,
       };
     }
     return {
       comment: null,
-      discardReason: `Comment generation failed: ${err?.message || String(err)}`,
+      status: 'error',
+      discardReason: truncateBotErrorMessage(err?.message || String(err), effectivePool.keys),
       geminiCallsUsed: callsUsed,
     };
   }
 }
+

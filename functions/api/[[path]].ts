@@ -72,7 +72,8 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     path.startsWith('/api/announcements') ||
     path.startsWith('/api/follows') ||
     path.startsWith('/api/questions') ||
-    path.startsWith('/api/posts');
+    path.startsWith('/api/posts') ||
+    (path === '/api/bots' || (path.startsWith('/api/bots/') && !path.startsWith('/api/bots/settings')));
 
   if (isTsWorkerRoute) {
     const tsResp = await tsWorker.fetch(request.clone() as any, env, context as any);

@@ -19,14 +19,22 @@ import { BOARDLY_BOT_ACCOUNTS } from '../src/config/botsConfig';
 import {
   BotKeyPoolState,
   BotKeyStatusEntry,
-   BotKeyStatusType,
+  BotKeyStatusType,
+  DELAY_BETWEEN_BOT_RUNS_MS,
+  GeminiKeyStatusRecord,
   buildBotKeyPoolState,
+  enqueueBotRun,
+  formatCleanBotErrorMessage,
+  formatRetryAfterShort,
   generateVerifiedBotComment,
   generateVerifiedBotStudyPost,
+  getTotalGeminiCallsToday,
   parseGeminiApiKeys,
   redactApiKeysFromText,
   resolvePinnedGeminiModels,
+  sleep,
   toPublicKeyStatusList,
+  truncateBotErrorMessage,
 } from '../src/services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../src/utils/katexValidator';
 import {
@@ -1410,12 +1418,40 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
   );
 }
 
+interface D1BotAccountRow {
+  uid: string;
+  placeholder_name?: string;
+  username?: string;
+  display_name: string;
+  subject: string;
+  class_level?: string;
+  board?: string;
+  equipped_avatar?: string;
+  avatar?: string;
+  bio?: string;
+  enabled: number;
+  daily_post_limit?: number;
+  post_count?: number;
+  posts_count?: number;
+  comment_count?: number;
+  comments_count?: number;
+  like_count?: number;
+  likes_count?: number;
+  last_run_at: number | null;
+  last_status?: string | null;
+  last_run_status?: string | null;
+  updated_at: number;
+}
+
 interface D1BotKeyStatusRow {
   key_index: number;
   status: string;
   cooldown_until: number | null;
+  last_used_at?: number | null;
   calls_today: number;
-  calls_day_key: string;
+  calls_total?: number;
+  quota_date?: string;
+  calls_day_key?: string;
   last_error: string | null;
   updated_at: number;
 }
@@ -1424,6 +1460,66 @@ interface D1BotSystemStateRow {
   state_key: string;
   state_value: string;
   updated_at: number;
+}
+
+async function updateD1BotAccountRow(
+  db: D1Database,
+  params: {
+    uid: string;
+    addPosts: number;
+    addComments: number;
+    addLikes: number;
+    lastRunAt: number;
+    statusText: string;
+  }
+): Promise<void> {
+  const shortStatus = truncateBotErrorMessage(params.statusText);
+  try {
+    await db
+      .prepare(
+        `UPDATE bot_accounts
+         SET post_count = COALESCE(post_count, 0) + ?,
+             comment_count = COALESCE(comment_count, 0) + ?,
+             like_count = COALESCE(like_count, 0) + ?,
+             last_run_at = ?,
+             last_status = ?,
+             updated_at = ?
+         WHERE uid = ?`
+      )
+      .bind(
+        params.addPosts,
+        params.addComments,
+        params.addLikes,
+        params.lastRunAt,
+        shortStatus,
+        params.lastRunAt,
+        params.uid
+      )
+      .run();
+  } catch {
+    await db
+      .prepare(
+        `UPDATE bot_accounts
+         SET posts_count = COALESCE(posts_count, 0) + ?,
+             comments_count = COALESCE(comments_count, 0) + ?,
+             likes_count = COALESCE(likes_count, 0) + ?,
+             last_run_at = ?,
+             last_run_status = ?,
+             updated_at = ?
+         WHERE uid = ?`
+      )
+      .bind(
+        params.addPosts,
+        params.addComments,
+        params.addLikes,
+        params.lastRunAt,
+        shortStatus,
+        params.lastRunAt,
+        params.uid
+      )
+      .run()
+      .catch(() => {});
+  }
 }
 
 async function loadD1BotKeyPoolAndSummary(
@@ -1436,17 +1532,26 @@ async function loadD1BotKeyPoolAndSummary(
 }> {
   const apiKeys = parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY);
   const [keyRowsRes, stateRowsRes] = await Promise.all([
-    db.prepare('SELECT * FROM bot_key_status ORDER BY key_index ASC').all<D1BotKeyStatusRow>(),
-    db.prepare('SELECT * FROM bot_system_state').all<D1BotSystemStateRow>(),
+    db
+      .prepare('SELECT * FROM bot_key_status ORDER BY key_index ASC')
+      .all<D1BotKeyStatusRow>()
+      .catch(() => ({ results: [] as D1BotKeyStatusRow[] })),
+    db
+      .prepare('SELECT * FROM bot_system_state')
+      .all<D1BotSystemStateRow>()
+      .catch(() => ({ results: [] as D1BotSystemStateRow[] })),
   ]);
 
   const persistedStatuses: Partial<GeminiKeyStatusRecord>[] = (keyRowsRes.results || []).map((r) => ({
     keyIndex: Number(r.key_index),
     status: (r.status as any) || 'available',
     cooldownUntil: r.cooldown_until ? Number(r.cooldown_until) : null,
+    lastUsedAt: r.last_used_at ? Number(r.last_used_at) : null,
     callsToday: Number(r.calls_today || 0),
-    callsDayKey: String(r.calls_day_key || ''),
-    lastError: r.last_error || null,
+    callsTotal: Number(r.calls_total || 0),
+    quotaDate: String(r.quota_date || r.calls_day_key || ''),
+    callsDayKey: String(r.calls_day_key || r.quota_date || ''),
+    lastError: r.last_error ? truncateBotErrorMessage(r.last_error, apiKeys) : null,
   }));
 
   const stateMap = new Map<string, string>();
@@ -1461,11 +1566,35 @@ async function loadD1BotKeyPoolAndSummary(
       ? allKeysExhaustedUntilRaw
       : null;
 
+  let botCooldowns: Record<string, number> = {};
+  const rawBotCooldowns = stateMap.get('bot_cooldowns_json');
+  if (rawBotCooldowns) {
+    try {
+      botCooldowns = JSON.parse(rawBotCooldowns) || {};
+    } catch {
+      botCooldowns = {};
+    }
+  }
+
   let lastRunSummary: any = null;
   const rawSummary = stateMap.get('last_run_summary_json');
   if (rawSummary) {
     try {
       lastRunSummary = JSON.parse(rawSummary);
+      if (lastRunSummary && typeof lastRunSummary === 'object') {
+        if (lastRunSummary.bannerMessage) {
+          lastRunSummary.bannerMessage = truncateBotErrorMessage(
+            lastRunSummary.bannerMessage,
+            apiKeys
+          );
+        }
+        if (Array.isArray(lastRunSummary.results)) {
+          lastRunSummary.results = lastRunSummary.results.map((item: any) => ({
+            ...item,
+            error: item?.error ? truncateBotErrorMessage(item.error, apiKeys) : undefined,
+          }));
+        }
+      }
     } catch {
       lastRunSummary = null;
     }
@@ -1480,6 +1609,7 @@ async function loadD1BotKeyPoolAndSummary(
     persistedStatuses,
     lastUsedKeyIndex: Number.isFinite(lastUsedKeyIndex) ? lastUsedKeyIndex : -1,
     allKeysExhaustedUntil,
+    botCooldowns,
   });
 
   return {
@@ -1495,11 +1625,39 @@ async function saveD1BotKeyPoolAndSummary(
   lastRunSummary?: any
 ): Promise<void> {
   const now = Date.now();
-  const statements: D1PreparedStatement[] = [];
+  const stateStatements: D1PreparedStatement[] = [];
 
   for (const ks of pool.keyStatuses) {
-    statements.push(
-      db
+    const truncatedErr = ks.lastError ? truncateBotErrorMessage(ks.lastError, pool.keys) : null;
+    try {
+      await db
+        .prepare(
+          `INSERT INTO bot_key_status (key_index, status, cooldown_until, last_used_at, calls_today, calls_total, quota_date, last_error, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(key_index) DO UPDATE SET
+             status = excluded.status,
+             cooldown_until = excluded.cooldown_until,
+             last_used_at = excluded.last_used_at,
+             calls_today = excluded.calls_today,
+             calls_total = excluded.calls_total,
+             quota_date = excluded.quota_date,
+             last_error = excluded.last_error,
+             updated_at = excluded.updated_at`
+        )
+        .bind(
+          ks.keyIndex,
+          ks.status,
+          ks.cooldownUntil,
+          ks.lastUsedAt,
+          ks.callsToday,
+          ks.callsTotal,
+          ks.quotaDate,
+          truncatedErr,
+          now
+        )
+        .run();
+    } catch {
+      await db
         .prepare(
           `INSERT INTO bot_key_status (key_index, status, cooldown_until, calls_today, calls_day_key, last_error, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1517,10 +1675,12 @@ async function saveD1BotKeyPoolAndSummary(
           ks.cooldownUntil,
           ks.callsToday,
           ks.callsDayKey,
-          ks.lastError ? redactApiKeysFromText(ks.lastError, pool.keys) : null,
+          truncatedErr,
           now
         )
-    );
+        .run()
+        .catch(() => {});
+    }
   }
 
   const upsertState = (key: string, val: string) =>
@@ -1534,21 +1694,24 @@ async function saveD1BotKeyPoolAndSummary(
       )
       .bind(key, val, now);
 
-  statements.push(upsertState('last_used_key_index', String(pool.lastUsedKeyIndex)));
-  statements.push(
+  stateStatements.push(upsertState('last_used_key_index', String(pool.lastUsedKeyIndex)));
+  stateStatements.push(
     upsertState(
       'all_keys_exhausted_until',
       pool.allKeysExhaustedUntil ? String(pool.allKeysExhaustedUntil) : '0'
     )
   );
-  statements.push(upsertState('gemini_calls_last_run', String(pool.callsThisRun)));
+  stateStatements.push(upsertState('gemini_calls_last_run', String(pool.callsThisRun)));
+  stateStatements.push(
+    upsertState('bot_cooldowns_json', JSON.stringify(pool.botCooldowns || {}))
+  );
 
   if (lastRunSummary !== undefined) {
-    statements.push(upsertState('last_run_summary_json', JSON.stringify(lastRunSummary)));
+    stateStatements.push(upsertState('last_run_summary_json', JSON.stringify(lastRunSummary)));
   }
 
-  if (statements.length > 0) {
-    await db.batch(statements);
+  if (stateStatements.length > 0) {
+    await db.batch(stateStatements).catch(() => {});
   }
 }
 
@@ -1557,225 +1720,174 @@ async function executeD1BotRun(
   env: Env,
   options: {
     targetBotUid?: string | null;
+    botUid?: string | null;
     maxBots?: number;
     postsPerBot?: number;
-    triggerSource?: 'manual' | 'cron';
+    triggerSource?: string;
+    trigger?: string;
   }
 ): Promise<{
   httpStatus: number;
   payload: Record<string, any>;
 }> {
-  const apiKeys = parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY);
-  const { model, fallbackModel } = resolvePinnedGeminiModels(
-    env.GEMINI_MODEL,
-    env.GEMINI_FALLBACK_MODEL
-  );
-
-  if (apiKeys.length === 0) {
-    return {
-      httpStatus: 500,
-      payload: {
-        success: false,
-        runOutcome: 'error',
-        bannerStatus: 'error',
-        bannerMessage:
-          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in Cloudflare secrets.',
-        error:
-          'No Gemini API keys configured. Set GEMINI_API_KEYS (comma-separated) or GEMINI_API_KEY in Cloudflare secrets.',
-      },
-    };
-  }
-
-  const { pool } = await loadD1BotKeyPoolAndSummary(db, env);
-  const nowMs = Date.now();
-
-  // Check if all keys are currently cooling down in D1 before calling Gemini
-  const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
-  if (
-    activeKeyCount === 0 ||
-    (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
-  ) {
-    const retryUntilMs =
-      pool.allKeysExhaustedUntil ||
-      Math.min(
-        ...pool.keyStatuses
-          .map((k) => k.cooldownUntil || nowMs + 60_000)
-          .filter((v) => v > nowMs)
-      );
-    const retryIso = new Date(retryUntilMs).toISOString();
-    const retryTimeFormatted = new Date(retryUntilMs).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Karachi',
-    });
-    const bannerMessage = `Gemini quota exhausted — all ${apiKeys.length} key(s) cooling down. Retrying after ${retryTimeFormatted} PKT (${retryIso}).`;
-
-    const summaryPayload = {
-      success: true,
-      runOutcome: 'quota_exhausted',
-      bannerStatus: 'error',
-      bannerMessage,
-      allKeysExhaustedUntil: retryIso,
-      ranAt: new Date(nowMs).toISOString(),
-      triggerSource: options.triggerSource || 'manual',
-      botsProcessed: 0,
-      postsCreated: 0,
-      commentsCreated: 0,
-      likesAdded: 0,
-      likesCreated: 0,
-      geminiCallsLastRun: 0,
-      geminiCallsToday: getTotalGeminiCallsToday(pool),
-      geminiKeysCount: apiKeys.length,
-      geminiModel: model,
-      geminiFallbackModel: fallbackModel,
-      keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
-      results: [],
-    };
-    await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
-    return { httpStatus: 200, payload: summaryPayload };
-  }
-
-  const targetBotUid = options.targetBotUid ? String(options.targetBotUid).trim() : null;
-  // Cap each run to 2-3 bots chosen by least recently run
-  const requestedMaxBots = Number(options.maxBots || (targetBotUid ? 1 : 2));
-  const maxBots = targetBotUid
-    ? 1
-    : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
-  const postsPerBotReq = Math.min(2, Math.max(1, Number(options.postsPerBot || 1)));
-
-  let botQuery =
-    'SELECT * FROM bot_accounts WHERE enabled = 1 ORDER BY COALESCE(last_run_at, 0) ASC, uid ASC';
-  const binds: any[] = [];
-  if (targetBotUid) {
-    botQuery = 'SELECT * FROM bot_accounts WHERE uid = ? LIMIT 1';
-    binds.push(targetBotUid);
-  } else {
-    botQuery += ` LIMIT ${maxBots}`;
-  }
-
-  const botRowsResult = await db
-    .prepare(botQuery)
-    .bind(...binds)
-    .all<D1BotAccountRow>();
-  const botRows = botRowsResult.results || [];
-
-  const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
-  const runResults: Array<{
-    uid: string;
-    botUid: string;
-    displayName: string;
-    subject: string;
-    postsCreated: number;
-    commentsCreated: number;
-    likesCreated: number;
-    likesAdded: number;
-    geminiCallsUsed: number;
-    assignedKeyIndex: number;
-    status: string;
-    error?: string;
-  }> = [];
-
-  let totalPostsCreated = 0;
-  let totalCommentsCreated = 0;
-  let totalLikesCreated = 0;
-  let stoppedDueToAllKeysExhausted = false;
-  let exhaustionBannerMessage: string | null = null;
-
-  for (const botRow of botRows) {
-    const botIndexInConfig = Math.max(
-      0,
-      BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
+  return enqueueBotRun(async () => {
+    const apiKeys = parseGeminiApiKeys(env.GEMINI_API_KEYS, env.GEMINI_API_KEY);
+    const { model, fallbackModel } = resolvePinnedGeminiModels(
+      env.GEMINI_MODEL,
+      env.GEMINI_FALLBACK_MODEL
     );
-    const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
+    const triggerSource = options.triggerSource || options.trigger || 'manual';
 
-    const botConfig =
-      BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
-        uid: botRow.uid,
-        placeholderName: botRow.username,
-        displayName: botRow.display_name,
-        email: `${botRow.username}@bots.boardly.cfd`,
-        subject: botRow.subject as any,
-        classLevel: '11' as const,
-        board: 'Federal' as const,
-        target: 'Board Exams',
-        equippedAvatar: botRow.avatar,
-        bio: botRow.bio,
-        chapters: ['General Revision'],
+    if (apiKeys.length === 0) {
+      return {
+        httpStatus: 500,
+        payload: {
+          success: false,
+          runOutcome: 'error',
+          bannerStatus: 'error',
+          bannerMessage:
+            'No Gemini API keys configured. Set GEMINI_API_KEYS (or GEMINI_API_KEY) in Cloudflare secrets.',
+          error:
+            'No Gemini API keys configured. Set GEMINI_API_KEYS (or GEMINI_API_KEY) in Cloudflare secrets.',
+        },
       };
+    }
 
-    // STEP 2: Respect each bot's "Max 2/day" limit by checking D1 BEFORE calling Gemini
-    const todayPostsRow = await db
-      .prepare(
-        'SELECT COUNT(*) as cnt FROM posts WHERE (author_uid = ? OR real_author_uid = ?) AND created_at >= ?'
-      )
-      .bind(botRow.uid, botRow.uid, dayStartMs)
-      .first<{ cnt: number }>();
+    const { pool } = await loadD1BotKeyPoolAndSummary(db, env);
+    const nowMs = Date.now();
 
-    const alreadyPostedToday = Number(todayPostsRow?.cnt ?? 0);
-    const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
-    const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
+    // Check if all keys are currently cooling down in D1 before calling Gemini
+    const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
+    if (
+      activeKeyCount === 0 ||
+      (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
+    ) {
+      const retryUntilMs =
+        pool.allKeysExhaustedUntil ||
+        Math.min(
+          ...pool.keyStatuses
+            .map((k) => k.cooldownUntil || nowMs + 60_000)
+            .filter((v) => v > nowMs)
+        );
+      const retryIso = new Date(retryUntilMs).toISOString();
+      const bannerMessage = truncateBotErrorMessage(
+        formatCleanBotErrorMessage('Gemini HTTP 429 quota exceeded', retryUntilMs, null, nowMs),
+        apiKeys
+      );
 
-    let botPostsCreated = 0;
-    let botCommentsCreated = 0;
-    let botLikesCreated = 0;
-    let botGeminiCalls = 0;
-    let botStatus = 'ok';
-    let botError: string | undefined;
+      const summaryPayload = {
+        success: true,
+        runOutcome: 'quota_exceeded',
+        bannerStatus: 'error',
+        bannerMessage,
+        allKeysExhaustedUntil: retryIso,
+        ranAt: new Date(nowMs).toISOString(),
+        triggerSource,
+        botsProcessed: 0,
+        postsCreated: 0,
+        commentsCreated: 0,
+        likesAdded: 0,
+        likesCreated: 0,
+        geminiCallsLastRun: 0,
+        geminiCallsToday: getTotalGeminiCallsToday(pool),
+        geminiKeysCount: apiKeys.length,
+        geminiModel: model,
+        geminiFallbackModel: fallbackModel,
+        keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+        results: [],
+      };
+      await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
+      return { httpStatus: 200, payload: summaryPayload };
+    }
 
-    // 1. Plain D1 likes first (zero Gemini calls, always safe even if daily post quota is met)
-    try {
-      const otherPostsRes = await db
-        .prepare(
-          `SELECT id, title, description, subject FROM posts
-           WHERE status = 'published' AND is_hidden = 0
-             AND COALESCE(author_uid, '') != ? AND COALESCE(real_author_uid, '') != ?
-           ORDER BY created_at DESC LIMIT 12`
-        )
-        .bind(botRow.uid, botRow.uid)
-        .all<{ id: string; title: string; description: string; subject: string }>();
+    const targetBotUid = (options.targetBotUid || options.botUid || '').trim() || null;
+    const requestedMaxBots = Number(options.maxBots || (targetBotUid ? 1 : 2));
+    const maxBots = targetBotUid
+      ? 1
+      : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
+    const postsPerBotReq = Math.min(2, Math.max(1, Number(options.postsPerBot || 1)));
 
-      const candidatePosts = otherPostsRes.results || [];
-      for (const candidate of candidatePosts.slice(0, 2)) {
-        const existingLike = await db
-          .prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?')
-          .bind(candidate.id, botRow.uid)
-          .first();
-        if (!existingLike) {
-          await db.batch([
-            db
-              .prepare('INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)')
-              .bind(candidate.id, botRow.uid, Date.now()),
-            db
-              .prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
-              .bind(candidate.id),
-          ]);
-          botLikesCreated++;
-          totalLikesCreated++;
-        }
+    let botQuery =
+      'SELECT * FROM bot_accounts WHERE enabled = 1 ORDER BY COALESCE(last_run_at, 0) ASC, uid ASC';
+    const binds: any[] = [];
+    if (targetBotUid) {
+      botQuery = 'SELECT * FROM bot_accounts WHERE uid = ? LIMIT 1';
+      binds.push(targetBotUid);
+    } else {
+      botQuery += ` LIMIT ${maxBots}`;
+    }
+
+    const botRowsResult = await db
+      .prepare(botQuery)
+      .bind(...binds)
+      .all<D1BotAccountRow>();
+    const botRows = botRowsResult.results || [];
+
+    const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
+    const runResults: Array<{
+      uid: string;
+      botUid: string;
+      displayName: string;
+      subject: string;
+      postsCreated: number;
+      commentsCreated: number;
+      likesCreated: number;
+      likesAdded: number;
+      geminiCallsUsed: number;
+      assignedKeyIndex: number;
+      status: string;
+      retryAfter?: string;
+      error?: string;
+    }> = [];
+
+    let totalPostsCreated = 0;
+    let totalCommentsCreated = 0;
+    let totalLikesCreated = 0;
+    let stoppedDueToAllKeysExhausted = false;
+    let exhaustionBannerMessage: string | null = null;
+
+    for (let botLoopIdx = 0; botLoopIdx < botRows.length; botLoopIdx++) {
+      // Delay between consecutive bot runs so two bots never burst simultaneously
+      if (botLoopIdx > 0) {
+        await sleep(DELAY_BETWEEN_BOT_RUNS_MS);
       }
 
-      if (remainingQuota <= 0) {
-        botStatus = 'daily_limit_reached';
-        const nowUpdate = Date.now();
-        await db
-          .prepare(
-            `UPDATE bot_accounts
-             SET likes_count = likes_count + ?,
-                 last_run_at = ?,
-                 last_run_status = ?,
-                 updated_at = ?
-             WHERE uid = ?`
-          )
-          .bind(
-            botLikesCreated,
-            nowUpdate,
-            `Daily post limit reached (${alreadyPostedToday}/${dailyLimit} today); ${botLikesCreated} like(s) added`,
-            nowUpdate,
-            botRow.uid
-          )
-          .run();
+      const botRow = botRows[botLoopIdx];
+      const botIndexInConfig = Math.max(
+        0,
+        BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
+      );
+      const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
 
+      const botConfig =
+        BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
+          uid: botRow.uid,
+          placeholderName: botRow.placeholder_name || botRow.username || botRow.uid,
+          displayName: botRow.display_name,
+          email: `${botRow.placeholder_name || botRow.username || botRow.uid}@bots.boardly.cfd`,
+          subject: botRow.subject as any,
+          classLevel: '11' as const,
+          board: 'Federal' as const,
+          target: 'Board Exams',
+          equippedAvatar: botRow.equipped_avatar || botRow.avatar || 'pfp_luffy',
+          bio: botRow.bio || '',
+          chapters: ['General Revision'],
+        };
+
+      const botAvatar =
+        botRow.equipped_avatar || botRow.avatar || botConfig.equippedAvatar || 'pfp_luffy';
+
+      // If this bot was recently marked quota_exceeded and its retry time has not passed, do not retry in a loop
+      const botCooldownUntilMs = pool.botCooldowns?.[botRow.uid] || 0;
+      if (botCooldownUntilMs > Date.now()) {
+        const cleanCooldownMsg = truncateBotErrorMessage(
+          formatCleanBotErrorMessage(
+            'Gemini HTTP 429 quota exceeded',
+            botCooldownUntilMs,
+            assignedKeyIndex + 1
+          ),
+          apiKeys
+        );
         runResults.push({
           uid: botRow.uid,
           botUid: botRow.uid,
@@ -1783,318 +1895,412 @@ async function executeD1BotRun(
           subject: botRow.subject,
           postsCreated: 0,
           commentsCreated: 0,
-          likesCreated: botLikesCreated,
-          likesAdded: botLikesCreated,
+          likesCreated: 0,
+          likesAdded: 0,
           geminiCallsUsed: 0,
           assignedKeyIndex,
-          status: 'daily_limit_reached',
+          status: 'quota_exceeded',
+          retryAfter: new Date(botCooldownUntilMs).toISOString(),
+          error: cleanCooldownMsg,
         });
         continue;
       }
 
-      // 2. Generate study post(s) sequentially (1 single merged Gemini call + local KaTeX check)
-      const targetPostsForBot = Math.min(remainingQuota, postsPerBotReq);
-      for (let i = 0; i < targetPostsForBot; i++) {
-        const genResult = await generateVerifiedBotStudyPost({
-          bot: botConfig,
-          keyPool: pool,
-          botIndex: botIndexInConfig,
-          model,
-          fallbackModel,
-          postIndex: alreadyPostedToday + i,
-        });
-        botGeminiCalls += genResult.geminiCallsUsed || 0;
+      // Respect each bot's "Max 2/day" limit by checking D1 BEFORE calling Gemini
+      const todayPostsRow = await db
+        .prepare(
+          'SELECT COUNT(*) as cnt FROM posts WHERE (author_uid = ? OR real_author_uid = ?) AND created_at >= ?'
+        )
+        .bind(botRow.uid, botRow.uid, dayStartMs)
+        .first<{ cnt: number }>();
 
-        if (!genResult.post) {
-          botError = genResult.discardReason || 'Post generation failed';
-          console.error(
-            `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
-            redactApiKeysFromText(botError, apiKeys)
-          );
-          if (genResult.allKeysExhausted) {
-            stoppedDueToAllKeysExhausted = true;
-            exhaustionBannerMessage = botError;
-            break;
+      const alreadyPostedToday = Number(todayPostsRow?.cnt ?? 0);
+      const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
+      const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
+
+      let botPostsCreated = 0;
+      let botCommentsCreated = 0;
+      let botLikesCreated = 0;
+      let botGeminiCalls = 0;
+      let botStatus = 'ok';
+      let botRetryAfterIso: string | undefined;
+      let botError: string | undefined;
+
+      try {
+        const otherPostsRes = await db
+          .prepare(
+            `SELECT id, title, description, subject FROM posts
+             WHERE status = 'published' AND is_hidden = 0
+               AND COALESCE(author_uid, '') != ? AND COALESCE(real_author_uid, '') != ?
+             ORDER BY created_at DESC LIMIT 12`
+          )
+          .bind(botRow.uid, botRow.uid)
+          .all<{ id: string; title: string; description: string; subject: string }>();
+
+        const candidatePosts = otherPostsRes.results || [];
+        for (const candidate of candidatePosts.slice(0, 2)) {
+          const existingLike = await db
+            .prepare('SELECT 1 FROM post_likes WHERE post_id = ? AND user_uid = ?')
+            .bind(candidate.id, botRow.uid)
+            .first();
+          if (!existingLike) {
+            await db.batch([
+              db
+                .prepare(
+                  'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
+                )
+                .bind(candidate.id, botRow.uid, Date.now()),
+              db
+                .prepare('UPDATE posts SET upvotes = upvotes + 1 WHERE id = ?')
+                .bind(candidate.id),
+            ]);
+            botLikesCreated++;
+            totalLikesCreated++;
           }
+        }
+
+        if (remainingQuota <= 0) {
+          botStatus = 'daily_limit_reached';
+          const nowUpdate = Date.now();
+          await updateD1BotAccountRow(db, {
+            uid: botRow.uid,
+            addPosts: 0,
+            addComments: 0,
+            addLikes: botLikesCreated,
+            lastRunAt: nowUpdate,
+            statusText: `Daily limit reached (${alreadyPostedToday}/${dailyLimit} today); +${botLikesCreated} like(s)`,
+          });
+
+          runResults.push({
+            uid: botRow.uid,
+            botUid: botRow.uid,
+            displayName: botRow.display_name,
+            subject: botRow.subject,
+            postsCreated: 0,
+            commentsCreated: 0,
+            likesCreated: botLikesCreated,
+            likesAdded: botLikesCreated,
+            geminiCallsUsed: 0,
+            assignedKeyIndex,
+            status: 'daily_limit_reached',
+          });
           continue;
         }
 
-        const p = genResult.post;
-        const maxRow = await db
-          .prepare('SELECT MAX(created_at) as max_ts FROM posts')
-          .first<{ max_ts: number | null }>();
-        const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
-        const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 8)}`;
-        const slug = buildSlug(postId, p.title);
+        // Generate study post(s) sequentially (1 single merged Gemini call + local KaTeX check)
+        const targetPostsForBot = Math.min(remainingQuota, postsPerBotReq);
+        for (let i = 0; i < targetPostsForBot; i++) {
+          const genResult = await generateVerifiedBotStudyPost({
+            bot: botConfig,
+            keyPool: pool,
+            botIndex: botIndexInConfig,
+            model,
+            fallbackModel,
+            postIndex: alreadyPostedToday + i,
+          });
+          botGeminiCalls += genResult.geminiCallsUsed || 0;
 
-        await db
-          .prepare(
-            `INSERT INTO posts (
-              id, slug, type, title, description, subject, chapter, target,
-              class_level, board, format, tags_json, files_json,
-              is_anonymous, anonymous_alias, author_uid, real_author_uid,
-              author_name, author_avatar, author_frame, author_equipped_avatar,
-              author_photo_url, author_role, author_custom_role,
-              status, visibility, is_hidden, is_pinned, is_featured,
-              upvotes, downvotes, views, comment_count, save_count, shares_count, report_count,
-              created_at, updated_at
-            ) VALUES (
-              ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, 'text', ?, '[]',
-              0, 'Anonymous Student', ?, ?,
-              ?, ?, NULL, ?,
-              NULL, 'bot', ?,
-              'published', 'public', 0, 0, 0,
-              1, 0, 1, 0, 0, 0, 0,
-              ?, ?
-            )`
-          )
-          .bind(
-            postId,
-            slug,
-            p.type,
-            p.title,
-            p.description,
-            botConfig.subject,
-            p.chapter,
-            botConfig.target,
-            botConfig.classLevel,
-            botConfig.board,
-            JSON.stringify(p.tags || []),
-            botRow.uid,
-            botRow.uid,
-            botRow.display_name,
-            botRow.avatar,
-            botRow.avatar,
-            `${botConfig.subject} Study Bot`,
-            now,
-            now
-          )
-          .run();
+          if (!genResult.post) {
+            botError = truncateBotErrorMessage(
+              genResult.discardReason || 'Post generation failed',
+              apiKeys
+            );
+            console.error(
+              `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
+              botError
+            );
+            if (genResult.quotaExceeded || genResult.status === 'quota_exceeded') {
+              botStatus = 'quota_exceeded';
+              botRetryAfterIso = genResult.retryAfterIso;
+              if (genResult.allKeysExhausted) {
+                stoppedDueToAllKeysExhausted = true;
+                exhaustionBannerMessage = botError;
+              }
+              // Do NOT retry this bot in a loop on 429
+              break;
+            }
+            continue;
+          }
 
-        await db
-          .prepare(
-            'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
-          )
-          .bind(postId, botRow.uid, now)
-          .run();
+          const p = genResult.post;
+          const maxRow = await db
+            .prepare('SELECT MAX(created_at) as max_ts FROM posts')
+            .first<{ max_ts: number | null }>();
+          const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
+          const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 8)}`;
+          const slug = buildSlug(postId, p.title);
 
-        botPostsCreated++;
-        totalPostsCreated++;
-      }
-
-      // 3. Optional comment on 1 existing post if keys are still healthy and post succeeded
-      if (!stoppedDueToAllKeysExhausted && candidatePosts.length > 0 && botPostsCreated > 0) {
-        const subjectMatch =
-          candidatePosts.find(
-            (cp) => cp.subject.toLowerCase() === botConfig.subject.toLowerCase()
-          ) || candidatePosts[0];
-
-        if (subjectMatch) {
-          const existingBotComment = await db
+          await db
             .prepare(
-              'SELECT 1 FROM post_comments WHERE post_id = ? AND real_author_uid = ? LIMIT 1'
+              `INSERT INTO posts (
+                id, slug, type, title, description, subject, chapter, target,
+                class_level, board, format, tags_json, files_json,
+                is_anonymous, anonymous_alias, author_uid, real_author_uid,
+                author_name, author_avatar, author_frame, author_equipped_avatar,
+                author_photo_url, author_role, author_custom_role,
+                status, visibility, is_hidden, is_pinned, is_featured,
+                upvotes, downvotes, views, comment_count, save_count, shares_count, report_count,
+                created_at, updated_at
+              ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, 'text', ?, '[]',
+                0, 'Anonymous Student', ?, ?,
+                ?, ?, NULL, ?,
+                NULL, 'bot', ?,
+                'published', 'public', 0, 0, 0,
+                1, 0, 1, 0, 0, 0, 0,
+                ?, ?
+              )`
             )
-            .bind(subjectMatch.id, botRow.uid)
-            .first();
+            .bind(
+              postId,
+              slug,
+              p.type,
+              p.title,
+              p.description,
+              botConfig.subject,
+              p.chapter,
+              botConfig.target,
+              botConfig.classLevel,
+              botConfig.board,
+              JSON.stringify(p.tags || []),
+              botRow.uid,
+              botRow.uid,
+              botRow.display_name,
+              botAvatar,
+              botAvatar,
+              `${botConfig.subject} Study Bot`,
+              now,
+              now
+            )
+            .run();
 
-          if (!existingBotComment) {
-            const commentResult = await generateVerifiedBotComment({
-              bot: botConfig,
-              targetPost: subjectMatch,
-              keyPool: pool,
-              botIndex: botIndexInConfig,
-              model,
-              fallbackModel,
-            });
-            botGeminiCalls += commentResult.geminiCallsUsed || 0;
+          await db
+            .prepare(
+              'INSERT OR IGNORE INTO post_likes (post_id, user_uid, created_at) VALUES (?, ?, ?)'
+            )
+            .bind(postId, botRow.uid, now)
+            .run();
 
-            if (commentResult.comment) {
-              const cNow = Date.now();
-              const commentId = `cmt_bot_${cNow}_${crypto.randomUUID().slice(0, 8)}`;
-              await db.batch([
-                db
-                  .prepare(
-                    `INSERT INTO post_comments (
-                      id, post_id, text, is_anonymous, author_uid, real_author_uid,
-                      author_name, author_avatar, author_frame, author_equipped_avatar,
-                      author_photo_url, author_role, author_custom_role, created_at
-                    ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, ?)`
-                  )
-                  .bind(
-                    commentId,
-                    subjectMatch.id,
-                    commentResult.comment.text,
-                    botRow.uid,
-                    botRow.uid,
-                    botRow.display_name,
-                    botRow.avatar,
-                    botRow.avatar,
-                    `${botConfig.subject} Study Bot`,
-                    cNow
-                  ),
-                db
-                  .prepare('UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?')
-                  .bind(subjectMatch.id),
-              ]);
-              botCommentsCreated++;
-              totalCommentsCreated++;
-            } else if (commentResult.allKeysExhausted) {
-              stoppedDueToAllKeysExhausted = true;
-              exhaustionBannerMessage =
-                commentResult.discardReason || 'All Gemini API keys are cooling down.';
+          botPostsCreated++;
+          totalPostsCreated++;
+        }
+
+        // Optional comment on 1 existing post if keys are still healthy and post succeeded
+        if (
+          !stoppedDueToAllKeysExhausted &&
+          botStatus !== 'quota_exceeded' &&
+          candidatePosts.length > 0 &&
+          botPostsCreated > 0
+        ) {
+          const subjectMatch =
+            candidatePosts.find(
+              (cp) => cp.subject.toLowerCase() === botConfig.subject.toLowerCase()
+            ) || candidatePosts[0];
+
+          if (subjectMatch) {
+            const existingBotComment = await db
+              .prepare(
+                'SELECT 1 FROM post_comments WHERE post_id = ? AND real_author_uid = ? LIMIT 1'
+              )
+              .bind(subjectMatch.id, botRow.uid)
+              .first();
+
+            if (!existingBotComment) {
+              const commentResult = await generateVerifiedBotComment({
+                bot: botConfig,
+                targetPost: subjectMatch,
+                keyPool: pool,
+                botIndex: botIndexInConfig,
+                model,
+                fallbackModel,
+              });
+              botGeminiCalls += commentResult.geminiCallsUsed || 0;
+
+              if (commentResult.comment) {
+                const cNow = Date.now();
+                const commentId = `cmt_bot_${cNow}_${crypto.randomUUID().slice(0, 8)}`;
+                await db.batch([
+                  db
+                    .prepare(
+                      `INSERT INTO post_comments (
+                        id, post_id, text, is_anonymous, author_uid, real_author_uid,
+                        author_name, author_avatar, author_frame, author_equipped_avatar,
+                        author_photo_url, author_role, author_custom_role, created_at
+                      ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, NULL, ?, NULL, 'bot', ?, ?)`
+                    )
+                    .bind(
+                      commentId,
+                      subjectMatch.id,
+                      commentResult.comment.text,
+                      botRow.uid,
+                      botRow.uid,
+                      botRow.display_name,
+                      botAvatar,
+                      botAvatar,
+                      `${botConfig.subject} Study Bot`,
+                      cNow
+                    ),
+                  db
+                    .prepare('UPDATE posts SET comment_count = comment_count + 1 WHERE id = ?')
+                    .bind(subjectMatch.id),
+                ]);
+                botCommentsCreated++;
+                totalCommentsCreated++;
+              } else if (commentResult.quotaExceeded || commentResult.allKeysExhausted) {
+                if (commentResult.allKeysExhausted) {
+                  stoppedDueToAllKeysExhausted = true;
+                  exhaustionBannerMessage = truncateBotErrorMessage(
+                    commentResult.discardReason || 'Gemini quota exceeded, retry after cooldown',
+                    apiKeys
+                  );
+                }
+              }
             }
           }
         }
-      }
-    } catch (botErr: any) {
-      botError = redactApiKeysFromText(
-        String(botErr?.message || botErr || 'Unexpected bot error'),
-        apiKeys
-      );
-      console.error(`[BotRunner] Unexpected error for bot ${botRow.uid}:`, botError);
-    }
-
-    if (botPostsCreated === 0 && botError) {
-      botStatus = stoppedDueToAllKeysExhausted ? 'quota_exhausted' : 'error';
-    } else if (botPostsCreated === 0) {
-      botStatus = 'skipped';
-    } else {
-      botStatus = 'ok';
-    }
-
-    const statusText =
-      botPostsCreated > 0
-        ? `Published ${botPostsCreated} post(s), ${botCommentsCreated} comment(s), ${botLikesCreated} like(s)`
-        : botError
-          ? `Error: ${botError}`
-          : `Skipped (0 posts, ${botLikesCreated} like(s))`;
-
-    const nowDone = Date.now();
-    await db
-      .prepare(
-        `UPDATE bot_accounts
-         SET posts_count = posts_count + ?,
-             comments_count = comments_count + ?,
-             likes_count = likes_count + ?,
-             last_run_at = ?,
-             last_run_status = ?,
-             updated_at = ?
-         WHERE uid = ?`
-      )
-      .bind(
-        botPostsCreated,
-        botCommentsCreated,
-        botLikesCreated,
-        nowDone,
-        statusText,
-        nowDone,
-        botRow.uid
-      )
-      .run();
-
-    runResults.push({
-      uid: botRow.uid,
-      botUid: botRow.uid,
-      displayName: botRow.display_name,
-      subject: botRow.subject,
-      postsCreated: botPostsCreated,
-      commentsCreated: botCommentsCreated,
-      likesCreated: botLikesCreated,
-      likesAdded: botLikesCreated,
-      geminiCallsUsed: botGeminiCalls,
-      assignedKeyIndex,
-      status: botStatus,
-      error: botError,
-    });
-
-    if (stoppedDueToAllKeysExhausted) {
-      break;
-    }
-  }
-
-  const anyErrors = runResults.some((r) => Boolean(r.error));
-  const allDailyLimit =
-    runResults.length > 0 && runResults.every((r) => r.status === 'daily_limit_reached');
-
-  let runOutcome: 'success' | 'partial' | 'quota_exhausted' | 'error' | 'daily_limit' = 'success';
-  let bannerStatus: 'success' | 'warning' | 'error' = 'success';
-  let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
-
-  if (stoppedDueToAllKeysExhausted || (totalPostsCreated === 0 && anyErrors)) {
-    const firstError =
-      exhaustionBannerMessage ||
-      runResults.find((r) => r.error)?.error ||
-      'Gemini API error prevented post generation.';
-    if (
-      stoppedDueToAllKeysExhausted ||
-      firstError.toLowerCase().includes('quota') ||
-      firstError.includes('429') ||
-      firstError.toLowerCase().includes('cooling down')
-    ) {
-      runOutcome = 'quota_exhausted';
-      bannerStatus = 'error';
-      const retryUntil =
-        pool.allKeysExhaustedUntil ||
-        Math.min(
-          ...pool.keyStatuses
-            .map((k) => k.cooldownUntil || Date.now() + 60_000)
-            .filter((v) => v > Date.now())
+      } catch (botErr: any) {
+        botError = truncateBotErrorMessage(
+          String(botErr?.message || botErr || 'Unexpected bot error'),
+          apiKeys
         );
-      const retryFormatted = Number.isFinite(retryUntil)
-        ? new Date(retryUntil).toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'Asia/Karachi',
-          })
-        : 'cooldown expires';
-      bannerMessage = `Gemini quota exhausted (0 posts published). Retrying after ${retryFormatted} PKT. Full detail: ${firstError}`;
-    } else {
-      runOutcome = 'error';
-      bannerStatus = 'error';
-      bannerMessage = `Bot run published 0 posts due to errors: ${firstError}`;
+        console.error(`[BotRunner] Unexpected error for bot ${botRow.uid}:`, botError);
+      }
+
+      if (botPostsCreated === 0 && botError) {
+        if (
+          botStatus === 'quota_exceeded' ||
+          stoppedDueToAllKeysExhausted ||
+          /quota|429/i.test(botError)
+        ) {
+          botStatus = 'quota_exceeded';
+        } else {
+          botStatus = 'error';
+        }
+      } else if (botPostsCreated === 0) {
+        botStatus = 'skipped';
+      } else {
+        botStatus = 'ok';
+      }
+
+      const statusText =
+        botPostsCreated > 0
+          ? `Published ${botPostsCreated} post(s), ${botCommentsCreated} comment(s), ${botLikesCreated} like(s)`
+          : botStatus === 'quota_exceeded'
+            ? truncateBotErrorMessage(`quota_exceeded — ${botError || 'Gemini quota exceeded'}`, apiKeys)
+            : botError
+              ? truncateBotErrorMessage(botError, apiKeys)
+              : `Skipped (0 posts, ${botLikesCreated} like(s))`;
+
+      const nowDone = Date.now();
+      await updateD1BotAccountRow(db, {
+        uid: botRow.uid,
+        addPosts: botPostsCreated,
+        addComments: botCommentsCreated,
+        addLikes: botLikesCreated,
+        lastRunAt: nowDone,
+        statusText,
+      });
+
+      runResults.push({
+        uid: botRow.uid,
+        botUid: botRow.uid,
+        displayName: botRow.display_name,
+        subject: botRow.subject,
+        postsCreated: botPostsCreated,
+        commentsCreated: botCommentsCreated,
+        likesCreated: botLikesCreated,
+        likesAdded: botLikesCreated,
+        geminiCallsUsed: botGeminiCalls,
+        assignedKeyIndex,
+        status: botStatus,
+        retryAfter: botRetryAfterIso,
+        error: botError,
+      });
+
+      if (stoppedDueToAllKeysExhausted) {
+        break;
+      }
     }
-  } else if (totalPostsCreated > 0 && anyErrors) {
-    runOutcome = 'partial';
-    bannerStatus = 'warning';
-    bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published, with some errors (${pool.callsThisRun} Gemini call(s)).`;
-  } else if (totalPostsCreated === 0 && allDailyLimit) {
-    runOutcome = 'daily_limit';
-    bannerStatus = 'warning';
-    bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} plain D1 like(s) added, 0 Gemini calls used).`;
-  }
 
-  const summaryPayload = {
-    success: true,
-    runOutcome,
-    bannerStatus,
-    bannerMessage,
-    allKeysExhaustedUntil: pool.allKeysExhaustedUntil
-      ? new Date(pool.allKeysExhaustedUntil).toISOString()
-      : null,
-    ranAt: new Date().toISOString(),
-    triggerSource: options.triggerSource || 'manual',
-    botsProcessed: runResults.length,
-    postsCreated: totalPostsCreated,
-    commentsCreated: totalCommentsCreated,
-    likesCreated: totalLikesCreated,
-    likesAdded: totalLikesCreated,
-    geminiCallsLastRun: pool.callsThisRun,
-    geminiCallsToday: getTotalGeminiCallsToday(pool),
-    geminiKeysCount: apiKeys.length,
-    geminiModel: model,
-    geminiFallbackModel: fallbackModel,
-    keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
-    results: runResults,
-  };
+    const anyErrors = runResults.some((r) => Boolean(r.error));
+    const allDailyLimit =
+      runResults.length > 0 && runResults.every((r) => r.status === 'daily_limit_reached');
 
-  await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
+    let runOutcome: 'success' | 'partial' | 'quota_exceeded' | 'quota_exhausted' | 'error' | 'daily_limit' =
+      'success';
+    let bannerStatus: 'success' | 'warning' | 'error' = 'success';
+    let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
 
-  return {
-    httpStatus: 200,
-    payload: summaryPayload,
-  };
+    if (stoppedDueToAllKeysExhausted || (totalPostsCreated === 0 && anyErrors)) {
+      const firstError =
+        exhaustionBannerMessage ||
+        runResults.find((r) => r.error)?.error ||
+        'Gemini API error prevented post generation.';
+      if (
+        stoppedDueToAllKeysExhausted ||
+        firstError.toLowerCase().includes('quota') ||
+        firstError.includes('429')
+      ) {
+        runOutcome = 'quota_exceeded';
+        bannerStatus = 'error';
+        const retryUntil =
+          pool.allKeysExhaustedUntil ||
+          Math.min(
+            ...pool.keyStatuses
+              .map((k) => k.cooldownUntil || Date.now() + 60_000)
+              .filter((v) => v > Date.now())
+          );
+        bannerMessage = truncateBotErrorMessage(
+          formatCleanBotErrorMessage(firstError, Number.isFinite(retryUntil) ? retryUntil : null),
+          apiKeys
+        );
+      } else {
+        runOutcome = 'error';
+        bannerStatus = 'error';
+        bannerMessage = truncateBotErrorMessage(firstError, apiKeys);
+      }
+    } else if (totalPostsCreated > 0 && anyErrors) {
+      runOutcome = 'partial';
+      bannerStatus = 'warning';
+      bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s)).`;
+    } else if (totalPostsCreated === 0 && allDailyLimit) {
+      runOutcome = 'daily_limit';
+      bannerStatus = 'warning';
+      bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} like(s) added, 0 Gemini calls).`;
+    }
+
+    const summaryPayload = {
+      success: true,
+      runOutcome,
+      bannerStatus,
+      bannerMessage,
+      allKeysExhaustedUntil: pool.allKeysExhaustedUntil
+        ? new Date(pool.allKeysExhaustedUntil).toISOString()
+        : null,
+      ranAt: new Date().toISOString(),
+      triggerSource,
+      botsProcessed: runResults.length,
+      postsCreated: totalPostsCreated,
+      commentsCreated: totalCommentsCreated,
+      likesCreated: totalLikesCreated,
+      likesAdded: totalLikesCreated,
+      geminiCallsLastRun: pool.callsThisRun,
+      geminiCallsToday: getTotalGeminiCallsToday(pool),
+      geminiKeysCount: apiKeys.length,
+      geminiModel: model,
+      geminiFallbackModel: fallbackModel,
+      keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+      results: runResults,
+    };
+
+    await saveD1BotKeyPoolAndSummary(db, pool, summaryPayload);
+
+    return {
+      httpStatus: 200,
+      payload: summaryPayload,
+    };
+  });
 }
 
 export default {
@@ -3908,23 +4114,34 @@ ${urls
           dailyCountMap.set(u, Math.max(dailyCountMap.get(u) || 0, c));
         }
 
-        const { pool, lastRunSummary } = poolAndSummary;
+        const { pool, lastRunSummary, geminiCallsLastRun } = poolAndSummary;
         const { primaryModel, fallbackModel } = resolvePinnedGeminiModels(
           env.GEMINI_MODEL,
           env.GEMINI_FALLBACK_MODEL
         );
         const numKeys = pool.keys.length;
+        const publicKeyStatuses = toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length);
+        const geminiCallsToday = getTotalGeminiCallsToday(pool);
 
         const bots = BOARDLY_BOT_ACCOUNTS.map((cfg, idx) => {
           const row = dbMap.get(cfg.uid);
-          const postCount = Number(row?.post_count || 0);
-          const commentCount = Number(row?.comment_count || 0);
-          const likeCount = Number(row?.like_count || 0);
-          const lastStatus = row?.last_status || 'Ready';
+          const postCount = Number(row?.post_count ?? row?.posts_count ?? 0);
+          const commentCount = Number(row?.comment_count ?? row?.comments_count ?? 0);
+          const likeCount = Number(row?.like_count ?? row?.likes_count ?? 0);
+          const rawStatus = String(row?.last_status ?? row?.last_run_status ?? 'Ready');
+          const botCooldownUntilMs = pool.botCooldowns?.[cfg.uid] || null;
+          const lastStatus =
+            rawStatus && rawStatus !== 'Ready' && rawStatus !== 'ready'
+              ? truncateBotErrorMessage(
+                  formatCleanBotErrorMessage(rawStatus, botCooldownUntilMs, (idx % Math.max(1, numKeys)) + 1),
+                  pool.keys
+                )
+              : 'Ready';
           const postsToday = dailyCountMap.get(cfg.uid) || 0;
           return {
             uid: cfg.uid,
             botIndex: idx + 1,
+            assignedKeyIndex: numKeys > 0 ? idx % numKeys : 0,
             assignedKeyLabel: numKeys > 0 ? `Key #${(idx % numKeys) + 1}` : 'No key',
             username: cfg.placeholderName,
             placeholderName: cfg.placeholderName,
@@ -3933,8 +4150,8 @@ ${urls
             classLevel: row?.class_level || cfg.classLevel,
             board: row?.board || cfg.board,
             target: cfg.target,
-            avatar: row?.equipped_avatar || cfg.equippedAvatar,
-            equippedAvatar: row?.equipped_avatar || cfg.equippedAvatar,
+            avatar: row?.equipped_avatar || row?.avatar || cfg.equippedAvatar,
+            equippedAvatar: row?.equipped_avatar || row?.avatar || cfg.equippedAvatar,
             bio: cfg.bio,
             dailyPostLimit: 2,
             postsToday,
@@ -3949,8 +4166,17 @@ ${urls
             lastRunAt: row?.last_run_at ? new Date(Number(row.last_run_at)).toISOString() : null,
             lastStatus,
             lastRunStatus: lastStatus,
+            retryAfter:
+              botCooldownUntilMs && botCooldownUntilMs > Date.now()
+                ? new Date(botCooldownUntilMs).toISOString()
+                : null,
           };
         });
+
+        const allKeysExhaustedIso =
+          pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > Date.now()
+            ? new Date(pool.allKeysExhaustedUntil).toISOString()
+            : null;
 
         return jsonResponse(
           {
@@ -3958,19 +4184,23 @@ ${urls
             bots,
             geminiConfigured: numKeys > 0,
             geminiKeysCount: numKeys,
+            geminiModel: primaryModel,
+            geminiFallbackModel: fallbackModel,
             botRunSecretConfigured: Boolean(env.BOT_RUN_SECRET),
+            keyStatuses: publicKeyStatuses,
+            allKeysExhaustedUntil: allKeysExhaustedIso,
+            geminiCallsLastRun,
+            geminiCallsToday,
             geminiKeys: {
               totalConfigured: numKeys,
               activeModel: primaryModel,
               fallbackModel,
               lastUsedKeyIndex: pool.lastUsedKeyIndex >= 0 ? pool.lastUsedKeyIndex + 1 : null,
-              allKeysExhaustedUntil: pool.allKeysExhaustedUntil
-                ? new Date(pool.allKeysExhaustedUntil).toISOString()
-                : null,
+              allKeysExhaustedUntil: allKeysExhaustedIso,
               allKeysExhaustedUntilMs: pool.allKeysExhaustedUntil,
-              callsLastRun: pool.callsLastRun,
-              callsToday: pool.callsToday,
-              keys: toPublicKeyStatusList(pool),
+              callsLastRun: geminiCallsLastRun,
+              callsToday: geminiCallsToday,
+              keys: publicKeyStatuses,
             },
             lastRunSummary,
             config: {
@@ -4021,14 +4251,15 @@ ${urls
           trigger?: string;
         };
 
-        const runPayload = await executeD1BotRun(env.DB, env, {
+        const runResult = await executeD1BotRun(env.DB, env, {
+          targetBotUid: body.botUid,
           botUid: body.botUid,
           maxBots: body.maxBots,
           postsPerBot: body.postsPerBot,
-          trigger: body.trigger || (isSuperAdminCaller ? 'manual-admin' : 'cron-worker'),
+          triggerSource: body.trigger || (isSuperAdminCaller ? 'manual' : 'cron'),
         });
 
-        return jsonResponse(runPayload, runPayload.httpStatus || 200, cors);
+        return jsonResponse(runResult.payload, runResult.httpStatus || 200, cors);
       }
 
       // POST /api/bots/delete-content — Admin deletes all (or one bot's) posts, comments, and likes
@@ -7448,17 +7679,17 @@ ${urls
           const res = await executeD1BotRun(env.DB!, env, {
             maxBots: 2,
             postsPerBot: 1,
-            trigger: `cron:${event.cron || 'scheduled'}`,
+            triggerSource: `cron:${event.cron || 'scheduled'}`,
           });
           console.log('[CloudflareWorker] Scheduled bot run completed:', JSON.stringify({
-            ranAt: res.ranAt,
-            totalBotsProcessed: res.totalBotsProcessed,
-            totalPostsCreated: res.totalPostsCreated,
-            totalCommentsCreated: res.totalCommentsCreated,
-            totalLikesAdded: res.totalLikesAdded,
-            geminiCallsUsed: res.geminiCallsUsed,
-            bannerType: res.bannerType,
-            bannerMessage: res.bannerMessage,
+            ranAt: res.payload?.ranAt,
+            botsProcessed: res.payload?.botsProcessed,
+            postsCreated: res.payload?.postsCreated,
+            commentsCreated: res.payload?.commentsCreated,
+            likesAdded: res.payload?.likesAdded,
+            geminiCallsLastRun: res.payload?.geminiCallsLastRun,
+            bannerStatus: res.payload?.bannerStatus,
+            bannerMessage: res.payload?.bannerMessage,
           }));
         } catch (err) {
           console.error('[CloudflareWorker] Scheduled bot run error:', err);

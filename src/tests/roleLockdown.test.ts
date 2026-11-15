@@ -749,11 +749,156 @@ async function runRoleLockdownTests() {
   );
   console.log('✓ 7. GET /api/admin/coupons shared requireAdmin & 403 diagnostic reasons (role_not_found, email_not_verified) verified');
 
-  console.log('\nALL ROLE LOCKDOWN & CAPTAIN DASHBOARD TESTS PASSED!');
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TEST 8: Bot Gemini 429 Quota Handling (Pinned Model, Retry/Backoff, Per-Key Queue, quota_exceeded, Clean Truncated Errors)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const {
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_GEMINI_FALLBACK_MODEL,
+    MAX_STORED_BOT_ERROR_LENGTH,
+    BOARDLY_BOT_ACCOUNTS,
+    resolvePinnedGeminiModels,
+  } = await import('../config/botsConfig');
+  const {
+    buildBotKeyPoolState,
+    extractGeminiRetryDelayMs,
+    formatCleanBotErrorMessage,
+    truncateBotErrorMessage,
+    enqueueOnGeminiKey,
+    generateVerifiedBotStudyPost,
+  } = await import('../services/botContentGenerator');
+
+  // 8a. Replace "gemini-flash-latest" with pinned stable model name from single config
+  const resolvedModels = resolvePinnedGeminiModels('gemini-flash-latest', 'gemini-1.5-flash-latest');
+  assert.equal(resolvedModels.model, DEFAULT_GEMINI_MODEL);
+  assert.equal(resolvedModels.fallbackModel, DEFAULT_GEMINI_FALLBACK_MODEL);
+  assert.ok(!resolvedModels.model.includes('latest'), 'Pinned model must never use -latest alias');
+
+  // 8b. Respect retryDelay value in 429 error response JSON
+  const sample429Json = JSON.stringify({
+    error: {
+      code: 429,
+      message: 'You exceeded your current quota, please check your plan and billing details.',
+      status: 'RESOURCE_EXHAUSTED',
+      details: [
+        {
+          '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+          retryDelay: '18s',
+        },
+      ],
+    },
+  });
+  const parsedDelayMs = extractGeminiRetryDelayMs(null, sample429Json);
+  assert.equal(parsedDelayMs, 18_000, 'Must extract 18s retryDelay from Google RPC RetryInfo');
+
+  // 8c. Clean short error message for Admin UI & truncated stored error
+  const raw429Err = `Gemini HTTP 429 (gemini-flash-latest): ${sample429Json}`;
+  const cleanUiMsg = formatCleanBotErrorMessage(raw429Err, {
+    keyLabel: 'Key #1',
+    nowMs: 1_700_000_000_000,
+    retryAfterMs: 1_700_000_018_000,
+  });
+  assert.ok(
+    cleanUiMsg.startsWith('Gemini quota exceeded (Key #1), retry after 18s'),
+    `Expected clean quota message, got: ${cleanUiMsg}`
+  );
+  assert.ok(!cleanUiMsg.includes('{'), 'Clean UI error must not contain raw JSON braces');
+  assert.ok(!cleanUiMsg.includes('gemini-flash-latest'), 'Clean UI error must not mention gemini-flash-latest');
+
+  const truncatedErr = truncateBotErrorMessage(cleanUiMsg + ' '.repeat(200) + 'extra tail');
+  assert.ok(
+    truncatedErr.length <= MAX_STORED_BOT_ERROR_LENGTH,
+    `Truncated error length (${truncatedErr.length}) must be <= ${MAX_STORED_BOT_ERROR_LENGTH}`
+  );
+
+  // 8d. Per-key queue ensures two bots never run at the same time on the same key
+  let activeOnKey0 = 0;
+  let maxConcurrentOnKey0 = 0;
+  await Promise.all([
+    enqueueOnGeminiKey('key_0', 0, null, async () => {
+      activeOnKey0++;
+      maxConcurrentOnKey0 = Math.max(maxConcurrentOnKey0, activeOnKey0);
+      await new Promise((r) => setTimeout(r, 25));
+      activeOnKey0--;
+    }),
+    enqueueOnGeminiKey('key_0', 0, null, async () => {
+      activeOnKey0++;
+      maxConcurrentOnKey0 = Math.max(maxConcurrentOnKey0, activeOnKey0);
+      await new Promise((r) => setTimeout(r, 25));
+      activeOnKey0--;
+    }),
+  ]);
+  assert.equal(maxConcurrentOnKey0, 1, 'Never run two bots at the same time on the same key');
+
+  // 8e. 429 retry with backoff (max 3 tries) + mark bot "quota_exceeded" with retryAfter & prevent loop retry
+  const originalFetch = globalThis.fetch;
+  let fetchCallCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCallCount++;
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: 429,
+          message: 'You exceeded your current quota',
+          details: [{ retryDelay: '1s' }],
+        },
+      }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
+  }) as any;
+
+  try {
+    const pool = buildBotKeyPoolState({
+      apiKeys: ['test-gemini-key-1'],
+      minDelayBetweenSameKeyCallsMs: 0,
+    });
+    const physicsBot = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === 'bot_physics_beta') || BOARDLY_BOT_ACCOUNTS[1];
+    const postResult = await generateVerifiedBotStudyPost({
+      bot: physicsBot,
+      keyPool: pool,
+      botIndex: 1,
+      postIndex: 0,
+    });
+
+    assert.equal(postResult.post, null);
+    assert.equal(postResult.status, 'quota_exceeded', 'Bot failing with 429 must be marked quota_exceeded');
+    assert.equal(postResult.quotaExceeded, true);
+    assert.ok(postResult.retryAfterIso, 'Must include retryAfter ISO timestamp');
+    assert.ok(
+      postResult.discardReason && postResult.discardReason.length <= MAX_STORED_BOT_ERROR_LENGTH,
+      'Stored discardReason must be truncated'
+    );
+    assert.ok(
+      postResult.discardReason?.startsWith('Gemini quota exceeded'),
+      `Expected clean discardReason, got: ${postResult.discardReason}`
+    );
+    assert.equal(fetchCallCount, 3, 'Must retry 429 up to max 3 tries on the key before marking quota_exceeded');
+
+    // Calling again immediately for the same bot must not call fetch in a loop while in cooldown
+    const callsBeforeSecondAttempt = fetchCallCount;
+    const secondAttempt = await generateVerifiedBotStudyPost({
+      bot: physicsBot,
+      keyPool: pool,
+      botIndex: 1,
+      postIndex: 0,
+    });
+    assert.equal(secondAttempt.status, 'quota_exceeded');
+    assert.equal(
+      fetchCallCount,
+      callsBeforeSecondAttempt,
+      'Bot marked quota_exceeded must not retry Gemini in a loop before retryAfter'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  console.log('✓ 8. Bot Gemini 429 quota handling (pinned model, 3-try backoff with retryDelay, per-key queue, quota_exceeded status, clean truncated errors) verified');
+
+  console.log('\nALL ROLE LOCKDOWN & BOT QUOTA TESTS PASSED!');
 }
 
 runRoleLockdownTests().catch((err) => {
   console.error('Role lockdown test failed:', err);
   process.exit(1);
 });
+
 

@@ -42,6 +42,10 @@ import {
   BoardyMode,
 } from "./src/config/boardyConfig.js";
 import {
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+} from "./src/config/botsConfig.js";
+import {
   registerCloudflarePostsAndAuthRoutes,
   loadD1Store,
   saveD1Store,
@@ -2622,8 +2626,8 @@ async function startServer() {
   app.post("/api/ai-tutor", async (req, res) => {
     try {
       const body = req.body || {};
-      const BOARDY_AI_MODEL = "gemini-3.8-flash";
-      const BOARDY_AI_FALLBACK_MODEL = "gemini-flash-latest";
+      const BOARDY_AI_MODEL = DEFAULT_GEMINI_MODEL;
+      const BOARDY_AI_FALLBACK_MODEL = DEFAULT_GEMINI_FALLBACK_MODEL;
 
       const isMcqDerivation = body.mode === "mcq_derivation" || body.questionText;
       const questionText = body.questionText || body.message || "";
@@ -4519,7 +4523,7 @@ ${scopeInstruction}`;
 
           console.log(`[Gemini MCQ Request Start] Subject: "${subject}", Topic: "${targetTopicConstraint}", Class: ${activeClassNum}, Group: "${activeGroup}", Offset: ${batchOffset}, Count: ${requestedCount}, User: ${userId}`);
 
-          const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+          const modelsToTry = [DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FALLBACK_MODEL];
           const maxAttempts = 3;
 
           for (let attempt = 0; attempt < maxAttempts; attempt++) {

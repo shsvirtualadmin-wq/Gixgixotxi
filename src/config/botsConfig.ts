@@ -276,6 +276,68 @@ export const BOARDLY_BOT_ACCOUNTS: readonly BotAccountConfig[] = [
 
 export const BOT_UID_SET = new Set<string>(BOARDLY_BOT_ACCOUNTS.map((b) => b.uid));
 
+/**
+ * Single source of truth for the pinned, stable Gemini model used by Boardly bots.
+ * Never uses the moving alias "gemini-flash-latest".
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-4-hydrogen';
+export const DEFAULT_GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
+export const MAX_GEMINI_TRIES = 3;
+export const MIN_SAME_KEY_DELAY_MS = 2500;
+export const DELAY_BETWEEN_BOT_RUNS_MS = 2000;
+export const MAX_STORED_BOT_ERROR_LENGTH = 140;
+
+export const BOT_GEMINI_CONFIG = {
+  model: DEFAULT_GEMINI_MODEL,
+  fallbackModel: DEFAULT_GEMINI_FALLBACK_MODEL,
+  maxTries: MAX_GEMINI_TRIES,
+  minSameKeyDelayMs: MIN_SAME_KEY_DELAY_MS,
+  delayBetweenBotRunsMs: DELAY_BETWEEN_BOT_RUNS_MS,
+  maxStoredErrorLength: MAX_STORED_BOT_ERROR_LENGTH,
+} as const;
+
+const DISALLOWED_GEMINI_MODELS = new Set([
+  'gemini-flash-latest',
+  'gemini-pro-latest',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro',
+  'gemini-1.5-pro-latest',
+  'gemini-pro',
+  'gemini-2.0-flash',
+  'gemini-2.0-pro',
+  'gemini-2.0-flash-thinking',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.8-flash',
+]);
+
+export function isDisallowedGeminiModelName(name?: string | null): boolean {
+  const clean = String(name || '').trim().toLowerCase();
+  if (!clean) return true;
+  if (clean.endsWith('-latest')) return true;
+  return DISALLOWED_GEMINI_MODELS.has(clean);
+}
+
+export function resolvePinnedGeminiModels(
+  envModel?: string | null,
+  envFallbackModel?: string | null
+): { model: string; primaryModel: string; fallbackModel: string } {
+  const rawPrimary = String(envModel || '').trim();
+  const primary = isDisallowedGeminiModelName(rawPrimary) ? DEFAULT_GEMINI_MODEL : rawPrimary;
+
+  const rawFallback = String(envFallbackModel || '').trim();
+  const fallback = isDisallowedGeminiModelName(rawFallback)
+    ? DEFAULT_GEMINI_FALLBACK_MODEL
+    : rawFallback;
+
+  return {
+    model: primary,
+    primaryModel: primary,
+    fallbackModel: fallback,
+  };
+}
+
 export function isBotAccount(uidOrRole?: string | null, role?: string | null): boolean {
   if (!uidOrRole && !role) return false;
   const r = String(role || '').toLowerCase().trim();
@@ -294,4 +356,5 @@ export const DEFAULT_WELCOME_ANNOUNCEMENT = {
   authorEmail: 'shsvirtualadmin@gmail.com',
   authorName: 'SHS Virtual Academy',
 } as const;
+
 

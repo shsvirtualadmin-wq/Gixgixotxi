@@ -12,6 +12,11 @@ import {
   toPublicKeyStatusList,
   getTotalGeminiCallsToday,
   redactApiKeysFromText,
+  formatCleanBotErrorMessage,
+  truncateBotErrorMessage,
+  enqueueBotRun,
+  sleep,
+  DELAY_BETWEEN_BOT_RUNS_MS,
   type GeminiKeyStatusRecord,
 } from '../services/botContentGenerator';
 import { validateAndNormalizeQuestionMath } from '../utils/katexValidator';
@@ -306,6 +311,7 @@ interface D1StoreData {
     allKeysExhaustedUntil?: number | null;
     geminiCallsLastRun?: number;
     lastRunSummary?: any;
+    botCooldowns?: Record<string, number>;
   };
   announcements?: D1AnnouncementRow[];
   userWelcomeStatus?: D1UserWelcomeRow[];
@@ -5038,6 +5044,7 @@ ${postSitemaps}
       persistedStatuses: store.botKeyStatuses || [],
       lastUsedKeyIndex: store.botSystemState?.lastUsedKeyIndex ?? -1,
       allKeysExhaustedUntil: store.botSystemState?.allKeysExhaustedUntil ?? null,
+      botCooldowns: store.botSystemState?.botCooldowns || {},
     });
     const publicKeyStatuses = toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length);
     const geminiCallsToday = getTotalGeminiCallsToday(pool);
@@ -5047,6 +5054,7 @@ ${postSitemaps}
         0
     );
 
+    const nowMs = Date.now();
     const bots = (store.botAccounts || []).map((r, idx) => {
       const actualPostCount = store.posts.filter(
         (p) => p.author_uid === r.uid || p.real_author_uid === r.uid
@@ -5056,6 +5064,19 @@ ${postSitemaps}
       ).length;
       const actualLikeCount = store.likes.filter((l) => l.user_uid === r.uid).length;
       const assignedKeyIndex = apiKeys.length > 0 ? idx % apiKeys.length : 0;
+      const assignedKeyStatus = pool.keyStatuses[assignedKeyIndex];
+      const botCooldownUntil = Math.max(
+        Number(pool.botCooldowns?.[r.uid] || 0),
+        Number(assignedKeyStatus?.cooldownUntil || 0)
+      );
+      const retryAfter =
+        botCooldownUntil > nowMs ? new Date(botCooldownUntil).toISOString() : null;
+      const rawStatus = r.last_run_status || 'ready';
+      const cleanedStatus =
+        rawStatus === 'ready'
+          ? 'ready'
+          : truncateBotErrorMessage(formatCleanBotErrorMessage(rawStatus));
+
       return {
         uid: r.uid,
         username: r.username,
@@ -5069,12 +5090,36 @@ ${postSitemaps}
         commentsCount: Math.max(Number(r.comments_count || 0), actualCommentCount),
         likesCount: Math.max(Number(r.likes_count || 0), actualLikeCount),
         lastRunAt: r.last_run_at ? new Date(Number(r.last_run_at)).toISOString() : null,
-        lastRunStatus: r.last_run_status || 'ready',
+        lastRunStatus: cleanedStatus,
+        retryAfter,
+        quotaExceeded: Boolean(
+          retryAfter ||
+            cleanedStatus.toLowerCase().includes('quota_exceeded') ||
+            cleanedStatus.toLowerCase().includes('quota exceeded')
+        ),
         assignedKeyIndex,
         assignedKeyLabel: apiKeys.length > 0 ? `Key #${assignedKeyIndex + 1}` : 'No key',
         role: 'bot',
       };
     });
+
+    const rawSummary = store.botSystemState?.lastRunSummary || null;
+    const sanitizedLastRunSummary = rawSummary
+      ? {
+          ...rawSummary,
+          bannerMessage: rawSummary.bannerMessage
+            ? formatCleanBotErrorMessage(String(rawSummary.bannerMessage))
+            : undefined,
+          results: Array.isArray(rawSummary.results)
+            ? rawSummary.results.map((item: any) => ({
+                ...item,
+                error: item?.error
+                  ? truncateBotErrorMessage(formatCleanBotErrorMessage(String(item.error)))
+                  : undefined,
+              }))
+            : undefined,
+        }
+      : null;
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({
@@ -5094,7 +5139,7 @@ ${postSitemaps}
           : null,
       geminiCallsLastRun,
       geminiCallsToday,
-      lastRunSummary: store.botSystemState?.lastRunSummary || null,
+      lastRunSummary: sanitizedLastRunSummary,
       config: {
         geminiKeyConfigured: apiKeys.length > 0,
         geminiKeysCount: apiKeys.length,
@@ -5254,184 +5299,430 @@ ${postSitemaps}
       });
     }
 
-    const store = loadD1Store();
-    const pool = buildBotKeyPoolState({
-      apiKeys,
-      persistedStatuses: store.botKeyStatuses || [],
-      lastUsedKeyIndex: store.botSystemState?.lastUsedKeyIndex ?? -1,
-      allKeysExhaustedUntil: store.botSystemState?.allKeysExhaustedUntil ?? null,
-    });
-
-    const persistPoolState = (summary?: any) => {
-      store.botKeyStatuses = pool.keyStatuses.map((ks) => ({
-        ...ks,
-        lastError: ks.lastError ? redactApiKeysFromText(ks.lastError, apiKeys) : null,
-      }));
-      store.botSystemState = {
-        lastUsedKeyIndex: pool.lastUsedKeyIndex,
-        allKeysExhaustedUntil: pool.allKeysExhaustedUntil,
-        geminiCallsLastRun: pool.callsThisRun,
-        lastRunSummary: summary ?? store.botSystemState?.lastRunSummary ?? null,
-      };
-      saveD1Store(store);
-    };
-
-    const nowMs = Date.now();
-    const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
-    if (
-      activeKeyCount === 0 ||
-      (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
-    ) {
-      const retryUntilMs =
-        pool.allKeysExhaustedUntil ||
-        Math.min(
-          ...pool.keyStatuses
-            .map((k) => k.cooldownUntil || nowMs + 60_000)
-            .filter((v) => v > nowMs)
-        );
-      const retryIso = new Date(retryUntilMs).toISOString();
-      const retryTimeFormatted = new Date(retryUntilMs).toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Karachi',
+    return enqueueBotRun(async () => {
+      const store = loadD1Store();
+      const pool = buildBotKeyPoolState({
+        apiKeys,
+        persistedStatuses: store.botKeyStatuses || [],
+        lastUsedKeyIndex: store.botSystemState?.lastUsedKeyIndex ?? -1,
+        allKeysExhaustedUntil: store.botSystemState?.allKeysExhaustedUntil ?? null,
+        botCooldowns: store.botSystemState?.botCooldowns || {},
       });
-      const bannerMessage = `Gemini quota exhausted — all ${apiKeys.length} key(s) cooling down. Retrying after ${retryTimeFormatted} PKT (${retryIso}).`;
 
-      const summaryPayload = {
-        success: true,
-        runOutcome: 'quota_exhausted',
-        bannerStatus: 'error',
-        bannerMessage,
-        allKeysExhaustedUntil: retryIso,
-        ranAt: new Date(nowMs).toISOString(),
-        botsProcessed: 0,
-        postsCreated: 0,
-        commentsCreated: 0,
-        likesAdded: 0,
-        likesCreated: 0,
-        geminiCallsLastRun: 0,
-        geminiCallsToday: getTotalGeminiCallsToday(pool),
-        geminiKeysCount: apiKeys.length,
-        geminiModel: model,
-        geminiFallbackModel: fallbackModel,
-        keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
-        results: [],
-      };
-      persistPoolState(summaryPayload);
-      return res.status(200).json(summaryPayload);
-    }
-
-    const body = req.body || {};
-    const targetBotUid = body.botUid ? String(body.botUid).trim() : null;
-    // Cap each run to 2-3 bots chosen by least recently run
-    const requestedMaxBots = Number(body.maxBots || (targetBotUid ? 1 : 2));
-    const maxBotsPerCall = targetBotUid
-      ? 1
-      : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
-    const postsPerBotReq = Math.min(2, Math.max(1, Number(body.postsPerBot || 1)));
-
-    const candidateBots = (store.botAccounts || []).filter((b) =>
-      targetBotUid ? b.uid === targetBotUid : b.enabled === 1
-    );
-    // Order by least recently run (last_run_at ASC NULLS FIRST)
-    candidateBots.sort((a, b) => {
-      const aRun = Number(a.last_run_at || 0);
-      const bRun = Number(b.last_run_at || 0);
-      if (aRun !== bRun) return aRun - bRun;
-      return a.uid.localeCompare(b.uid);
-    });
-    const selectedBots = candidateBots.slice(0, maxBotsPerCall);
-
-    const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
-    const results: Array<{
-      uid: string;
-      botUid: string;
-      displayName: string;
-      subject: string;
-      postsCreated: number;
-      commentsCreated: number;
-      likesAdded: number;
-      likesCreated: number;
-      geminiCallsUsed: number;
-      assignedKeyIndex: number;
-      status: string;
-      error?: string;
-    }> = [];
-
-    let totalPostsCreated = 0;
-    let totalCommentsCreated = 0;
-    let totalLikesCreated = 0;
-    let stoppedDueToAllKeysExhausted = false;
-    let exhaustionBannerMessage: string | null = null;
-
-    for (const botRow of selectedBots) {
-      const botIndexInConfig = Math.max(
-        0,
-        BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
-      );
-      const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
-
-      const botMeta =
-        BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
-          uid: botRow.uid,
-          placeholderName: botRow.username,
-          displayName: botRow.display_name,
-          email: `${botRow.username}@bots.boardly.cfd`,
-          subject: botRow.subject as any,
-          classLevel: '11' as const,
-          board: 'Federal' as const,
-          target: 'Federal & Entrance Exam Prep',
-          equippedAvatar: botRow.avatar,
-          bio: botRow.bio,
-          chapters: [botRow.subject],
+      const persistPoolState = (summary?: any) => {
+        store.botKeyStatuses = pool.keyStatuses.map((ks) => ({
+          ...ks,
+          lastError: ks.lastError
+            ? truncateBotErrorMessage(
+                redactApiKeysFromText(formatCleanBotErrorMessage(ks.lastError), apiKeys)
+              )
+            : null,
+        }));
+        store.botSystemState = {
+          lastUsedKeyIndex: pool.lastUsedKeyIndex,
+          allKeysExhaustedUntil: pool.allKeysExhaustedUntil,
+          geminiCallsLastRun: pool.callsThisRun,
+          lastRunSummary: summary ?? store.botSystemState?.lastRunSummary ?? null,
+          botCooldowns: pool.botCooldowns || {},
         };
+        saveD1Store(store);
+      };
 
-      // Check D1 store BEFORE calling Gemini to enforce Max 2/day
-      const alreadyPostedToday = store.posts.filter(
-        (p) =>
-          (p.author_uid === botRow.uid || p.real_author_uid === botRow.uid) &&
-          Number(p.created_at || 0) >= dayStartMs
-      ).length;
-      const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
-      const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
-
-      let postsCreated = 0;
-      let commentsCreated = 0;
-      let likesAdded = 0;
-      let botGeminiCalls = 0;
-      let lastError: string | undefined;
-
-      // 1. Plain D1 likes first (no Gemini call)
-      const candidatePosts = store.posts
-        .filter(
-          (p) =>
-            p.is_hidden === 0 &&
-            p.author_uid !== botRow.uid &&
-            p.real_author_uid !== botRow.uid
-        )
-        .slice(0, 12);
-
-      for (const other of candidatePosts.slice(0, 2)) {
-        const alreadyLiked = store.likes.some(
-          (l) => l.post_id === other.id && l.user_uid === botRow.uid
+      const nowMs = Date.now();
+      const activeKeyCount = pool.keyStatuses.filter((ks) => ks.status === 'available').length;
+      if (
+        activeKeyCount === 0 ||
+        (pool.allKeysExhaustedUntil && pool.allKeysExhaustedUntil > nowMs)
+      ) {
+        const retryUntilMs =
+          pool.allKeysExhaustedUntil ||
+          Math.min(
+            ...pool.keyStatuses
+              .map((k) => k.cooldownUntil || nowMs + 60_000)
+              .filter((v) => v > nowMs)
+          );
+        const retryIso = new Date(retryUntilMs).toISOString();
+        const bannerMessage = formatCleanBotErrorMessage(
+          'Gemini HTTP 429: You exceeded your current quota',
+          { retryAfterMs: retryUntilMs, keyLabel: 'Key #1' }
         );
-        if (!alreadyLiked) {
-          store.likes.push({
-            post_id: other.id,
-            user_uid: botRow.uid,
-            created_at: Date.now(),
-          });
-          other.upvotes = (other.upvotes || 0) + 1;
-          likesAdded++;
-          totalLikesCreated++;
-        }
+
+        const summaryPayload = {
+          success: true,
+          runOutcome: 'quota_exhausted',
+          bannerStatus: 'error',
+          bannerMessage,
+          allKeysExhaustedUntil: retryIso,
+          ranAt: new Date(nowMs).toISOString(),
+          botsProcessed: 0,
+          postsCreated: 0,
+          commentsCreated: 0,
+          likesAdded: 0,
+          likesCreated: 0,
+          geminiCallsLastRun: 0,
+          geminiCallsToday: getTotalGeminiCallsToday(pool),
+          geminiKeysCount: apiKeys.length,
+          geminiModel: model,
+          geminiFallbackModel: fallbackModel,
+          keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+          results: [],
+        };
+        persistPoolState(summaryPayload);
+        return res.status(200).json(summaryPayload);
       }
 
-      if (remainingQuota <= 0) {
+      const body = req.body || {};
+      const targetBotUid = body.botUid ? String(body.botUid).trim() : null;
+      // Cap each run to 2-3 bots chosen by least recently run
+      const requestedMaxBots = Number(body.maxBots || (targetBotUid ? 1 : 2));
+      const maxBotsPerCall = targetBotUid
+        ? 1
+        : Math.min(3, Math.max(1, Number.isFinite(requestedMaxBots) ? requestedMaxBots : 2));
+      const postsPerBotReq = Math.min(2, Math.max(1, Number(body.postsPerBot || 1)));
+
+      const candidateBots = (store.botAccounts || []).filter((b) =>
+        targetBotUid ? b.uid === targetBotUid : b.enabled === 1
+      );
+      // Order by least recently run (last_run_at ASC NULLS FIRST)
+      candidateBots.sort((a, b) => {
+        const aRun = Number(a.last_run_at || 0);
+        const bRun = Number(b.last_run_at || 0);
+        if (aRun !== bRun) return aRun - bRun;
+        return a.uid.localeCompare(b.uid);
+      });
+      const selectedBots = candidateBots.slice(0, maxBotsPerCall);
+
+      const dayStartMs = new Date().setUTCHours(0, 0, 0, 0);
+      const results: Array<{
+        uid: string;
+        botUid: string;
+        displayName: string;
+        subject: string;
+        postsCreated: number;
+        commentsCreated: number;
+        likesAdded: number;
+        likesCreated: number;
+        geminiCallsUsed: number;
+        assignedKeyIndex: number;
+        status: string;
+        retryAfter?: string | null;
+        error?: string;
+      }> = [];
+
+      let totalPostsCreated = 0;
+      let totalCommentsCreated = 0;
+      let totalLikesCreated = 0;
+      let stoppedDueToAllKeysExhausted = false;
+      let exhaustionBannerMessage: string | null = null;
+
+      for (let botIdx = 0; botIdx < selectedBots.length; botIdx++) {
+        if (botIdx > 0) {
+          // Never run two bots back-to-back without a delay between bot runs
+          await sleep(DELAY_BETWEEN_BOT_RUNS_MS);
+        }
+
+        const botRow = selectedBots[botIdx];
+        const botIndexInConfig = Math.max(
+          0,
+          BOARDLY_BOT_ACCOUNTS.findIndex((b) => b.uid === botRow.uid)
+        );
+        const assignedKeyIndex = apiKeys.length > 0 ? botIndexInConfig % apiKeys.length : 0;
+
+        // Check if this bot is already in a quota_exceeded cooldown window — do not retry in a loop
+        const existingBotCooldown = Number(pool.botCooldowns?.[botRow.uid] || 0);
+        if (existingBotCooldown > Date.now()) {
+          const retryIso = new Date(existingBotCooldown).toISOString();
+          const cleanCooldownErr = truncateBotErrorMessage(
+            formatCleanBotErrorMessage('Gemini quota exceeded', {
+              retryAfterMs: existingBotCooldown,
+              keyLabel: `Key #${assignedKeyIndex + 1}`,
+            })
+          );
+          botRow.last_run_status = `quota_exceeded: ${cleanCooldownErr}`;
+          botRow.updated_at = Date.now();
+          results.push({
+            uid: botRow.uid,
+            botUid: botRow.uid,
+            displayName: botRow.display_name,
+            subject: botRow.subject,
+            postsCreated: 0,
+            commentsCreated: 0,
+            likesAdded: 0,
+            likesCreated: 0,
+            geminiCallsUsed: 0,
+            assignedKeyIndex,
+            status: 'quota_exceeded',
+            retryAfter: retryIso,
+            error: cleanCooldownErr,
+          });
+          continue;
+        }
+
+        const botMeta =
+          BOARDLY_BOT_ACCOUNTS[botIndexInConfig] || {
+            uid: botRow.uid,
+            placeholderName: botRow.username,
+            displayName: botRow.display_name,
+            email: `${botRow.username}@bots.boardly.cfd`,
+            subject: botRow.subject as any,
+            classLevel: '11' as const,
+            board: 'Federal' as const,
+            target: 'Federal & Entrance Exam Prep',
+            equippedAvatar: botRow.avatar,
+            bio: botRow.bio,
+            chapters: [botRow.subject],
+          };
+
+        // Check D1 store BEFORE calling Gemini to enforce Max 2/day
+        const alreadyPostedToday = store.posts.filter(
+          (p) =>
+            (p.author_uid === botRow.uid || p.real_author_uid === botRow.uid) &&
+            Number(p.created_at || 0) >= dayStartMs
+        ).length;
+        const dailyLimit = Math.min(2, Math.max(1, Number(botRow.daily_post_limit || 2)));
+        const remainingQuota = Math.max(0, dailyLimit - alreadyPostedToday);
+
+        let postsCreated = 0;
+        let commentsCreated = 0;
+        let likesAdded = 0;
+        let botGeminiCalls = 0;
+        let lastError: string | undefined;
+        let botQuotaExceeded = false;
+        let botRetryAfterIso: string | null = null;
+
+        // 1. Plain D1 likes first (no Gemini call)
+        const candidatePosts = store.posts
+          .filter(
+            (p) =>
+              p.is_hidden === 0 &&
+              p.author_uid !== botRow.uid &&
+              p.real_author_uid !== botRow.uid
+          )
+          .slice(0, 12);
+
+        for (const other of candidatePosts.slice(0, 2)) {
+          const alreadyLiked = store.likes.some(
+            (l) => l.post_id === other.id && l.user_uid === botRow.uid
+          );
+          if (!alreadyLiked) {
+            store.likes.push({
+              post_id: other.id,
+              user_uid: botRow.uid,
+              created_at: Date.now(),
+            });
+            other.upvotes = (other.upvotes || 0) + 1;
+            likesAdded++;
+            totalLikesCreated++;
+          }
+        }
+
+        if (remainingQuota <= 0) {
+          botRow.likes_count = Number(botRow.likes_count || 0) + likesAdded;
+          botRow.last_run_at = Date.now();
+          botRow.last_run_status = truncateBotErrorMessage(
+            `Daily post limit reached (${alreadyPostedToday}/${dailyLimit} today); ${likesAdded} like(s) added`
+          );
+          botRow.updated_at = Date.now();
+
+          results.push({
+            uid: botRow.uid,
+            botUid: botRow.uid,
+            displayName: botRow.display_name,
+            subject: botRow.subject,
+            postsCreated: 0,
+            commentsCreated: 0,
+            likesAdded,
+            likesCreated: likesAdded,
+            geminiCallsUsed: 0,
+            assignedKeyIndex,
+            status: 'daily_limit_reached',
+          });
+          continue;
+        }
+
+        const postsToCreate = Math.min(postsPerBotReq, remainingQuota);
+
+        for (let i = 0; i < postsToCreate; i++) {
+          const generated = await generateVerifiedBotStudyPost({
+            bot: botMeta,
+            keyPool: pool,
+            botIndex: botIndexInConfig,
+            model,
+            fallbackModel,
+            postIndex: alreadyPostedToday + i,
+          });
+          botGeminiCalls += generated.geminiCallsUsed || 0;
+
+          if (!generated.post) {
+            const rawReason = generated.discardReason || 'Generation skipped';
+            lastError = truncateBotErrorMessage(
+              formatCleanBotErrorMessage(rawReason, {
+                retryAfterMs: generated.retryAfterMs,
+                keyLabel: `Key #${assignedKeyIndex + 1}`,
+              })
+            );
+            console.error(
+              `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
+              redactApiKeysFromText(lastError, apiKeys)
+            );
+            if (generated.quotaExceeded || generated.status === 'quota_exceeded') {
+              botQuotaExceeded = true;
+              botRetryAfterIso =
+                generated.retryAfterIso ||
+                (generated.retryAfterMs
+                  ? new Date(generated.retryAfterMs).toISOString()
+                  : null);
+              if (generated.retryAfterMs) {
+                if (!pool.botCooldowns) pool.botCooldowns = {};
+                pool.botCooldowns[botRow.uid] = generated.retryAfterMs;
+              }
+            }
+            if (generated.allKeysExhausted) {
+              stoppedDueToAllKeysExhausted = true;
+              exhaustionBannerMessage = lastError;
+              break;
+            }
+            if (botQuotaExceeded) {
+              // Do not retry the same bot in a loop after a 429 quota_exceeded failure
+              break;
+            }
+            continue;
+          }
+
+          const p = generated.post;
+          const maxCreated = store.posts.reduce(
+            (max, item) => Math.max(max, Number(item.created_at || 0)),
+            0
+          );
+          const now = Math.max(Date.now(), maxCreated + 1);
+          const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 6)}`;
+          const slug = buildSlug(postId, p.title);
+
+          store.posts.unshift({
+            id: postId,
+            slug,
+            type: p.type,
+            title: p.title,
+            description: p.description,
+            subject: botMeta.subject,
+            chapter: p.chapter,
+            target: botMeta.target,
+            class_level: botMeta.classLevel,
+            board: botMeta.board,
+            format: 'text',
+            tags_json: JSON.stringify(p.tags),
+            files_json: '[]',
+            is_anonymous: 0,
+            anonymous_alias: 'Anonymous Student',
+            author_uid: botRow.uid,
+            real_author_uid: botRow.uid,
+            author_name: botRow.display_name,
+            author_avatar: botRow.avatar,
+            author_frame: null,
+            author_equipped_avatar: botRow.avatar,
+            author_photo_url: null,
+            author_role: 'bot',
+            author_custom_role: `${botMeta.subject} Bot`,
+            status: 'published',
+            visibility: 'public',
+            is_hidden: 0,
+            is_pinned: 0,
+            is_featured: 0,
+            upvotes: 1,
+            downvotes: 0,
+            views: 1,
+            comment_count: 0,
+            save_count: 0,
+            shares_count: 0,
+            report_count: 0,
+            created_at: now,
+            updated_at: now,
+          });
+          if (!store.likes.some((l) => l.post_id === postId && l.user_uid === botRow.uid)) {
+            store.likes.push({
+              post_id: postId,
+              user_uid: botRow.uid,
+              created_at: now,
+            });
+          }
+          postsCreated++;
+          totalPostsCreated++;
+        }
+
+        const commentTarget =
+          candidatePosts.find(
+            (p) => p.subject.toLowerCase() === botRow.subject.toLowerCase()
+          ) || candidatePosts[0];
+
+        if (!stoppedDueToAllKeysExhausted && !botQuotaExceeded && commentTarget && postsCreated > 0) {
+          const alreadyCommented = store.comments.some(
+            (c) => c.post_id === commentTarget.id && c.real_author_uid === botRow.uid
+          );
+          if (!alreadyCommented) {
+            const commentRes = await generateVerifiedBotComment({
+              bot: botMeta,
+              targetPost: {
+                title: commentTarget.title,
+                description: commentTarget.description,
+                subject: commentTarget.subject,
+              },
+              keyPool: pool,
+              botIndex: botIndexInConfig,
+              model,
+              fallbackModel,
+            });
+            botGeminiCalls += commentRes.geminiCallsUsed || 0;
+            if (commentRes.comment && commentRes.comment.text) {
+              const commentId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
+              store.comments.push({
+                id: commentId,
+                post_id: commentTarget.id,
+                text: commentRes.comment.text,
+                is_anonymous: 0,
+                author_uid: botRow.uid,
+                real_author_uid: botRow.uid,
+                author_name: botRow.display_name,
+                author_avatar: botRow.avatar,
+                author_frame: null,
+                author_equipped_avatar: botRow.avatar,
+                author_photo_url: null,
+                author_role: 'bot',
+                author_custom_role: `${botMeta.subject} Bot`,
+                created_at: Date.now(),
+              });
+              commentTarget.comment_count = (commentTarget.comment_count || 0) + 1;
+              commentsCreated++;
+              totalCommentsCreated++;
+            } else if (commentRes.allKeysExhausted || commentRes.quotaExceeded) {
+              if (commentRes.allKeysExhausted) {
+                stoppedDueToAllKeysExhausted = true;
+              }
+              exhaustionBannerMessage = truncateBotErrorMessage(
+                formatCleanBotErrorMessage(
+                  commentRes.discardReason || 'Gemini quota exceeded',
+                  {
+                    retryAfterMs: commentRes.retryAfterMs,
+                    keyLabel: `Key #${assignedKeyIndex + 1}`,
+                  }
+                )
+              );
+            }
+          }
+        }
+
+        botRow.posts_count = Number(botRow.posts_count || 0) + postsCreated;
+        botRow.comments_count = Number(botRow.comments_count || 0) + commentsCreated;
         botRow.likes_count = Number(botRow.likes_count || 0) + likesAdded;
         botRow.last_run_at = Date.now();
-        botRow.last_run_status = `Daily post limit reached (${alreadyPostedToday}/${dailyLimit} today); ${likesAdded} like(s) added`;
+        const rawStatusText =
+          postsCreated > 0
+            ? `Published ${postsCreated} post(s), ${commentsCreated} comment(s), ${likesAdded} like(s)`
+            : botQuotaExceeded || stoppedDueToAllKeysExhausted
+              ? `quota_exceeded: ${lastError || 'Gemini quota exceeded'}`
+              : lastError
+                ? `Error: ${lastError}`
+                : `Skipped (0 posts, ${likesAdded} like(s))`;
+        botRow.last_run_status = truncateBotErrorMessage(rawStatusText);
         botRow.updated_at = Date.now();
 
         results.push({
@@ -5439,273 +5730,108 @@ ${postSitemaps}
           botUid: botRow.uid,
           displayName: botRow.display_name,
           subject: botRow.subject,
-          postsCreated: 0,
-          commentsCreated: 0,
+          postsCreated,
+          commentsCreated,
           likesAdded,
           likesCreated: likesAdded,
-          geminiCallsUsed: 0,
+          geminiCallsUsed: botGeminiCalls,
           assignedKeyIndex,
-          status: 'daily_limit_reached',
+          status:
+            postsCreated > 0
+              ? 'ok'
+              : botQuotaExceeded || stoppedDueToAllKeysExhausted
+                ? 'quota_exceeded'
+                : lastError
+                  ? 'error'
+                  : 'skipped',
+          retryAfter: botRetryAfterIso,
+          error: lastError ? truncateBotErrorMessage(lastError) : undefined,
         });
-        continue;
+
+        if (stoppedDueToAllKeysExhausted) {
+          break;
+        }
       }
 
-      const postsToCreate = Math.min(postsPerBotReq, remainingQuota);
+      const anyErrors = results.some((r) => Boolean(r.error));
+      const anyQuotaExceeded = results.some(
+        (r) => r.status === 'quota_exceeded' || r.status === 'quota_exhausted'
+      );
+      const allDailyLimit =
+        results.length > 0 && results.every((r) => r.status === 'daily_limit_reached');
 
-      for (let i = 0; i < postsToCreate; i++) {
-        const generated = await generateVerifiedBotStudyPost({
-          bot: botMeta,
-          keyPool: pool,
-          botIndex: botIndexInConfig,
-          model,
-          fallbackModel,
-          postIndex: alreadyPostedToday + i,
-        });
-        botGeminiCalls += generated.geminiCallsUsed || 0;
+      let runOutcome: 'success' | 'partial' | 'quota_exhausted' | 'error' | 'daily_limit' = 'success';
+      let bannerStatus: 'success' | 'warning' | 'error' = 'success';
+      let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
 
-        if (!generated.post) {
-          lastError = generated.discardReason || 'Generation skipped';
-          console.error(
-            `[BotRunner] Bot ${botRow.uid} (${botRow.display_name}) post generation failed:`,
-            redactApiKeysFromText(lastError, apiKeys)
-          );
-          if (generated.allKeysExhausted) {
-            stoppedDueToAllKeysExhausted = true;
-            exhaustionBannerMessage = lastError;
-            break;
-          }
-          continue;
-        }
-
-        const p = generated.post;
-        const maxCreated = store.posts.reduce(
-          (max, item) => Math.max(max, Number(item.created_at || 0)),
-          0
-        );
-        const now = Math.max(Date.now(), maxCreated + 1);
-        const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 6)}`;
-        const slug = buildSlug(postId, p.title);
-
-        store.posts.unshift({
-          id: postId,
-          slug,
-          type: p.type,
-          title: p.title,
-          description: p.description,
-          subject: botMeta.subject,
-          chapter: p.chapter,
-          target: botMeta.target,
-          class_level: botMeta.classLevel,
-          board: botMeta.board,
-          format: 'text',
-          tags_json: JSON.stringify(p.tags),
-          files_json: '[]',
-          is_anonymous: 0,
-          anonymous_alias: 'Anonymous Student',
-          author_uid: botRow.uid,
-          real_author_uid: botRow.uid,
-          author_name: botRow.display_name,
-          author_avatar: botRow.avatar,
-          author_frame: null,
-          author_equipped_avatar: botRow.avatar,
-          author_photo_url: null,
-          author_role: 'bot',
-          author_custom_role: `${botMeta.subject} Bot`,
-          status: 'published',
-          visibility: 'public',
-          is_hidden: 0,
-          is_pinned: 0,
-          is_featured: 0,
-          upvotes: 1,
-          downvotes: 0,
-          views: 1,
-          comment_count: 0,
-          save_count: 0,
-          shares_count: 0,
-          report_count: 0,
-          created_at: now,
-          updated_at: now,
-        });
-        if (!store.likes.some((l) => l.post_id === postId && l.user_uid === botRow.uid)) {
-          store.likes.push({
-            post_id: postId,
-            user_uid: botRow.uid,
-            created_at: now,
+      if (stoppedDueToAllKeysExhausted || anyQuotaExceeded || (totalPostsCreated === 0 && anyErrors)) {
+        const firstError =
+          exhaustionBannerMessage ||
+          results.find((r) => r.error)?.error ||
+          'Gemini API error prevented post generation.';
+        if (
+          stoppedDueToAllKeysExhausted ||
+          anyQuotaExceeded ||
+          firstError.toLowerCase().includes('quota') ||
+          firstError.includes('429') ||
+          firstError.toLowerCase().includes('cooling down')
+        ) {
+          runOutcome = 'quota_exhausted';
+          bannerStatus = 'error';
+          const retryUntil =
+            pool.allKeysExhaustedUntil ||
+            Math.min(
+              ...pool.keyStatuses
+                .map((k) => k.cooldownUntil || Date.now() + 60_000)
+                .filter((v) => v > Date.now())
+            );
+          bannerMessage = formatCleanBotErrorMessage(firstError, {
+            retryAfterMs: Number.isFinite(retryUntil) ? retryUntil : Date.now() + 60_000,
           });
-        }
-        postsCreated++;
-        totalPostsCreated++;
-      }
-
-      const commentTarget =
-        candidatePosts.find(
-          (p) => p.subject.toLowerCase() === botRow.subject.toLowerCase()
-        ) || candidatePosts[0];
-
-      if (!stoppedDueToAllKeysExhausted && commentTarget && postsCreated > 0) {
-        const alreadyCommented = store.comments.some(
-          (c) => c.post_id === commentTarget.id && c.real_author_uid === botRow.uid
-        );
-        if (!alreadyCommented) {
-          const commentRes = await generateVerifiedBotComment({
-            bot: botMeta,
-            targetPost: {
-              title: commentTarget.title,
-              description: commentTarget.description,
-              subject: commentTarget.subject,
-            },
-            keyPool: pool,
-            botIndex: botIndexInConfig,
-            model,
-            fallbackModel,
-          });
-          botGeminiCalls += commentRes.geminiCallsUsed || 0;
-          if (commentRes.comment && commentRes.comment.text) {
-            const commentId = `cmt_bot_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-            store.comments.push({
-              id: commentId,
-              post_id: commentTarget.id,
-              text: commentRes.comment.text,
-              is_anonymous: 0,
-              author_uid: botRow.uid,
-              real_author_uid: botRow.uid,
-              author_name: botRow.display_name,
-              author_avatar: botRow.avatar,
-              author_frame: null,
-              author_equipped_avatar: botRow.avatar,
-              author_photo_url: null,
-              author_role: 'bot',
-              author_custom_role: `${botMeta.subject} Bot`,
-              created_at: Date.now(),
-            });
-            commentTarget.comment_count = (commentTarget.comment_count || 0) + 1;
-            commentsCreated++;
-            totalCommentsCreated++;
-          } else if (commentRes.allKeysExhausted) {
-            stoppedDueToAllKeysExhausted = true;
-            exhaustionBannerMessage =
-              commentRes.discardReason || 'All Gemini API keys are cooling down.';
-          }
-        }
-      }
-
-      botRow.posts_count = Number(botRow.posts_count || 0) + postsCreated;
-      botRow.comments_count = Number(botRow.comments_count || 0) + commentsCreated;
-      botRow.likes_count = Number(botRow.likes_count || 0) + likesAdded;
-      botRow.last_run_at = Date.now();
-      botRow.last_run_status =
-        postsCreated > 0
-          ? `Published ${postsCreated} post(s), ${commentsCreated} comment(s), ${likesAdded} like(s)`
-          : lastError
-            ? `Error: ${lastError}`
-            : `Skipped (0 posts, ${likesAdded} like(s))`;
-      botRow.updated_at = Date.now();
-
-      results.push({
-        uid: botRow.uid,
-        botUid: botRow.uid,
-        displayName: botRow.display_name,
-        subject: botRow.subject,
-        postsCreated,
-        commentsCreated,
-        likesAdded,
-        likesCreated: likesAdded,
-        geminiCallsUsed: botGeminiCalls,
-        assignedKeyIndex,
-        status:
-          postsCreated > 0
-            ? 'ok'
-            : stoppedDueToAllKeysExhausted
-              ? 'quota_exhausted'
-              : lastError
-                ? 'error'
-                : 'skipped',
-        error: lastError,
-      });
-
-      if (stoppedDueToAllKeysExhausted) {
-        break;
-      }
-    }
-
-    const anyErrors = results.some((r) => Boolean(r.error));
-    const allDailyLimit =
-      results.length > 0 && results.every((r) => r.status === 'daily_limit_reached');
-
-    let runOutcome: 'success' | 'partial' | 'quota_exhausted' | 'error' | 'daily_limit' = 'success';
-    let bannerStatus: 'success' | 'warning' | 'error' = 'success';
-    let bannerMessage = `Bot run finished: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published (${pool.callsThisRun} Gemini call(s) used).`;
-
-    if (stoppedDueToAllKeysExhausted || (totalPostsCreated === 0 && anyErrors)) {
-      const firstError =
-        exhaustionBannerMessage ||
-        results.find((r) => r.error)?.error ||
-        'Gemini API error prevented post generation.';
-      if (
-        stoppedDueToAllKeysExhausted ||
-        firstError.toLowerCase().includes('quota') ||
-        firstError.includes('429') ||
-        firstError.toLowerCase().includes('cooling down')
-      ) {
-        runOutcome = 'quota_exhausted';
-        bannerStatus = 'error';
-        const retryUntil =
-          pool.allKeysExhaustedUntil ||
-          Math.min(
-            ...pool.keyStatuses
-              .map((k) => k.cooldownUntil || Date.now() + 60_000)
-              .filter((v) => v > Date.now())
+        } else {
+          runOutcome = 'error';
+          bannerStatus = 'error';
+          bannerMessage = truncateBotErrorMessage(
+            `Bot run published 0 posts: ${formatCleanBotErrorMessage(firstError)}`
           );
-        const retryFormatted = Number.isFinite(retryUntil)
-          ? new Date(retryUntil).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true,
-              timeZone: 'Asia/Karachi',
-            })
-          : 'cooldown expires';
-        bannerMessage = `Gemini quota exhausted (0 posts published). Retrying after ${retryFormatted} PKT. Full detail: ${firstError}`;
-      } else {
-        runOutcome = 'error';
-        bannerStatus = 'error';
-        bannerMessage = `Bot run published 0 posts due to errors: ${firstError}`;
+        }
+      } else if (totalPostsCreated > 0 && anyErrors) {
+        runOutcome = 'partial';
+        bannerStatus = 'warning';
+        bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published, with some errors (${pool.callsThisRun} Gemini call(s)).`;
+      } else if (totalPostsCreated === 0 && allDailyLimit) {
+        runOutcome = 'daily_limit';
+        bannerStatus = 'warning';
+        bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} plain D1 like(s) added, 0 Gemini calls used).`;
       }
-    } else if (totalPostsCreated > 0 && anyErrors) {
-      runOutcome = 'partial';
-      bannerStatus = 'warning';
-      bannerMessage = `Partial bot run: ${totalPostsCreated} post(s), ${totalCommentsCreated} comment(s), ${totalLikesCreated} like(s) published, with some errors (${pool.callsThisRun} Gemini call(s)).`;
-    } else if (totalPostsCreated === 0 && allDailyLimit) {
-      runOutcome = 'daily_limit';
-      bannerStatus = 'warning';
-      bannerMessage = `Selected bots already reached their Max 2/day post limit (${totalLikesCreated} plain D1 like(s) added, 0 Gemini calls used).`;
-    }
 
-    const summaryPayload = {
-      success: true,
-      runOutcome,
-      bannerStatus,
-      bannerMessage,
-      allKeysExhaustedUntil: pool.allKeysExhaustedUntil
-        ? new Date(pool.allKeysExhaustedUntil).toISOString()
-        : null,
-      ranAt: new Date().toISOString(),
-      botsProcessed: results.length,
-      postsCreated: totalPostsCreated,
-      commentsCreated: totalCommentsCreated,
-      likesAdded: totalLikesCreated,
-      likesCreated: totalLikesCreated,
-      geminiCallsLastRun: pool.callsThisRun,
-      geminiCallsToday: getTotalGeminiCallsToday(pool),
-      geminiKeysCount: apiKeys.length,
-      geminiModel: model,
-      geminiFallbackModel: fallbackModel,
-      keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
-      results,
-    };
+      const summaryPayload = {
+        success: true,
+        runOutcome,
+        bannerStatus,
+        bannerMessage,
+        allKeysExhaustedUntil: pool.allKeysExhaustedUntil
+          ? new Date(pool.allKeysExhaustedUntil).toISOString()
+          : null,
+        ranAt: new Date().toISOString(),
+        botsProcessed: results.length,
+        postsCreated: totalPostsCreated,
+        commentsCreated: totalCommentsCreated,
+        likesAdded: totalLikesCreated,
+        likesCreated: totalLikesCreated,
+        geminiCallsLastRun: pool.callsThisRun,
+        geminiCallsToday: getTotalGeminiCallsToday(pool),
+        geminiKeysCount: apiKeys.length,
+        geminiModel: model,
+        geminiFallbackModel: fallbackModel,
+        keyStatuses: toPublicKeyStatusList(pool, BOARDLY_BOT_ACCOUNTS.length),
+        results,
+      };
 
-    persistPoolState(summaryPayload);
+      persistPoolState(summaryPayload);
 
-    return res.status(200).json(summaryPayload);
+      return res.status(200).json(summaryPayload);
+    });
   });
 
   // ===========================================================================

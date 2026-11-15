@@ -20,6 +20,8 @@ import { Badge } from '@/components/ui/Badge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_FALLBACK_MODEL } from '@/config/botsConfig';
+import { formatCleanBotErrorMessage, truncateBotErrorMessage } from '@/services/botContentGenerator';
 
 interface BotAccountItem {
   uid: string;
@@ -35,6 +37,8 @@ interface BotAccountItem {
   likesCount: number;
   lastRunAt: string | null;
   lastRunStatus: string;
+  retryAfter?: string | null;
+  quotaExceeded?: boolean;
   assignedKeyIndex?: number;
   assignedKeyLabel?: string;
   role: string;
@@ -63,6 +67,7 @@ interface BotRunResultItem {
   geminiCallsUsed?: number;
   assignedKeyIndex?: number;
   status: string;
+  retryAfter?: string | null;
   error?: string;
 }
 
@@ -75,8 +80,8 @@ export function AdminBotsPage() {
   const [deletingContent, setDeletingContent] = useState(false);
   const [geminiConfigured, setGeminiConfigured] = useState<boolean | null>(null);
   const [geminiKeysCount, setGeminiKeysCount] = useState<number>(0);
-  const [geminiModel, setGeminiModel] = useState<string>('gemini-2.5-flash');
-  const [geminiFallbackModel, setGeminiFallbackModel] = useState<string>('gemini-2.5-flash-lite');
+  const [geminiModel, setGeminiModel] = useState<string>(DEFAULT_GEMINI_MODEL);
+  const [geminiFallbackModel, setGeminiFallbackModel] = useState<string>(DEFAULT_GEMINI_FALLBACK_MODEL);
   const [botRunSecretConfigured, setBotRunSecretConfigured] = useState<boolean | null>(null);
   const [keyStatuses, setKeyStatuses] = useState<PublicKeyStatusItem[]>([]);
   const [allKeysExhaustedUntil, setAllKeysExhaustedUntil] = useState<string | null>(null);
@@ -112,7 +117,15 @@ export function AdminBotsPage() {
       geminiCallsUsed: Number(r.geminiCallsUsed || 0),
       assignedKeyIndex: typeof r.assignedKeyIndex === 'number' ? r.assignedKeyIndex : undefined,
       status: String(r.status || 'completed'),
-      error: r.error ? String(r.error) : undefined,
+      retryAfter: r.retryAfter ? String(r.retryAfter) : null,
+      error: r.error
+        ? truncateBotErrorMessage(
+            formatCleanBotErrorMessage(String(r.error), {
+              retryAfterMs: r.retryAfter ? Date.parse(String(r.retryAfter)) : null,
+              keyLabel: typeof r.assignedKeyIndex === 'number' ? `Key #${r.assignedKeyIndex + 1}` : undefined,
+            })
+          )
+        : undefined,
     }));
 
     if (normalizedResults.length > 0 || isFreshTrigger) {
@@ -146,13 +159,16 @@ export function AdminBotsPage() {
       summary.runOutcome === 'error' ||
       (totalCreated === 0 && anyErrors)
     ) {
-      const firstErr =
+      const rawErr =
         summary.bannerMessage ||
         normalizedResults.find((r) => r.error)?.error ||
-        'Gemini quota exhausted or generation error (0 posts published).';
+        'Gemini quota exceeded, retry after cooldown.';
+      const cleanErr = formatCleanBotErrorMessage(String(rawErr), {
+        retryAfterMs: summary.allKeysExhaustedUntil ? Date.parse(String(summary.allKeysExhaustedUntil)) : null,
+      });
       setSuccessMsg(null);
       setWarningMsg(null);
-      setErrorMsg(firstErr);
+      setErrorMsg(cleanErr);
     } else if (
       summary.bannerStatus === 'warning' ||
       summary.runOutcome === 'partial' ||
@@ -295,7 +311,8 @@ export function AdminBotsPage() {
       applyRunSummaryToBanner(data, true);
       await loadBots(true);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Manual bot run failed.');
+      const raw = err instanceof Error ? err.message : 'Manual bot run failed.';
+      setErrorMsg(formatCleanBotErrorMessage(raw));
     } finally {
       setRunningAll(false);
       setRunningBotUid(null);
@@ -543,7 +560,12 @@ export function AdminBotsPage() {
                   </div>
                   {ks.lastError && (
                     <div className="text-[11px] text-red-300/90 bg-red-950/25 border border-red-500/25 rounded-lg p-2 whitespace-pre-wrap break-words">
-                      {ks.lastError}
+                      {truncateBotErrorMessage(
+                        formatCleanBotErrorMessage(ks.lastError, {
+                          retryAfterMs: ks.cooldownUntil ? Date.parse(ks.cooldownUntil) : null,
+                          keyLabel: ks.label,
+                        })
+                      )}
                     </div>
                   )}
                 </div>
@@ -553,7 +575,7 @@ export function AdminBotsPage() {
         )}
       </Card>
 
-      {/* ── Latest Run Execution Summary (Full untruncated errors) ── */}
+      {/* ── Latest Run Execution Summary (Short, clean errors) ── */}
       {lastRunResults.length > 0 && (
         <Card className="p-5 bg-[var(--card)] border-[var(--border)] space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -572,7 +594,10 @@ export function AdminBotsPage() {
               const badgeColor =
                 r.postsCreated > 0
                   ? 'green'
-                  : r.error || r.status === 'error' || r.status === 'quota_exhausted'
+                  : r.error ||
+                      r.status === 'error' ||
+                      r.status === 'quota_exceeded' ||
+                      r.status === 'quota_exhausted'
                     ? 'red'
                     : 'amber';
 
@@ -600,7 +625,15 @@ export function AdminBotsPage() {
                   </div>
                   {r.error && (
                     <div className="p-2.5 rounded-lg bg-red-950/30 border border-red-500/30 text-red-200 text-[11px] font-mono whitespace-pre-wrap break-words leading-relaxed">
-                      {r.error}
+                      {truncateBotErrorMessage(
+                        formatCleanBotErrorMessage(r.error, {
+                          retryAfterMs: r.retryAfter ? Date.parse(r.retryAfter) : null,
+                          keyLabel:
+                            typeof r.assignedKeyIndex === 'number'
+                              ? `Key #${r.assignedKeyIndex + 1}`
+                              : undefined,
+                        })
+                      )}
                     </div>
                   )}
                 </div>
@@ -629,11 +662,20 @@ export function AdminBotsPage() {
             const keyLabel =
               bot.assignedKeyLabel ||
               (geminiKeysCount > 0 ? `Key #${(idx % geminiKeysCount) + 1}` : 'Key #1');
+            const cleanBotStatus = bot.lastRunStatus
+              ? truncateBotErrorMessage(
+                  formatCleanBotErrorMessage(bot.lastRunStatus, {
+                    retryAfterMs: bot.retryAfter ? Date.parse(bot.retryAfter) : null,
+                    keyLabel,
+                  })
+                )
+              : 'Ready';
             const isErrorStatus =
-              Boolean(bot.lastRunStatus) &&
-              (bot.lastRunStatus.toLowerCase().includes('error') ||
-                bot.lastRunStatus.includes('429') ||
-                bot.lastRunStatus.toLowerCase().includes('quota'));
+              Boolean(bot.quotaExceeded) ||
+              (Boolean(cleanBotStatus) &&
+                (cleanBotStatus.toLowerCase().includes('error') ||
+                  cleanBotStatus.includes('429') ||
+                  cleanBotStatus.toLowerCase().includes('quota')));
 
             return (
               <Card
@@ -708,7 +750,7 @@ export function AdminBotsPage() {
                           isErrorStatus ? 'text-red-300' : ''
                         }`}
                       >
-                        {lastRunLabel} · {bot.lastRunStatus || 'Ready'}
+                        {lastRunLabel} · {cleanBotStatus}
                       </span>
                     </div>
 
