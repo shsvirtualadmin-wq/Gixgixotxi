@@ -1255,7 +1255,15 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
       list = list.filter((r) => String(r.status || '').toLowerCase() === statusFilter);
     }
     list.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
-    return jsonGateResponse({ ok: true, requests: list }, 200);
+    return jsonGateResponse(
+      {
+        ok: true,
+        requests: list,
+        activeGrants: edgeAccessGrantsStore,
+        grants: edgeAccessGrantsStore,
+      },
+      200
+    );
   }
 
   // POST /api/admin/access-requests

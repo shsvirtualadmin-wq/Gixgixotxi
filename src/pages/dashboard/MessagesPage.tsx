@@ -73,28 +73,28 @@ export function MessagesPage() {
 
   if (isGuest || (user?.uid && user.uid.startsWith('guest_'))) {
     return (
-      <div data-student-page="messages" className="min-h-screen bg-[#050506] text-white px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
+      <div data-student-page="messages" className="min-h-screen bg-[var(--bg)] text-[var(--text)] px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
         <PageMeta
           title="Messages — Boardly"
           description="Direct conversations and chat requests with fellow students."
           noindex={true}
         />
         <header>
-          <h1 className="font-doto-title text-2xl tracking-[0.08em] text-white">
+          <h1 className="font-doto-title text-2xl tracking-[0.08em] text-[var(--text)]">
             MESSAGES
           </h1>
-          <p className="text-sm text-white/70 mt-1">
+          <p className="text-sm text-[var(--muted)] mt-1">
             Direct conversations and chat requests with fellow students.
           </p>
         </header>
         <div className="boardly-glass-card rounded-[28px] p-8 text-center space-y-2.5">
-          <div className="w-12 h-12 rounded-full bg-white/10 border border-white/15 flex items-center justify-center mx-auto text-white/75">
+          <div className="w-12 h-12 rounded-full bg-white/10 border border-white/15 flex items-center justify-center mx-auto text-[var(--text)]">
             <MessageCircle className="w-5 h-5" />
           </div>
-          <p className="text-[15px] font-bold text-white">
+          <p className="text-[15px] font-bold text-[var(--text)]">
             Sign in with a full account to chat
           </p>
-          <p className="text-[13px] text-white/70 max-w-xs mx-auto leading-relaxed">
+          <p className="text-[13px] text-[var(--muted)] max-w-xs mx-auto leading-relaxed">
             Upgrade your guest session to send chat requests and message fellow
             students directly.
           </p>

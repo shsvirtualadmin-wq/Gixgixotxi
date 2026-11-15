@@ -151,6 +151,7 @@ export function useStudyCrew() {
     }
 
     let isMounted = true;
+    let settled = false;
     const cachedNow = crewCacheKey
       ? readSwrCache<{ hasCrew: boolean; crew: CrewDoc | null }>(crewCacheKey)?.data ?? null
       : null;
@@ -162,9 +163,20 @@ export function useStudyCrew() {
     }
     setError(null);
 
+    const timeoutId = window.setTimeout(() => {
+      if (!isMounted || settled) return;
+      settled = true;
+      setLoading(false);
+      if (!cachedNow) {
+        setError('Loading Study Squads timed out. Please check your connection and try again.');
+      }
+    }, 10000);
+
     getMyCrewD1()
       .then(({ crew: d1Crew, members }) => {
-        if (!isMounted) return;
+        if (!isMounted || settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
         if (!d1Crew) {
           setCrew(null);
           if (crewCacheKey) {
@@ -187,7 +199,9 @@ export function useStudyCrew() {
         }
       })
       .catch((err: any) => {
-        if (!isMounted) return;
+        if (!isMounted || settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
         if (!cachedNow) {
           setError(err?.message || 'Could not load study crew.');
         }
@@ -198,6 +212,7 @@ export function useStudyCrew() {
 
     return () => {
       isMounted = false;
+      window.clearTimeout(timeoutId);
     };
   }, [user, retryCount, crewCacheKey]);
 

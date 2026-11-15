@@ -117,9 +117,15 @@ export function UserOverrideDrawer({
   const canDeleteUser = hasPermission('users.delete', user?.uid);
   const canResetSecurity = hasPermission('security.reset', user?.uid);
 
+  type SelectedPlanPreset = 'monthly' | 'annual' | 'custom' | 'free';
+
   const [role, setRole] = useState<CanonicalUserRole>('student');
   const [plan, setPlan] = useState<UserPlan>('free');
-  const [extendMonths, setExtendMonths] = useState<0 | 1 | 2 | 3>(0);
+  const [selectedPlan, setSelectedPlan] = useState<SelectedPlanPreset>('free');
+  const [baselineSelectedPlan, setBaselineSelectedPlan] = useState<SelectedPlanPreset>('free');
+  const [planTouched, setPlanTouched] = useState<boolean>(false);
+  const [extendMonths, setExtendMonths] = useState<number>(0);
+  const [customDays, setCustomDays] = useState<number>(30);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
 
   // Baseline values for dirty-state detection so "Save changes" is disabled until something changed
@@ -222,10 +228,18 @@ export function UserOverrideDrawer({
     const initialCanonicalRole = normalizeCanonicalRole(user.role);
     const initialPlan: UserPlan = user.plan === 'pro' || user.isPremium ? 'pro' : 'free';
     const initialSusp = Boolean(user.suspended || user.isSuspended);
+    const expDate = parseExpiryDate(user.planExpiresAt || user.premiumExpiresAt);
+    const daysRemaining = expDate ? Math.round((expDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)) : 0;
+    const initialPreset: SelectedPlanPreset =
+      initialPlan === 'pro' ? (daysRemaining > 60 ? 'annual' : 'monthly') : 'free';
 
     setRole(initialCanonicalRole);
     setPlan(initialPlan);
+    setSelectedPlan(initialPreset);
+    setBaselineSelectedPlan(initialPreset);
+    setPlanTouched(false);
     setExtendMonths(0);
+    setCustomDays(30);
     setIsSuspended(initialSusp);
 
     setBaselineRole(initialCanonicalRole);
@@ -312,10 +326,23 @@ export function UserOverrideDrawer({
   const isDirty = useMemo(() => {
     if (role !== baselineRole) return true;
     if (plan !== baselinePlan) return true;
+    if (selectedPlan !== baselineSelectedPlan) return true;
+    if (planTouched) return true;
     if (plan === 'pro' && extendMonths > 0) return true;
     if (isSuspended !== baselineSuspended) return true;
     return false;
-  }, [role, baselineRole, plan, baselinePlan, extendMonths, isSuspended, baselineSuspended]);
+  }, [
+    role,
+    baselineRole,
+    plan,
+    baselinePlan,
+    selectedPlan,
+    baselineSelectedPlan,
+    planTouched,
+    extendMonths,
+    isSuspended,
+    baselineSuspended,
+  ]);
 
   const open2faActionModal = (action: Admin2faActionType) => {
     if (!canResetSecurity) {
@@ -436,7 +463,22 @@ export function UserOverrideDrawer({
         const isCurrentActive = currentExpDate && currentExpDate.getTime() > Date.now();
 
         let targetMillis: number;
-        if (extendMonths > 0) {
+        if (selectedPlan === 'annual') {
+          const baseTime =
+            isCurrentActive && baselinePlan === 'pro'
+              ? currentExpDate.getTime()
+              : Date.now();
+          targetMillis = baseTime + 365 * 24 * 60 * 60 * 1000;
+          updates.extendMonths = 12;
+        } else if (selectedPlan === 'custom') {
+          const safeDays = Math.max(1, Math.min(1825, Math.round(Number(customDays) || 30)));
+          const baseTime =
+            isCurrentActive && baselinePlan === 'pro'
+              ? currentExpDate.getTime()
+              : Date.now();
+          targetMillis = baseTime + safeDays * 24 * 60 * 60 * 1000;
+          updates.extendMonths = Math.max(1, Math.round(safeDays / 30));
+        } else if (extendMonths > 0) {
           const baseTime =
             isCurrentActive && baselinePlan === 'pro'
               ? currentExpDate.getTime()
@@ -446,7 +488,7 @@ export function UserOverrideDrawer({
               ? baseTime + extendMonths * 30 * 24 * 60 * 60 * 1000
               : Date.now() + (1 + extendMonths) * 30 * 24 * 60 * 60 * 1000;
         } else {
-          if (!isCurrentActive || baselinePlan !== 'pro') {
+          if (!isCurrentActive || baselinePlan !== 'pro' || planTouched) {
             targetMillis = Date.now() + 30 * 24 * 60 * 60 * 1000;
           } else {
             targetMillis = currentExpDate.getTime();
@@ -488,8 +530,17 @@ export function UserOverrideDrawer({
         updatedProfile.plan === 'pro' || updatedProfile.isPremium ? 'pro' : 'free';
       const resolvedRole = normalizeCanonicalRole(updatedProfile.role);
       const resolvedSusp = Boolean(updatedProfile.suspended || updatedProfile.isSuspended);
+      const resolvedPreset: SelectedPlanPreset =
+        resolvedPlan === 'pro'
+          ? selectedPlan === 'free'
+            ? 'monthly'
+            : selectedPlan
+          : 'free';
 
       setPlan(resolvedPlan);
+      setSelectedPlan(resolvedPreset);
+      setBaselineSelectedPlan(resolvedPreset);
+      setPlanTouched(false);
       setRole(resolvedRole);
       setIsSuspended(resolvedSusp);
       setExtendMonths(0);
@@ -516,10 +567,17 @@ export function UserOverrideDrawer({
           })
         : null;
 
+      const planLabelForNotice =
+        resolvedPreset === 'annual'
+          ? 'Annual Pro'
+          : resolvedPreset === 'custom'
+            ? `Custom Pro (+${customDays}d)`
+            : 'Monthly Pro';
+
       const successText =
         resolvedPlan === 'pro'
-          ? `Saved changes: Pro (Monthly) active until ${formattedExp || '30 days'}`
-          : 'Saved changes: User updated';
+          ? `Saved changes: ${planLabelForNotice} active until ${formattedExp || '30 days'}`
+          : 'Saved changes: Plan set to Free';
 
       setVerifiedNotice(successText);
       showApiToast(successText, 'success');
@@ -533,17 +591,32 @@ export function UserOverrideDrawer({
     }
   };
 
-  const handleSelectPlan = (nextPlan: UserPlan) => {
+  const handleSelectPlanPreset = (preset: SelectedPlanPreset) => {
+    const nextPlan: UserPlan = preset === 'free' ? 'free' : 'pro';
+    const actionNames: Record<SelectedPlanPreset, string> = {
+      monthly: 'Monthly Pro (30d)',
+      annual: 'Annual Pro (365d)',
+      custom: 'Custom Pro',
+      free: 'Revoke / Free',
+    };
     if (!canChangePlan) {
       setRequestAccessModal({
         permission: 'users.plan',
-        actionLabel: `Change subscription plan to ${nextPlan === 'pro' ? 'Pro (Monthly)' : 'Free'} for ${displayName}`,
+        actionLabel: `Change subscription plan to ${actionNames[preset]} for ${displayName}`,
       });
       return;
     }
+    setSelectedPlan(preset);
     setPlan(nextPlan);
-    if (nextPlan === 'free') {
+    setPlanTouched(true);
+    if (preset === 'free') {
       setExtendMonths(0);
+    } else if (preset === 'monthly') {
+      setExtendMonths(0);
+    } else if (preset === 'annual') {
+      setExtendMonths(12);
+    } else if (preset === 'custom') {
+      setExtendMonths(1);
     }
   };
 
@@ -864,36 +937,72 @@ export function UserOverrideDrawer({
                 Subscription plan
               </h3>
               <span className="text-[11px] font-heading text-[var(--muted)]">
-                {plan === 'pro' ? '30 days / month' : 'No recurring fee'}
+                {selectedPlan === 'annual'
+                  ? '365 days access'
+                  : selectedPlan === 'custom'
+                    ? `+${customDays} days access`
+                    : selectedPlan === 'monthly'
+                      ? '30 days / month'
+                      : 'No recurring fee'}
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                data-testid="plan-option-free"
-                onClick={() => handleSelectPlan('free')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  plan === 'free'
-                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                data-testid="plan-option-pro"
+                aria-pressed={selectedPlan === 'monthly'}
+                onClick={() => handleSelectPlanPreset('monthly')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'monthly'
+                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
                     : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                 }`}
               >
                 {!canChangePlan && <Lock size={12} className="text-amber-400" />}
-                <span>Free</span>
+                <span>Monthly Pro</span>
               </button>
               <button
                 type="button"
-                data-testid="plan-option-pro"
-                onClick={() => handleSelectPlan('pro')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  plan === 'pro'
-                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                data-testid="plan-option-annual"
+                aria-pressed={selectedPlan === 'annual'}
+                onClick={() => handleSelectPlanPreset('annual')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'annual'
+                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
                     : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                 }`}
               >
                 {!canChangePlan && <Lock size={12} className="text-amber-400" />}
-                <span>Pro (Monthly)</span>
+                <span>Annual Pro</span>
+              </button>
+              <button
+                type="button"
+                data-testid="plan-option-custom"
+                aria-pressed={selectedPlan === 'custom'}
+                onClick={() => handleSelectPlanPreset('custom')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'custom'
+                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                <span>Custom</span>
+              </button>
+              <button
+                type="button"
+                data-testid="plan-option-free"
+                aria-pressed={selectedPlan === 'free'}
+                onClick={() => handleSelectPlanPreset('free')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'free'
+                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                <span>Revoke / Free</span>
               </button>
             </div>
 
@@ -901,21 +1010,48 @@ export function UserOverrideDrawer({
               <div className="mt-2 p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-heading text-[var(--muted)]">
-                    Extend by
+                    {selectedPlan === 'custom' ? 'Custom duration (days)' : 'Extend by'}
                   </span>
                   <span className="text-[11px] font-heading text-[var(--red)] font-semibold">
-                    {extendMonths === 0 ? 'Standard (30 days)' : `+${extendMonths * 30} days`}
+                    {selectedPlan === 'annual'
+                      ? '365 days (1 Year)'
+                      : selectedPlan === 'custom'
+                        ? `+${customDays} days`
+                        : extendMonths === 0
+                          ? 'Standard (30 days)'
+                          : `+${extendMonths * 30} days`}
                   </span>
                 </div>
+                {selectedPlan === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={1825}
+                      value={customDays}
+                      onChange={(e) => {
+                        setCustomDays(Math.max(1, Number(e.target.value) || 30));
+                        setPlanTouched(true);
+                      }}
+                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    />
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-1.5">
                   {([0, 1, 2, 3] as const).map((months) => (
                     <button
                       key={months}
                       type="button"
                       data-testid={`plan-extend-${months}`}
-                      onClick={() => setExtendMonths(months)}
+                      onClick={() => {
+                        setExtendMonths(months);
+                        if (selectedPlan === 'custom' && months > 0) {
+                          setCustomDays(months * 30);
+                        }
+                        setPlanTouched(true);
+                      }}
                       className={`py-1.5 px-2 rounded-[8px] border text-[11px] font-heading font-medium transition-colors cursor-pointer ${
-                        extendMonths === months
+                        extendMonths === months && selectedPlan !== 'annual'
                           ? 'border-[var(--red)] bg-[var(--red)] text-white font-semibold'
                           : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                       }`}
@@ -925,11 +1061,15 @@ export function UserOverrideDrawer({
                   ))}
                 </div>
                 <p className="text-[10px] text-[var(--muted)] font-heading">
-                  {extendMonths === 0
-                    ? 'Sets plan to Pro with 30 days of active access.'
-                    : `Extends Pro expiry by +${extendMonths * 30} days (${extendMonths} month${
-                        extendMonths > 1 ? 's' : ''
-                      }).`}
+                  {selectedPlan === 'annual'
+                    ? 'Grants 365 days (1 full year) of Pro access.'
+                    : selectedPlan === 'custom'
+                      ? `Grants +${customDays} days of custom Pro access.`
+                      : extendMonths === 0
+                        ? 'Sets plan to Pro with 30 days of active access.'
+                        : `Extends Pro expiry by +${extendMonths * 30} days (${extendMonths} month${
+                            extendMonths > 1 ? 's' : ''
+                          }).`}
                 </p>
               </div>
             )}

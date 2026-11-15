@@ -91,6 +91,7 @@ export function AdminBotsPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [lastRunResults, setLastRunResults] = useState<BotRunResultItem[]>([]);
 
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
@@ -118,14 +119,7 @@ export function AdminBotsPage() {
       assignedKeyIndex: typeof r.assignedKeyIndex === 'number' ? r.assignedKeyIndex : undefined,
       status: String(r.status || 'completed'),
       retryAfter: r.retryAfter ? String(r.retryAfter) : null,
-      error: r.error
-        ? truncateBotErrorMessage(
-            formatCleanBotErrorMessage(String(r.error), {
-              retryAfterMs: r.retryAfter ? Date.parse(String(r.retryAfter)) : null,
-              keyLabel: typeof r.assignedKeyIndex === 'number' ? `Key #${r.assignedKeyIndex + 1}` : undefined,
-            })
-          )
-        : undefined,
+      error: r.error ? String(r.error) : undefined,
     }));
 
     if (normalizedResults.length > 0 || isFreshTrigger) {
@@ -152,23 +146,41 @@ export function AdminBotsPage() {
     const totalLikes = normalizedResults.reduce((sum, r) => sum + r.likesAdded, 0);
     const anyErrors = normalizedResults.some((r) => Boolean(r.error));
 
-    // Step 6: Never show green "Bot run finished" banner when 0 posts were published because of errors
-    if (
-      summary.bannerStatus === 'error' ||
+    const rawErr = String(
+      summary.bannerMessage ||
+        summary.error ||
+        normalizedResults.find((r) => r.error)?.error ||
+        ''
+    ).trim();
+    const isQuota429 =
       summary.runOutcome === 'quota_exhausted' ||
+      /\b429\b|quota|resource_exhausted|cooling down/i.test(rawErr) ||
+      normalizedResults.some(
+        (r) =>
+          r.status === 'quota_exceeded' ||
+          r.status === 'quota_exhausted' ||
+          /\b429\b|quota|resource_exhausted/i.test(String(r.error || ''))
+      );
+
+    if (isQuota429 && totalCreated === 0) {
+      setSuccessMsg(null);
+      setErrorMsg(null);
+      setWarningMsg(
+        'Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.'
+      );
+      setErrorDetails(rawErr || null);
+    } else if (
+      summary.bannerStatus === 'error' ||
       summary.runOutcome === 'error' ||
       (totalCreated === 0 && anyErrors)
     ) {
-      const rawErr =
-        summary.bannerMessage ||
-        normalizedResults.find((r) => r.error)?.error ||
-        'Gemini quota exceeded, retry after cooldown.';
-      const cleanErr = formatCleanBotErrorMessage(String(rawErr), {
+      const cleanErr = formatCleanBotErrorMessage(rawErr || 'Bot run encountered an error.', {
         retryAfterMs: summary.allKeysExhaustedUntil ? Date.parse(String(summary.allKeysExhaustedUntil)) : null,
       });
       setSuccessMsg(null);
       setWarningMsg(null);
       setErrorMsg(cleanErr);
+      setErrorDetails(rawErr && rawErr !== cleanErr ? rawErr : null);
     } else if (
       summary.bannerStatus === 'warning' ||
       summary.runOutcome === 'partial' ||
@@ -176,13 +188,17 @@ export function AdminBotsPage() {
     ) {
       setSuccessMsg(null);
       setErrorMsg(null);
+      setErrorDetails(rawErr || null);
       setWarningMsg(
-        summary.bannerMessage ||
-          `Run completed with warnings: ${totalCreated} post(s), ${totalComments} comment(s), ${totalLikes} like(s).`
+        isQuota429
+          ? 'Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.'
+          : summary.bannerMessage ||
+              `Run completed with warnings: ${totalCreated} post(s), ${totalComments} comment(s), ${totalLikes} like(s).`
       );
     } else if (isFreshTrigger) {
       setErrorMsg(null);
       setWarningMsg(null);
+      setErrorDetails(null);
       setSuccessMsg(
         summary.bannerMessage ||
           `Bot run finished: ${totalCreated} post(s), ${totalComments} comment(s), and ${totalLikes} like(s) published with verified KaTeX.`
@@ -291,6 +307,7 @@ export function AdminBotsPage() {
     }
     setErrorMsg(null);
     setWarningMsg(null);
+    setErrorDetails(null);
     setSuccessMsg(null);
 
     try {
@@ -305,6 +322,12 @@ export function AdminBotsPage() {
         }),
       });
       const data = await resp.json().catch(() => ({}));
+      if (resp.status === 429) {
+        setWarningMsg('Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.');
+        setErrorDetails(data?.error || data?.bannerMessage || 'HTTP 429 Too Many Requests');
+        await loadBots(true);
+        return;
+      }
       if (!resp.ok || !data?.success) {
         throw new Error(data?.error || data?.bannerMessage || 'Bot run failed.');
       }
@@ -312,7 +335,15 @@ export function AdminBotsPage() {
       await loadBots(true);
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : 'Manual bot run failed.';
-      setErrorMsg(formatCleanBotErrorMessage(raw));
+      if (/quota|429|RESOURCE_EXHAUSTED|cooling down|exhausted/i.test(raw)) {
+        setWarningMsg('Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.');
+        setErrorDetails(raw);
+      } else {
+        setErrorMsg(formatCleanBotErrorMessage(raw));
+        if (raw.length > 90) {
+          setErrorDetails(raw);
+        }
+      }
     } finally {
       setRunningAll(false);
       setRunningBotUid(null);
@@ -330,6 +361,7 @@ export function AdminBotsPage() {
     setDeletingContent(true);
     setErrorMsg(null);
     setWarningMsg(null);
+    setErrorDetails(null);
     setSuccessMsg(null);
 
     try {
@@ -481,11 +513,10 @@ export function AdminBotsPage() {
           <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-bold">
-              All Gemini API keys are currently cooling down until{' '}
-              {new Date(allKeysExhaustedUntil).toLocaleString()}
+              Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.
             </div>
             <div className="text-amber-300/90">
-              Scheduled and manual runs will automatically skip Gemini API calls until the earliest key cooldown expires.
+              Cooldown until {new Date(allKeysExhaustedUntil).toLocaleString()}. Scheduled and manual runs will automatically skip Gemini API calls until the earliest key cooldown expires.
             </div>
           </div>
         </div>
@@ -495,14 +526,34 @@ export function AdminBotsPage() {
       {errorMsg && (
         <div className="p-4 rounded-2xl bg-red-950/35 border border-red-500/50 text-red-200 text-xs flex items-start gap-2.5">
           <AlertTriangle size={16} className="text-red-400 shrink-0 mt-0.5" />
-          <div className="whitespace-pre-wrap break-words leading-relaxed">{errorMsg}</div>
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="whitespace-pre-wrap break-words leading-relaxed">{errorMsg}</div>
+            {errorDetails && errorDetails !== errorMsg && (
+              <details className="text-[11px] text-red-300/80">
+                <summary className="cursor-pointer font-semibold select-none">Details</summary>
+                <pre className="mt-1.5 p-2 rounded-lg bg-black/30 font-mono whitespace-pre-wrap break-all overflow-x-auto">
+                  {errorDetails}
+                </pre>
+              </details>
+            )}
+          </div>
         </div>
       )}
 
       {warningMsg && (
         <div className="p-4 rounded-2xl bg-amber-950/35 border border-amber-500/50 text-amber-200 text-xs flex items-start gap-2.5">
           <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
-          <div className="whitespace-pre-wrap break-words leading-relaxed">{warningMsg}</div>
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="whitespace-pre-wrap break-words leading-relaxed font-semibold">{warningMsg}</div>
+            {errorDetails && errorDetails !== warningMsg && (
+              <details className="text-[11px] text-amber-300/80">
+                <summary className="cursor-pointer font-semibold select-none">Details</summary>
+                <pre className="mt-1.5 p-2 rounded-lg bg-black/30 font-mono whitespace-pre-wrap break-all overflow-x-auto">
+                  {errorDetails}
+                </pre>
+              </details>
+            )}
+          </div>
         </div>
       )}
 
@@ -559,13 +610,23 @@ export function AdminBotsPage() {
                     </span>
                   </div>
                   {ks.lastError && (
-                    <div className="text-[11px] text-red-300/90 bg-red-950/25 border border-red-500/25 rounded-lg p-2 whitespace-pre-wrap break-words">
-                      {truncateBotErrorMessage(
-                        formatCleanBotErrorMessage(ks.lastError, {
-                          retryAfterMs: ks.cooldownUntil ? Date.parse(ks.cooldownUntil) : null,
-                          keyLabel: ks.label,
-                        })
-                      )}
+                    <div className="text-[11px] text-amber-200/90 bg-amber-950/25 border border-amber-500/25 rounded-lg p-2 space-y-1">
+                      <div className="font-medium">
+                        {/quota|429|RESOURCE_EXHAUSTED/i.test(ks.lastError)
+                          ? 'Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.'
+                          : truncateBotErrorMessage(
+                              formatCleanBotErrorMessage(ks.lastError, {
+                                retryAfterMs: ks.cooldownUntil ? Date.parse(ks.cooldownUntil) : null,
+                                keyLabel: ks.label,
+                              })
+                            )}
+                      </div>
+                      <details className="text-[10px] text-amber-300/75">
+                        <summary className="cursor-pointer font-semibold select-none">Details</summary>
+                        <pre className="mt-1 p-1.5 rounded bg-black/30 font-mono whitespace-pre-wrap break-all overflow-x-auto">
+                          {ks.lastError}
+                        </pre>
+                      </details>
                     </div>
                   )}
                 </div>
@@ -624,16 +685,26 @@ export function AdminBotsPage() {
                       : ''}
                   </div>
                   {r.error && (
-                    <div className="p-2.5 rounded-lg bg-red-950/30 border border-red-500/30 text-red-200 text-[11px] font-mono whitespace-pre-wrap break-words leading-relaxed">
-                      {truncateBotErrorMessage(
-                        formatCleanBotErrorMessage(r.error, {
-                          retryAfterMs: r.retryAfter ? Date.parse(r.retryAfter) : null,
-                          keyLabel:
-                            typeof r.assignedKeyIndex === 'number'
-                              ? `Key #${r.assignedKeyIndex + 1}`
-                              : undefined,
-                        })
-                      )}
+                    <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-amber-200 text-[11px] space-y-1 leading-relaxed">
+                      <div className="font-semibold">
+                        {/quota|429|RESOURCE_EXHAUSTED/i.test(r.error)
+                          ? 'Gemini daily quota reached. Resets at midnight PT, or switch to a backup key.'
+                          : truncateBotErrorMessage(
+                              formatCleanBotErrorMessage(r.error, {
+                                retryAfterMs: r.retryAfter ? Date.parse(r.retryAfter) : null,
+                                keyLabel:
+                                  typeof r.assignedKeyIndex === 'number'
+                                    ? `Key #${r.assignedKeyIndex + 1}`
+                                    : undefined,
+                              })
+                            )}
+                      </div>
+                      <details className="text-[10px] text-amber-300/80">
+                        <summary className="cursor-pointer font-semibold select-none">Details</summary>
+                        <pre className="mt-1 p-1.5 rounded bg-black/30 font-mono whitespace-pre-wrap break-all overflow-x-auto">
+                          {r.error}
+                        </pre>
+                      </details>
                     </div>
                   )}
                 </div>

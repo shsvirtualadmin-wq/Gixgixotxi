@@ -48,17 +48,21 @@ export const AdminAccessRequestsPage: React.FC = () => {
   const [denyNotes, setDenyNotes] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const loadAccessRequests = useCallback(async () => {
     if (!canViewAudit) {
       setLoading(false);
       return;
     }
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.get<{
         ok: boolean;
         requests: AccessRequestRecord[];
-        activeGrants: ActivePermissionGrant[];
+        activeGrants?: ActivePermissionGrant[];
+        grants?: ActivePermissionGrant[];
         migratedAccounts?: Array<{
           uid: string;
           email: string;
@@ -69,13 +73,24 @@ export const AdminAccessRequestsPage: React.FC = () => {
       }>('/api/admin/access-requests', { silentErrorToast: true });
 
       setRequests(Array.isArray(res?.requests) ? res.requests : []);
-      setActiveGrants(Array.isArray(res?.activeGrants) ? res.activeGrants : []);
+      const resolvedGrants = Array.isArray(res?.activeGrants)
+        ? res.activeGrants
+        : Array.isArray(res?.grants)
+          ? res.grants
+          : [];
+      setActiveGrants(resolvedGrants);
       if (Array.isArray(res?.migratedAccounts)) {
         setMigratedAdmins(res.migratedAccounts);
       }
       window.dispatchEvent(new CustomEvent('boardly:access-requests-updated'));
     } catch (err: any) {
-      showApiToast(err?.message || 'Failed to load access requests.', 'error');
+      const msg = String(err?.message || '');
+      if (/404|not found/i.test(msg)) {
+        setRequests([]);
+        setActiveGrants([]);
+      } else {
+        setLoadError(msg || 'Could not load access requests.');
+      }
     } finally {
       setLoading(false);
     }
@@ -209,6 +224,19 @@ export const AdminAccessRequestsPage: React.FC = () => {
           <span>Refresh</span>
         </button>
       </div>
+
+      {loadError && (
+        <div className="p-4 rounded-2xl bg-red-950/25 border border-red-500/35 text-xs text-red-200 flex items-center justify-between gap-3">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadAccessRequests()}
+            className="px-3.5 py-1.5 rounded-xl bg-[#D71921] text-white font-bold hover:bg-[#b8141b] transition-colors cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex items-center gap-2 p-1 rounded-2xl bg-[var(--card)] border border-[var(--border)] w-fit flex-wrap">

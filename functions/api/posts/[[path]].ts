@@ -313,6 +313,21 @@ export async function onRequest(context: {
     });
   }
 
+  // GET /api/posts/moderation/queue
+  if (subPath === '/moderation/queue' && request.method === 'GET') {
+    const flaggedPosts = memoryStore.posts
+      .filter((p) => Number(p.report_count || 0) >= 1 || Number(p.is_hidden || 0) === 1)
+      .map((p) => mapRowToPost(p));
+    return new Response(
+      JSON.stringify({
+        success: true,
+        flaggedPosts,
+        reports: [],
+      }),
+      { status: 200, headers: jsonHeaders }
+    );
+  }
+
   // GET /api/posts
   if (subPath === '/' && request.method === 'GET') {
     const pageSize = Math.min(

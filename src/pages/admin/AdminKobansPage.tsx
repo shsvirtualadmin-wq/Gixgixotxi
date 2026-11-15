@@ -117,7 +117,7 @@ export function AdminKobansPage() {
 
   const [activeTab, setActiveTab] = useState<'requests' | 'adjust' | 'gallery'>('adjust');
   const [galleryViewport, setGalleryViewport] = useState<'360' | '390' | '768' | '100%'>('390');
-  const [galleryTestName, setGalleryTestName] = useState('Muhammad Abdullah Tariq');
+  const [galleryTestName, setGalleryTestName] = useState(() => user?.displayName || 'You');
   const [galleryCategory, setGalleryCategory] = useState<
     'all' | 'nameplate' | 'frame' | 'effect' | 'avatar'
   >('all');

@@ -992,6 +992,63 @@ html.ui-glass [data-student-page="settings"] .fsm-search-pill {
     0 12px 36px rgba(0, 0, 0, 0.48) !important;
 }
 
+/* Light-Theme Contrast for Messages & Direct Chat */
+[data-theme="light"] [data-student-page="messages"],
+[data-theme="light"] [data-student-page="messages-chat"] {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+[data-theme="light"] [data-student-page="messages"] .boardly-glass-card,
+[data-theme="light"] [data-student-page="messages-chat"] .boardly-glass-card,
+[data-theme="light"] [data-student-page="messages"] .boardly-glass-pill,
+[data-theme="light"] [data-student-page="messages-chat"] .boardly-glass-pill {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)) !important;
+  border-color: rgba(15, 16, 20, 0.12) !important;
+  color: var(--text) !important;
+  box-shadow: 0 8px 24px rgba(15, 16, 20, 0.06) !important;
+}
+
+[data-theme="light"] [data-student-page="messages"] .text-white:not(.boardly-red-pill):not(.bg-\[\#D71921\]),
+[data-theme="light"] [data-student-page="messages-chat"] .text-white:not(.boardly-red-pill):not(.bg-\[\#D71921\]) {
+  color: var(--text) !important;
+}
+
+[data-theme="light"] [data-student-page="messages"] [role="tab"][aria-selected="true"],
+[data-theme="light"] [data-student-page="messages"] [role="tab"][aria-selected="true"] span,
+[data-theme="light"] [data-student-page="messages-chat"] .bg-\[\#D71921\],
+[data-theme="light"] [data-student-page="messages-chat"] .boardly-red-pill,
+[data-theme="light"] [data-student-page="messages"] .boardly-red-pill {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] [data-student-page="messages"] .text-white\/90,
+[data-theme="light"] [data-student-page="messages"] .text-white\/85,
+[data-theme="light"] [data-student-page="messages"] .text-white\/80,
+[data-theme="light"] [data-student-page="messages"] .text-white\/75,
+[data-theme="light"] [data-student-page="messages"] .text-white\/72,
+[data-theme="light"] [data-student-page="messages"] .text-white\/70,
+[data-theme="light"] [data-student-page="messages"] .text-white\/65,
+[data-theme="light"] [data-student-page="messages"] .text-white\/60,
+[data-theme="light"] [data-student-page="messages"] .text-white\/45,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/90,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/85,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/80,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/75,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/72,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/70,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/65,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/60,
+[data-theme="light"] [data-student-page="messages-chat"] .text-white\/45 {
+  color: var(--mute) !important;
+}
+
+[data-theme="light"] [data-student-page="messages"] input::placeholder,
+[data-theme="light"] [data-student-page="messages-chat"] input::placeholder,
+[data-theme="light"] [data-student-page="messages-chat"] textarea::placeholder {
+  color: var(--mute) !important;
+}
+
 /* ─── Reduced Motion & Smooth Mode Respect ─── */
 @media (prefers-reduced-motion: reduce) {
   html.ui-glass [data-pressable],

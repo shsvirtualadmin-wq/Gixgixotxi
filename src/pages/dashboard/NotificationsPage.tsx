@@ -453,9 +453,24 @@ export function NotificationsPage() {
     [storeSnapshot.followingLoaded, storeSnapshot.followingIds, user?.uid]
   );
 
-  // Combine store notifications + extra paginated items, filter post notifications by currentUser.following, deduplicate, and sort newest-first by real createdAt
+  // Combine store notifications + extra paginated items, filter post notifications by currentUser.following, deduplicate (including announcements by announcementId or title+minute), and sort newest-first by real createdAt
   const allNotifications = useMemo<AppNotification[]>(() => {
     const byId = new Map<string, AppNotification>();
+    const seenAnnouncementKeys = new Set<string>();
+    const getAnnouncementDedupeKey = (item: AppNotification): string | null => {
+      if (resolveDisplayCategory(item) !== 'announcement') return null;
+      const annId = String((item as any).announcementId || '').trim();
+      if (annId) return `ann_id:${annId}`;
+      const normTitle = String(item.title || '')
+        .trim()
+        .toLowerCase();
+      const normMsg = String(item.message || item.body || '')
+        .trim()
+        .toLowerCase()
+        .slice(0, 80);
+      return `ann_text:${normTitle}::${normMsg}`;
+    };
+
     const shouldInclude = (item: AppNotification): boolean => {
       if (dismissedIds.has(item.id)) return false;
       const cat = resolveDisplayCategory(item);
@@ -465,15 +480,14 @@ export function NotificationsPage() {
       return true;
     };
 
-    for (const item of storeSnapshot.notifications) {
-      if (shouldInclude(item)) {
-        byId.set(item.id, item);
+    for (const item of [...storeSnapshot.notifications, ...extraNotifications]) {
+      if (byId.has(item.id) || !shouldInclude(item)) continue;
+      const annKey = getAnnouncementDedupeKey(item);
+      if (annKey) {
+        if (seenAnnouncementKeys.has(annKey)) continue;
+        seenAnnouncementKeys.add(annKey);
       }
-    }
-    for (const extra of extraNotifications) {
-      if (!byId.has(extra.id) && shouldInclude(extra)) {
-        byId.set(extra.id, extra);
-      }
+      byId.set(item.id, item);
     }
     return Array.from(byId.values()).sort(
       (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
@@ -1209,9 +1223,9 @@ export function NotificationsPage() {
                     const renderTypeTag = () => {
                       if (category === 'announcement') {
                         return (
-                          <span className="rs-chip rs-chip--red">
-                            <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
-                            ANNOUNCEMENT
+                          <span className="rs-chip rs-chip--red inline-flex items-center gap-1">
+                            <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.25} />
+                            Boardly Team
                           </span>
                         );
                       }
@@ -1317,10 +1331,15 @@ export function NotificationsPage() {
 
                             {isAnnouncement && (
                               <div className="notif-inline-meta">
-                                <span>
-                                  {isExpanded
-                                    ? `Published by ${notif.publishedBy || 'Superadmin'}`
-                                    : 'Tap to read full announcement'}
+                                <span className="inline-flex items-center gap-1">
+                                  {isExpanded ? (
+                                    <>
+                                      <ShieldCheck className="w-3.5 h-3.5 text-[#D71921]" strokeWidth={2} />
+                                      <span>Boardly Team</span>
+                                    </>
+                                  ) : (
+                                    'Tap to read full announcement'
+                                  )}
                                 </span>
                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--rs-muted)]">
                                   {isExpanded ? (

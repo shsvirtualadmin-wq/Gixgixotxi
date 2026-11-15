@@ -44,6 +44,8 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
   const navigate = useNavigate();
   const [crews, setCrews] = useState<PublicCrewSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -63,20 +65,37 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
 
   useEffect(() => {
     let active = true;
+    let settled = false;
+    setLoading(true);
+    setLoadError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      if (!active || settled) return;
+      settled = true;
+      setLoading(false);
+      setLoadError('Loading squads timed out. Please try again.');
+    }, 10000);
+
     async function load() {
-      setLoading(true);
       try {
         const result = await fetchCrewLeaderboard({
           search: debouncedSearch,
           offset: (page - 1) * limit,
           limit,
         });
-        if (active) {
+        if (active && !settled) {
+          settled = true;
+          window.clearTimeout(timeoutId);
           setCrews(result.crews);
           setTotalCount(result.total);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[PublicLeaderboard] Load error:', err);
+        if (active && !settled) {
+          settled = true;
+          window.clearTimeout(timeoutId);
+          setLoadError(err?.message || 'Could not load squads.');
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -84,8 +103,9 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
     load();
     return () => {
       active = false;
+      window.clearTimeout(timeoutId);
     };
-  }, [debouncedSearch, page]);
+  }, [debouncedSearch, page, retryTick]);
 
   const filteredCrews = useMemo(() => {
     return crews.filter((c) => {
@@ -151,6 +171,26 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
               style={{ backgroundColor: 'var(--cw-card2)' }}
             />
           ))}
+        </div>
+      ) : loadError ? (
+        <div
+          className="rounded-[22px] p-8 text-center space-y-3"
+          style={{
+            backgroundColor: 'var(--cw-card2)',
+            boxShadow: 'inset 0 0 0 1px var(--cw-line)',
+          }}
+        >
+          <p className="text-sm font-bold" style={{ color: 'var(--cw-text)' }}>
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => setRetryTick((t) => t + 1)}
+            {...getCrewBtnHandlers()}
+            className="cw-btn cw-btn-red"
+          >
+            Retry
+          </button>
         </div>
       ) : filteredCrews.length === 0 ? (
         <div

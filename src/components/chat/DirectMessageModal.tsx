@@ -736,7 +736,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
       role="dialog"
       aria-modal="true"
       aria-label={`Conversation with ${partnerName}`}
-      className="fixed inset-0 z-[2000] bg-[#050506] text-white flex flex-col overflow-hidden page-slide-right"
+      className="fixed inset-0 z-[2000] bg-[var(--bg)] text-[var(--text)] flex flex-col overflow-hidden page-slide-right"
       style={{
         paddingBottom: keyboardOffsetBottom > 0 ? `${keyboardOffsetBottom}px` : undefined,
       }}
@@ -1457,14 +1457,14 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   }
 
   return (
-    <div data-student-page="messages" className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom px-3.5 sm:px-5 pt-4 space-y-4 max-w-3xl mx-auto">
+    <div data-student-page="messages" className="relative min-h-screen bg-[var(--bg)] text-[var(--text)] boardly-page-safe-bottom px-3.5 sm:px-5 pt-4 space-y-4 max-w-3xl mx-auto">
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-doto-title text-[24px] sm:text-[26px] tracking-[0.08em] text-white">
+          <h1 className="font-doto-title text-[24px] sm:text-[26px] tracking-[0.08em] text-[var(--text)]">
             MESSAGES
           </h1>
-          <p className="text-[13px] text-white/72 mt-0.5">
+          <p className="text-[13px] text-[var(--muted)] mt-0.5">
             Direct conversations and chat requests with fellow students.
           </p>
         </div>
@@ -1899,7 +1899,7 @@ export const DirectMessageModal: React.FC<DirectMessageModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Messages"
-      className="fixed inset-0 z-[2000] bg-[#050506] overflow-y-auto"
+      className="fixed inset-0 z-[2000] bg-[var(--bg)] text-[var(--text)] overflow-y-auto"
     >
       <MessagesDashboardContent
         initialTab={initialTab}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { auth } from '@/lib/firebase';
+import { getBearerToken } from '@/lib/api';
 import { Shield, AlertTriangle, Eye, EyeOff, Trash2, Ban, CheckCircle2, RefreshCw, Lock } from 'lucide-react';
 import { normalizeCloudflarePost } from '@/services/commonsService';
 import type { CommonsPost, CommonsReport } from '@/types/commons';
@@ -14,6 +14,7 @@ export function AdminCommonsPage() {
   const [flaggedPosts, setFlaggedPosts] = useState<CommonsPost[]>([]);
   const [, setReports] = useState<CommonsReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [queueError, setQueueError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [accessRequestTarget, setAccessRequestTarget] = useState<{
     permission: AdminPermissionKey;
@@ -22,7 +23,7 @@ export function AdminCommonsPage() {
   } | null>(null);
 
   const getAdminHeaders = useCallback(async () => {
-    const token = await auth.currentUser?.getIdToken(false);
+    const token = await getBearerToken(false);
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -31,10 +32,16 @@ export function AdminCommonsPage() {
 
   const loadModerationQueue = useCallback(async () => {
     setLoading(true);
+    setQueueError(null);
     setActionNotice(null);
     try {
       const headers = await getAdminHeaders();
       const resp = await fetch('/api/posts/moderation/queue', { headers });
+      if (resp.status === 404) {
+        setFlaggedPosts([]);
+        setReports([]);
+        return;
+      }
       const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok || !data?.success) {
@@ -50,7 +57,7 @@ export function AdminCommonsPage() {
       setReports(reps);
     } catch (err: any) {
       console.error('[AdminCommonsPage] load error:', err);
-      setActionNotice('Notice: Error loading moderation queue.');
+      setQueueError(err?.message || 'Could not load moderation queue.');
     } finally {
       setLoading(false);
     }
@@ -154,12 +161,25 @@ export function AdminCommonsPage() {
         <button
           onClick={loadModerationQueue}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition-colors cursor-pointer"
         >
           <RefreshCw size={14} />
           <span>Refresh</span>
         </button>
       </div>
+
+      {queueError && (
+        <div className="p-4 rounded-2xl bg-red-950/25 border border-red-500/35 text-xs text-red-200 flex items-center justify-between gap-3">
+          <span>{queueError}</span>
+          <button
+            type="button"
+            onClick={loadModerationQueue}
+            className="px-3.5 py-1.5 rounded-xl bg-[#D71921] text-white font-bold hover:bg-[#b8141b] transition-colors cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {actionNotice && (
         <div className="p-3 rounded-xl bg-neutral-900 border border-neutral-700 text-xs text-neutral-200">

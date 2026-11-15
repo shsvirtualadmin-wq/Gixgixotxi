@@ -2381,20 +2381,27 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* Requirement 8: Token Claims & Role Debug (email, uid, email_verified, roleSource, check breakdown, full claims object, isSuperAdmin / isAdmin / isCaptain) */}
-        {!normalizedQuery && (
+        {/* Requirement 8: Token Claims & Role Debug (hidden for regular students; collapsed behind Developer info toggle for admins) */}
+        {!normalizedQuery && (isAdmin || isSuperAdmin) && (
           <div id="settings-rbac-debug-card" className="stg-group">
             <div className="stg-group-label flex items-center justify-between gap-2">
-              <span>Token Claims &amp; Role Debug</span>
+              <button
+                type="button"
+                onClick={() => setDebugCardCollapsed((prev) => !prev)}
+                className="text-[11px] font-semibold text-[var(--menu-subtext)] hover:text-[var(--menu-text)] cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span>Developer info</span>
+                <span>{debugCardCollapsed ? '▸' : '▾'}</span>
+              </button>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setDebugCardCollapsed((prev) => !prev)}
-                  className="hidden lg-only-inline text-[11px] font-semibold text-[var(--menu-subtext)] hover:text-[var(--menu-text)] cursor-pointer"
+                  className="text-[11px] font-semibold text-[var(--menu-subtext)] hover:text-[var(--menu-text)] cursor-pointer"
                 >
-                  {debugCardCollapsed ? 'Show Debug' : 'Hide Debug'}
+                  {debugCardCollapsed ? 'Show' : 'Hide'}
                 </button>
-                {user && !isGuest && (
+                {user && !isGuest && !debugCardCollapsed && (
                   <button
                     type="button"
                     disabled={debugClaimsRefreshing}
@@ -2413,124 +2420,126 @@ export function SettingsPage() {
                 )}
               </div>
             </div>
-            <div
-              data-collapsed={debugCardCollapsed ? 'true' : 'false'}
-              className="stg-card p-4 space-y-2.5 text-xs font-mono lg-collapsible"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--menu-subtext)]">email</span>
-                <span className="text-[var(--menu-text)] font-semibold break-all text-right">
-                  {user?.email || 'null'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--menu-subtext)]">uid</span>
-                <span className="text-[var(--menu-text)] break-all text-right">
-                  {user?.uid || 'null'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--menu-subtext)]">email_verified</span>
-                <span className="text-[var(--menu-text)] font-semibold">
-                  {String(
-                    Boolean(
-                      user?.emailVerified ??
-                        (tokenClaims?.rawClaims as Record<string, unknown> | undefined)
-                          ?.email_verified
-                    )
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--menu-subtext)]">
-                  isSuperAdmin / isAdmin / isCaptain
-                </span>
-                <span className="text-[var(--menu-text)] font-semibold">
-                  {String(isSuperAdmin)} / {String(isAdmin)} / {String(isCaptain)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--menu-subtext)]">roleSource</span>
-                <span className="text-[var(--menu-text)] font-semibold">
-                  {tokenClaims?.roleSource || tokenClaims?.diagnostics?.roleSource || 'none'}
-                </span>
-              </div>
-
-              {tokenClaims?.diagnostics && (
-                <div className="pt-2 border-t border-dashed border-[var(--menu-divider)] space-y-1.5">
-                  <div className="text-[var(--menu-subtext)]">role checks</div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[var(--menu-subtext)]">
-                      1. customClaims (JWT)
-                    </span>
-                    <span className="text-[var(--menu-text)] text-right">
-                      {tokenClaims.diagnostics.checks.customClaims.passed ? 'PASS' : 'NONE'} (sa:
-                      {String(tokenClaims.diagnostics.checks.customClaims.superAdmin)}, a:
-                      {String(tokenClaims.diagnostics.checks.customClaims.admin)}, c:
-                      {String(tokenClaims.diagnostics.checks.customClaims.captain)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[var(--menu-subtext)]">
-                      2. verifiedOwnerEmail
-                    </span>
-                    <span className="text-[var(--menu-text)] text-right break-all">
-                      {tokenClaims.diagnostics.checks.verifiedOwnerEmail.passed ? 'PASS' : 'FAIL'} (
-                      {tokenClaims.diagnostics.checks.verifiedOwnerEmail.tokenEmail || 'none'} ==={' '}
-                      {tokenClaims.diagnostics.checks.verifiedOwnerEmail.expectedEmail}, verified:
-                      {String(tokenClaims.diagnostics.checks.verifiedOwnerEmail.emailVerified)})
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[var(--menu-subtext)]">
-                      3. server /api/me/roles
-                    </span>
-                    <span className="text-[var(--menu-text)] text-right break-all">
-                      {tokenClaims.diagnostics.checks.serverRolesApi.attempted
-                        ? `HTTP ${tokenClaims.diagnostics.checks.serverRolesApi.status ?? 'ERR'} · source:${
-                            tokenClaims.diagnostics.checks.serverRolesApi.effectiveSource || 'none'
-                          } · minted:${String(
-                            tokenClaims.diagnostics.checks.serverRolesApi.claimMintSucceeded
-                          )}`
-                        : 'not attempted'}
-                    </span>
-                  </div>
-                  {tokenClaims.diagnostics.checks.serverRolesApi.error && (
-                    <div className="text-[11px] text-amber-400 break-all">
-                      mint note: {tokenClaims.diagnostics.checks.serverRolesApi.error}
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[var(--menu-subtext)]">
-                      4. firestore users/{'{uid}'}.role
-                    </span>
-                    <span className="text-[var(--menu-text)] text-right">
-                      {tokenClaims.diagnostics.checks.firestoreRoleDoc.inspected
-                        ? `${tokenClaims.diagnostics.checks.firestoreRoleDoc.docRole ?? 'unset'} (ignored for auth)`
-                        : 'not read yet (ignored for auth)'}
-                    </span>
-                  </div>
+            {!debugCardCollapsed && (
+              <div
+                data-collapsed="false"
+                className="stg-card p-4 space-y-2.5 text-xs font-mono"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--menu-subtext)]">email</span>
+                  <span className="text-[var(--menu-text)] font-semibold break-all text-right">
+                    {user?.email || 'null'}
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--menu-subtext)]">uid</span>
+                  <span className="text-[var(--menu-text)] break-all text-right">
+                    {user?.uid || 'null'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--menu-subtext)]">email_verified</span>
+                  <span className="text-[var(--menu-text)] font-semibold">
+                    {String(
+                      Boolean(
+                        user?.emailVerified ??
+                          (tokenClaims?.rawClaims as Record<string, unknown> | undefined)
+                            ?.email_verified
+                      )
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--menu-subtext)]">
+                    isSuperAdmin / isAdmin / isCaptain
+                  </span>
+                  <span className="text-[var(--menu-text)] font-semibold">
+                    {String(isSuperAdmin)} / {String(isAdmin)} / {String(isCaptain)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--menu-subtext)]">roleSource</span>
+                  <span className="text-[var(--menu-text)] font-semibold">
+                    {tokenClaims?.roleSource || tokenClaims?.diagnostics?.roleSource || 'none'}
+                  </span>
+                </div>
 
-              <div className="pt-1 border-t border-dashed border-[var(--menu-divider)]">
-                <div className="text-[var(--menu-subtext)] mb-1">claims</div>
-                <pre className="p-2.5 rounded-xl bg-black/30 text-[11px] leading-relaxed text-[var(--menu-text)] overflow-x-auto whitespace-pre-wrap break-all">
-                  {JSON.stringify(
-                    tokenClaims?.rawClaims &&
-                      Object.keys(tokenClaims.rawClaims).length > 0
-                      ? tokenClaims.rawClaims
-                      : {
-                          superAdmin: tokenClaims.superAdmin,
-                          admin: tokenClaims.admin,
-                          captain: tokenClaims.captain,
-                        },
-                    null,
-                    2
-                  )}
-                </pre>
+                {tokenClaims?.diagnostics && (
+                  <div className="pt-2 border-t border-dashed border-[var(--menu-divider)] space-y-1.5">
+                    <div className="text-[var(--menu-subtext)]">role checks</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--menu-subtext)]">
+                        1. customClaims (JWT)
+                      </span>
+                      <span className="text-[var(--menu-text)] text-right">
+                        {tokenClaims.diagnostics.checks.customClaims.passed ? 'PASS' : 'NONE'} (sa:
+                        {String(tokenClaims.diagnostics.checks.customClaims.superAdmin)}, a:
+                        {String(tokenClaims.diagnostics.checks.customClaims.admin)}, c:
+                        {String(tokenClaims.diagnostics.checks.customClaims.captain)})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--menu-subtext)]">
+                        2. verifiedOwnerEmail
+                      </span>
+                      <span className="text-[var(--menu-text)] text-right break-all">
+                        {tokenClaims.diagnostics.checks.verifiedOwnerEmail.passed ? 'PASS' : 'FAIL'} (
+                        {tokenClaims.diagnostics.checks.verifiedOwnerEmail.tokenEmail || 'none'} ==={' '}
+                        {tokenClaims.diagnostics.checks.verifiedOwnerEmail.expectedEmail}, verified:
+                        {String(tokenClaims.diagnostics.checks.verifiedOwnerEmail.emailVerified)})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--menu-subtext)]">
+                        3. server /api/me/roles
+                      </span>
+                      <span className="text-[var(--menu-text)] text-right break-all">
+                        {tokenClaims.diagnostics.checks.serverRolesApi.attempted
+                          ? `HTTP ${tokenClaims.diagnostics.checks.serverRolesApi.status ?? 'ERR'} · source:${
+                              tokenClaims.diagnostics.checks.serverRolesApi.effectiveSource || 'none'
+                            } · minted:${String(
+                              tokenClaims.diagnostics.checks.serverRolesApi.claimMintSucceeded
+                            )}`
+                          : 'not attempted'}
+                      </span>
+                    </div>
+                    {tokenClaims.diagnostics.checks.serverRolesApi.error && (
+                      <div className="text-[11px] text-amber-400 break-all">
+                        mint note: {tokenClaims.diagnostics.checks.serverRolesApi.error}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--menu-subtext)]">
+                        4. firestore users/{'{uid}'}.role
+                      </span>
+                      <span className="text-[var(--menu-text)] text-right">
+                        {tokenClaims.diagnostics.checks.firestoreRoleDoc.inspected
+                          ? `${tokenClaims.diagnostics.checks.firestoreRoleDoc.docRole ?? 'unset'} (ignored for auth)`
+                          : 'not read yet (ignored for auth)'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-1 border-t border-dashed border-[var(--menu-divider)]">
+                  <div className="text-[var(--menu-subtext)] mb-1">claims</div>
+                  <pre className="p-2.5 rounded-xl bg-black/30 text-[11px] leading-relaxed text-[var(--menu-text)] overflow-x-auto whitespace-pre-wrap break-all">
+                    {JSON.stringify(
+                      tokenClaims?.rawClaims &&
+                        Object.keys(tokenClaims.rawClaims).length > 0
+                        ? tokenClaims.rawClaims
+                        : {
+                            superAdmin: tokenClaims.superAdmin,
+                            admin: tokenClaims.admin,
+                            captain: tokenClaims.captain,
+                          },
+                      null,
+                      2
+                    )}
+                  </pre>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 

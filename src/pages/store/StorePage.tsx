@@ -422,7 +422,10 @@ export const StorePage: React.FC<StorePageProps> = ({
   }, []);
 
   const displayName =
-    userProfile?.displayName || user?.displayName || 'Hashir Ktk';
+    userProfile?.displayName ||
+    user?.displayName ||
+    (userProfile as any)?.username ||
+    'You';
   const photoURL: string | null = null;
 
   // Resolved items in the cart (preserving insertion order)

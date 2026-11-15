@@ -7173,6 +7173,32 @@ ${urls
         );
       }
 
+      // GET /api/posts/moderation/queue
+      if (subPath === '/moderation/queue' && req.method === 'GET') {
+        try {
+          const { results: rows } = await env.DB.prepare(
+            'SELECT * FROM posts WHERE report_count >= 1 OR is_hidden = 1 ORDER BY created_at DESC LIMIT 100'
+          ).all();
+          const flaggedPosts = (rows || []).map((r: any) => rowToCommonsPost(r));
+          const { results: reportRows } = await env.DB.prepare(
+            "SELECT * FROM post_reports WHERE status = 'pending' ORDER BY created_at DESC LIMIT 100"
+          )
+            .all()
+            .catch(() => ({ results: [] }));
+          return jsonResponse(
+            {
+              success: true,
+              flaggedPosts,
+              reports: reportRows || [],
+            },
+            200,
+            cors
+          );
+        } catch {
+          return jsonResponse({ success: true, flaggedPosts: [], reports: [] }, 200, cors);
+        }
+      }
+
       // Dynamic routes: /api/posts/:slugOrId[/action]
       const segments = subPath.split('/').filter(Boolean);
       const slugOrId = segments[0] || '';
