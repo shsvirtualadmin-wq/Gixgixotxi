@@ -13071,6 +13071,38 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       return;
     }
 
+    // 2a-0. Server-side self-healing owner bootstrap: POST /api/me/roles
+    if (pathname === '/api/me/roles') {
+      const { handleMeRolesRequest } = await import('../../functions/_utils/adminRoleGate');
+      const headersObj = new Headers();
+      for (const [k, v] of Object.entries(req.headers || {})) {
+        if (typeof v === 'string') headersObj.set(k, v);
+        else if (Array.isArray(v)) headersObj.set(k, v.join(', '));
+      }
+      const webReq = new Request(parsedUrl.toString(), {
+        method,
+        headers: headersObj,
+      });
+      const envWithOwner = {
+        ...process.env,
+        OWNER_EMAIL: process.env.OWNER_EMAIL || 'shsvirtualadmin@gmail.com',
+        FIREBASE_PROJECT_ID,
+        FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+      };
+      const meRolesRes = await handleMeRolesRequest({
+        request: webReq,
+        env: envWithOwner as any,
+      });
+      const status = meRolesRes.status;
+      const text = await meRolesRes.text();
+      res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(text);
+      return;
+    }
+
     // 2a. Enforce strict server-side Firebase ID token custom-claim gate on all /api/admin/*, /api/superadmin/*, and /api/captain/* requests
     if (
       pathname === '/api/admin' ||

@@ -409,16 +409,7 @@ export function resolveUnifiedPlanStatus(input: {
   const nowMs = typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
   const isGuest = Boolean(input.isGuest || (input.uid && String(input.uid).startsWith('guest_')));
 
-  const roleLower = String(input.role || '').trim().toLowerCase();
-  const cleanUid = String(input.uid || '').trim();
-  const isSuperAdmin = Boolean(
-    input.isSuperAdmin ||
-      cleanUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-      cleanUid === 'uid_superadmin_1' ||
-      cleanUid === 'uid_superadmin_2' ||
-      roleLower === 'superadmin' ||
-      roleLower === 'admin'
-  );
+  const isSuperAdmin = Boolean(input.isSuperAdmin === true);
 
   // Parse expiry from either planExpiresAt or premiumExpiresAt (choosing the latest valid timestamp if both exist)
   const expA = parseExpiryMillis(input.planExpiresAt);

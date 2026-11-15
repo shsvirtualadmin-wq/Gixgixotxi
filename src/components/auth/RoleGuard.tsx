@@ -3,7 +3,6 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { CrewApplyPage } from '@/pages/crew/CrewApplyPage';
-import { CaptainApplyPage } from '@/pages/captain/CaptainApplyPage';
 
 interface RoleGuardProps {
   requiredRole: 'crew' | 'captain';
@@ -22,7 +21,7 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   } = useAuth();
   const location = useLocation();
 
-  if (profileLoading) {
+  if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
     return <LineLoader context="dashboard" variant="section" />;
   }
 
@@ -32,27 +31,23 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   }
 
   // Hierarchy: superAdmin > admin > captain > student (strictly from ID token custom claims)
+  // - superAdmin === true
+  // - admin === true || superAdmin
+  // - captain === true || admin || superAdmin
+  const hasSuperAdmin = isSuperAdmin || tokenClaims?.superAdmin === true;
+  const hasAdmin = hasSuperAdmin || isAdmin || tokenClaims?.admin === true;
   const hasCaptainOrAboveClaim =
-    isSuperAdmin ||
-    isAdmin ||
-    isCaptain ||
-    tokenClaims?.superAdmin === true ||
-    tokenClaims?.admin === true ||
-    tokenClaims?.captain === true;
+    hasAdmin || isCaptain || tokenClaims?.captain === true;
 
   if (hasCaptainOrAboveClaim) {
     return <>{children}</>;
   }
 
-  // If normal student opens Crew or Captain URL, show a clean Apply screen instead
   if (requiredRole === 'crew') {
     return <CrewApplyPage />;
   }
 
-  if (requiredRole === 'captain') {
-    return <CaptainApplyPage />;
-  }
-
+  // Normal users without captain/admin/superAdmin claim get redirected
   return <Navigate to="/dashboard" replace />;
 }
 

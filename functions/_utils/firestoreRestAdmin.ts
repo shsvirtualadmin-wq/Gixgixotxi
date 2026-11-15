@@ -1040,6 +1040,52 @@ export async function updateFirebaseAdminClaimViaIdentityToolkit(params: {
   return { customAttributes: customClaimsObj, validSinceSec };
 }
 
+/**
+ * Dedicated server-side owner bootstrap helper for `POST /api/me/roles`.
+ * Sets `{ superAdmin: true, admin: true, captain: true }` on the verified owner UID via
+ * Google Identity Toolkit Admin REST API using the Service Account credentials.
+ */
+export async function setOwnerBootstrapClaimsViaIdentityToolkit(params: {
+  sa: ServiceAccountCredentials;
+  targetUid: string;
+}): Promise<{ customAttributes: Record<string, boolean>; validSinceSec: number }> {
+  const { sa, targetUid } = params;
+  if (!targetUid || typeof targetUid !== 'string') {
+    throw new Error('INVALID_TARGET_UID');
+  }
+  const accessToken = await getServiceAccountAccessToken(sa);
+  const projectId = resolveTargetFirestoreProjectId(sa.project_id);
+  const customClaimsObj: Record<string, boolean> = {
+    superAdmin: true,
+    admin: true,
+    captain: true,
+  };
+  const validSinceSec = Math.floor(Date.now() / 1000);
+
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/accounts:update`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      localId: targetUid,
+      customAttributes: JSON.stringify(customClaimsObj),
+      validSince: String(validSinceSec),
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`IDENTITY_TOOLKIT_OWNER_BOOTSTRAP_FAILED_${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  return { customAttributes: customClaimsObj, validSinceSec };
+}
+
 export function resolveTargetFirestoreProjectId(rawProjectId?: string | null): string {
   const trimmed = (rawProjectId || '').trim();
   return trimmed || DEFAULT_FIREBASE_PROJECT_ID;

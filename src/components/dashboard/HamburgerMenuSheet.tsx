@@ -200,6 +200,9 @@ function scoreUniversalSearchItem(item: UniversalSearchIndexItem, rawQuery: stri
   return score;
 }
 
+let lastHamburgerTokenRefreshAtMs = 0;
+const HAMBURGER_TOKEN_REFRESH_THROTTLE_MS = 60_000;
+
 export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   onNavigate,
   onOpenProfile,
@@ -226,17 +229,24 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const securityStatus = useSecurityStatus();
   const unreadNotifCount = useUnreadNotificationsCount();
 
-  // Requirement 2: Force a token refresh when the hamburger menu content mounts/opens
+  // Requirement 5: Force a token refresh (getIdToken(true)) whenever the hamburger menu opens,
+  // throttled to once per 60 seconds (or immediately if tokenClaims are not yet verified).
   useEffect(() => {
     if (user && !isGuest) {
-      void refreshTokenClaims(true);
+      const now = Date.now();
+      if (!tokenClaims.verified || now - lastHamburgerTokenRefreshAtMs >= HAMBURGER_TOKEN_REFRESH_THROTTLE_MS) {
+        lastHamburgerTokenRefreshAtMs = now;
+        void refreshTokenClaims(true);
+      }
     }
-  }, [user, isGuest, refreshTokenClaims]);
+  }, [user, isGuest, tokenClaims.verified, refreshTokenClaims]);
 
-  // SECURITY (Requirement 1): Read roles ONLY from verified Firebase Auth custom claims
-  // ((await user.getIdTokenResult()).claims). Never from Firestore fields or localStorage.
+  // SECURITY (Requirement 2): Read roles ONLY from verified Firebase Auth custom claims
+  // ((await user.getIdTokenResult(true)).claims). Never from Firestore fields or localStorage.
   // Hierarchy: superAdmin > admin > captain > student.
-  // superAdmin implies admin and captain, and admin implies captain.
+  // - superAdmin === true
+  // - admin === true || superAdmin
+  // - captain === true || admin || superAdmin
   const isConfirmedSuperAdmin = Boolean(
     user && !isGuest && (isSuperAdmin || tokenClaims?.superAdmin === true)
   );

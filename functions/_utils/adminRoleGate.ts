@@ -20,6 +20,7 @@ import {
   parseServiceAccountFromEnv,
   resolveTargetFirestoreDatabaseId,
   resolveTargetFirestoreProjectId,
+  setOwnerBootstrapClaimsViaIdentityToolkit,
   updateFirebaseAdminClaimViaIdentityToolkit,
   verifyFirebaseIdToken,
   type RewardsD1Database,
@@ -255,6 +256,252 @@ const edgeAdminActivityLogsStore: Array<Record<string, any>> = [];
 
 export function getEdgeAdminActivityLogs(): Array<Record<string, any>> {
   return edgeAdminActivityLogsStore;
+}
+/**
+ * Server-side self-healing owner bootstrap endpoint: `POST /api/me/roles`
+ * - Verifies the Firebase ID token against `projectId` (`gen-lang-client-0365509316`). Rejects 401 if invalid/missing.
+ * - Reads `OWNER_EMAIL` from environment (`env.OWNER_EMAIL` or `process.env.OWNER_EMAIL`).
+ *   Logs a clear server error if `OWNER_EMAIL` is missing.
+ * - If `decoded.emailVerified === true` AND `decoded.email` (lowercased) equals `OWNER_EMAIL` (lowercased),
+ *   and the token lacks `{ superAdmin: true, admin: true, captain: true }`, sets
+ *   `{ superAdmin: true, admin: true, captain: true }` via the Admin SDK / Identity Toolkit REST API
+ *   and returns `{ refreshed: true, claims: { superAdmin: true, admin: true, captain: true } }`.
+ * - For everyone else, never modifies anything and only returns their current verified token claims
+ *   (`{ refreshed: false, claims }`).
+ * - Never grants roles from client-sent data.
+ */
+export async function handleMeRolesRequest(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  tokenVerifierOverride?: TokenVerifierFn;
+  adminSdkOverride?: {
+    setCustomUserClaims: (uid: string, claims: Record<string, boolean>) => Promise<void>;
+    revokeRefreshTokens?: (uid: string) => Promise<void>;
+  };
+}): Promise<Response> {
+  const { request, env, tokenVerifierOverride, adminSdkOverride } = params;
+
+  if (request.method.toUpperCase() === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    });
+  }
+
+  if (request.method.toUpperCase() !== 'POST') {
+    return jsonGateResponse(
+      {
+        ok: false,
+        error: 'Method Not Allowed: POST /api/me/roles required.',
+        code: 'METHOD_NOT_ALLOWED',
+      },
+      405
+    );
+  }
+
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return jsonGateResponse(
+      {
+        ok: false,
+        error: 'Unauthorized: Missing Bearer Firebase ID token.',
+        code: 'UNAUTHENTICATED',
+      },
+      401
+    );
+  }
+
+  const rawToken = authHeader.slice(7).trim();
+  if (!rawToken || rawToken.startsWith('guest_')) {
+    return jsonGateResponse(
+      {
+        ok: false,
+        error: 'Unauthorized: Valid Firebase ID token required.',
+        code: 'UNAUTHENTICATED',
+      },
+      401
+    );
+  }
+
+  const projectId = resolveTargetFirestoreProjectId(
+    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID
+  );
+
+  let decoded: VerifiedFirebaseToken | null = null;
+  try {
+    const verifyFn: TokenVerifierFn =
+      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId));
+    decoded = await verifyFn(authHeader, projectId);
+  } catch {
+    decoded = null;
+  }
+
+  if (!decoded || !decoded.uid) {
+    return jsonGateResponse(
+      {
+        ok: false,
+        error: 'Unauthorized: Invalid or expired Firebase ID token.',
+        code: 'INVALID_TOKEN',
+      },
+      401
+    );
+  }
+
+  const currentSuperAdmin = decoded.superAdmin === true;
+  const currentAdmin = decoded.admin === true || currentSuperAdmin;
+  const currentCaptain = decoded.captain === true || currentAdmin;
+  const currentClaims = {
+    superAdmin: currentSuperAdmin,
+    admin: currentAdmin,
+    captain: currentCaptain,
+  };
+
+  const rawOwnerEmail =
+    env?.OWNER_EMAIL ??
+    (typeof process !== 'undefined' && process.env ? process.env.OWNER_EMAIL : undefined);
+  const ownerEmail = typeof rawOwnerEmail === 'string' ? rawOwnerEmail.trim().toLowerCase() : '';
+
+  if (!ownerEmail) {
+    console.error(
+      '[POST /api/me/roles] CRITICAL: OWNER_EMAIL environment variable is not set! Configure OWNER_EMAIL=shsvirtualadmin@gmail.com in Cloudflare Pages / environment variables.'
+    );
+    return jsonGateResponse(
+      {
+        ok: true,
+        refreshed: false,
+        claims: currentClaims,
+      },
+      200
+    );
+  }
+
+  const decodedEmail = String(decoded.email || '').trim().toLowerCase();
+  const isEmailVerified = decoded.emailVerified === true;
+  const isOwnerMatch = isEmailVerified && Boolean(decodedEmail) && decodedEmail === ownerEmail;
+
+  if (!isOwnerMatch) {
+    // For everyone else, NEVER change anything — only return their current verified token claims
+    return jsonGateResponse(
+      {
+        ok: true,
+        refreshed: false,
+        claims: currentClaims,
+      },
+      200
+    );
+  }
+
+  const lacksClaims =
+    decoded.superAdmin !== true || decoded.admin !== true || decoded.captain !== true;
+
+  if (!lacksClaims) {
+    return jsonGateResponse(
+      {
+        ok: true,
+        refreshed: false,
+        claims: currentClaims,
+      },
+      200
+    );
+  }
+
+  const ownerClaims: Record<string, boolean> = {
+    superAdmin: true,
+    admin: true,
+    captain: true,
+  };
+
+  let minted = false;
+  let mintError: string | null = null;
+
+  try {
+    if (adminSdkOverride) {
+      await adminSdkOverride.setCustomUserClaims(decoded.uid, ownerClaims);
+      minted = true;
+    } else {
+      const sa = parseServiceAccountFromEnv(env);
+      if (sa) {
+        await setOwnerBootstrapClaimsViaIdentityToolkit({
+          sa,
+          targetUid: decoded.uid,
+        });
+        minted = true;
+
+        // Best-effort signal claimsUpdatedAt on users/{uid}
+        try {
+          const databaseId = resolveTargetFirestoreDatabaseId(
+            env?.FIREBASE_DATABASE_ID ||
+              env?.VITE_FIREBASE_DATABASE_ID ||
+              DEFAULT_FIRESTORE_DATABASE_ID
+          );
+          const fsAdapter = new FirestoreRestAdapter({
+            projectId,
+            databaseId,
+            sa,
+          });
+          await fsAdapter.patchDocument(
+            `users/${decoded.uid}`,
+            {
+              claimsUpdatedAt: SERVER_TIMESTAMP_SENTINEL,
+              claimsUpdatedAtMs: Date.now(),
+            },
+            ['claimsUpdatedAt', 'claimsUpdatedAtMs']
+          );
+        } catch {
+          // Non-fatal
+        }
+      } else if (typeof process !== 'undefined' && process.versions?.node) {
+        try {
+          const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
+          const firebaseAdmin = reqFn('firebase-admin');
+          if (firebaseAdmin) {
+            if (!firebaseAdmin.apps || firebaseAdmin.apps.length === 0) {
+              firebaseAdmin.initializeApp({
+                projectId,
+              });
+            }
+            await firebaseAdmin.auth().setCustomUserClaims(decoded.uid, ownerClaims);
+            minted = true;
+          }
+        } catch (nodeErr: any) {
+          mintError = nodeErr?.message || 'FIREBASE_ADMIN_UNAVAILABLE';
+        }
+      } else {
+        mintError = 'MISSING_FIREBASE_SERVICE_ACCOUNT';
+      }
+    }
+  } catch (err: any) {
+    mintError = err?.message || 'CLAIM_MINT_FAILED';
+    console.error('[POST /api/me/roles] Failed to mint owner superAdmin claims:', err);
+  }
+
+  if (!minted) {
+    console.error(
+      `[POST /api/me/roles] Could not set custom claims for owner ${decodedEmail} (uid: ${decoded.uid}): ${mintError || 'unknown error'}`
+    );
+    return jsonGateResponse(
+      {
+        ok: false,
+        refreshed: false,
+        claims: currentClaims,
+        error: `Failed to set owner custom claims: ${mintError || 'Service account credentials not configured.'}`,
+      },
+      500
+    );
+  }
+
+  return jsonGateResponse(
+    {
+      ok: true,
+      refreshed: true,
+      claims: ownerClaims,
+    },
+    200
+  );
 }
 
 async function ensureAdminActivityLogsD1Table(db: RewardsD1Database): Promise<void> {

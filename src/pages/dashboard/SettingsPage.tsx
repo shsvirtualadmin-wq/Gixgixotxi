@@ -226,12 +226,17 @@ export function SettingsPage() {
     profileLoading,
     otpVerificationState,
     isAdmin,
+    isSuperAdmin,
+    isCaptain,
+    tokenClaims,
+    refreshTokenClaims,
     isGuest,
     checkUsernameAvailability,
     updateProfile,
     updateLocalProfile,
     signOutUser,
   } = useAuth();
+  const [debugClaimsRefreshing, setDebugClaimsRefreshing] = useState(false);
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
@@ -2338,6 +2343,83 @@ export function SettingsPage() {
                   <span className="stg-row-label">Sign out</span>
                 </div>
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Requirement 8: Temporary Debug Card (email, uid, email_verified, full claims object, isSuperAdmin / isAdmin / isCaptain) */}
+        {!normalizedQuery && (
+          <div id="settings-rbac-debug-card" className="stg-group">
+            <div className="stg-group-label flex items-center justify-between">
+              <span>Token Claims &amp; Role Debug</span>
+              {user && !isGuest && (
+                <button
+                  type="button"
+                  disabled={debugClaimsRefreshing}
+                  onClick={async () => {
+                    setDebugClaimsRefreshing(true);
+                    try {
+                      await refreshTokenClaims(true);
+                    } finally {
+                      setDebugClaimsRefreshing(false);
+                    }
+                  }}
+                  className="text-[11px] font-semibold text-[#D71921] hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  {debugClaimsRefreshing ? 'Refreshing…' : 'Refresh Token'}
+                </button>
+              )}
+            </div>
+            <div className="stg-card p-4 space-y-2.5 text-xs font-mono">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[var(--menu-subtext)]">email</span>
+                <span className="text-[var(--menu-text)] font-semibold break-all text-right">
+                  {user?.email || 'null'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[var(--menu-subtext)]">uid</span>
+                <span className="text-[var(--menu-text)] break-all text-right">
+                  {user?.uid || 'null'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[var(--menu-subtext)]">email_verified</span>
+                <span className="text-[var(--menu-text)] font-semibold">
+                  {String(
+                    Boolean(
+                      user?.emailVerified ??
+                        (tokenClaims?.rawClaims as Record<string, unknown> | undefined)
+                          ?.email_verified
+                    )
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[var(--menu-subtext)]">
+                  isSuperAdmin / isAdmin / isCaptain
+                </span>
+                <span className="text-[var(--menu-text)] font-semibold">
+                  {String(isSuperAdmin)} / {String(isAdmin)} / {String(isCaptain)}
+                </span>
+              </div>
+              <div className="pt-1 border-t border-dashed border-[var(--menu-divider)]">
+                <div className="text-[var(--menu-subtext)] mb-1">claims</div>
+                <pre className="p-2.5 rounded-xl bg-black/30 text-[11px] leading-relaxed text-[var(--menu-text)] overflow-x-auto whitespace-pre-wrap break-all">
+                  {JSON.stringify(
+                    tokenClaims?.rawClaims &&
+                      Object.keys(tokenClaims.rawClaims).length > 0
+                      ? tokenClaims.rawClaims
+                      : {
+                          superAdmin: tokenClaims.superAdmin,
+                          admin: tokenClaims.admin,
+                          captain: tokenClaims.captain,
+                        },
+                    null,
+                    2
+                  )}
+                </pre>
+              </div>
             </div>
           </div>
         )}

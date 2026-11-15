@@ -190,8 +190,8 @@ export function getEffectivePriceInfo(item: {
 }
 
 /**
- * Verifies the current user's admin/superadmin role server-side (default role = null).
- * Calls /api/auth/me with Firebase Bearer ID token and cross-checks Firestore users/{uid}.
+ * Verifies the current user's admin/superadmin role strictly from verified Firebase ID token custom claims.
+ * Never falls back to Firestore user doc fields (`role`, `isSuperAdmin`, `isAdmin`). Fails closed on any error.
  */
 export async function verifyStoreAdminRoleServerSide(): Promise<{
   verified: boolean;
@@ -205,49 +205,26 @@ export async function verifyStoreAdminRoleServerSide(): Promise<{
   }
 
   try {
-    const token = await currentUser.getIdToken();
-    const res = await fetch('/api/auth/me', {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const serverRole = String(data?.user?.role || data?.role || '').toLowerCase();
-      if (serverRole === 'superadmin' || serverRole === 'admin') {
-        return {
-          verified: true,
-          role: serverRole as 'admin' | 'superadmin',
-          uid: currentUser.uid,
-          email: currentUser.email || null,
-        };
-      }
-    }
-  } catch {
-    // Fallback to Firestore user doc verification if /api/auth/me is unreachable
-  }
+    const tokenResult = await currentUser.getIdTokenResult(true);
+    const claims = tokenResult?.claims || {};
+    const superAdmin = claims.superAdmin === true;
+    const admin = claims.admin === true || superAdmin;
 
-  try {
-    const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-    if (userSnap.exists()) {
-      const uData = userSnap.data();
-      const dbRole = String(uData?.role || '').toLowerCase();
-      if (dbRole === 'superadmin' || dbRole === 'admin' || uData?.isSuperAdmin === true) {
-        return {
-          verified: true,
-          role: dbRole === 'admin' ? 'admin' : 'superadmin',
-          uid: currentUser.uid,
-          email: currentUser.email || null,
-        };
-      }
+    if (superAdmin || admin) {
+      return {
+        verified: true,
+        role: superAdmin ? 'superadmin' : 'admin',
+        uid: currentUser.uid,
+        email: currentUser.email || null,
+      };
     }
   } catch {
-    // ignore
+    // Fail closed: any error means no access
   }
 
   return { verified: false, role: null, uid: currentUser.uid, email: currentUser.email || null };
 }
+
 
 // Map catalog item type to StoreCategory
 export function mapCatalogTypeToStoreCategory(catalogType: CosmeticType): StoreCategory {

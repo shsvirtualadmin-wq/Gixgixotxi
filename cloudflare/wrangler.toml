@@ -14,7 +14,9 @@ bucket_name = "boardly-commons-r2"
 [vars]
 FIREBASE_PROJECT_ID = "gen-lang-client-0365509316"
 ALLOWED_ORIGIN = "https://boardly.cfd"
+OWNER_EMAIL = "shsvirtualadmin@gmail.com"
 
 [triggers]
 crons = ["0 3 * * *"]
+
 

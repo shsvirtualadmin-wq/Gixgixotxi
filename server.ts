@@ -139,14 +139,10 @@ function getAuthClient(req: express.Request | null) {
   });
 }
 
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd"
-];
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
+// SECURITY: Hardcoded admin email allowlists are disabled (fail closed).
+// Roles come ONLY from verified Firebase Auth custom claims (superAdmin, admin, captain).
+export function isAdminEmail(_email?: string | null): boolean {
+  return false;
 }
 
 const PAYMENT_RULE_DEPLOYMENT_DATE = '2026-08-01T09:00:00.000Z';
@@ -161,85 +157,98 @@ function isStudentExistingBeforeRule(createdAtStr?: string): boolean {
 const FIREBASE_PUBLIC_API_KEY = "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs";
 
 interface TokenCacheEntry {
-  user: { id: string; uid: string; email: string };
+  user: {
+    id: string;
+    uid: string;
+    email: string;
+    superAdmin: boolean;
+    admin: boolean;
+    captain: boolean;
+  };
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isCaptain: boolean;
   expiresAt: number;
 }
 
 const tokenVerifyCache = new Map<string, TokenCacheEntry>();
 
 /**
- * Server-side Bearer JWT verification against Firebase Auth & Supabase Auth.
- * Strictly verifies user identity and admin role server-side.
+ * Server-side Bearer JWT verification against Firebase Auth.
+ * Strictly verifies user identity and custom claims (superAdmin, admin, captain) server-side.
+ * Fails closed on any error.
  */
-async function verifyAuthToken(req: express.Request): Promise<{ user: any | null; isAdmin: boolean }> {
+async function verifyAuthToken(req: express.Request): Promise<{
+  user: any | null;
+  isAdmin: boolean;
+  isSuperAdmin?: boolean;
+  isCaptain?: boolean;
+}> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return { user: null, isAdmin: false };
+    return { user: null, isAdmin: false, isSuperAdmin: false, isCaptain: false };
   }
   const token = authHeader.substring(7).trim();
-  if (!token) {
-    return { user: null, isAdmin: false };
+  if (!token || token.startsWith("guest_")) {
+    return { user: null, isAdmin: false, isSuperAdmin: false, isCaptain: false };
   }
 
-  // Check cache first (5 minute TTL)
+  // Check cache first (60 second TTL)
   const cached = tokenVerifyCache.get(token);
   if (cached && cached.expiresAt > Date.now()) {
-    return { user: cached.user, isAdmin: cached.isAdmin };
+    return {
+      user: cached.user,
+      isAdmin: cached.isAdmin,
+      isSuperAdmin: cached.isSuperAdmin,
+      isCaptain: cached.isCaptain,
+    };
   }
 
-  // 1. Verify against Firebase Auth via accounts:lookup REST API
   try {
-    const apiKey = (
-      process.env.VITE_FIREBASE_API_KEY ||
-      process.env.FIREBASE_API_KEY ||
-      FIREBASE_PUBLIC_API_KEY
-    ).trim();
-
-    const resp = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: token }),
-      }
+    const { verifyFirebaseIdToken, DEFAULT_FIREBASE_PROJECT_ID } = await import(
+      "./functions/_utils/firestoreRestAdmin"
     );
-
-    if (resp.ok) {
-      const data: any = await resp.json();
-      const users: any[] = data?.users || [];
-      if (users.length && users[0]?.email) {
-        const email = String(users[0].email).trim().toLowerCase();
-        const uid = String(users[0].localId || "");
-        const isAdmin = isAdminEmail(email);
-        const userObj = { id: uid, uid, email };
-        tokenVerifyCache.set(token, {
-          user: userObj,
-          isAdmin,
-          expiresAt: Date.now() + 5 * 60 * 1000,
-        });
-        return { user: userObj, isAdmin };
-      }
+    const projectId = (
+      process.env.FIREBASE_PROJECT_ID ||
+      process.env.VITE_FIREBASE_PROJECT_ID ||
+      DEFAULT_FIREBASE_PROJECT_ID
+    ).trim();
+    const verified = await verifyFirebaseIdToken(authHeader, projectId);
+    if (!verified || !verified.uid) {
+      return { user: null, isAdmin: false, isSuperAdmin: false, isCaptain: false };
     }
-  } catch (lookupErr) {
-    console.warn("[verifyAuthToken] Firebase ID token lookup exception:", lookupErr);
-  }
 
-  // 2. Legacy Supabase token fallback if supabaseServer configured
-  if (supabaseServer) {
-    try {
-      const { data: { user }, error } = await supabaseServer.auth.getUser(token);
-      if (!error && user && user.email) {
-        const userEmail = (user.email || "").trim().toLowerCase();
-        const isAdmin = isAdminEmail(userEmail);
-        return { user, isAdmin };
-      }
-    } catch {
-      // ignore
-    }
-  }
+    const superAdmin = verified.superAdmin === true;
+    const admin = verified.admin === true || superAdmin;
+    const captain = verified.captain === true || admin;
+    const email = String(verified.email || "").trim().toLowerCase();
+    const userObj = {
+      id: verified.uid,
+      uid: verified.uid,
+      email,
+      superAdmin,
+      admin,
+      captain,
+    };
 
-  return { user: null, isAdmin: false };
+    tokenVerifyCache.set(token, {
+      user: userObj,
+      isAdmin: admin,
+      isSuperAdmin: superAdmin,
+      isCaptain: captain,
+      expiresAt: Date.now() + 60 * 1000,
+    });
+
+    return {
+      user: userObj,
+      isAdmin: admin,
+      isSuperAdmin: superAdmin,
+      isCaptain: captain,
+    };
+  } catch (err) {
+    console.warn("[verifyAuthToken] Firebase ID token verification failed:", err);
+    return { user: null, isAdmin: false, isSuperAdmin: false, isCaptain: false };
+  }
 }
 
 /**

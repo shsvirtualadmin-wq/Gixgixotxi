@@ -2,6 +2,7 @@ import tsWorker, { type Env } from '../../cloudflare/worker';
 import jsWorker from '../../cloudflare/worker.js';
 import {
   enforceAdminOrSuperAdminGate,
+  handleMeRolesRequest,
   handleSuperAdminAndExtraAdminRoutes,
   type TokenVerifierFn,
 } from '../_utils/adminRoleGate';
@@ -23,6 +24,19 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const env = context.env || ({} as Env & Record<string, any>);
   if (!env.DB) {
     env.DB = getSharedLocalD1Database() as any;
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  // 0. Server-side self-healing owner bootstrap: POST /api/me/roles
+  if (path === '/api/me/roles') {
+    return handleMeRolesRequest({
+      request,
+      env,
+      tokenVerifierOverride: context.tokenVerifierOverride,
+      adminSdkOverride: context.adminSdkOverride,
+    });
   }
 
   // 1. Strict server-side Firebase ID token custom-claim verification gate for /api/admin/* and /api/superadmin/*
@@ -50,9 +64,6 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   }
 
   // 3. Route to cloudflare/worker.ts for routes owned by worker.ts, otherwise cloudflare/worker.js
-  const url = new URL(request.url);
-  const path = url.pathname.replace(/\/+$/, '') || '/';
-
   const isTsWorkerRoute =
     path.startsWith('/api/universities') ||
     path.startsWith('/api/mcqs') ||

@@ -459,6 +459,166 @@ async function runRoleLockdownTests() {
   );
   console.log('✓ 5. scripts/reset-roles.js (--dry-run, captain preservation, owner claims, selective token revocation, missing-owner error) verified');
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TEST 6: POST /api/me/roles (Server-Side Self-Healing Owner Bootstrap)
+  //   - Invalid token -> 401
+  //   - Verified owner lacking claims -> sets { superAdmin: true, admin: true, captain: true } & returns { refreshed: true }
+  //   - Verified owner already having claims -> returns { refreshed: false } without rewriting
+  //   - Non-owner -> returns { refreshed: false, claims } and never modifies anything
+  // ─────────────────────────────────────────────────────────────────────────────
+  const bootstrapTokens: Record<string, VerifiedFirebaseToken> = {
+    'Bearer owner_missing_claims': {
+      uid: 'uid_owner',
+      email: 'SHSVirtualAdmin@gmail.com',
+      name: 'Owner',
+      emailVerified: true,
+      superAdmin: false,
+      admin: false,
+      captain: false,
+      role: undefined,
+    },
+    'Bearer owner_unverified_email': {
+      uid: 'uid_owner',
+      email: 'shsvirtualadmin@gmail.com',
+      name: 'Owner Unverified',
+      emailVerified: false,
+      superAdmin: false,
+      admin: false,
+      captain: false,
+      role: undefined,
+    },
+    'Bearer owner_already_has_claims': {
+      uid: 'uid_owner',
+      email: 'shsvirtualadmin@gmail.com',
+      name: 'Owner',
+      emailVerified: true,
+      superAdmin: true,
+      admin: true,
+      captain: true,
+      role: 'superadmin',
+    },
+    'Bearer normal_student_token': {
+      uid: 'uid_student',
+      email: 'student@boardly.cfd',
+      name: 'Student',
+      emailVerified: true,
+      superAdmin: false,
+      admin: false,
+      captain: false,
+      role: undefined,
+    },
+  };
+
+  const bootstrapClaimsMinted: Record<string, Record<string, boolean>> = {};
+  const bootstrapVerifier = async (hdr: string | null | undefined) =>
+    hdr ? bootstrapTokens[hdr] || null : null;
+
+  // 6a. Invalid token -> 401
+  const invalidMeRolesRes = await onRequest({
+    request: new Request('https://boardly.cfd/api/me/roles', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer bad_token' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  assert.equal(invalidMeRolesRes.status, 401, 'Invalid token on POST /api/me/roles must return 401');
+
+  // 6b. Normal student -> refreshed: false, zero claims minted
+  const studentMeRolesRes = await onRequest({
+    request: new Request('https://boardly.cfd/api/me/roles', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer normal_student_token' },
+      body: JSON.stringify({ superAdmin: true, role: 'superadmin' }), // Spoofed client body must be ignored
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+    adminSdkOverride: {
+      setCustomUserClaims: async (uid, claims) => {
+        bootstrapClaimsMinted[uid] = claims;
+      },
+      revokeRefreshTokens: async () => {},
+    },
+  });
+  assert.equal(studentMeRolesRes.status, 200);
+  const studentMeRolesJson = (await studentMeRolesRes.json()) as any;
+  assert.equal(studentMeRolesJson.refreshed, false, 'Student must get refreshed: false');
+  assert.deepEqual(studentMeRolesJson.claims, {
+    superAdmin: false,
+    admin: false,
+    captain: false,
+  });
+  assert.equal(Object.keys(bootstrapClaimsMinted).length, 0, 'Student must never trigger setCustomUserClaims');
+
+  // 6c. Owner with email_verified === false -> refreshed: false, zero claims minted
+  const unverifiedOwnerRes = await onRequest({
+    request: new Request('https://boardly.cfd/api/me/roles', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer owner_unverified_email' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+    adminSdkOverride: {
+      setCustomUserClaims: async (uid, claims) => {
+        bootstrapClaimsMinted[uid] = claims;
+      },
+      revokeRefreshTokens: async () => {},
+    },
+  });
+  const unverifiedOwnerJson = (await unverifiedOwnerRes.json()) as any;
+  assert.equal(unverifiedOwnerJson.refreshed, false, 'Unverified owner email must not bootstrap');
+  assert.equal(Object.keys(bootstrapClaimsMinted).length, 0);
+
+  // 6d. Verified owner lacking claims -> sets { superAdmin: true, admin: true, captain: true } and returns { refreshed: true }
+  const ownerBootstrapRes = await onRequest({
+    request: new Request('https://boardly.cfd/api/me/roles', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer owner_missing_claims' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+    adminSdkOverride: {
+      setCustomUserClaims: async (uid, claims) => {
+        bootstrapClaimsMinted[uid] = claims;
+      },
+      revokeRefreshTokens: async () => {},
+    },
+  });
+  assert.equal(ownerBootstrapRes.status, 200);
+  const ownerBootstrapJson = (await ownerBootstrapRes.json()) as any;
+  assert.equal(ownerBootstrapJson.refreshed, true, 'Owner lacking claims must return refreshed: true');
+  assert.deepEqual(ownerBootstrapJson.claims, {
+    superAdmin: true,
+    admin: true,
+    captain: true,
+  });
+  assert.deepEqual(bootstrapClaimsMinted['uid_owner'], {
+    superAdmin: true,
+    admin: true,
+    captain: true,
+  });
+
+  // 6e. Verified owner who already has all claims -> returns { refreshed: false } without rewriting
+  delete bootstrapClaimsMinted['uid_owner'];
+  const ownerAlreadySetRes = await onRequest({
+    request: new Request('https://boardly.cfd/api/me/roles', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer owner_already_has_claims' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+    adminSdkOverride: {
+      setCustomUserClaims: async (uid, claims) => {
+        bootstrapClaimsMinted[uid] = claims;
+      },
+      revokeRefreshTokens: async () => {},
+    },
+  });
+  const ownerAlreadySetJson = (await ownerAlreadySetRes.json()) as any;
+  assert.equal(ownerAlreadySetJson.refreshed, false);
+  assert.equal(bootstrapClaimsMinted['uid_owner'], undefined);
+  console.log('✓ 6. POST /api/me/roles server-side self-healing owner bootstrap verified');
+
   console.log('\nALL ROLE LOCKDOWN & CAPTAIN DASHBOARD TESTS PASSED!');
 }
 
@@ -466,3 +626,4 @@ runRoleLockdownTests().catch((err) => {
   console.error('Role lockdown test failed:', err);
   process.exit(1);
 });
+

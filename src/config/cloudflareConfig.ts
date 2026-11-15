@@ -72,9 +72,9 @@ export const BOARDLY_CLOUDFLARE_CONFIG = {
     'https://ais-pre-pmdyu455ef2d4yt6aqhchy-727913807144.asia-southeast1.run.app',
   ] as const,
 
-  // Superadmin identifiers
-  superadminUids: ['A5YMRimdHRcmeDWutxtUGt2e4hf2'] as const,
-  superadminEmails: ['shsvirtualadmin@gmail.com', 'support@boardly.cfd'] as const,
+  // Superadmin identifiers (empty — roles come strictly from verified Firebase ID token custom claims)
+  superadminUids: [] as readonly string[],
+  superadminEmails: [] as readonly string[],
 } as const;
 
 export function isAllowedOrigin(origin: string | null | undefined): boolean {

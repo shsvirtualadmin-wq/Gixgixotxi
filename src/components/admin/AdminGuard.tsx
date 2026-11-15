@@ -18,30 +18,33 @@ interface AdminGuardProps {
 export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardProps) {
   const {
     user,
+    isGuest,
     profileLoading,
+    tokenClaims,
     isAdmin,
     isSuperAdmin,
-    isSessionVerified,
-    otpVerificationState,
   } = useAuth();
   const location = useLocation();
 
-  if (profileLoading || otpVerificationState.status === 'checking') {
+  if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
     return <LineLoader context="admin" variant="section" />;
   }
 
-  if (!user || !isSessionVerified) {
+  if (!user || isGuest) {
     const redirectTarget = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/login?redirect=${redirectTarget}`} replace />;
   }
 
+  const hasSuperAdmin = isSuperAdmin || tokenClaims?.superAdmin === true;
+  const hasAdmin = hasSuperAdmin || isAdmin || tokenClaims?.admin === true;
+
   // Fail closed: normal users (neither admin nor superAdmin claim) are redirected immediately
-  if (!isAdmin && !isSuperAdmin) {
+  if (!hasAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 
   // SuperAdmin-only gate: regular admins are redirected to /admin
-  if ((requireSuperAdmin || location.pathname.startsWith('/superadmin')) && !isSuperAdmin) {
+  if ((requireSuperAdmin || location.pathname.startsWith('/superadmin')) && !hasSuperAdmin) {
     return <Navigate to="/admin" replace />;
   }
 
