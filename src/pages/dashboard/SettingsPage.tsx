@@ -43,6 +43,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { useSmoothMode } from '@/utils/smoothMode';
+import { useBoardlyUIMode, type BoardlyUIMode } from '@/utils/uiMode';
 import { useDragonHiddenPreference } from '@/components/dashboard/DragonCompanion';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -237,10 +238,12 @@ export function SettingsPage() {
     signOutUser,
   } = useAuth();
   const [debugClaimsRefreshing, setDebugClaimsRefreshing] = useState(false);
+  const [debugCardCollapsed, setDebugCardCollapsed] = useState(true);
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
   const { smoothMode, toggleSmoothMode } = useSmoothMode();
+  const { uiMode, setUIMode, toggleUIMode } = useBoardlyUIMode();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const { openProfile } = useProfileModal();
   const {
@@ -1326,6 +1329,7 @@ export function SettingsPage() {
   if (activeSubPage) {
     return (
       <div
+        data-student-page="settings"
         className="stg-subpage"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -1683,6 +1687,36 @@ export function SettingsPage() {
                 </div>
                 <p className="stg-footnote">
                   Choose Light, Dark, or follow your device&apos;s System appearance setting.
+                </p>
+              </div>
+
+              {/* UI Style (boardlyUI = "classic" | "glass") */}
+              <div id="settings-ui-mode" className="stg-group">
+                <div className="stg-group-label">Interface Style</div>
+                <div className="stg-card">
+                  <div className="stg-row stg-row--static">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Sparkles size={17} />
+                      </span>
+                      <span className="stg-row-label">UI Style</span>
+                    </div>
+                    <select
+                      aria-label="UI Style"
+                      value={uiMode}
+                      onChange={(e) =>
+                        setUIMode(e.target.value as BoardlyUIMode)
+                      }
+                      onDoubleClick={toggleUIMode}
+                      className="fsm-appearance-select"
+                    >
+                      <option value="classic">Classic</option>
+                      <option value="glass">Liquid Glass</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="stg-footnote">
+                  Switch between the Classic interface and the iOS 27 Liquid Glass + Nothing OS redesign.
                 </p>
               </div>
 
@@ -2137,7 +2171,7 @@ export function SettingsPage() {
   // RENDER MAIN SETTINGS PAGE (/settings)
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="stg-shell">
+    <div data-student-page="settings" className="stg-shell">
       <PageMeta
         title="Settings — Boardly"
         description="Manage your Boardly profile, appearance, notifications, and account security."
@@ -2350,27 +2384,39 @@ export function SettingsPage() {
         {/* Requirement 8: Token Claims & Role Debug (email, uid, email_verified, roleSource, check breakdown, full claims object, isSuperAdmin / isAdmin / isCaptain) */}
         {!normalizedQuery && (
           <div id="settings-rbac-debug-card" className="stg-group">
-            <div className="stg-group-label flex items-center justify-between">
+            <div className="stg-group-label flex items-center justify-between gap-2">
               <span>Token Claims &amp; Role Debug</span>
-              {user && !isGuest && (
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  disabled={debugClaimsRefreshing}
-                  onClick={async () => {
-                    setDebugClaimsRefreshing(true);
-                    try {
-                      await refreshTokenClaims(true);
-                    } finally {
-                      setDebugClaimsRefreshing(false);
-                    }
-                  }}
-                  className="text-[11px] font-semibold text-[#D71921] hover:underline cursor-pointer disabled:opacity-50"
+                  onClick={() => setDebugCardCollapsed((prev) => !prev)}
+                  className="hidden lg-only-inline text-[11px] font-semibold text-[var(--menu-subtext)] hover:text-[var(--menu-text)] cursor-pointer"
                 >
-                  {debugClaimsRefreshing ? 'Refreshing…' : 'Refresh Token'}
+                  {debugCardCollapsed ? 'Show Debug' : 'Hide Debug'}
                 </button>
-              )}
+                {user && !isGuest && (
+                  <button
+                    type="button"
+                    disabled={debugClaimsRefreshing}
+                    onClick={async () => {
+                      setDebugClaimsRefreshing(true);
+                      try {
+                        await refreshTokenClaims(true);
+                      } finally {
+                        setDebugClaimsRefreshing(false);
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-[#D71921] hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    {debugClaimsRefreshing ? 'Refreshing…' : 'Refresh Token'}
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="stg-card p-4 space-y-2.5 text-xs font-mono">
+            <div
+              data-collapsed={debugCardCollapsed ? 'true' : 'false'}
+              className="stg-card p-4 space-y-2.5 text-xs font-mono lg-collapsible"
+            >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[var(--menu-subtext)]">email</span>
                 <span className="text-[var(--menu-text)] font-semibold break-all text-right">

@@ -207,7 +207,7 @@ export function AdminApplicationsPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden">
+    <div data-admin-page="applications" className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-2 border-b border-[var(--border)]">
         <div>

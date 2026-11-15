@@ -276,9 +276,12 @@ import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
 import { KobanStyleProvider } from './contexts/KobanStyleContext';
 import { ProBadgeProvider } from './contexts/ProBadgeContext';
+import { useBoardlyUIMode } from './utils/uiMode';
+import './styles/glass.css';
 
 function AppInner() {
   useReferralCapture();
+  useBoardlyUIMode();
 
   return (
     <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">

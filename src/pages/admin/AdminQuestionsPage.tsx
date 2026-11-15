@@ -1220,7 +1220,7 @@ export const AdminQuestionsPage: React.FC = () => {
   }
 
   return (
-    <div className="aqb-page-shell">
+    <div data-admin-page="questions" className="aqb-page-shell">
       {/* Ambient red glassmorphism background blobs */}
       <div className="aqb-ambient-blobs" aria-hidden="true">
         <div className="aqb-blob aqb-blob--top" />

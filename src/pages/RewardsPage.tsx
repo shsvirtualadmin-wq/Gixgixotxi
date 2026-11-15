@@ -632,6 +632,7 @@ export function RewardsPage() {
 
   return (
     <div
+      data-student-page="rewards"
       className="rewards-page-root min-h-screen w-full flex flex-col overflow-x-hidden transition-colors duration-150"
       style={{
         backgroundColor: 'var(--rw-bg)',

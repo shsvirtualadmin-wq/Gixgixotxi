@@ -908,7 +908,7 @@ export function NotificationsPage() {
   }, [filter, counts.all, counts.following, counts.announcements, counts.rewards]);
 
   return (
-    <div className="notif-page page-slide-right">
+    <div data-student-page="notifications" className="notif-page page-slide-right">
       {/* Header & Action Row */}
       <header className="notif-header">
         <div className="notif-heading-group">

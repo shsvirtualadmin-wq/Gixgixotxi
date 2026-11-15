@@ -944,7 +944,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   const isLoadingGrid = catalogLoading || (Boolean(user) && walletLoading);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)]">
+    <div data-student-page="store" className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)]">
       <PageMeta
         title="Boardly Store — Animated Banners, Avatars, Frames, Profile Effects & Nameplates"
         description="Customize your Boardly identity with animated profile banners, avatar pictures, frames, profile effects, and nameplates using Kobans."

@@ -1,0 +1,883 @@
+/* ============================================================================
+ * LAYER 1 — BOARDLY LIQUID GLASS + NOTHING OS DESIGN TOKENS (ADDITIVE ONLY)
+ * Strictly scoped under `html.ui-glass`.
+ * When `boardlyUI = "classic"`, `html.ui-glass` is absent and ZERO rules match.
+ * ============================================================================ */
+
+html.ui-glass {
+  --bg: #000000;
+  --text: #f5f5f6;
+  --mute: rgba(255, 255, 255, 0.56);
+  --dim: rgba(255, 255, 255, 0.34);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-2: rgba(255, 255, 255, 0.10);
+  --glass-hi: rgba(255, 255, 255, 0.16);
+  --border: rgba(255, 255, 255, 0.10);
+  --border-hi: rgba(255, 255, 255, 0.24);
+  --accent: #ff2d2d;
+  --accent-glow: rgba(255, 45, 45, 0.45);
+  --green: #30d158;
+  --amber: #ffd60a;
+  --cyan: #64d2ff;
+  --r-xl: 28px;
+  --r-lg: 22px;
+  --r-md: 16px;
+  --r-pill: 999px;
+
+  /* Map existing app variables smoothly when .ui-glass is active */
+  --text-muted: var(--mute);
+  --muted: var(--mute);
+  --glass-border: var(--border);
+  --red: var(--accent);
+  --sdn-page-pb: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+
+html.ui-glass.light,
+html.ui-glass[data-theme="light"] {
+  --bg: #f4f4f7;
+  --text: #0b0b0e;
+  --mute: rgba(11, 11, 14, 0.60);
+  --dim: rgba(11, 11, 14, 0.38);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-2: rgba(255, 255, 255, 0.86);
+  --glass-hi: rgba(255, 255, 255, 0.96);
+  --border: rgba(15, 15, 20, 0.09);
+  --border-hi: rgba(15, 15, 20, 0.20);
+  --accent: #ff2d2d;
+  --accent-glow: rgba(255, 45, 45, 0.28);
+  --green: #248a3d;
+  --amber: #b25000;
+  --cyan: #0071e3;
+}
+
+/* ─── Ambient Background Orbs (2 soft blurred radial orbs, opacity 0.22) ─── */
+html.ui-glass body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+html.ui-glass body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.22;
+  background:
+    radial-gradient(480px circle at 14% 12%, #ff2d2d 0%, transparent 70%),
+    radial-gradient(520px circle at 86% 82%, #3b82f6 0%, transparent 72%);
+  filter: blur(48px);
+  transform: translateZ(0);
+}
+
+html.ui-glass.light body::before,
+html.ui-glass[data-theme="light"] body::before {
+  opacity: 0.14;
+}
+
+/* ─── Nothing OS Dot-Matrix Header Texture ─── */
+html.ui-glass .lg-dot-matrix,
+html.ui-glass .cockpit-root > section:first-of-type {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+html.ui-glass.light .lg-dot-matrix,
+html.ui-glass[data-theme="light"] .lg-dot-matrix {
+  background-image: radial-gradient(rgba(11, 11, 14, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+/* ─── Core Liquid Glass Surface Recipe ─── */
+html.ui-glass .lg-surface,
+html.ui-glass .lg-card,
+html.ui-glass .cockpit-surface-card,
+html.ui-glass .stg-card,
+html.ui-glass .fsm-card,
+html.ui-glass .glass-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+html.ui-glass.light .lg-surface,
+html.ui-glass.light .lg-card,
+html.ui-glass.light .cockpit-surface-card,
+html.ui-glass.light .stg-card,
+html.ui-glass.light .fsm-card,
+html.ui-glass.light .glass-panel,
+html.ui-glass[data-theme="light"] .lg-surface,
+html.ui-glass[data-theme="light"] .lg-card,
+html.ui-glass[data-theme="light"] .cockpit-surface-card,
+html.ui-glass[data-theme="light"] .stg-card,
+html.ui-glass[data-theme="light"] .fsm-card,
+html.ui-glass[data-theme="light"] .glass-panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.68));
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 10px 30px rgba(15, 15, 20, 0.08);
+}
+
+/* ───Layer 2 Shared Primitive Styles ─── */
+html.ui-glass .lg-card {
+  position: relative;
+  border-radius: var(--r-xl);
+  padding: 18px 20px;
+  color: var(--text);
+  overflow: hidden;
+}
+
+html.ui-glass .lg-card--compact {
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+
+html.ui-glass .lg-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--glass-2);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+html.ui-glass .lg-pill--live,
+html.ui-glass .lg-pill--green {
+  background: rgba(48, 209, 88, 0.14);
+  border-color: rgba(48, 209, 88, 0.36);
+  color: var(--green);
+}
+
+html.ui-glass .lg-pill--pending,
+html.ui-glass .lg-pill--amber {
+  background: rgba(255, 214, 10, 0.14);
+  border-color: rgba(255, 214, 10, 0.36);
+  color: var(--amber);
+}
+
+html.ui-glass .lg-pill--error,
+html.ui-glass .lg-pill--red,
+html.ui-glass .lg-pill--accent {
+  background: rgba(255, 45, 45, 0.15);
+  border-color: rgba(255, 45, 45, 0.40);
+  color: var(--accent);
+}
+
+html.ui-glass .lg-pill--info,
+html.ui-glass .lg-pill--cyan {
+  background: rgba(100, 210, 255, 0.14);
+  border-color: rgba(100, 210, 255, 0.36);
+  color: var(--cyan);
+}
+
+html.ui-glass .lg-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 var(--border-hi);
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+
+html.ui-glass .lg-segmented::-webkit-scrollbar {
+  display: none;
+}
+
+html.ui-glass .lg-segmented-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mute);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: color 180ms ease, background-color 180ms ease, transform 180ms ease;
+}
+
+html.ui-glass .lg-segmented-item[aria-selected="true"],
+html.ui-glass .lg-segmented-item.is-active {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow:
+    0 6px 18px -3px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+html.ui-glass .lg-input,
+html.ui-glass .lg-select,
+html.ui-glass .lg-textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--glass);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+html.ui-glass .lg-input::placeholder,
+html.ui-glass .lg-textarea::placeholder {
+  color: var(--dim);
+}
+
+html.ui-glass .lg-input:focus,
+html.ui-glass .lg-select:focus,
+html.ui-glass .lg-textarea:focus {
+  border-color: var(--border-hi);
+  background: var(--glass-2);
+  box-shadow:
+    0 0 0 3px rgba(255, 45, 45, 0.16),
+    inset 0 1px 0 var(--border-hi);
+}
+
+/* ─── Bubble Touch Physics (`[data-pressable]` & `.lg-bubble`) ─── */
+@keyframes lgBubbleSpringRebound {
+  0% {
+    transform: scale(0.96);
+  }
+  55% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+html.ui-glass [data-pressable],
+html.ui-glass .lg-bubble {
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 420ms cubic-bezier(0.22, 1.4, 0.36, 1),
+    border-color 180ms ease,
+    box-shadow 220ms ease;
+  will-change: transform;
+}
+
+html.ui-glass [data-pressable]::after,
+html.ui-glass .lg-bubble::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(
+    120px circle at var(--tap-x, 50%) var(--tap-y, 50%),
+    rgba(255, 255, 255, 0.22),
+    transparent 60%
+  );
+  transition: opacity 220ms ease;
+}
+
+html.ui-glass [data-pressable][data-pressed="true"],
+html.ui-glass [data-pressable]:active,
+html.ui-glass .lg-bubble[data-pressed="true"],
+html.ui-glass .lg-bubble:active {
+  transform: scale(0.96);
+  border-color: var(--border-hi);
+}
+
+html.ui-glass [data-pressable][data-pressable-scale="icon"][data-pressed="true"],
+html.ui-glass [data-pressable][data-pressable-scale="icon"]:active {
+  transform: scale(0.94);
+}
+
+html.ui-glass [data-pressable][data-pressed="true"]::after,
+html.ui-glass [data-pressable]:active::after,
+html.ui-glass .lg-bubble[data-pressed="true"]::after,
+html.ui-glass .lg-bubble:active::after {
+  opacity: 1;
+}
+
+html.ui-glass [data-pressable][data-rebound="true"],
+html.ui-glass .lg-bubble[data-rebound="true"] {
+  animation: lgBubbleSpringRebound 420ms cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+}
+
+/* ─── Floating Bottom Nav (Student & Admin) under .ui-glass ─── */
+html.ui-glass .sdn-dock {
+  height: 64px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  border-radius: var(--r-pill);
+}
+
+html.ui-glass .sdn-dock .plate {
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.50);
+}
+
+html.ui-glass .sdn-dock .g .gi {
+  background: var(--accent);
+  box-shadow:
+    0 8px 24px -4px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+html.ui-glass [data-admin-bottom-nav="true"] > nav {
+  height: 64px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.50);
+}
+
+/* ─── CSS-Only Mounted Collapse Helper (Never Unmounts Forms) ─── */
+html.ui-glass .lg-collapsible[data-collapsed="true"] {
+  display: none !important;
+}
+
+/* ==========================================================================
+   PHASE 2 — ADMIN PORTAL RE-SKINS (Scoped 100% under html.ui-glass)
+   ========================================================================== */
+
+/* 1. Admin Shell: Sidebar, Top Bar, Bottom Nav & Categorized More Sheet */
+html.ui-glass [data-admin-shell="true"] {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+html.ui-glass [data-admin-shell="true"] > aside {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-right: 1px solid var(--border) !important;
+  box-shadow: inset -1px 0 0 var(--border-hi);
+}
+
+html.ui-glass [data-admin-shell="true"] > div > header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: inset 0 -1px 0 var(--border-hi);
+}
+
+/* Switch More Sheet from flat classic list to categorized 2-col Liquid Glass view */
+html.ui-glass .lg-classic-more-list {
+  display: none !important;
+}
+
+html.ui-glass .lg-glass-more-sheet {
+  display: block !important;
+}
+
+/* 2. Shared Admin Page Surfaces, Cards, KPI Tiles, Inputs & Buttons */
+html.ui-glass [data-admin-page] h1 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+html.ui-glass [data-admin-page] .glass-card,
+html.ui-glass [data-admin-page] .aqb-glass-card,
+html.ui-glass [data-admin-page] .akb-glass-card,
+html.ui-glass [data-admin-section="grand-line-tests"] {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-page] .glass-card,
+html.ui-glass[data-theme="light"] [data-admin-page] .aqb-glass-card,
+html.ui-glass[data-theme="light"] [data-admin-page] .akb-glass-card,
+html.ui-glass[data-theme="light"] [data-admin-section="grand-line-tests"] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+/* Nested row cards inside Admin pages */
+html.ui-glass [data-admin-page] .rounded-\[20px\],
+html.ui-glass [data-admin-page] .rounded-\[18px\],
+html.ui-glass [data-admin-page] .rounded-2xl {
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.025));
+  backdrop-filter: blur(24px) saturate(175%);
+  -webkit-backdrop-filter: blur(24px) saturate(175%);
+  border-color: var(--border);
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 30px rgba(0, 0, 0, 0.32);
+}
+
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[20px\],
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[18px\],
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-2xl {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.68));
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 8px 24px rgba(15, 16, 20, 0.06);
+}
+
+/* Admin Inputs, Selects & Textareas */
+html.ui-glass [data-admin-page] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html.ui-glass [data-admin-page] select,
+html.ui-glass [data-admin-page] textarea,
+html.ui-glass [data-admin-sheet="user-override"] input:not([type="checkbox"]):not([type="radio"]),
+html.ui-glass [data-admin-sheet="user-override"] select,
+html.ui-glass [data-admin-sheet="user-override"] textarea {
+  border-radius: 14px;
+  background: var(--glass-1);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+html.ui-glass [data-admin-page] input:focus,
+html.ui-glass [data-admin-page] select:focus,
+html.ui-glass [data-admin-page] textarea:focus {
+  border-color: rgba(215, 25, 33, 0.55) !important;
+  box-shadow:
+    0 0 0 3px rgba(215, 25, 33, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Nothing Red Primary CTA Glow inside Admin Pages */
+html.ui-glass [data-admin-page] button.bg-\[\#D71921\],
+html.ui-glass [data-admin-page] button.bg-\[var\(--red\)\],
+html.ui-glass [data-admin-sheet="user-override"] button.bg-\[\#D71921\],
+html.ui-glass [data-admin-sheet="user-override"] button.bg-\[var\(--red\)\] {
+  border-radius: var(--r-pill);
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.24) !important;
+  box-shadow:
+    0 8px 24px -4px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34) !important;
+}
+
+/* 3. UserOverrideDrawer Glass Sheet Polish */
+html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2) {
+  background: linear-gradient(180deg, rgba(22, 22, 26, 0.90), rgba(10, 10, 14, 0.94)) !important;
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border-color: var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    -16px 0 48px rgba(0, 0, 0, 0.60) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2) {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 244, 246, 0.96)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    -12px 0 36px rgba(15, 16, 20, 0.12) !important;
+}
+
+/* 4. Light/Dark Theme Adaptive Fixes for Hardcoded Dark Admin Pages (Commons, Health, Grand Line Tests) */
+html.ui-glass [data-admin-page="commons"] h1,
+html.ui-glass [data-admin-page="health"] h1,
+html.ui-glass [data-admin-section="grand-line-tests"] h2 {
+  color: var(--text) !important;
+}
+
+html.ui-glass [data-admin-page="commons"] .bg-neutral-900\/70,
+html.ui-glass [data-admin-page="commons"] .bg-neutral-900\/40,
+html.ui-glass [data-admin-page="health"] .bg-\[\#0D0D0D\],
+html.ui-glass [data-admin-page="health"] .bg-\[\#141414\] {
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+html.ui-glass[data-theme="light"] [data-admin-page="commons"] .bg-neutral-900\/70,
+html.ui-glass[data-theme="light"] [data-admin-page="commons"] .bg-neutral-900\/40,
+html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#0D0D0D\],
+html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#141414\] {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 8px 22px rgba(15, 16, 20, 0.06);
+}
+
+html.ui-glass [data-admin-page="commons"] .text-white,
+html.ui-glass [data-admin-page="health"] .text-white,
+html.ui-glass [data-admin-section="grand-line-tests"] .text-white {
+  color: var(--text) !important;
+}
+
+html.ui-glass [data-admin-page="commons"] .text-neutral-400,
+html.ui-glass [data-admin-page="commons"] .text-neutral-300,
+html.ui-glass [data-admin-page="health"] .text-\[\#888888\],
+html.ui-glass [data-admin-page="health"] .text-\[\#AAAAAA\] {
+  color: var(--mute) !important;
+}
+
+/* 5. Segmented Tabs & Filter Pills inside Admin Pages */
+html.ui-glass [data-admin-page] .aqb-segmented-tabs,
+html.ui-glass [data-admin-page] .akb-tabs-bar {
+  border-radius: var(--r-pill) !important;
+  background: var(--glass-1) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: inset 0 1px 0 var(--border-hi) !important;
+}
+
+html.ui-glass [data-admin-page] .aqb-tab-btn--active,
+html.ui-glass [data-admin-page] .akb-tab-btn--active {
+  border-radius: var(--r-pill) !important;
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 6px 20px -4px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32) !important;
+}
+
+/* ==========================================================================
+   PHASE 3 — STUDENT PORTAL RE-SKINS (Scoped 100% under html.ui-glass)
+   ========================================================================== */
+
+/* Helper class for elements shown only when Liquid Glass is active */
+html.ui-glass .lg-only-inline {
+  display: inline-flex !important;
+}
+
+/* 1. Student Shell: Floating Top Bar, Bottom Dock & Full-Screen Menu */
+html.ui-glass [data-student-shell="true"] {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+html.ui-glass [data-student-shell="true"] .dashboard-glass-bar {
+  border-radius: var(--r-pill) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.48) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-shell="true"] .dashboard-glass-bar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.08) !important;
+}
+
+/* 2. Dashboard / Home (Cockpit) */
+html.ui-glass [data-student-page="dashboard"] .cockpit-surface-card,
+html.ui-glass [data-student-page="dashboard"] .cockpit-uni-bubble {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="dashboard"] .cockpit-surface-card,
+html.ui-glass[data-theme="light"] [data-student-page="dashboard"] .cockpit-uni-bubble {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+html.ui-glass [data-student-page="dashboard"] .cockpit-subrow {
+  border-radius: var(--r-row) !important;
+  background: var(--glass-1) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: inset 0 1px 0 var(--border-hi);
+}
+
+/* 3. Squads / Study Crew & Leaderboard */
+html.ui-glass [data-student-page="crew"] .cw-card,
+html.ui-glass [data-student-page="crew-dashboard"] .cw-card,
+html.ui-glass [data-student-page="arena"] .glass-card {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="crew"] .cw-card,
+html.ui-glass[data-theme="light"] [data-student-page="crew-dashboard"] .cw-card,
+html.ui-glass[data-theme="light"] [data-student-page="arena"] .glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+html.ui-glass [data-student-page="crew"] .cw-btn-red,
+html.ui-glass [data-student-page="crew-dashboard"] .cw-btn-red {
+  border-radius: var(--r-pill) !important;
+  background: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 8px 24px -4px var(--accent-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34) !important;
+}
+
+/* 4. Messages & Direct Chat (Adaptive Light/Dark + Liquid Glass Pills & Cards) */
+html.ui-glass [data-student-page="messages"],
+html.ui-glass [data-student-page="messages-chat"] {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+html.ui-glass [data-student-page="messages"] .boardly-glass-card,
+html.ui-glass [data-student-page="messages-chat"] .boardly-glass-card {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.44) !important;
+}
+
+html.ui-glass [data-student-page="messages"] .boardly-glass-pill,
+html.ui-glass [data-student-page="messages-chat"] .boardly-glass-pill {
+  border-radius: var(--r-pill) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.04)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(0, 0, 0, 0.36) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .boardly-glass-card,
+html.ui-glass[data-theme="light"] [data-student-page="messages-chat"] .boardly-glass-card,
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .boardly-glass-pill,
+html.ui-glass[data-theme="light"] [data-student-page="messages-chat"] .boardly-glass-pill {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 8px 24px rgba(15, 16, 20, 0.07) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .text-white,
+html.ui-glass[data-theme="light"] [data-student-page="messages-chat"] .text-white {
+  color: var(--text) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .text-white\/72,
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .text-white\/70,
+html.ui-glass[data-theme="light"] [data-student-page="messages"] .text-white\/65,
+html.ui-glass[data-theme="light"] [data-student-page="messages-chat"] .text-white\/72 {
+  color: var(--mute) !important;
+}
+
+/* 5. Commons Feed (Floating Top Header, Composer, Post Cards & Pills) */
+html.ui-glass [data-student-page="commons"] > header,
+html.ui-glass [data-student-page="commons"] .glass-card {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass [data-student-page="commons"] > header {
+  border-radius: var(--r-pill) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="commons"] > header,
+html.ui-glass[data-theme="light"] [data-student-page="commons"] .glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+/* 6. Store, Kobans, Pricing & Rewards */
+html.ui-glass [data-student-page="store"] > header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: inset 0 -1px 0 var(--border-hi);
+}
+
+html.ui-glass [data-student-page="store"] .glass-card,
+html.ui-glass [data-student-page="kobans"] .glass-card,
+html.ui-glass [data-student-page="pricing"] .glass-card,
+html.ui-glass [data-student-page="pricing"] .glass-card-highlight {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass [data-student-page="pricing"] .glass-card-highlight {
+  border-color: rgba(215, 25, 33, 0.48) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 14px 40px -6px rgba(215, 25, 33, 0.28) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="store"] .glass-card,
+html.ui-glass[data-theme="light"] [data-student-page="kobans"] .glass-card,
+html.ui-glass[data-theme="light"] [data-student-page="pricing"] .glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+/* 7. Notifications Page */
+html.ui-glass [data-student-page="notifications"] .notif-header,
+html.ui-glass [data-student-page="notifications"] .notif-card {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.40) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="notifications"] .notif-header,
+html.ui-glass[data-theme="light"] [data-student-page="notifications"] .notif-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+/* 8. Settings & Sub-Pages */
+html.ui-glass [data-student-page="settings"] .stg-top-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: inset 0 -1px 0 var(--border-hi);
+}
+
+html.ui-glass [data-student-page="settings"] .stg-card {
+  border-radius: var(--r-card) !important;
+  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-student-page="settings"] .stg-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+}
+
+html.ui-glass [data-student-page="settings"] .fsm-search-pill {
+  border-radius: var(--r-pill) !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05)) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 12px 36px rgba(0, 0, 0, 0.48) !important;
+}
+
+/* ─── Reduced Motion & Smooth Mode Respect ─── */
+@media (prefers-reduced-motion: reduce) {
+  html.ui-glass [data-pressable],
+  html.ui-glass .lg-bubble,
+  html.ui-glass [data-pressable][data-rebound="true"],
+  html.ui-glass .lg-bubble[data-rebound="true"] {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+html.ui-glass.smooth-mode .lg-surface,
+html.ui-glass.smooth-mode .lg-card,
+html.ui-glass.smooth-mode .cockpit-surface-card,
+html.ui-glass.smooth-mode .stg-card,
+html.ui-glass.smooth-mode .fsm-card,
+html.ui-glass.smooth-mode .glass-panel,
+html.ui-glass.smooth-mode .sdn-dock .plate,
+html.ui-glass.smooth-mode [data-admin-bottom-nav="true"] > nav,
+html.ui-glass.smooth-mode [data-admin-page] .glass-card,
+html.ui-glass.smooth-mode [data-admin-page] .aqb-glass-card,
+html.ui-glass.smooth-mode [data-admin-page] .akb-glass-card,
+html.ui-glass.smooth-mode [data-student-shell="true"] .dashboard-glass-bar,
+html.ui-glass.smooth-mode [data-student-page] .glass-card {
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+html.ui-glass.smooth-mode [data-pressable],
+html.ui-glass.smooth-mode .lg-bubble,
+html.ui-glass.smooth-mode [data-pressable][data-rebound="true"],
+html.ui-glass.smooth-mode .lg-bubble[data-rebound="true"] {
+  animation: none !important;
+}

@@ -50,6 +50,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div
+      data-student-shell="true"
       className={`relative min-h-screen flex flex-col antialiased overflow-x-clip ${
         isSettingsRoute
           ? 'bg-[var(--menu-bg)] text-[var(--menu-text)]'

@@ -405,6 +405,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   return (
     <div
+      data-student-page="commons"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

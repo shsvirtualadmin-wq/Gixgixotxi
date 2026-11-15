@@ -184,7 +184,7 @@ export function AdminAnnouncementsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div data-admin-page="announcements" className="space-y-6 max-w-4xl">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>

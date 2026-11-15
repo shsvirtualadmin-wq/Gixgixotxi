@@ -67,7 +67,7 @@ export function KobansPage() {
   const sampleEffect = COSMETICS_CATALOG.find((c) => c.id === 'black-sun-ember-storm') || COSMETICS_CATALOG[15];
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-24 overflow-x-hidden">
+    <div data-student-page="kobans" className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-24 overflow-x-hidden">
       <PageMeta
         title="About Kobans — The Boardly Economy & Virtual Credits"
         description="Learn everything about Kobans: Pakistan's student economy for anime avatar frames, nameplates, and aura effects. 10 Kobans = PKR 1."

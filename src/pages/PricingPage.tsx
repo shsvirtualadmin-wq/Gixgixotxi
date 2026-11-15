@@ -83,7 +83,7 @@ export function PricingPage() {
         description="Simple and fair pricing for every student: Free tier is enough to practice and learn, 199 PKR for unlimited use, and 50 PKR for 500 kobans to customize your profile."
       />
 
-      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
+      <div data-student-page="pricing" className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <div className="section-chip section-chip-red">

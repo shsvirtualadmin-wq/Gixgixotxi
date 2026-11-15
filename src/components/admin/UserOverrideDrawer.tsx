@@ -640,6 +640,7 @@ export function UserOverrideDrawer({
   return (
     <div
       data-testid="user-override-drawer"
+      data-admin-sheet="user-override"
       className="fixed inset-0 z-[10010] flex items-end md:items-stretch md:justify-end"
     >
       {/* Backdrop */}

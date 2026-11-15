@@ -467,7 +467,7 @@ export function CrewDashboardPage() {
   }, [weakChapters]);
 
   return (
-    <div className="ncd-root w-full max-w-full min-w-0 flex flex-col justify-between transition-colors duration-150">
+    <div data-student-page="crew-dashboard" className="ncd-root w-full max-w-full min-w-0 flex flex-col justify-between transition-colors duration-150">
       {/* ─── TOP TOAST PILL (Slides down, auto-hides in ~1.8s) ──────────── */}
       {toastMessage && (
         <div role="status" className="cw-top-toast">

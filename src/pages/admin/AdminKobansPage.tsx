@@ -642,7 +642,7 @@ export function AdminKobansPage() {
   }
 
   return (
-    <div className="akb-page-shell">
+    <div data-admin-page="kobans" className="akb-page-shell">
       {/* Ambient red blurred blobs behind the page so glass surfaces read clearly */}
       <div className="akb-ambient-blobs" aria-hidden="true">
         <div className="akb-blob akb-blob--top" />

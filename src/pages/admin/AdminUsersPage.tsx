@@ -711,7 +711,7 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full">
+    <div data-admin-page="users" className="flex flex-col gap-6 w-full max-w-full">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>

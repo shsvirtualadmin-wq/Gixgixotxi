@@ -362,7 +362,7 @@ export function AdminBotsPage() {
   const availableKeysCount = keyStatuses.filter((k) => k.status === 'available').length;
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div data-admin-page="bots" className="space-y-6 max-w-6xl">
       {/* ── Header ── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>

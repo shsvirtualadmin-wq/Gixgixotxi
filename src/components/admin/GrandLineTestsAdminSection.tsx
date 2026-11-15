@@ -43,7 +43,7 @@ export const GrandLineTestsAdminSection: React.FC = () => {
   };
 
   return (
-    <div className="bg-[#111114] border border-white/[0.07] rounded-2xl p-4 sm:p-5 space-y-4">
+    <div data-admin-section="grand-line-tests" className="bg-[#111114] border border-white/[0.07] rounded-2xl p-4 sm:p-5 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/15 text-[#f87171] border border-[#ef4444]/30">

@@ -128,7 +128,7 @@ export function CrewPage() {
   };
 
   return (
-    <div className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-clip transition-colors duration-150">
+    <div data-student-page="crew" className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-clip transition-colors duration-150">
       <PageMeta
         title="Study Crew & Campus Squads — Boardly"
         description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}

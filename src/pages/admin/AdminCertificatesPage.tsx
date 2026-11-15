@@ -344,7 +344,7 @@ export const AdminCertificatesPage: React.FC = () => {
   const selectedMock = mocks.find((m) => m.id === selectedMockId) || mocks[0] || null;
 
   return (
-    <div className="space-y-6">
+    <div data-admin-page="certificates" className="space-y-6">
       {/* Header */}
       <div className="flex items-start sm:items-center justify-between gap-4 flex-wrap">
         <div>

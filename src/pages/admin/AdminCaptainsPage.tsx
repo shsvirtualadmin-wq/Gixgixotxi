@@ -165,7 +165,7 @@ export function AdminCaptainsPage() {
   const pendingCaptainsCount = captains.filter((c) => !allotmentStatuses[c.captainUid]?.granted).length;
 
   return (
-    <div className="space-y-6 w-full max-w-full overflow-x-hidden">
+    <div data-admin-page="captains" className="space-y-6 w-full max-w-full overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>

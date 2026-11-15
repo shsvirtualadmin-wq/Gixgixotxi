@@ -267,7 +267,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
   };
 
   return (
-    <div className={`w-full max-w-6xl mx-auto ${isModal ? 'p-4 sm:p-6' : 'p-3 sm:p-6'} space-y-6 text-[var(--text)]`}>
+    <div data-admin-page="pricing" className={`w-full max-w-6xl mx-auto ${isModal ? 'p-4 sm:p-6' : 'p-3 sm:p-6'} space-y-6 text-[var(--text)]`}>
       {/* ─── HEADER BAR ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div className="space-y-1">

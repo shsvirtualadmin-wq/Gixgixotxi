@@ -730,6 +730,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
 
   return (
     <div
+      data-student-page="messages-chat"
       data-modal-layer="true"
       data-fullscreen-modal="true"
       role="dialog"
@@ -1456,7 +1457,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   }
 
   return (
-    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom px-3.5 sm:px-5 pt-4 space-y-4 max-w-3xl mx-auto">
+    <div data-student-page="messages" className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom px-3.5 sm:px-5 pt-4 space-y-4 max-w-3xl mx-auto">
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div>

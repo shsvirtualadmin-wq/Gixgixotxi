@@ -433,6 +433,7 @@ export function AdminPaymentsPage() {
 
   return (
     <div
+      data-admin-page="payments"
       className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden pb-28 sm:pb-20"
       style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}
     >

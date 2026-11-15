@@ -99,6 +99,7 @@ export function AdminLayout() {
   const location = useLocation();
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [moreSearchQuery, setMoreSearchQuery] = useState('');
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   useBodyScrollLock(isMoreOpen, 'admin-more-sheet');
@@ -199,7 +200,10 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip">
+    <div
+      data-admin-shell="true"
+      className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip"
+    >
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
       <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 glass border-r border-[var(--glass-border)] z-30">
         {/* Sidebar Header */}
@@ -585,7 +589,8 @@ export function AdminLayout() {
                 </button>
               </div>
 
-              <div className="space-y-1.5 stagger-list">
+              {/* Classic More List (always mounted, shown when boardlyUI = "classic") */}
+              <div className="space-y-1.5 stagger-list lg-classic-more-list">
                 {[...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].map((item) => {
                   const { to, label, icon: Icon } = item;
                   const locked = isNavItemLocked(item);
@@ -613,6 +618,85 @@ export function AdminLayout() {
                         <ChevronRight size={14} className="text-[var(--muted)]" />
                       </div>
                     </Link>
+                  );
+                })}
+              </div>
+
+              {/* Liquid Glass Categorized 2-Column More View (shown only under html.ui-glass) */}
+              <div className="hidden lg-glass-more-sheet space-y-3.5">
+                <input
+                  type="text"
+                  value={moreSearchQuery}
+                  onChange={(e) => setMoreSearchQuery(e.target.value)}
+                  placeholder="Filter admin sections…"
+                  aria-label="Filter admin sections"
+                  className="lg-input !min-h-[42px] !py-2 !text-xs"
+                />
+                {[
+                  {
+                    group: 'People',
+                    match: ['/superadmin', '/admin/users', '/admin/access-requests', '/admin/captains', '/admin/crews'],
+                  },
+                  {
+                    group: 'Content',
+                    match: ['/admin/announcements', '/admin/certificates', '/admin/signatures', '/admin/bots'],
+                  },
+                  {
+                    group: 'Economy',
+                    match: ['/admin/kobans', '/admin/pricing'],
+                  },
+                  {
+                    group: 'System',
+                    match: ['/admin/audit-logs', '/admin/health'],
+                  },
+                ].map((cat) => {
+                  const pool = [...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].filter(
+                    (it) =>
+                      cat.match.some((m) => it.to.startsWith(m)) &&
+                      (!moreSearchQuery.trim() ||
+                        it.label.toLowerCase().includes(moreSearchQuery.trim().toLowerCase()))
+                  );
+                  if (pool.length === 0) return null;
+                  return (
+                    <div key={cat.group} className="space-y-1.5">
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-[var(--mute)] px-1">
+                        {cat.group}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {pool.map((item) => {
+                          const { to, label, icon: Icon } = item;
+                          const locked = isNavItemLocked(item);
+                          const active = location.pathname.startsWith(to.split('?')[0]);
+                          return (
+                            <Link
+                              key={`glass-${to}`}
+                              to={to}
+                              data-pressable="true"
+                              onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                              onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
+                              onClick={() => setIsMoreOpen(false)}
+                              className={`flex items-center justify-between gap-2 p-3 rounded-[18px] text-[12px] font-heading transition-colors ${
+                                locked ? 'opacity-65' : ''
+                              } ${
+                                active
+                                  ? 'glass-row border-[var(--red)]/45 text-[var(--text)] font-semibold'
+                                  : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Icon size={15} className="shrink-0 text-[var(--red)]" />
+                                <span className="truncate">{label}</span>
+                              </div>
+                              {locked ? (
+                                <Lock size={12} className="text-amber-400 shrink-0" />
+                              ) : (
+                                <ChevronRight size={13} className="text-[var(--muted)] shrink-0" />
+                              )}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
               </div>

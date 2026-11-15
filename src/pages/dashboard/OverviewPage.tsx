@@ -631,7 +631,7 @@ export function OverviewPage() {
   const currentMcq = testMcqs[currentIndex];
 
   return (
-    <div className="cockpit-root w-full max-w-full min-w-0 box-border space-y-6 pb-8">
+    <div data-student-page="dashboard" className="cockpit-root w-full max-w-full min-w-0 box-border space-y-6 pb-8">
       {/* 2. Greeting: "Salam, {name}! Ready to practice today?" */}
       <section className="pt-1" aria-label="Student Greeting">
         <h1

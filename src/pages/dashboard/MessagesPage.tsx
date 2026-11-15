@@ -73,7 +73,7 @@ export function MessagesPage() {
 
   if (isGuest || (user?.uid && user.uid.startsWith('guest_'))) {
     return (
-      <div className="min-h-screen bg-[#050506] text-white px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
+      <div data-student-page="messages" className="min-h-screen bg-[#050506] text-white px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
         <PageMeta
           title="Messages — Boardly"
           description="Direct conversations and chat requests with fellow students."
