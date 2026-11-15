@@ -473,17 +473,6 @@ export async function handleMeRolesRequest(params: {
         } catch {
           // Non-fatal
         }
-      } else if (typeof process !== 'undefined' && process.versions?.node) {
-        try {
-          const appMod = await import('firebase-admin/app');
-          const authMod = await import('firebase-admin/auth');
-          const apps = appMod.getApps();
-          const adminApp = apps.length > 0 ? apps[0] : appMod.initializeApp({ projectId });
-          await authMod.getAuth(adminApp).setCustomUserClaims(decoded.uid, ownerClaims);
-          minted = true;
-        } catch (nodeErr: any) {
-          mintError = nodeErr?.message || 'FIREBASE_ADMIN_UNAVAILABLE';
-        }
       } else {
         mintError = 'MISSING_FIREBASE_SERVICE_ACCOUNT';
       }
@@ -676,19 +665,6 @@ export async function executeGrantOrRevokeAdminClaim(params: {
         customClaims: nextClaims,
       });
       claimSyncedVia = 'identity_toolkit';
-    } else if (typeof process !== 'undefined' && process.versions?.node) {
-      // 3. In Node.js environment, attempt firebase-admin if initialized
-      try {
-        const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
-        const firebaseAdmin = reqFn('firebase-admin');
-        if (firebaseAdmin && firebaseAdmin.apps && firebaseAdmin.apps.length > 0) {
-          await firebaseAdmin.auth().setCustomUserClaims(cleanTargetUid, nextClaims);
-          await firebaseAdmin.auth().revokeRefreshTokens(cleanTargetUid);
-          claimSyncedVia = 'firebase_admin_node';
-        }
-      } catch {
-        // Fallback if firebase-admin not initialized with credentials in local dev
-      }
     }
   }
 

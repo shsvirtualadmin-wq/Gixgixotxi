@@ -5909,12 +5909,14 @@ export async function handleAuthApiRequest(
     // Load local D1 store to check temporary access grants and persisted user plan/role overrides
     let d1JsonStore: any = null;
     try {
-      const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
-      const fsMod = reqFn('fs');
-      const pathMod = reqFn('path');
-      const storePath = pathMod.resolve(process.cwd(), 'data/cloudflare_d1_posts.json');
-      if (fsMod.existsSync(storePath)) {
-        d1JsonStore = JSON.parse(fsMod.readFileSync(storePath, 'utf8'));
+      const getBuiltin = (globalThis as any).process?.getBuiltinModule;
+      if (typeof getBuiltin === 'function') {
+        const fsMod = getBuiltin('fs');
+        const pathMod = getBuiltin('path');
+        const storePath = pathMod.resolve(process.cwd(), 'data/cloudflare_d1_posts.json');
+        if (fsMod.existsSync(storePath)) {
+          d1JsonStore = JSON.parse(fsMod.readFileSync(storePath, 'utf8'));
+        }
       }
     } catch {
       // Non-fatal in edge worker
