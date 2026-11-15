@@ -205,45 +205,44 @@ async function verifyAuthToken(req: express.Request): Promise<{
   }
 
   try {
-    const { verifyFirebaseIdToken, DEFAULT_FIREBASE_PROJECT_ID } = await import(
-      "./functions/_utils/firestoreRestAdmin"
-    );
-    const projectId = (
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.VITE_FIREBASE_PROJECT_ID ||
-      DEFAULT_FIREBASE_PROJECT_ID
-    ).trim();
-    const verified = await verifyFirebaseIdToken(authHeader, projectId);
-    if (!verified || !verified.uid) {
+    const { verifyCallerClaimsStrict } = await import("./functions/_utils/adminRoleGate");
+    const webReq = new Request("http://localhost:3000/api/admin", {
+      headers: { Authorization: authHeader },
+    });
+    const verification = await verifyCallerClaimsStrict({
+      request: webReq,
+      env: process.env as any,
+    });
+    if (!verification.ok || !verification.caller) {
       return { user: null, isAdmin: false, isSuperAdmin: false, isCaptain: false };
     }
 
-    const superAdmin = verified.superAdmin === true;
-    const admin = verified.admin === true || superAdmin;
-    const captain = verified.captain === true || admin;
-    const email = String(verified.email || "").trim().toLowerCase();
+    const { caller } = verification;
     const userObj = {
-      id: verified.uid,
-      uid: verified.uid,
-      email,
-      superAdmin,
-      admin,
-      captain,
+      id: caller.uid,
+      uid: caller.uid,
+      email: caller.email,
+      emailVerified: caller.emailVerified,
+      isOwnerEmailMatch: caller.isOwnerEmailMatch,
+      superAdmin: caller.superAdmin,
+      admin: caller.admin,
+      captain: caller.captain,
+      role: caller.role,
     };
 
     tokenVerifyCache.set(token, {
       user: userObj,
-      isAdmin: admin,
-      isSuperAdmin: superAdmin,
-      isCaptain: captain,
+      isAdmin: caller.admin,
+      isSuperAdmin: caller.superAdmin,
+      isCaptain: caller.captain,
       expiresAt: Date.now() + 60 * 1000,
     });
 
     return {
       user: userObj,
-      isAdmin: admin,
-      isSuperAdmin: superAdmin,
-      isCaptain: captain,
+      isAdmin: caller.admin,
+      isSuperAdmin: caller.superAdmin,
+      isCaptain: caller.captain,
     };
   } catch (err) {
     console.warn("[verifyAuthToken] Firebase ID token verification failed:", err);
@@ -253,21 +252,25 @@ async function verifyAuthToken(req: express.Request): Promise<{
 
 /**
  * Strict server-side admin authorization helper.
- * Rejects unauthenticated or non-admin callers with 401/403.
+ * Rejects unauthenticated or non-admin callers with 401/403 and a diagnostic reason.
  */
 async function requireExpressAdmin(req: express.Request, res: express.Response): Promise<{ user: any; email: string } | null> {
   const { user, isAdmin } = await verifyAuthToken(req);
   if (!user) {
     res.status(401).json({
       success: false,
+      code: "UNAUTHENTICATED",
       error: "Unauthorized: Valid admin authentication token required.",
     });
     return null;
   }
   if (!isAdmin) {
+    const reason = user.emailVerified === false ? "email_not_verified" : "role_not_found";
     res.status(403).json({
       success: false,
-      error: "Forbidden: Access restricted to authorized administrators.",
+      code: "FORBIDDEN",
+      reason,
+      error: `Forbidden: Access restricted to authorized administrators (reason: ${reason}).`,
     });
     return null;
   }

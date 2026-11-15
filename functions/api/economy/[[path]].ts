@@ -1,6 +1,7 @@
 import {
   FirestoreRestAdapter,
   verifyFirebaseIdToken,
+  isVerifiedOwnerEmailToken,
   parseServiceAccountFromEnv,
   getServiceAccountAccessToken,
   DEFAULT_FIREBASE_PROJECT_ID,
@@ -8,6 +9,7 @@ import {
   type RewardsEnv,
   type VerifiedFirebaseToken,
 } from '../../_utils/firestoreRestAdmin';
+import { requireAdmin } from '../../_utils/adminRoleGate';
 import {
   COSMETICS_CATALOG,
   LEGACY_COSMETICS_CATALOG,
@@ -41,9 +43,17 @@ export interface NormalizedCoupon {
   updatedAt: string;
 }
 
-function isAdminTokenClaim(verifiedUser?: VerifiedFirebaseToken | null): boolean {
+function isAdminTokenClaim(
+  verifiedUser?: VerifiedFirebaseToken | null,
+  env?: EconomyEnv
+): boolean {
   if (!verifiedUser) return false;
-  return verifiedUser.admin === true || verifiedUser.superAdmin === true;
+  const isVerifiedOwner = isVerifiedOwnerEmailToken(
+    verifiedUser.email,
+    verifiedUser.emailVerified === true,
+    env
+  );
+  return verifiedUser.superAdmin === true || verifiedUser.admin === true || isVerifiedOwner;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -926,10 +936,11 @@ export async function handleEconomyApiRequest(context: {
     );
   }
 
-  let verifiedUser: { uid: string; email?: string; name?: string } | null = null;
+  let verifiedUser: VerifiedFirebaseToken | null = null;
   try {
     const verifyFn =
-      tokenVerifierOverride || ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, projectId));
+      tokenVerifierOverride ||
+      ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, projectId, env));
     verifiedUser = await verifyFn(authHeader);
   } catch (err: any) {
     return jsonResponse(
@@ -965,7 +976,7 @@ export async function handleEconomyApiRequest(context: {
   }
 
   const fsHelper = new HybridFirestoreHelper(env, authHeader);
-  const isAdmin = isAdminTokenClaim(verifiedUser);
+  const isAdmin = isAdminTokenClaim(verifiedUser, env);
 
   // ==========================================================================
   // 1. VALIDATE COUPON: POST /api/coupons/validate (or /api/pro/coupon/validate)
@@ -1971,15 +1982,13 @@ export async function handleEconomyApiRequest(context: {
   // 6. ADMIN COUPONS DASHBOARD: GET / POST / PATCH /api/admin/coupons
   // ==========================================================================
   if (pathClean === '/api/admin/coupons' || pathClean.startsWith('/api/admin/coupons/')) {
-    if (!isAdmin) {
-      return jsonResponse(
-        {
-          ok: false,
-          code: 'FORBIDDEN',
-          error: 'Only administrators can manage promo & coupon codes.',
-        },
-        403
-      );
+    const adminCheck = await requireAdmin({
+      request,
+      env,
+      tokenVerifierOverride,
+    });
+    if (!adminCheck.ok || !adminCheck.caller) {
+      return adminCheck.blockedResponse!;
     }
 
     if (request.method === 'GET') {

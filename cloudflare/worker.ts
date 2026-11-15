@@ -43,6 +43,7 @@ import { isD1UserSessionVerified } from '../functions/_utils/firestoreRestAdmin'
 import {
   enforceAdminOrSuperAdminGate,
   handleSuperAdminAndExtraAdminRoutes,
+  requireAdmin,
 } from '../functions/_utils/adminRoleGate';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 import { handleKobanStyleRequest } from '../functions/api/koban-style';
@@ -70,7 +71,9 @@ export interface VerifiedFirebaseUser {
   email: string;
   name: string;
   picture: string;
+  emailVerified?: boolean;
   role: 'student' | 'captain' | 'admin' | 'superadmin';
+  captain?: boolean;
   admin?: boolean;
   superAdmin?: boolean;
   customRole: string | null;
@@ -876,7 +879,9 @@ export async function verifyFirebaseIdToken(
       email,
       name: payload.name || email.split('@')[0] || 'Student',
       picture: payload.picture || '',
+      emailVerified: Boolean(payload.email_verified),
       role,
+      captain: isCaptainClaim,
       admin: isAdminClaim,
       superAdmin: isSuperAdminClaim,
       customRole,
@@ -4162,12 +4167,20 @@ ${urls
       }
 
       const verifyD1Admin = async (): Promise<VerifiedFirebaseUser | null> => {
-        const user = await verifyFirebaseIdToken(req, env).catch(() => null);
-        if (!user) return null;
-        if (user.superAdmin === true || user.admin === true || user.role === 'superadmin' || user.role === 'admin') {
-          return user;
-        }
-        return null;
+        const check = await requireAdmin({ request: req, env: env as any });
+        if (!check.ok || !check.caller) return null;
+        return {
+          uid: check.caller.uid,
+          email: check.caller.email,
+          name: check.caller.name,
+          picture: '',
+          emailVerified: check.caller.emailVerified,
+          role: check.caller.role,
+          captain: check.caller.captain,
+          admin: check.caller.admin,
+          superAdmin: check.caller.superAdmin,
+          customRole: null,
+        };
       };
 
       const recalculateD1UniCount = async (uniId: string) => {
@@ -5284,19 +5297,16 @@ ${urls
         return [];
       };
 
-      // Strict fail-closed: only verified token custom claims grant admin/superadmin access
-      const isAuthorizedAdmin =
-        adminUser.superAdmin === true ||
-        adminUser.admin === true ||
-        adminUser.role === 'superadmin' ||
-        adminUser.role === 'admin';
-
-      if (!isAuthorizedAdmin) {
+      // Shared server-side requireAdmin check
+      const adminCheck = await requireAdmin({ request: req, env: env as any });
+      if (!adminCheck.ok || !adminCheck.caller) {
+        const reason = adminCheck.reason || 'role_not_found';
         return jsonResponse(
           {
             success: false,
             code: 'FORBIDDEN',
-            error: 'Forbidden: Admin or Superadmin role required (403).',
+            reason,
+            error: `Forbidden: Admin or Superadmin role required (reason: ${reason}).`,
             users: [],
           },
           403,
@@ -5714,8 +5724,16 @@ ${urls
           if (!verified?.uid) return null;
           return {
             uid: verified.uid,
-            email: verified.email || undefined,
-            name: verified.name || undefined,
+            email: verified.email || '',
+            name: verified.name || 'Student',
+            picture: verified.picture || null,
+            emailVerified: verified.emailVerified !== false,
+            role: verified.role,
+            captain: verified.captain === true,
+            admin: verified.admin === true,
+            superAdmin: verified.superAdmin === true,
+            isSuperAdmin: verified.superAdmin === true,
+            isAdminOrAbove: verified.admin === true || verified.superAdmin === true,
           };
         },
       });
@@ -5742,8 +5760,16 @@ ${urls
           if (!verified?.uid) return null;
           return {
             uid: verified.uid,
-            email: verified.email || undefined,
-            name: verified.name || undefined,
+            email: verified.email || '',
+            name: verified.name || 'Student',
+            picture: verified.picture || null,
+            emailVerified: verified.emailVerified !== false,
+            role: verified.role,
+            captain: verified.captain === true,
+            admin: verified.admin === true,
+            superAdmin: verified.superAdmin === true,
+            isSuperAdmin: verified.superAdmin === true,
+            isAdminOrAbove: verified.admin === true || verified.superAdmin === true,
           };
         },
       });

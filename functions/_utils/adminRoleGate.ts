@@ -30,10 +30,14 @@ import {
   type VerifiedFirebaseToken,
 } from './firestoreRestAdmin';
 
+export type AdminDeniedReason = 'email_not_verified' | 'role_not_found' | 'superadmin_required';
+
 export interface VerifiedRoleCaller {
   uid: string;
   email: string;
   name: string;
+  emailVerified: boolean;
+  isOwnerEmailMatch: boolean;
   captain: boolean;
   admin: boolean;
   superAdmin: boolean;
@@ -65,7 +69,8 @@ function jsonGateResponse(
 }
 
 /**
- * Verifies the caller's Firebase ID token and extracts ONLY custom claims (`superAdmin === true`, `admin === true`).
+ * Verifies the caller's Firebase ID token and extracts ONLY custom claims (`superAdmin === true`, `admin === true`)
+ * or verified owner email (`shsvirtualadmin@gmail.com` with `email_verified === true`).
  * Never trusts Firestore docs, D1 tables, localStorage, or URL parameters.
  * Fails CLOSED on any error, missing header, guest token, expired token, or forged token.
  */
@@ -113,16 +118,23 @@ export async function verifyCallerClaimsStrict(params: {
       };
     }
 
+    const ownerEmail = resolveConfiguredOwnerEmail(env);
+    const decodedEmail = String(decoded.email || '').trim().toLowerCase();
+    // Default emailVerified to true only if decoded.emailVerified === true
+    const emailVerified = decoded.emailVerified === true;
+    const isOwnerEmailMatch = Boolean(ownerEmail && decodedEmail && decodedEmail === ownerEmail);
+
     // Verified owner email (email_verified === true) OR verified custom claims: superAdmin > admin > captain > student
     const isVerifiedOwner = isVerifiedOwnerEmailToken(
-      decoded.email,
-      decoded.emailVerified === true,
+      decodedEmail,
+      emailVerified,
       env
     );
     const hasCustomSuperAdmin = decoded.rawCustomClaims
       ? decoded.rawCustomClaims.superAdmin === true
       : decoded.superAdmin === true;
     const isSuperAdmin = decoded.superAdmin === true || isVerifiedOwner;
+    // Super admin always passes every admin and captain check
     const isAdmin = decoded.admin === true || isSuperAdmin;
     const isCaptain = decoded.captain === true || isAdmin;
     const role: 'superadmin' | 'admin' | 'captain' | 'student' = isSuperAdmin
@@ -144,8 +156,10 @@ export async function verifyCallerClaimsStrict(params: {
       ok: true,
       caller: {
         uid: String(decoded.uid),
-        email: String(decoded.email || '').trim().toLowerCase(),
+        email: decodedEmail,
         name: String(decoded.name || decoded.email || 'User').trim(),
+        emailVerified,
+        isOwnerEmailMatch,
         captain: isCaptain,
         admin: isAdmin,
         superAdmin: isSuperAdmin,
@@ -163,11 +177,152 @@ export async function verifyCallerClaimsStrict(params: {
   }
 }
 
+export function resolveAdminDeniedReason(
+  caller: VerifiedRoleCaller,
+  requiredLevel: 'admin' | 'superadmin'
+): AdminDeniedReason {
+  if (caller.isOwnerEmailMatch && !caller.emailVerified) {
+    return 'email_not_verified';
+  }
+  if (requiredLevel === 'superadmin') {
+    if (caller.admin) return 'superadmin_required';
+    if (!caller.emailVerified && caller.email) return 'email_not_verified';
+    return 'role_not_found';
+  }
+  if (!caller.emailVerified && caller.email) {
+    return 'email_not_verified';
+  }
+  return 'role_not_found';
+}
+
 /**
- * Enforces the server-side role gate for `/api/admin/*` and `/api/superadmin/*`.
- * - `/api/superadmin/*`: returns 401 if unauthenticated/invalid token, 403 unless `superAdmin === true`.
- * - `/api/admin/*`: returns 401 if unauthenticated/invalid token, 403 unless `admin === true || superAdmin === true`.
- * Returns `null` if the request is allowed to proceed, along with the verified `caller`.
+ * Shared server-side Admin authorization check used by all `/api/admin/*` routes.
+ * Uses the exact same source of truth as the UI (`isSuperAdmin` / `isAdmin`) and `firestore.rules`:
+ * - Custom claim `superAdmin === true` OR `admin === true`
+ * - OR verified owner email (`shsvirtualadmin@gmail.com` with `email_verified === true`)
+ * Super admin always passes every admin check.
+ * Never trusts client-sent roles or user-editable database fields.
+ */
+export async function requireAdmin(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  tokenVerifierOverride?: TokenVerifierFn;
+}): Promise<{
+  ok: boolean;
+  caller: VerifiedRoleCaller | null;
+  reason?: AdminDeniedReason;
+  blockedResponse: Response | null;
+}> {
+  const verification = await verifyCallerClaimsStrict(params);
+  if (!verification.ok) {
+    return {
+      ok: false,
+      caller: null,
+      blockedResponse: jsonGateResponse(
+        {
+          ok: false,
+          success: false,
+          error: verification.error,
+          message: verification.error,
+          code: verification.code,
+        },
+        verification.status
+      ),
+    };
+  }
+
+  const { caller } = verification;
+  if (caller.admin === true || caller.superAdmin === true) {
+    return { ok: true, caller, blockedResponse: null };
+  }
+
+  const reason = resolveAdminDeniedReason(caller, 'admin');
+  const errorMsg =
+    reason === 'email_not_verified'
+      ? 'Forbidden: email address is not verified (reason: email_not_verified).'
+      : 'Forbidden: admin or superAdmin role required to access /api/admin/* (reason: role_not_found).';
+
+  return {
+    ok: false,
+    caller,
+    reason,
+    blockedResponse: jsonGateResponse(
+      {
+        ok: false,
+        success: false,
+        error: errorMsg,
+        message: errorMsg,
+        code: 'FORBIDDEN',
+        reason,
+      },
+      403
+    ),
+  };
+}
+
+/**
+ * Shared server-side SuperAdmin authorization check used by `/api/superadmin/*` routes.
+ */
+export async function requireSuperAdmin(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  tokenVerifierOverride?: TokenVerifierFn;
+}): Promise<{
+  ok: boolean;
+  caller: VerifiedRoleCaller | null;
+  reason?: AdminDeniedReason;
+  blockedResponse: Response | null;
+}> {
+  const verification = await verifyCallerClaimsStrict(params);
+  if (!verification.ok) {
+    return {
+      ok: false,
+      caller: null,
+      blockedResponse: jsonGateResponse(
+        {
+          ok: false,
+          success: false,
+          error: verification.error,
+          message: verification.error,
+          code: verification.code,
+        },
+        verification.status
+      ),
+    };
+  }
+
+  const { caller } = verification;
+  if (caller.superAdmin === true) {
+    return { ok: true, caller, blockedResponse: null };
+  }
+
+  const reason = resolveAdminDeniedReason(caller, 'superadmin');
+  const errorMsg =
+    reason === 'email_not_verified'
+      ? 'Forbidden: owner email is not verified (reason: email_not_verified).'
+      : `Forbidden: superAdmin claim is required to access /api/superadmin/* (reason: ${reason}).`;
+
+  return {
+    ok: false,
+    caller,
+    reason,
+    blockedResponse: jsonGateResponse(
+      {
+        ok: false,
+        success: false,
+        error: errorMsg,
+        message: errorMsg,
+        code: 'FORBIDDEN',
+        reason,
+      },
+      403
+    ),
+  };
+}
+
+/**
+ * Enforces the server-side role gate for `/api/admin/*`, `/api/superadmin/*`, and `/api/captain/*`.
+ * Delegates directly to `requireSuperAdmin` and `requireAdmin`.
  */
 export async function enforceAdminOrSuperAdminGate(params: {
   request: Request;
@@ -190,6 +345,17 @@ export async function enforceAdminOrSuperAdminGate(params: {
     return { blockedResponse: null, caller: null };
   }
 
+  if (isSuperAdminRoute) {
+    const check = await requireSuperAdmin({ request, env, tokenVerifierOverride });
+    return { blockedResponse: check.blockedResponse, caller: check.caller };
+  }
+
+  if (isAdminRoute) {
+    const check = await requireAdmin({ request, env, tokenVerifierOverride });
+    return { blockedResponse: check.blockedResponse, caller: check.caller };
+  }
+
+  // isCaptainRoute
   const verification = await verifyCallerClaimsStrict({
     request,
     env,
@@ -203,6 +369,7 @@ export async function enforceAdminOrSuperAdminGate(params: {
           ok: false,
           success: false,
           error: verification.error,
+          message: verification.error,
           code: verification.code,
         },
         verification.status
@@ -212,52 +379,18 @@ export async function enforceAdminOrSuperAdminGate(params: {
   }
 
   const { caller } = verification;
-
-  if (isSuperAdminRoute) {
-    if (caller.superAdmin !== true) {
-      return {
-        blockedResponse: jsonGateResponse(
-          {
-            ok: false,
-            success: false,
-            error: 'Forbidden: superAdmin claim is required to access /api/superadmin/*.',
-            code: 'FORBIDDEN',
-          },
-          403
-        ),
-        caller,
-      };
-    }
-    return { blockedResponse: null, caller };
-  }
-
-  if (isCaptainRoute) {
-    if (caller.captain !== true && caller.admin !== true && caller.superAdmin !== true) {
-      return {
-        blockedResponse: jsonGateResponse(
-          {
-            ok: false,
-            success: false,
-            error: 'Forbidden: captain, admin, or superAdmin claim is required to access /api/captain/*.',
-            code: 'FORBIDDEN',
-          },
-          403
-        ),
-        caller,
-      };
-    }
-    return { blockedResponse: null, caller };
-  }
-
-  // isAdminRoute: requires admin === true || superAdmin === true
-  if (caller.admin !== true && caller.superAdmin !== true) {
+  if (caller.captain !== true && caller.admin !== true && caller.superAdmin !== true) {
+    const reason = resolveAdminDeniedReason(caller, 'admin');
+    const errorMsg = `Forbidden: captain, admin, or superAdmin claim is required to access /api/captain/* (reason: ${reason}).`;
     return {
       blockedResponse: jsonGateResponse(
         {
           ok: false,
           success: false,
-          error: 'Forbidden: admin or superAdmin claim is required to access /api/admin/*.',
+          error: errorMsg,
+          message: errorMsg,
           code: 'FORBIDDEN',
+          reason,
         },
         403
       ),

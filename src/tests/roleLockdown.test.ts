@@ -691,6 +691,64 @@ async function runRoleLockdownTests() {
   assert.equal(bootstrapClaimsMinted['uid_owner'], undefined);
   console.log('✓ 6. POST /api/me/roles server-side self-healing owner bootstrap verified');
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TEST 7: GET /api/admin/coupons via shared requireAdmin
+  //   - Verified owner (shsvirtualadmin@gmail.com, email_verified === true, no custom claims) -> 200 OK
+  //   - Unverified owner (email_verified === false) -> 403 with reason: "email_not_verified"
+  //   - Normal student -> 403 with reason: "role_not_found"
+  // ─────────────────────────────────────────────────────────────────────────────
+  const { handleEconomyApiRequest } = await import('../../functions/api/economy/[[path]]');
+
+  const ownerCouponsRes = await handleEconomyApiRequest({
+    request: new Request('https://boardly.cfd/api/admin/coupons', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer owner_missing_claims' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  assert.equal(
+    ownerCouponsRes.status,
+    200,
+    'Verified owner (shsvirtualadmin@gmail.com) must get 200 OK on GET /api/admin/coupons even before custom claims are minted'
+  );
+  const ownerCouponsJson = (await ownerCouponsRes.json()) as any;
+  assert.equal(ownerCouponsJson.ok, true);
+  assert.ok(Array.isArray(ownerCouponsJson.coupons), 'Must return coupons array');
+
+  const unverifiedOwnerCouponsRes = await handleEconomyApiRequest({
+    request: new Request('https://boardly.cfd/api/admin/coupons', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer owner_unverified_email' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  assert.equal(unverifiedOwnerCouponsRes.status, 403);
+  const unverifiedOwnerCouponsJson = (await unverifiedOwnerCouponsRes.json()) as any;
+  assert.equal(
+    unverifiedOwnerCouponsJson.reason,
+    'email_not_verified',
+    '403 response for unverified owner email must include reason: "email_not_verified"'
+  );
+
+  const studentCouponsRes = await handleEconomyApiRequest({
+    request: new Request('https://boardly.cfd/api/admin/coupons', {
+      method: 'GET',
+      headers: { Authorization: 'Bearer normal_student_token' },
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  assert.equal(studentCouponsRes.status, 403);
+  const studentCouponsJson = (await studentCouponsRes.json()) as any;
+  assert.equal(
+    studentCouponsJson.reason,
+    'role_not_found',
+    '403 response for non-admin account must include reason: "role_not_found"'
+  );
+  console.log('✓ 7. GET /api/admin/coupons shared requireAdmin & 403 diagnostic reasons (role_not_found, email_not_verified) verified');
+
   console.log('\nALL ROLE LOCKDOWN & CAPTAIN DASHBOARD TESTS PASSED!');
 }
 

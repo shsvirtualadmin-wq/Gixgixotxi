@@ -134,7 +134,9 @@ export function AdminPaymentsPage() {
       } else {
         const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>('/api/admin/coupons');
         if (!ok || !payload?.ok) {
-          throw new Error(errorMessage || 'Failed to load coupons from server.');
+          const couponErr: any = new Error(errorMessage || 'Failed to load coupons from server.');
+          couponErr.code = payload?.reason || payload?.code || 'PAYMENTS_LOAD_FAILED';
+          throw couponErr;
         }
         setCouponsList(Array.isArray(payload.coupons) ? payload.coupons : []);
         setCouponRedemptions(Array.isArray(payload.redemptions) ? payload.redemptions : []);

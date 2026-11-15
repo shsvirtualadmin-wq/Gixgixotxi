@@ -457,10 +457,17 @@ export async function fetchAdminJsonWithRetry<T = any>(
       data = retryResult.data;
     }
     if (!res.ok) {
-      const serverMsg =
-        (data as any)?.error?.message ||
+      const rawErr =
+        (typeof (data as any)?.error === 'string'
+          ? (data as any).error
+          : (data as any)?.error?.message) ||
         (data as any)?.message ||
         `HTTP ${res.status} from ${url}`;
+      const reason = typeof (data as any)?.reason === 'string' ? (data as any).reason : '';
+      const serverMsg =
+        reason && !String(rawErr).includes(reason)
+          ? `${rawErr} (reason: ${reason})`
+          : String(rawErr);
       return { ok: false, status: res.status, data, errorMessage: serverMsg };
     }
     return { ok: true, status: res.status, data };
@@ -471,10 +478,17 @@ export async function fetchAdminJsonWithRetry<T = any>(
       if (res.ok) {
         return { ok: true, status: res.status, data };
       }
-      const serverMsg =
-        (data as any)?.error?.message ||
+      const rawErr =
+        (typeof (data as any)?.error === 'string'
+          ? (data as any).error
+          : (data as any)?.error?.message) ||
         (data as any)?.message ||
         `HTTP ${res.status} from ${url}`;
+      const reason = typeof (data as any)?.reason === 'string' ? (data as any).reason : '';
+      const serverMsg =
+        reason && !String(rawErr).includes(reason)
+          ? `${rawErr} (reason: ${reason})`
+          : String(rawErr);
       return { ok: false, status: res.status, data, errorMessage: serverMsg };
     } catch (retryErr: any) {
       return {

@@ -1228,7 +1228,18 @@ export default {
           return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
         }
         if (!user.isSuperAdmin) {
-          return errorResponse(request, env, 'Forbidden: superAdmin claim required.', 'FORBIDDEN', 403);
+          const reason = user.isAdminOrAbove ? 'superadmin_required' : 'role_not_found';
+          return jsonResponse(
+            request,
+            env,
+            {
+              ok: false,
+              error: `Forbidden: superAdmin claim required (reason: ${reason}).`,
+              code: 'FORBIDDEN',
+              reason,
+            },
+            403
+          );
         }
       } else if (path === '/api/admin' || path.startsWith('/api/admin/')) {
         const user = await authenticateRequest(request, env, true);
@@ -1236,7 +1247,18 @@ export default {
           return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
         }
         if (!user.isAdminOrAbove) {
-          return errorResponse(request, env, 'Forbidden: admin or superAdmin claim required.', 'FORBIDDEN', 403);
+          const reason = 'role_not_found';
+          return jsonResponse(
+            request,
+            env,
+            {
+              ok: false,
+              error: `Forbidden: admin or superAdmin role required (reason: ${reason}).`,
+              code: 'FORBIDDEN',
+              reason,
+            },
+            403
+          );
         }
       }
 

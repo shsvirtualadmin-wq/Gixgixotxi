@@ -3689,16 +3689,18 @@ ${postSitemaps}
         });
       }
 
-      let isAuthorizedAdmin = adminUser.role === 'superadmin';
-      if (!isAuthorizedAdmin) {
-        isAuthorizedAdmin = await verifyFirestoreUserIsAdminRest(adminUser.uid, authHeader);
-      }
+      const isAuthorizedAdmin =
+        adminUser.superAdmin === true ||
+        adminUser.admin === true ||
+        adminUser.role === 'superadmin' ||
+        adminUser.role === 'admin';
 
       if (!isAuthorizedAdmin) {
         return res.status(403).json({
           success: false,
           code: 'FORBIDDEN',
-          error: 'Forbidden: Admin or Superadmin role required (403).',
+          reason: 'role_not_found',
+          error: 'Forbidden: Admin or Superadmin role required (reason: role_not_found).',
           users: [],
         });
       }
@@ -6499,16 +6501,14 @@ ${postSitemaps}
   // ===========================================================================
   // /api/universities & /api/mcqs — D1 University-Based Admin Question Bank
   // ===========================================================================
-  const isAdminOrSuperadmin = (user: VerifiedFirebaseUser | null, store: D1StoreData): boolean => {
+  const isAdminOrSuperadmin = (user: VerifiedFirebaseUser | null, _store: D1StoreData): boolean => {
     if (!user) return false;
-    if (SUPERADMIN_UIDS.has(user.uid) || user.role === 'superadmin' || user.role === 'admin') {
-      return true;
-    }
-    const roleRow = (store.userRoles || []).find((r) => r.uid === user.uid);
-    if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin' || roleRow.role === 'super_admin')) {
-      return true;
-    }
-    return false;
+    return (
+      (user as any).superAdmin === true ||
+      (user as any).admin === true ||
+      user.role === 'superadmin' ||
+      user.role === 'admin'
+    );
   };
 
   const recalculateUniversityMcqCount = (store: D1StoreData, universityId?: string) => {
@@ -7746,11 +7746,11 @@ ${postSitemaps}
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
     const existingRow = store.userRoles.find((r: any) => r.uid === user.uid);
     // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified JWT custom claims on `user`
-    const isSuper = (user as any).superAdmin === true || user.role === 'superadmin';
+    const isSuper = (user as any).superAdmin === true || user.role === 'superadmin' || user.role === 'super_admin';
     const isAdmin = isSuper || (user as any).admin === true || user.role === 'admin';
     const isCaptain = isAdmin || (user as any).captain === true || user.role === 'captain';
     const resolvedRole = isSuper
-      ? 'super_admin'
+      ? 'superadmin'
       : isAdmin
       ? 'admin'
       : isCaptain
@@ -11662,8 +11662,16 @@ ${postSitemaps}
           if (fallback?.uid) {
             return {
               uid: fallback.uid,
-              email: fallback.email,
-              name: fallback.name,
+              email: fallback.email || '',
+              name: fallback.name || 'Student',
+              picture: fallback.picture || null,
+              emailVerified: true,
+              role: fallback.role,
+              captain: Boolean((fallback as any).captain || fallback.admin || fallback.superAdmin),
+              admin: Boolean(fallback.admin || fallback.superAdmin),
+              superAdmin: Boolean(fallback.superAdmin),
+              isSuperAdmin: Boolean(fallback.superAdmin),
+              isAdminOrAbove: Boolean(fallback.admin || fallback.superAdmin),
             };
           }
           return null;
@@ -11731,13 +11739,16 @@ ${postSitemaps}
   const requireCouponsGrantAndDelegate = async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
-    const store = loadD1Store() as any;
-    const consumeOnce = req.method !== 'GET';
-    if (!hasAdminPermission(store, user, 'coupons.grant', { consumeOnce })) {
+    const isSuperOrAdmin =
+      user.superAdmin === true ||
+      user.admin === true ||
+      user.role === 'superadmin' ||
+      user.role === 'admin';
+    if (!isSuperOrAdmin) {
       return res.status(403).json({
-        error: 'Permission denied: coupons.grant is required to manage coupons or grant Kobans.',
-        code: 'PERMISSION_DENIED',
-        permission: 'coupons.grant',
+        error: 'Forbidden: admin or superAdmin role required to manage coupons (reason: role_not_found).',
+        code: 'FORBIDDEN',
+        reason: 'role_not_found',
       });
     }
     return delegateToEconomyWorker(req, res);
