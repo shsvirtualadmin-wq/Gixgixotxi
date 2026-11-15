@@ -123,6 +123,7 @@ export const RequestAccessSheet: React.FC<RequestAccessSheetProps> = ({
 
   return createPortal(
     <div
+      data-admin-sheet="request-access"
       className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150"
       role="dialog"
       aria-modal="true"

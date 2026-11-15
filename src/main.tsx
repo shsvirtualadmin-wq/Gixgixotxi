@@ -4,11 +4,13 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { getSmoothMode, applySmoothModeToDocument } from '@/utils/smoothMode';
+import { getBoardlyUIMode, applyBoardlyUIModeToDocument } from '@/utils/uiMode';
 import App from './App';
 import './index.css';
 
-// Initialize Smooth Mode synchronously before first render so low-end devices skip heavy CSS effects
+// Initialize Smooth Mode and Boardly UI Mode synchronously before first render
 applySmoothModeToDocument(getSmoothMode());
+applyBoardlyUIModeToDocument(getBoardlyUIMode());
 
 const CHUNK_RELOAD_KEY = 'boardly_chunk_retry_reloaded';
 

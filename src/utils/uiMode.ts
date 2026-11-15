@@ -6,14 +6,14 @@ const BOARDLY_UI_EVENT = 'boardly-ui-mode-change';
 export type BoardlyUIMode = 'classic' | 'glass';
 
 /**
- * Phase 1 requirement: Default boardlyUI = "classic" for now.
- * Only the Settings toggle switches to "glass".
+ * Layer 1 requirement: localStorage "boardlyUI" = "glass" or "classic", default "glass".
+ * Setting "classic" restores the original look completely.
  */
-export const DEFAULT_BOARDLY_UI_MODE: BoardlyUIMode = 'classic';
+export const DEFAULT_BOARDLY_UI_MODE: BoardlyUIMode = 'glass';
 
 /**
  * Reads the persisted Boardly UI mode from localStorage.
- * Falls back to DEFAULT_BOARDLY_UI_MODE ("classic").
+ * Falls back to DEFAULT_BOARDLY_UI_MODE ("glass").
  */
 export function getBoardlyUIMode(): BoardlyUIMode {
   if (typeof window === 'undefined') return DEFAULT_BOARDLY_UI_MODE;
@@ -96,7 +96,7 @@ export function useBoardlyUIMode() {
       reboundTimer = window.setTimeout(() => {
         el.removeAttribute('data-rebound');
         reboundTimer = null;
-      }, 420);
+      }, 500);
     };
 
     const handlePointerDown = (e: PointerEvent) => {
@@ -107,6 +107,19 @@ export function useBoardlyUIMode() {
         'button:not(:disabled), [role="tab"], [data-pressable], a.glass-row, a.glass-pill, .stg-row, .fsm-row'
       );
       if (!pressable) return;
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          navigator.vibrate(8);
+        }
+      } catch {
+        // Ignore haptic errors on unsupported browsers
+      }
+      if (
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return;
+      }
       if (activeEl && activeEl !== pressable) {
         activeEl.removeAttribute('data-pressed');
       }

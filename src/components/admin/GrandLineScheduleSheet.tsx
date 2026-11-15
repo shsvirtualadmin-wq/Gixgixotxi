@@ -346,6 +346,7 @@ export const GrandLineScheduleSheet: React.FC<{
 
   return createPortal(
     <div
+      data-admin-sheet="grand-line-schedule"
       className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150"
       role="dialog"
       aria-modal="true"
@@ -707,6 +708,7 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
 
   return createPortal(
     <div
+      data-admin-sheet="grand-line-schedule"
       className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150"
       role="dialog"
       aria-modal="true"

@@ -79,7 +79,7 @@ export function AdminReviewsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-full">
+    <div data-admin-page="reviews" className="flex flex-col gap-6 w-full max-w-full">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -103,7 +103,7 @@ export function AdminReviewsPage() {
       </div>
 
       {/* ─── STATUS FILTER BAR ──────────────────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-3">
+      <div className="glass-card p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
             Status:
@@ -135,7 +135,7 @@ export function AdminReviewsPage() {
         {loading ? (
           <LineLoader context="admin" message="Loading student reviews..." />
         ) : reviews.length === 0 ? (
-          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+          <div className="glass-card p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
             <p className="font-heading text-[14px] text-[var(--muted)]">
               No student reviews found in this moderation category.
             </p>
@@ -149,7 +149,7 @@ export function AdminReviewsPage() {
             return (
               <div
                 key={r.id}
-                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5"
+                className="glass-card p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5"
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>

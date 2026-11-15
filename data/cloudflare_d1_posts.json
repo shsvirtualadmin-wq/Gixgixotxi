@@ -2292,8 +2292,8 @@
     {
       "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
       "email": "shsvirtualadmin@gmail.com",
-      "role": "super_admin",
-      "custom_role": "Super Admin",
+      "role": "student",
+      "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1793184063714
     },
@@ -2476,24 +2476,24 @@
     {
       "uid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
       "email": "ktkhashir90@gmail.com",
-      "role": "super_admin",
-      "custom_role": "Super Admin",
+      "role": "student",
+      "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1794682463328
     },
     {
       "uid": "Pz5fjmLtXHbWL2ntnW1zd8nlQos2",
       "email": "shsvirtualadmin@gmail.com",
-      "role": "super_admin",
-      "custom_role": "Super Admin",
+      "role": "student",
+      "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1794682463328
     },
     {
       "uid": "2GHhpHZkYFR1keIAwlnuch08mdh1",
       "email": "support@boardly.cfd",
-      "role": "super_admin",
-      "custom_role": "Super Admin",
+      "role": "student",
+      "custom_role": null,
       "is_posting_banned": 0,
       "updated_at": 1794682463328
     }
@@ -7435,35 +7435,6 @@
       "updated_at": 1794143853506
     }
   ],
-  "roleMigrationV1": {
-    "migratedAt": "2026-11-14T18:54:23.328Z",
-    "migratedAccounts": [
-      {
-        "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
-        "email": "shsvirtualadmin@gmail.com",
-        "previousRole": "super_admin",
-        "newRole": "super_admin"
-      },
-      {
-        "uid": "JBGCDTLuWUMUIUMCLek7SdgvUNn1",
-        "email": "ktkhashir90@gmail.com",
-        "previousRole": "super_admin",
-        "newRole": "super_admin"
-      },
-      {
-        "uid": "Pz5fjmLtXHbWL2ntnW1zd8nlQos2",
-        "email": "shsvirtualadmin@gmail.com",
-        "previousRole": "super_admin",
-        "newRole": "super_admin"
-      },
-      {
-        "uid": "2GHhpHZkYFR1keIAwlnuch08mdh1",
-        "email": "support@boardly.cfd",
-        "previousRole": "super_admin",
-        "newRole": "super_admin"
-      }
-    ]
-  },
   "accessRequests": [],
   "accessGrants": [],
   "pro_purchase_locks": [],

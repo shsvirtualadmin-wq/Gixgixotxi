@@ -379,21 +379,26 @@ html.ui-glass .lg-collapsible[data-collapsed="true"] {
 html.ui-glass [data-admin-shell="true"] {
   background-color: var(--bg);
   color: var(--text);
+  overflow-x: hidden;
 }
 
 html.ui-glass [data-admin-shell="true"] > aside {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)) !important;
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-right: 1px solid var(--border) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.02) 38%),
+    var(--glass) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-right: 1px solid var(--edge) !important;
   box-shadow: inset -1px 0 0 var(--border-hi);
 }
 
 html.ui-glass [data-admin-shell="true"] > div > header {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03)) !important;
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-bottom: 1px solid var(--border) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%),
+    var(--glass) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-bottom: 1px solid var(--edge) !important;
   box-shadow: inset 0 -1px 0 var(--border-hi);
 }
 
@@ -407,9 +412,18 @@ html.ui-glass .lg-glass-more-sheet {
 }
 
 /* 2. Shared Admin Page Surfaces, Cards, KPI Tiles, Inputs & Buttons */
+html.ui-glass [data-admin-page] {
+  min-width: 0;
+  max-width: 100%;
+}
+
 html.ui-glass [data-admin-page] h1 {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+}
+
+html.ui-glass [data-admin-page] .font-mono {
+  font-variant-numeric: tabular-nums;
 }
 
 html.ui-glass [data-admin-page] .glass-card,
@@ -417,77 +431,87 @@ html.ui-glass [data-admin-page] .aqb-glass-card,
 html.ui-glass [data-admin-page] .akb-glass-card,
 html.ui-glass [data-admin-section="grand-line-tests"] {
   border-radius: var(--r-card) !important;
-  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid var(--border) !important;
-  box-shadow:
-    inset 0 1px 0 var(--border-hi),
-    0 12px 36px rgba(0, 0, 0, 0.42) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0) 100%),
+    var(--glass) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid var(--edge) !important;
+  box-shadow: var(--lg-shadow) !important;
 }
 
 html.ui-glass[data-theme="light"] [data-admin-page] .glass-card,
 html.ui-glass[data-theme="light"] [data-admin-page] .aqb-glass-card,
 html.ui-glass[data-theme="light"] [data-admin-page] .akb-glass-card,
 html.ui-glass[data-theme="light"] [data-admin-section="grand-line-tests"] {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
-  box-shadow:
-    inset 0 1px 0 var(--border-hi),
-    0 10px 28px rgba(15, 16, 20, 0.07) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.72) 100%),
+    var(--glass) !important;
+  box-shadow: var(--lg-shadow) !important;
 }
 
 /* Nested row cards inside Admin pages */
+html.ui-glass [data-admin-page] .rounded-\[24px\],
 html.ui-glass [data-admin-page] .rounded-\[20px\],
 html.ui-glass [data-admin-page] .rounded-\[18px\],
 html.ui-glass [data-admin-page] .rounded-2xl {
-  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.025));
-  backdrop-filter: blur(24px) saturate(175%);
-  -webkit-backdrop-filter: blur(24px) saturate(175%);
-  border-color: var(--border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.02) 100%),
+    var(--glass);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-color: var(--edge);
   box-shadow:
     inset 0 1px 0 var(--border-hi),
     0 10px 30px rgba(0, 0, 0, 0.32);
 }
 
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[24px\],
 html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[20px\],
 html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[18px\],
 html.ui-glass[data-theme="light"] [data-admin-page] .rounded-2xl {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.68));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72));
   box-shadow:
     inset 0 1px 0 var(--border-hi),
     0 8px 24px rgba(15, 16, 20, 0.06);
 }
 
-/* Admin Inputs, Selects & Textareas */
+/* Admin Inputs, Selects & Textareas (16px font so iOS does not zoom, red focus ring) */
 html.ui-glass [data-admin-page] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
 html.ui-glass [data-admin-page] select,
 html.ui-glass [data-admin-page] textarea,
-html.ui-glass [data-admin-sheet="user-override"] input:not([type="checkbox"]):not([type="radio"]),
-html.ui-glass [data-admin-sheet="user-override"] select,
-html.ui-glass [data-admin-sheet="user-override"] textarea {
-  border-radius: 14px;
-  background: var(--glass-1);
-  border-color: var(--border);
+html.ui-glass [data-admin-sheet] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+html.ui-glass [data-admin-sheet] select,
+html.ui-glass [data-admin-sheet] textarea {
+  min-height: 44px;
+  font-size: 16px;
+  border-radius: 16px;
+  background: var(--glass);
+  border-color: var(--edge);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 html.ui-glass [data-admin-page] input:focus,
 html.ui-glass [data-admin-page] select:focus,
-html.ui-glass [data-admin-page] textarea:focus {
-  border-color: rgba(215, 25, 33, 0.55) !important;
+html.ui-glass [data-admin-page] textarea:focus,
+html.ui-glass [data-admin-sheet] input:focus,
+html.ui-glass [data-admin-sheet] select:focus,
+html.ui-glass [data-admin-sheet] textarea:focus {
+  border-color: var(--red) !important;
   box-shadow:
-    0 0 0 3px rgba(215, 25, 33, 0.16),
+    0 0 0 3px rgba(215, 25, 33, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
-/* Nothing Red Primary CTA Glow inside Admin Pages */
+/* Nothing Red Primary CTA Glow inside Admin Pages & Sheets */
 html.ui-glass [data-admin-page] button.bg-\[\#D71921\],
 html.ui-glass [data-admin-page] button.bg-\[var\(--red\)\],
-html.ui-glass [data-admin-sheet="user-override"] button.bg-\[\#D71921\],
-html.ui-glass [data-admin-sheet="user-override"] button.bg-\[var\(--red\)\] {
+html.ui-glass [data-admin-sheet] button.bg-\[\#D71921\],
+html.ui-glass [data-admin-sheet] button.bg-\[var\(--red\)\] {
+  min-height: 44px;
   border-radius: var(--r-pill);
-  background: var(--accent) !important;
+  background: var(--red) !important;
   color: #ffffff !important;
   border: 1px solid rgba(255, 255, 255, 0.24) !important;
   box-shadow:
@@ -495,25 +519,67 @@ html.ui-glass [data-admin-sheet="user-override"] button.bg-\[var\(--red\)\] {
     inset 0 1px 0 rgba(255, 255, 255, 0.34) !important;
 }
 
-/* 3. UserOverrideDrawer Glass Sheet Polish */
-html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2) {
-  background: linear-gradient(180deg, rgba(22, 22, 26, 0.90), rgba(10, 10, 14, 0.94)) !important;
-  backdrop-filter: blur(32px) saturate(190%);
-  -webkit-backdrop-filter: blur(32px) saturate(190%);
-  border-color: var(--border) !important;
-  box-shadow:
-    inset 0 1px 0 var(--border-hi),
-    -16px 0 48px rgba(0, 0, 0, 0.60) !important;
+/* Touch targets & overflow safety inside Admin Pages */
+html.ui-glass [data-admin-page] [role="tab"],
+html.ui-glass [data-admin-page] .aqb-tab-btn,
+html.ui-glass [data-admin-page] .akb-tab-btn {
+  min-height: 40px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2) {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 244, 246, 0.96)) !important;
-  box-shadow:
-    inset 0 1px 0 var(--border-hi),
-    -12px 0 36px rgba(15, 16, 20, 0.12) !important;
+html.ui-glass [data-admin-page] pre,
+html.ui-glass [data-admin-page] table {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-/* 4. Light/Dark Theme Adaptive Fixes for Hardcoded Dark Admin Pages (Commons, Health, Grand Line Tests) */
+/* 3. Portaled Admin Sheets (UserOverrideDrawer, RequestAccessSheet, GrandLineScheduleSheet) */
+html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2),
+html.ui-glass [data-admin-sheet="request-access"] > div,
+html.ui-glass [data-admin-sheet="grand-line-schedule"] > div {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.02) 36%),
+    rgba(14, 14, 18, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(175%);
+  -webkit-backdrop-filter: blur(28px) saturate(175%);
+  border-color: var(--edge) !important;
+  color: var(--text) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 24px 64px rgba(0, 0, 0, 0.65) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2),
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] > div,
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] > div {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(244, 244, 247, 0.96) 100%) !important;
+  color: var(--text) !important;
+  box-shadow:
+    inset 0 1px 0 var(--border-hi),
+    0 20px 56px rgba(15, 16, 20, 0.14) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .bg-\[\#141419\],
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .bg-\[\#18181d\] {
+  background: rgba(255, 255, 255, 0.85) !important;
+  border-color: var(--edge) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .text-white,
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .text-white,
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .text-\[\#f0f0f2\] {
+  color: var(--text) !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .text-zinc-400,
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .text-zinc-300,
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .text-\[\#9a9aa2\] {
+  color: var(--mute) !important;
+}
+
+/* 4. Light/Dark Theme Adaptive Fixes for Hardcoded Dark Admin Pages (Commons, Health, Grand Line Tests, Access Requests) */
 html.ui-glass [data-admin-page="commons"] h1,
 html.ui-glass [data-admin-page="health"] h1,
 html.ui-glass [data-admin-section="grand-line-tests"] h2 {
@@ -523,11 +589,14 @@ html.ui-glass [data-admin-section="grand-line-tests"] h2 {
 html.ui-glass [data-admin-page="commons"] .bg-neutral-900\/70,
 html.ui-glass [data-admin-page="commons"] .bg-neutral-900\/40,
 html.ui-glass [data-admin-page="health"] .bg-\[\#0D0D0D\],
-html.ui-glass [data-admin-page="health"] .bg-\[\#141414\] {
-  background: linear-gradient(180deg, var(--glass-2), rgba(255, 255, 255, 0.03)) !important;
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-color: var(--border) !important;
+html.ui-glass [data-admin-page="health"] .bg-\[\#141414\],
+html.ui-glass [data-admin-section="grand-line-tests"] .bg-white\/\[0\.025\] {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%),
+    var(--glass) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-color: var(--edge) !important;
   color: var(--text) !important;
   box-shadow:
     inset 0 1px 0 var(--border-hi),
@@ -537,7 +606,8 @@ html.ui-glass [data-admin-page="health"] .bg-\[\#141414\] {
 html.ui-glass[data-theme="light"] [data-admin-page="commons"] .bg-neutral-900\/70,
 html.ui-glass[data-theme="light"] [data-admin-page="commons"] .bg-neutral-900\/40,
 html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#0D0D0D\],
-html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#141414\] {
+html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#141414\],
+html.ui-glass[data-theme="light"] [data-admin-section="grand-line-tests"] .bg-white\/\[0\.025\] {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)) !important;
   box-shadow:
     inset 0 1px 0 var(--border-hi),
@@ -546,30 +616,43 @@ html.ui-glass[data-theme="light"] [data-admin-page="health"] .bg-\[\#141414\] {
 
 html.ui-glass [data-admin-page="commons"] .text-white,
 html.ui-glass [data-admin-page="health"] .text-white,
-html.ui-glass [data-admin-section="grand-line-tests"] .text-white {
+html.ui-glass [data-admin-section="grand-line-tests"] .text-white,
+html.ui-glass [data-admin-section="grand-line-tests"] .text-\[\#f0f0f2\] {
   color: var(--text) !important;
 }
 
 html.ui-glass [data-admin-page="commons"] .text-neutral-400,
 html.ui-glass [data-admin-page="commons"] .text-neutral-300,
 html.ui-glass [data-admin-page="health"] .text-\[\#888888\],
-html.ui-glass [data-admin-page="health"] .text-\[\#AAAAAA\] {
+html.ui-glass [data-admin-page="health"] .text-\[\#AAAAAA\],
+html.ui-glass [data-admin-section="grand-line-tests"] .text-\[\#9a9aa2\] {
   color: var(--mute) !important;
 }
 
-/* 5. Segmented Tabs & Filter Pills inside Admin Pages */
+/* 5. Segmented Tabs & Filter Pills inside Admin Pages (Single-Row Scroll, Never Wrap to Two Rows) */
 html.ui-glass [data-admin-page] .aqb-segmented-tabs,
-html.ui-glass [data-admin-page] .akb-tabs-bar {
+html.ui-glass [data-admin-page] .akb-tabs-bar,
+html.ui-glass [data-admin-page] [role="tablist"] {
+  display: flex;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-radius: var(--r-pill) !important;
-  background: var(--glass-1) !important;
-  border: 1px solid var(--border) !important;
+  background: var(--glass) !important;
+  border: 1px solid var(--edge) !important;
   box-shadow: inset 0 1px 0 var(--border-hi) !important;
+}
+
+html.ui-glass [data-admin-page] .aqb-segmented-tabs::-webkit-scrollbar,
+html.ui-glass [data-admin-page] .akb-tabs-bar::-webkit-scrollbar,
+html.ui-glass [data-admin-page] [role="tablist"]::-webkit-scrollbar {
+  display: none;
 }
 
 html.ui-glass [data-admin-page] .aqb-tab-btn--active,
 html.ui-glass [data-admin-page] .akb-tab-btn--active {
   border-radius: var(--r-pill) !important;
-  background: var(--accent) !important;
+  background: var(--red) !important;
   color: #ffffff !important;
   box-shadow:
     0 6px 20px -4px var(--accent-glow),
@@ -851,10 +934,18 @@ html.ui-glass [data-student-page="settings"] .fsm-search-pill {
   html.ui-glass [data-pressable],
   html.ui-glass .lg-bubble,
   html.ui-glass [data-pressable][data-rebound="true"],
-  html.ui-glass .lg-bubble[data-rebound="true"] {
+  html.ui-glass .lg-bubble[data-rebound="true"],
+  html.ui-glass .lg-segmented-indicator,
+  html.ui-glass .lg-sheet-panel {
     transition: none !important;
     animation: none !important;
     transform: none !important;
+  }
+
+  html.ui-glass [data-pressable]::after,
+  html.ui-glass .lg-bubble::after {
+    display: none !important;
+    opacity: 0 !important;
   }
 }
 

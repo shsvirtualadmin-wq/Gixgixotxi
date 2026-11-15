@@ -16,7 +16,7 @@ export interface UsePressableOptions {
 export function usePressable<T extends HTMLElement = HTMLElement>(
   options: UsePressableOptions = {}
 ) {
-  const { disabled = false, haptic = false, scaleVariant = 'default' } = options;
+  const { disabled = false, haptic = true, scaleVariant = 'default' } = options;
   const reboundTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -30,6 +30,10 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
   const onPointerDown = useCallback(
     (e: React.PointerEvent<T>) => {
       if (disabled) return;
+      if (haptic) {
+        triggerHapticFeedback(8);
+      }
+      if (prefersReducedMotion()) return;
       const el = e.currentTarget;
       const rect = el.getBoundingClientRect();
       const x = Math.round(e.clientX - rect.left);
@@ -38,9 +42,6 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
       el.style.setProperty('--tap-y', `${y}px`);
       el.removeAttribute('data-rebound');
       el.setAttribute('data-pressed', 'true');
-      if (haptic) {
-        triggerHapticFeedback(6);
-      }
     },
     [disabled, haptic]
   );
@@ -58,7 +59,7 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
       reboundTimerRef.current = window.setTimeout(() => {
         el.removeAttribute('data-rebound');
         reboundTimerRef.current = null;
-      }, 420);
+      }, 500);
     }
   }, []);
 
@@ -83,7 +84,7 @@ export interface BubbleProps extends React.HTMLAttributes<HTMLDivElement> {
 export const Bubble: React.FC<BubbleProps> = ({
   as = 'div',
   disabled = false,
-  haptic = false,
+  haptic = true,
   scaleVariant = 'default',
   type = 'button',
   className = '',
@@ -135,7 +136,7 @@ export const Bubble: React.FC<BubbleProps> = ({
 };
 
 /* ============================================================================
- * 2. <GlassCard> — Liquid Glass Surface Container (24px–28px radius)
+ * 2. <GlassCard> — Liquid Glass Surface Container (26px–32px radius)
  * ============================================================================ */
 
 export interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -178,10 +179,25 @@ export const GlassCard: React.FC<GlassCardProps> = ({
 };
 
 /* ============================================================================
- * 3. <Pill> — Status / Role / Count / Filter Badge (Never renders "undefined")
+ * 3. <Pill> — Status / Role / Count / Filter Badge (default, red, ok, danger)
+ *    Never renders "undefined"
  * ============================================================================ */
 
-export type PillVariant = 'neutral' | 'live' | 'green' | 'pending' | 'amber' | 'error' | 'red' | 'accent' | 'info' | 'cyan';
+export type PillVariant =
+  | 'default'
+  | 'neutral'
+  | 'ok'
+  | 'live'
+  | 'green'
+  | 'warn'
+  | 'pending'
+  | 'amber'
+  | 'danger'
+  | 'error'
+  | 'red'
+  | 'accent'
+  | 'info'
+  | 'cyan';
 
 export interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: PillVariant;
@@ -189,7 +205,7 @@ export interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
 }
 
 export const Pill: React.FC<PillProps> = ({
-  variant = 'neutral',
+  variant = 'default',
   dot = false,
   className = '',
   children,
@@ -204,7 +220,7 @@ export const Pill: React.FC<PillProps> = ({
   }
 
   const variantClass =
-    variant === 'neutral' ? '' : `lg-pill--${variant}`;
+    variant === 'default' || variant === 'neutral' ? '' : `lg-pill--${variant}`;
 
   return (
     <span className={`lg-pill ${variantClass} ${className}`.trim()} {...rest}>
@@ -220,7 +236,7 @@ export const Pill: React.FC<PillProps> = ({
 };
 
 /* ============================================================================
- * 4. <Segmented> — Horizontal Pill Tab Bar with Bubble Touch
+ * 4. <Segmented> — Horizontal Pill Tab Bar with Sliding Spring Indicator
  * ============================================================================ */
 
 export interface SegmentedOption<T extends string = string> {
@@ -245,29 +261,76 @@ export function Segmented<T extends string = string>({
   ariaLabel = 'Segmented options',
   className = '',
 }: SegmentedProps<T>) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const activeEl = itemRefs.current[value];
+    const containerEl = containerRef.current;
+    if (!activeEl || !containerEl) {
+      setIndicator(null);
+      return;
+    }
+    const updateMetrics = () => {
+      const el = itemRefs.current[value];
+      if (!el) return;
+      setIndicator({
+        left: el.offsetLeft,
+        width: el.offsetWidth,
+      });
+    };
+    updateMetrics();
+    window.addEventListener('resize', updateMetrics);
+    return () => window.removeEventListener('resize', updateMetrics);
+  }, [value, options]);
+
   return (
-    <div role="tablist" aria-label={ariaLabel} className={`lg-segmented ${className}`.trim()}>
+    <div
+      ref={containerRef}
+      role="tablist"
+      aria-label={ariaLabel}
+      data-has-indicator={indicator ? 'true' : 'false'}
+      className={`lg-segmented ${className}`.trim()}
+    >
+      {indicator && (
+        <div
+          aria-hidden="true"
+          className="lg-segmented-indicator"
+          style={{
+            width: `${indicator.width}px`,
+            transform: `translate3d(${indicator.left}px, 0, 0)`,
+          }}
+        />
+      )}
       {options.map((opt) => {
         const active = opt.id === value;
         return (
-          <Bubble
+          <div
             key={opt.id}
-            as="button"
-            type="button"
-            haptic
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(opt.id)}
-            className={`lg-segmented-item ${active ? 'is-active' : ''}`}
+            ref={(el) => {
+              itemRefs.current[opt.id] = el;
+            }}
+            className="shrink-0 flex"
           >
-            {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-            <span>{opt.label}</span>
-            {opt.badge !== undefined && opt.badge !== null && !/undefined/i.test(String(opt.badge)) && (
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/25 text-current tabular-nums">
-                {opt.badge}
-              </span>
-            )}
-          </Bubble>
+            <Bubble
+              as="button"
+              type="button"
+              haptic
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(opt.id)}
+              className={`lg-segmented-item ${active ? 'is-active' : ''}`}
+            >
+              {opt.icon && <span className="shrink-0">{opt.icon}</span>}
+              <span>{opt.label}</span>
+              {opt.badge !== undefined && opt.badge !== null && !/undefined/i.test(String(opt.badge)) && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/25 text-current tabular-nums">
+                  {opt.badge}
+                </span>
+              )}
+            </Bubble>
+          </div>
         );
       })}
     </div>
@@ -275,7 +338,7 @@ export function Segmented<T extends string = string>({
 }
 
 /* ============================================================================
- * 5. <GlassSheet> — Mobile Bottom Sheet / Desktop Centered Modal
+ * 5. <GlassSheet> — Mobile Bottom Sheet / Desktop Centered Modal (Spring In)
  * ============================================================================ */
 
 export interface GlassSheetProps {
@@ -323,7 +386,7 @@ export const GlassSheet: React.FC<GlassSheetProps> = ({
       />
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative z-10 w-full ${maxWidthClass} max-h-[86dvh] overflow-y-auto lg-surface rounded-t-[28px] md:rounded-[28px] p-5 pb-[calc(24px+env(safe-area-inset-bottom,0px))] md:pb-6 flex flex-col gap-4`}
+        className={`relative z-10 w-full ${maxWidthClass} max-h-[86dvh] overflow-y-auto lg-surface lg-sheet-panel rounded-t-[28px] md:rounded-[28px] p-5 pb-[calc(24px+env(safe-area-inset-bottom,0px))] md:pb-6 flex flex-col gap-4`}
       >
         <div className="md:hidden w-10 h-1 rounded-full bg-white/25 mx-auto -mt-1 mb-1 shrink-0" />
         {(title || subtitle) && (
@@ -344,7 +407,7 @@ export const GlassSheet: React.FC<GlassSheetProps> = ({
               scaleVariant="icon"
               onClick={onClose}
               aria-label="Close sheet"
-              className="w-8 h-8 rounded-full flex items-center justify-center bg-[var(--glass-2)] border border-[var(--border)] text-[var(--mute)] hover:text-[var(--text)] shrink-0 cursor-pointer"
+              className="w-11 h-11 rounded-full flex items-center justify-center bg-[var(--glass-2)] border border-[var(--border)] text-[var(--mute)] hover:text-[var(--text)] shrink-0 cursor-pointer"
             >
               <X size={16} />
             </Bubble>
@@ -576,7 +639,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         type="button"
         haptic
         onClick={onAction}
-        className="mt-1.5 inline-flex items-center justify-center gap-1.5 min-h-[40px] px-4 py-2 rounded-full bg-[var(--accent)] text-white text-xs font-semibold cursor-pointer"
+        className="mt-1.5 inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-full bg-[var(--accent)] text-white text-xs font-semibold cursor-pointer"
       >
         {actionLabel}
       </Bubble>
@@ -639,7 +702,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
               type="button"
               onClick={() => setDetailsOpen((prev) => !prev)}
               aria-expanded={detailsOpen}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-[var(--glass-2)] border border-[var(--border)] text-[var(--mute)] hover:text-[var(--text)] cursor-pointer"
+              className="inline-flex items-center gap-1 min-h-[44px] px-3.5 py-2 rounded-full text-[11px] font-semibold bg-[var(--glass-2)] border border-[var(--border)] text-[var(--mute)] hover:text-[var(--text)] cursor-pointer"
             >
               <span>Details</span>
               {detailsOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -652,7 +715,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
               haptic
               disabled={retrying}
               onClick={onRetry}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-bold bg-[var(--accent)] text-white cursor-pointer disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-full text-[11px] font-bold bg-[var(--accent)] text-white cursor-pointer disabled:opacity-60"
             >
               <RefreshCw size={12} className={retrying ? 'animate-spin' : ''} />
               <span>{retrying ? 'Retrying…' : 'Retry'}</span>
