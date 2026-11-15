@@ -3,19 +3,26 @@ import { onRequest } from '../../functions/api/[[path]]';
 import { InMemoryD1Database, type VerifiedFirebaseToken } from '../../functions/_utils/firestoreRestAdmin';
 import { runResetRoles } from '../../scripts/reset-roles.js';
 
+import { isVerifiedOwnerFromToken } from '../constants/superAdmin';
+
 /**
- * Helper that evaluates the exact custom-claim hierarchy and hamburger menu visibility rules
+ * Helper that evaluates the exact claim + verified owner email hierarchy and hamburger menu visibility rules
  * used by AuthContext.tsx, HamburgerMenuSheet.tsx, RoleGuard.tsx, and AdminGuard.tsx.
  */
 function evaluateClientRoleStateFromTokenResult(params: {
   email: string;
+  emailVerified?: boolean;
   claims: Record<string, unknown>;
   firestoreSpoofedRole?: string;
   localStorageSpoofedRole?: string;
 }) {
   // Strictly read from (await user.getIdTokenResult()).claims — never from Firestore or localStorage
   const claims = params.claims || {};
-  const superAdmin = claims.superAdmin === true;
+  const verifiedOwner = isVerifiedOwnerFromToken(claims, {
+    email: params.email,
+    emailVerified: params.emailVerified ?? claims.email_verified === true,
+  });
+  const superAdmin = claims.superAdmin === true || verifiedOwner;
   const admin = claims.admin === true || superAdmin;
   const captain = claims.captain === true || admin;
 
@@ -288,7 +295,72 @@ async function runRoleLockdownTests() {
     });
     assert.equal(res.status, 200, `Owner (superAdmin) must get 200 on ${endpoint}`);
   }
-  console.log('✓ 4. Server-side custom-claim guards (/api/captain/*, /api/admin/*, /api/superadmin/*) verified');
+
+  // 4f. Verified Owner email WITHOUT custom claims -> 200 OK on /api/superadmin/stats, /api/admin/stats, /api/captain/dashboard
+  mockTokens['Bearer token_owner_verified_email_no_claims'] = {
+    uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+    email: '  SHSVirtualAdmin@gmail.com ',
+    name: 'Owner',
+    emailVerified: true,
+    superAdmin: false,
+    admin: false,
+    captain: false,
+    role: undefined,
+  };
+  for (const endpoint of ['/api/superadmin/stats', '/api/admin/stats', '/api/captain/dashboard']) {
+    const res = await onRequest({
+      request: new Request(`https://boardly.cfd${endpoint}`, {
+        headers: { Authorization: 'Bearer token_owner_verified_email_no_claims' },
+      }),
+      env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+      tokenVerifierOverride,
+    });
+    assert.equal(res.status, 200, `Verified owner email without custom claims must get 200 on ${endpoint}`);
+  }
+
+  // 4g. Unverified Owner email WITHOUT custom claims -> 403 Forbidden (fail closed!)
+  mockTokens['Bearer token_owner_unverified_email_no_claims'] = {
+    uid: 'uid_spoof_unverified',
+    email: 'shsvirtualadmin@gmail.com',
+    name: 'Unverified Spoof',
+    emailVerified: false,
+    superAdmin: false,
+    admin: false,
+    captain: false,
+    role: undefined,
+  };
+  for (const endpoint of ['/api/superadmin/stats', '/api/admin/stats', '/api/captain/dashboard']) {
+    const res = await onRequest({
+      request: new Request(`https://boardly.cfd${endpoint}`, {
+        headers: { Authorization: 'Bearer token_owner_unverified_email_no_claims' },
+      }),
+      env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+      tokenVerifierOverride,
+    });
+    assert.equal(res.status, 403, `Unverified owner email must get 403 on ${endpoint}`);
+  }
+
+  // 4h. Client evaluator: verified owner email without custom claims gets superAdmin=true; unverified gets false
+  const ownerNoClaimsClient = evaluateClientRoleStateFromTokenResult({
+    email: 'shsvirtualadmin@gmail.com',
+    emailVerified: true,
+    claims: { email: ' shsvirtualadmin@gmail.com ', email_verified: true },
+    firestoreSpoofedRole: 'student',
+  });
+  assert.equal(ownerNoClaimsClient.superAdmin, true);
+  assert.equal(ownerNoClaimsClient.admin, true);
+  assert.equal(ownerNoClaimsClient.captain, true);
+
+  const ownerUnverifiedClient = evaluateClientRoleStateFromTokenResult({
+    email: 'shsvirtualadmin@gmail.com',
+    emailVerified: false,
+    claims: { email: 'shsvirtualadmin@gmail.com', email_verified: false },
+    firestoreSpoofedRole: 'super_admin',
+  });
+  assert.equal(ownerUnverifiedClient.superAdmin, false);
+  assert.equal(ownerUnverifiedClient.admin, false);
+  assert.equal(ownerUnverifiedClient.captain, false);
+  console.log('✓ 4. Server-side custom-claim & verified-owner-email guards (/api/captain/*, /api/admin/*, /api/superadmin/*) verified');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TEST 5: scripts/reset-roles.js (--dry-run & live execution)

@@ -777,7 +777,7 @@ export async function verifyFirebaseIdToken(
     if (!isValid) return null;
 
     const uid = payload.sub;
-    const email = String(payload.email || '').toLowerCase();
+    const email = String(payload.email || '').trim().toLowerCase();
     const signInProvider = payload.firebase?.sign_in_provider
       ? String(payload.firebase.sign_in_provider)
       : undefined;
@@ -819,9 +819,14 @@ export async function verifyFirebaseIdToken(
       }
     }
 
-    // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+    // Roles come from verified Firebase ID token custom claims OR verified owner email claim.
     // Hierarchy: superAdmin > admin > captain > student
-    const isSuperAdminClaim = payload.superAdmin === true;
+    const configuredOwnerEmail = String((env as any).OWNER_EMAIL || 'shsvirtualadmin@gmail.com')
+      .trim()
+      .toLowerCase();
+    const isVerifiedOwner =
+      payload.email_verified === true && Boolean(email) && email === configuredOwnerEmail;
+    const isSuperAdminClaim = payload.superAdmin === true || isVerifiedOwner;
     const isAdminClaim = payload.admin === true || isSuperAdminClaim;
     const isCaptainClaim = payload.captain === true || isAdminClaim;
 

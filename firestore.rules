@@ -19,17 +19,32 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
-    // Roles come ONLY from verified Firebase Auth custom claims set server-side with Admin SDK.
-    // Never from a client-writable Firestore field, email allowlist, or UID list.
-    function isSuperAdmin() {
-      return signedIn() && request.auth.token.superAdmin == true;
+    function ownerEmail() {
+      return 'shsvirtualadmin@gmail.com';
     }
 
-    // superAdmin implies admin. Everything else without admin/superAdmin claim is a normal user.
+    // Verified owner email from signed Firebase Auth token (never client-writable fields).
+    function isVerifiedOwnerEmail() {
+      return signedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() == ownerEmail();
+    }
+
+    // Roles come from verified Firebase Auth custom claims OR the verified owner email claim
+    // in the Firebase Auth ID token. Never from client-writable Firestore fields or unverified emails.
+    function isSuperAdmin() {
+      return signedIn() && (
+        request.auth.token.superAdmin == true ||
+        isVerifiedOwnerEmail()
+      );
+    }
+
+    // superAdmin implies admin. Everything else without admin/superAdmin is a normal user.
     function isAdmin() {
       return signedIn() && (
         request.auth.token.admin == true ||
-        request.auth.token.superAdmin == true
+        isSuperAdmin()
       );
     }
 
@@ -37,8 +52,7 @@ service cloud.firestore {
     function isCaptain() {
       return signedIn() && (
         request.auth.token.captain == true ||
-        request.auth.token.admin == true ||
-        request.auth.token.superAdmin == true
+        isAdmin()
       );
     }
 

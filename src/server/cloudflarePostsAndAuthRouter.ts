@@ -1499,9 +1499,15 @@ export async function verifyFirebaseJwtZeroFirestore(
       throw new Error('POSTING_BANNED');
     }
 
-    // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+    // Roles come from verified Firebase ID token custom claims OR verified owner email claim.
+    // Never from Firestore docs, localStorage, or unverified emails.
     // Hierarchy: superAdmin > admin > captain > student
-    const isSuperAdminClaim = payload.superAdmin === true;
+    const configuredOwnerEmail = String(process.env.OWNER_EMAIL || 'shsvirtualadmin@gmail.com')
+      .trim()
+      .toLowerCase();
+    const isVerifiedOwner =
+      payload.email_verified === true && Boolean(email) && email === configuredOwnerEmail;
+    const isSuperAdminClaim = payload.superAdmin === true || isVerifiedOwner;
     const isAdminClaim = payload.admin === true || isSuperAdminClaim;
     const isCaptainClaim = payload.captain === true || isAdminClaim;
 
@@ -13150,9 +13156,15 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         body: method !== 'GET' && method !== 'HEAD' ? rawBodyText : undefined,
       });
 
+      const gateEnv = {
+        ...process.env,
+        OWNER_EMAIL: process.env.OWNER_EMAIL || 'shsvirtualadmin@gmail.com',
+        FIREBASE_PROJECT_ID,
+        FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+      };
       const gate = await enforceAdminOrSuperAdminGate({
         request: webReq,
-        env: process.env as any,
+        env: gateEnv as any,
       });
 
       if (gate.blockedResponse) {
@@ -13175,7 +13187,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       ) {
         const handled = await handleSuperAdminAndExtraAdminRoutes({
           request: webReq,
-          env: process.env as any,
+          env: gateEnv as any,
           caller: gate.caller,
         });
         if (handled) {

@@ -20,10 +20,30 @@ export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 export const DEFAULT_FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
-// SECURITY: Hardcoded superAdmin UID/email allowlists are disabled (fail closed).
-// Roles come strictly from verified Firebase Auth custom claims (token.superAdmin === true, token.admin === true).
+// Canonical owner email (single trusted non-custom-claim fallback when email_verified === true).
+export const DEFAULT_OWNER_EMAIL = 'shsvirtualadmin@gmail.com';
 export const DEFAULT_SUPERADMIN_UIDS: string[] = [];
-export const DEFAULT_SUPERADMIN_EMAILS: string[] = [];
+export const DEFAULT_SUPERADMIN_EMAILS: string[] = [DEFAULT_OWNER_EMAIL];
+
+export function resolveConfiguredOwnerEmail(env?: Record<string, any> | null): string {
+  const raw =
+    env?.OWNER_EMAIL ??
+    (typeof process !== 'undefined' && process.env ? process.env.OWNER_EMAIL : undefined) ??
+    DEFAULT_OWNER_EMAIL;
+  const normalized = String(raw || DEFAULT_OWNER_EMAIL).trim().toLowerCase();
+  return normalized || DEFAULT_OWNER_EMAIL;
+}
+
+export function isVerifiedOwnerEmailToken(
+  email?: string | null,
+  emailVerified?: boolean | null,
+  env?: Record<string, any> | null
+): boolean {
+  if (emailVerified !== true) return false;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) return false;
+  return normalizedEmail === resolveConfiguredOwnerEmail(env);
+}
 
 export interface VerifiedFirebaseToken {
   uid: string;
@@ -35,6 +55,12 @@ export interface VerifiedFirebaseToken {
   captain?: boolean;
   admin?: boolean;
   superAdmin?: boolean;
+  roleSource?: 'claims' | 'owner_email' | 'none';
+  rawCustomClaims?: {
+    superAdmin: boolean;
+    admin: boolean;
+    captain: boolean;
+  };
   authTime?: number;
   iat?: number;
   signInProvider?: string;
@@ -175,7 +201,8 @@ async function getGooglePublicJwks(): Promise<Array<JsonWebKey & { kid?: string 
 
 export async function verifyFirebaseIdToken(
   authHeader: string | null | undefined,
-  projectId: string = DEFAULT_FIREBASE_PROJECT_ID
+  projectId: string = DEFAULT_FIREBASE_PROJECT_ID,
+  env?: Record<string, any> | null
 ): Promise<VerifiedFirebaseToken | null> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   const token = authHeader.slice(7).trim();
@@ -262,28 +289,48 @@ export async function verifyFirebaseIdToken(
     const hasGoogleProvider =
       signInProvider === 'google.com' || signInProviders.includes('google.com');
 
-    // STRICT FAIL-CLOSED: Roles come ONLY from verified Firebase ID token custom claims
+    // Roles come from verified Firebase ID token custom claims OR verified owner email claim.
+    // Never from Firestore docs, localStorage, or unverified emails.
     // Hierarchy: superAdmin > admin > captain > student
-    const isSuperAdminClaim = payload.superAdmin === true;
-    const isAdminClaim = payload.admin === true || isSuperAdminClaim;
-    const isCaptainClaim = payload.captain === true || isAdminClaim;
+    const hasCustomSuperAdmin = payload.superAdmin === true;
+    const hasCustomAdmin = payload.admin === true;
+    const hasCustomCaptain = payload.captain === true;
+    const emailVerifiedBool = payload.email_verified === true;
+    const isVerifiedOwner = isVerifiedOwnerEmailToken(payload.email, emailVerifiedBool, env);
+
+    const isSuperAdmin = hasCustomSuperAdmin || isVerifiedOwner;
+    const isAdmin = hasCustomAdmin || isSuperAdmin;
+    const isCaptain = hasCustomCaptain || isAdmin;
+    const roleSource: 'claims' | 'owner_email' | 'none' = hasCustomSuperAdmin
+      ? 'claims'
+      : isVerifiedOwner
+      ? 'owner_email'
+      : hasCustomAdmin || hasCustomCaptain
+      ? 'claims'
+      : 'none';
 
     return {
       uid: payload.sub,
       email: payload.email,
       name: payload.name,
       picture: payload.picture,
-      emailVerified: Boolean(payload.email_verified),
-      role: isSuperAdminClaim
+      emailVerified: emailVerifiedBool,
+      role: isSuperAdmin
         ? 'superadmin'
-        : isAdminClaim
+        : isAdmin
         ? 'admin'
-        : isCaptainClaim
+        : isCaptain
         ? 'captain'
         : undefined,
-      captain: isCaptainClaim,
-      admin: isAdminClaim,
-      superAdmin: isSuperAdminClaim,
+      captain: isCaptain,
+      admin: isAdmin,
+      superAdmin: isSuperAdmin,
+      roleSource,
+      rawCustomClaims: {
+        superAdmin: hasCustomSuperAdmin,
+        admin: hasCustomAdmin,
+        captain: hasCustomCaptain,
+      },
       authTime: authTimeSec,
       iat: iatSec,
       signInProvider,
@@ -828,7 +875,8 @@ export async function resolveCurrentUser(params: {
   if (authHeader && authHeader.startsWith('Bearer ') && !authHeader.startsWith('Bearer guest_')) {
     const projectId =
       env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
-    const verifyFn = tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId));
+    const verifyFn =
+      tokenVerifierOverride || ((hdr) => verifyFirebaseIdToken(hdr, projectId, env as any));
     const verified = await verifyFn(authHeader);
 
     if (verified && verified.uid) {
@@ -872,9 +920,14 @@ export async function resolveCurrentUser(params: {
         // Non-fatal if tables not initialized
       }
 
-      // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase Auth custom claims.
+      // Roles come from verified Firebase Auth custom claims OR verified owner email claim.
       // Never promote a user based on D1 user_roles, user_usernames, or Firestore fields.
-      const isSuperAdmin = verified.superAdmin === true;
+      const isVerifiedOwner = isVerifiedOwnerEmailToken(
+        verified.email,
+        verified.emailVerified === true,
+        env as any
+      );
+      const isSuperAdmin = verified.superAdmin === true || isVerifiedOwner;
       const isAdminOrAbove = isSuperAdmin || verified.admin === true;
       const isCaptainOrAbove = isAdminOrAbove || verified.captain === true;
 

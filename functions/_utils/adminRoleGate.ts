@@ -17,7 +17,9 @@ import {
   FirestoreRestAdapter,
   SERVER_TIMESTAMP_SENTINEL,
   getSharedLocalD1Database,
+  isVerifiedOwnerEmailToken,
   parseServiceAccountFromEnv,
+  resolveConfiguredOwnerEmail,
   resolveTargetFirestoreDatabaseId,
   resolveTargetFirestoreProjectId,
   setOwnerBootstrapClaimsViaIdentityToolkit,
@@ -36,6 +38,7 @@ export interface VerifiedRoleCaller {
   admin: boolean;
   superAdmin: boolean;
   role: 'superadmin' | 'admin' | 'captain' | 'student';
+  roleSource?: 'claims' | 'owner_email' | 'none';
 }
 
 export type TokenVerifierFn = (
@@ -98,7 +101,7 @@ export async function verifyCallerClaimsStrict(params: {
 
   try {
     const verifyFn: TokenVerifierFn =
-      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId));
+      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId, env));
     const decoded = await verifyFn(authHeader, projectId);
 
     if (!decoded || !decoded.uid || String(decoded.uid).startsWith('guest_')) {
@@ -110,8 +113,16 @@ export async function verifyCallerClaimsStrict(params: {
       };
     }
 
-    // Strict custom claims ONLY: superAdmin > admin > captain > student
-    const isSuperAdmin = decoded.superAdmin === true;
+    // Verified owner email (email_verified === true) OR verified custom claims: superAdmin > admin > captain > student
+    const isVerifiedOwner = isVerifiedOwnerEmailToken(
+      decoded.email,
+      decoded.emailVerified === true,
+      env
+    );
+    const hasCustomSuperAdmin = decoded.rawCustomClaims
+      ? decoded.rawCustomClaims.superAdmin === true
+      : decoded.superAdmin === true;
+    const isSuperAdmin = decoded.superAdmin === true || isVerifiedOwner;
     const isAdmin = decoded.admin === true || isSuperAdmin;
     const isCaptain = decoded.captain === true || isAdmin;
     const role: 'superadmin' | 'admin' | 'captain' | 'student' = isSuperAdmin
@@ -121,6 +132,13 @@ export async function verifyCallerClaimsStrict(params: {
       : isCaptain
       ? 'captain'
       : 'student';
+    const roleSource: 'claims' | 'owner_email' | 'none' = hasCustomSuperAdmin
+      ? 'claims'
+      : isVerifiedOwner
+      ? 'owner_email'
+      : isAdmin || isCaptain
+      ? 'claims'
+      : 'none';
 
     return {
       ok: true,
@@ -132,6 +150,7 @@ export async function verifyCallerClaimsStrict(params: {
         admin: isAdmin,
         superAdmin: isSuperAdmin,
         role,
+        roleSource,
       },
     };
   } catch {
@@ -334,7 +353,7 @@ export async function handleMeRolesRequest(params: {
   let decoded: VerifiedFirebaseToken | null = null;
   try {
     const verifyFn: TokenVerifierFn =
-      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId));
+      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId, env));
     decoded = await verifyFn(authHeader, projectId);
   } catch {
     decoded = null;
@@ -351,37 +370,28 @@ export async function handleMeRolesRequest(params: {
     );
   }
 
-  const currentSuperAdmin = decoded.superAdmin === true;
-  const currentAdmin = decoded.admin === true || currentSuperAdmin;
-  const currentCaptain = decoded.captain === true || currentAdmin;
-  const currentClaims = {
-    superAdmin: currentSuperAdmin,
-    admin: currentAdmin,
-    captain: currentCaptain,
+  // Inspect actual JWT custom claims separately from verified owner-email resolution
+  // so we still attempt minting custom claims when they are missing from Firebase Auth.
+  const rawSuperAdminClaim = decoded.rawCustomClaims
+    ? decoded.rawCustomClaims.superAdmin === true
+    : decoded.superAdmin === true;
+  const rawAdminClaim = decoded.rawCustomClaims
+    ? decoded.rawCustomClaims.admin === true || rawSuperAdminClaim
+    : decoded.admin === true || rawSuperAdminClaim;
+  const rawCaptainClaim = decoded.rawCustomClaims
+    ? decoded.rawCustomClaims.captain === true || rawAdminClaim
+    : decoded.captain === true || rawAdminClaim;
+
+  const currentCustomClaims = {
+    superAdmin: rawSuperAdminClaim,
+    admin: rawAdminClaim,
+    captain: rawCaptainClaim,
   };
 
-  const rawOwnerEmail =
-    env?.OWNER_EMAIL ??
-    (typeof process !== 'undefined' && process.env ? process.env.OWNER_EMAIL : undefined);
-  const ownerEmail = typeof rawOwnerEmail === 'string' ? rawOwnerEmail.trim().toLowerCase() : '';
-
-  if (!ownerEmail) {
-    console.error(
-      '[POST /api/me/roles] CRITICAL: OWNER_EMAIL environment variable is not set! Configure OWNER_EMAIL=shsvirtualadmin@gmail.com in Cloudflare Pages / environment variables.'
-    );
-    return jsonGateResponse(
-      {
-        ok: true,
-        refreshed: false,
-        claims: currentClaims,
-      },
-      200
-    );
-  }
-
+  const ownerEmail = resolveConfiguredOwnerEmail(env);
   const decodedEmail = String(decoded.email || '').trim().toLowerCase();
   const isEmailVerified = decoded.emailVerified === true;
-  const isOwnerMatch = isEmailVerified && Boolean(decodedEmail) && decodedEmail === ownerEmail;
+  const isOwnerMatch = isVerifiedOwnerEmailToken(decoded.email, isEmailVerified, env);
 
   if (!isOwnerMatch) {
     // For everyone else, NEVER change anything — only return their current verified token claims
@@ -389,21 +399,12 @@ export async function handleMeRolesRequest(params: {
       {
         ok: true,
         refreshed: false,
-        claims: currentClaims,
-      },
-      200
-    );
-  }
-
-  const lacksClaims =
-    decoded.superAdmin !== true || decoded.admin !== true || decoded.captain !== true;
-
-  if (!lacksClaims) {
-    return jsonGateResponse(
-      {
-        ok: true,
-        refreshed: false,
-        claims: currentClaims,
+        claimMintAttempted: false,
+        claimMintSucceeded: null,
+        effectiveSource:
+          rawSuperAdminClaim || rawAdminClaim || rawCaptainClaim ? 'claims' : 'none',
+        claims: currentCustomClaims,
+        rawCustomClaims: currentCustomClaims,
       },
       200
     );
@@ -414,6 +415,24 @@ export async function handleMeRolesRequest(params: {
     admin: true,
     captain: true,
   };
+
+  const lacksClaims =
+    !rawSuperAdminClaim || !rawAdminClaim || !rawCaptainClaim;
+
+  if (!lacksClaims) {
+    return jsonGateResponse(
+      {
+        ok: true,
+        refreshed: false,
+        claimMintAttempted: false,
+        claimMintSucceeded: true,
+        effectiveSource: 'claims',
+        claims: currentCustomClaims,
+        rawCustomClaims: currentCustomClaims,
+      },
+      200
+    );
+  }
 
   let minted = false;
   let mintError: string | null = null;
@@ -456,17 +475,12 @@ export async function handleMeRolesRequest(params: {
         }
       } else if (typeof process !== 'undefined' && process.versions?.node) {
         try {
-          const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
-          const firebaseAdmin = reqFn('firebase-admin');
-          if (firebaseAdmin) {
-            if (!firebaseAdmin.apps || firebaseAdmin.apps.length === 0) {
-              firebaseAdmin.initializeApp({
-                projectId,
-              });
-            }
-            await firebaseAdmin.auth().setCustomUserClaims(decoded.uid, ownerClaims);
-            minted = true;
-          }
+          const appMod = await import('firebase-admin/app');
+          const authMod = await import('firebase-admin/auth');
+          const apps = appMod.getApps();
+          const adminApp = apps.length > 0 ? apps[0] : appMod.initializeApp({ projectId });
+          await authMod.getAuth(adminApp).setCustomUserClaims(decoded.uid, ownerClaims);
+          minted = true;
         } catch (nodeErr: any) {
           mintError = nodeErr?.message || 'FIREBASE_ADMIN_UNAVAILABLE';
         }
@@ -480,17 +494,22 @@ export async function handleMeRolesRequest(params: {
   }
 
   if (!minted) {
-    console.error(
-      `[POST /api/me/roles] Could not set custom claims for owner ${decodedEmail} (uid: ${decoded.uid}): ${mintError || 'unknown error'}`
+    console.warn(
+      `[POST /api/me/roles] Custom claims could not be minted onto Firebase Auth for verified owner ${decodedEmail} (uid: ${decoded.uid}): ${mintError || 'unknown error'}. Falling back to verified owner email source.`
     );
     return jsonGateResponse(
       {
-        ok: false,
+        ok: true,
         refreshed: false,
-        claims: currentClaims,
-        error: `Failed to set owner custom claims: ${mintError || 'Service account credentials not configured.'}`,
+        claimMintAttempted: true,
+        claimMintSucceeded: false,
+        claimMintError: mintError || 'Service account credentials not configured.',
+        effectiveSource: 'owner_email',
+        ownerEmail,
+        claims: ownerClaims,
+        rawCustomClaims: currentCustomClaims,
       },
-      500
+      200
     );
   }
 
@@ -498,7 +517,12 @@ export async function handleMeRolesRequest(params: {
     {
       ok: true,
       refreshed: true,
+      claimMintAttempted: true,
+      claimMintSucceeded: true,
+      effectiveSource: 'claims',
+      ownerEmail,
       claims: ownerClaims,
+      rawCustomClaims: ownerClaims,
     },
     200
   );

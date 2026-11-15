@@ -128,7 +128,9 @@ async function verifyFirebaseIdToken(token, projectId) {
   const tokenName = String(payload.name || '').trim();
   const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
 
-  const isSuperAdminClaim = payload.superAdmin === true;
+  const ownerEmail = 'shsvirtualadmin@gmail.com';
+  const isVerifiedOwner = payload.email_verified === true && emailStr === ownerEmail;
+  const isSuperAdminClaim = payload.superAdmin === true || isVerifiedOwner;
   const isAdminClaim = payload.admin === true || isSuperAdminClaim;
   const isCaptainClaim = payload.captain === true || isAdminClaim;
   let claimRole = null;
@@ -606,9 +608,15 @@ async function authenticateRequest(request, env, requireAuth = true) {
         )
     : null;
 
-  // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+  // Roles come from verified Firebase ID token custom claims OR verified owner email claim.
   // Hierarchy: superAdmin > admin > captain > student
-  const isSuperAdmin = decoded.superAdmin === true;
+  const configuredOwnerEmail = String(env.OWNER_EMAIL || 'shsvirtualadmin@gmail.com')
+    .trim()
+    .toLowerCase();
+  const isVerifiedOwner =
+    decoded.emailVerified === true &&
+    String(decoded.email || '').trim().toLowerCase() === configuredOwnerEmail;
+  const isSuperAdmin = decoded.superAdmin === true || isVerifiedOwner;
   const isAdminOrAbove = isSuperAdmin || decoded.admin === true;
   const isCaptainOrAbove = isAdminOrAbove || decoded.captain === true || decoded.claimRole === 'captain';
 
