@@ -869,132 +869,148 @@ export function AdminUsersPage() {
             </div>
 
             {/* Filter chips */}
-            <div className="flex flex-col gap-2 pt-1">
+            <div data-users-filter-groups className="flex flex-col gap-2 pt-1">
               {/* Role Filter Chips */}
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div data-users-filter-row="role" className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
                   Role:
                 </span>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'student', label: 'Students' },
-                  { id: 'admin', label: 'Admins' },
-                  { id: 'captain', label: 'Captains' },
-                  { id: 'crew', label: 'Crew' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setRoleFilter(id)}
-                    className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                      roleFilter === id
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                        : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <div data-users-filter-chips className="contents">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'student', label: 'Students' },
+                    { id: 'admin', label: 'Admins' },
+                    { id: 'captain', label: 'Captains' },
+                    { id: 'crew', label: 'Crew' },
+                  ].map(({ id, label }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setRoleFilter(id)}
+                      className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                        roleFilter === id
+                          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                          : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Account Type, Plan & Status Filter Chips */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
-                  Account:
-                </span>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'registered', label: 'Registered' },
-                  { id: 'guest', label: 'Guest' },
-                  { id: 'pro', label: 'Pro' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro')}
-                    className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                      accountTypeFilter === id
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                        : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div data-users-filter-compound className="flex items-center gap-1.5 flex-wrap">
+                <div data-users-filter-row="account" className="contents">
+                  <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+                    Account:
+                  </span>
+                  <div data-users-filter-chips className="contents">
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'registered', label: 'Registered' },
+                      { id: 'guest', label: 'Guest' },
+                      { id: 'pro', label: 'Pro' },
+                    ].map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro')}
+                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                          accountTypeFilter === id
+                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
-                  Plan:
-                </span>
-                {[
-                  { id: 'all', label: 'All plans' },
-                  { id: 'free', label: 'Free' },
-                  { id: 'pro', label: 'Pro' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setPlanFilter(id)}
-                    className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                      planFilter === id
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                        : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <div data-users-filter-row="plan" className="contents">
+                  <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
+                    Plan:
+                  </span>
+                  <div data-users-filter-chips className="contents">
+                    {[
+                      { id: 'all', label: 'All plans' },
+                      { id: 'free', label: 'Free' },
+                      { id: 'pro', label: 'Pro' },
+                    ].map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setPlanFilter(id)}
+                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                          planFilter === id
+                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
-                  Status:
-                </span>
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'active', label: 'Active' },
-                  { id: 'suspended', label: 'Suspended' },
-                ].map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setStatusFilter(id)}
-                    className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                      statusFilter === id
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                        : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <div data-users-filter-row="status" className="contents">
+                  <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
+                    Status:
+                  </span>
+                  <div data-users-filter-chips className="contents">
+                    {[
+                      { id: 'all', label: 'All' },
+                      { id: 'active', label: 'Active' },
+                      { id: 'suspended', label: 'Suspended' },
+                    ].map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setStatusFilter(id)}
+                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                          statusFilter === id
+                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {/* 2FA Filter */}
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div data-users-filter-row="2fa" className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] mr-1">
                   2FA:
                 </span>
-                {(
-                  [
-                    ['all', 'All'],
-                    ['Off', 'Off'],
-                    ['Authenticator', 'Authenticator'],
-                    ['Email code', 'Email code'],
-                    ['Both', 'Both'],
-                    ['Recovery pending', 'Recovery pending'],
-                  ] as const
-                ).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setTwoFactorFilter(id)}
-                    className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                      twoFactorFilter === id
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                        : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+                <div data-users-filter-chips className="contents">
+                  {(
+                    [
+                      ['all', 'All'],
+                      ['Off', 'Off'],
+                      ['Authenticator', 'Authenticator'],
+                      ['Email code', 'Email code'],
+                      ['Both', 'Both'],
+                      ['Recovery pending', 'Recovery pending'],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setTwoFactorFilter(id)}
+                      className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                        twoFactorFilter === id
+                          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                          : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

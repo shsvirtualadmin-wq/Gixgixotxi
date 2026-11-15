@@ -18,11 +18,15 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
 ) {
   const { disabled = false, haptic = true, scaleVariant = 'default' } = options;
   const reboundTimerRef = useRef<number | null>(null);
+  const activeElRef = useRef<T | null>(null);
 
   useEffect(() => {
     return () => {
       if (reboundTimerRef.current !== null && typeof window !== 'undefined') {
         window.clearTimeout(reboundTimerRef.current);
+      }
+      if (activeElRef.current) {
+        activeElRef.current.style.willChange = '';
       }
     };
   }, []);
@@ -35,11 +39,18 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
       }
       if (prefersReducedMotion()) return;
       const el = e.currentTarget;
-      const rect = el.getBoundingClientRect();
-      const x = Math.round(e.clientX - rect.left);
-      const y = Math.round(e.clientY - rect.top);
-      el.style.setProperty('--tap-x', `${x}px`);
-      el.style.setProperty('--tap-y', `${y}px`);
+      activeElRef.current = el;
+      const isLite =
+        typeof document !== 'undefined' &&
+        document.documentElement.classList.contains('ui-lite');
+      if (!isLite) {
+        const rect = el.getBoundingClientRect();
+        const x = Math.round(e.clientX - rect.left);
+        const y = Math.round(e.clientY - rect.top);
+        el.style.setProperty('--tap-x', `${x}px`);
+        el.style.setProperty('--tap-y', `${y}px`);
+      }
+      el.style.willChange = 'transform';
       el.removeAttribute('data-rebound');
       el.setAttribute('data-pressed', 'true');
     },
@@ -48,9 +59,18 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
 
   const releasePress = useCallback((e: React.PointerEvent<T>) => {
     const el = e.currentTarget;
-    if (el.getAttribute('data-pressed') !== 'true') return;
+    if (el.getAttribute('data-pressed') !== 'true') {
+      el.style.willChange = '';
+      return;
+    }
     el.removeAttribute('data-pressed');
-    if (prefersReducedMotion()) return;
+    const isLite =
+      typeof document !== 'undefined' &&
+      document.documentElement.classList.contains('ui-lite');
+    if (isLite || prefersReducedMotion()) {
+      el.style.willChange = '';
+      return;
+    }
     el.setAttribute('data-rebound', 'true');
     if (reboundTimerRef.current !== null && typeof window !== 'undefined') {
       window.clearTimeout(reboundTimerRef.current);
@@ -58,8 +78,9 @@ export function usePressable<T extends HTMLElement = HTMLElement>(
     if (typeof window !== 'undefined') {
       reboundTimerRef.current = window.setTimeout(() => {
         el.removeAttribute('data-rebound');
+        el.style.willChange = '';
         reboundTimerRef.current = null;
-      }, 500);
+      }, 440);
     }
   }, []);
 
@@ -300,6 +321,8 @@ export function Segmented<T extends string = string>({
           style={{
             width: `${indicator.width}px`,
             transform: `translate3d(${indicator.left}px, 0, 0)`,
+            transition:
+              'transform 550ms cubic-bezier(0.34, 1.5, 0.5, 1), width 550ms cubic-bezier(0.34, 1.5, 0.5, 1)',
           }}
         />
       )}
@@ -311,7 +334,7 @@ export function Segmented<T extends string = string>({
             ref={(el) => {
               itemRefs.current[opt.id] = el;
             }}
-            className="shrink-0 flex"
+            className="flex-none min-w-max flex"
           >
             <Bubble
               as="button"
@@ -320,10 +343,10 @@ export function Segmented<T extends string = string>({
               role="tab"
               aria-selected={active}
               onClick={() => onChange(opt.id)}
-              className={`lg-segmented-item ${active ? 'is-active' : ''}`}
+              className={`lg-segmented-item whitespace-nowrap ${active ? 'is-active' : ''}`}
             >
               {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-              <span>{opt.label}</span>
+              <span className="whitespace-nowrap">{opt.label}</span>
               {opt.badge !== undefined && opt.badge !== null && !/undefined/i.test(String(opt.badge)) && (
                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-black/25 text-current tabular-nums">
                   {opt.badge}

@@ -243,7 +243,7 @@ export function SettingsPage() {
   const { balance: kobanBalance, equipped } = useWallet();
   const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
   const { smoothMode, toggleSmoothMode } = useSmoothMode();
-  const { uiMode, setUIMode, toggleUIMode } = useBoardlyUIMode();
+  const { uiMode, setUIMode, toggleUIMode, uiLite, toggleUILite } = useBoardlyUIMode();
   const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const { openProfile } = useProfileModal();
   const {
@@ -1714,9 +1714,35 @@ export function SettingsPage() {
                       <option value="glass">Liquid Glass</option>
                     </select>
                   </div>
+                  <div
+                    id="settings-ui-lite"
+                    className="stg-row"
+                    style={{ display: uiMode === 'glass' ? undefined : 'none' }}
+                    onClick={toggleUILite}
+                  >
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Zap size={17} />
+                      </span>
+                      <span className="stg-row-label">Performance mode</span>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={uiLite}
+                      aria-label="Performance mode"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleUILite();
+                      }}
+                      className="stg-switch"
+                    >
+                      <span className="stg-switch-thumb" />
+                    </button>
+                  </div>
                 </div>
                 <p className="stg-footnote">
-                  Switch between the Classic interface and the iOS 27 Liquid Glass + Nothing OS redesign.
+                  Switch between the Classic interface and Liquid Glass. Performance mode disables backdrop blur and ripples in Liquid Glass (auto-enabled on devices with ≤4 GB RAM or ≤4 CPU cores).
                 </p>
               </div>
 
@@ -2420,10 +2446,10 @@ export function SettingsPage() {
                 )}
               </div>
             </div>
-            {!debugCardCollapsed && (
               <div
-                data-collapsed="false"
-                className="stg-card p-4 space-y-2.5 text-xs font-mono"
+                data-collapsed={debugCardCollapsed ? 'true' : 'false'}
+                style={{ display: debugCardCollapsed ? 'none' : 'block' }}
+                className="lg-collapsible stg-card p-4 space-y-2.5 text-xs font-mono"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[var(--menu-subtext)]">email</span>
@@ -2539,7 +2565,6 @@ export function SettingsPage() {
                   </pre>
                 </div>
               </div>
-            )}
           </div>
         )}
 
