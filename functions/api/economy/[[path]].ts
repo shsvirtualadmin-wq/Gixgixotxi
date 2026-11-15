@@ -328,7 +328,9 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
   const amountOffPkr = Math.max(0, Number(raw.amount_off_pkr ?? raw.amountOffPkr ?? raw.discountPkr ?? 0));
   const amountOffKobans = Math.max(0, Number(raw.amount_off_kobans ?? raw.amountOffKobans ?? raw.discountKobans ?? 0));
 
-  const isOneYearProCode = /^BOARDLY-1Y-/i.test(code) || discountTypeRaw === '1_year_free_pro';
+  const isOneYearProCode =
+    /^(BOARDLY[-_]?1Y|.*1[-_]?Y(EAR)?[-_]?FREE)/i.test(code) ||
+    discountTypeRaw === '1_year_free_pro';
 
   if (
     isOneYearProCode ||
@@ -377,10 +379,20 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
             ? Boolean(raw.enabled)
             : true;
 
+  const rawLabelStr = String(raw.label ?? raw.description ?? '').trim();
+  const cleanLabel =
+    rawLabelStr && !/^\d+$/.test(rawLabelStr) && rawLabelStr !== String(maxRedemptions)
+      ? rawLabelStr
+      : discountType === '1_year_free_pro'
+        ? '1-Year Free Pro Campaign'
+        : normalizedPct > 0
+          ? `${normalizedPct}% Off Pro Pass`
+          : `${code} Promo`;
+
   return {
     id: String(raw.id || `promo_${code.toLowerCase()}`),
     code,
-    label: String(raw.label || raw.description || `${code} Promo`),
+    label: cleanLabel,
     type: discountType,
     discountType,
     percentOff: normalizedPct,

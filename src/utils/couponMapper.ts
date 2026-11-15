@@ -59,10 +59,14 @@ export function parseFlexibleTimestampMs(value: unknown): number | null {
   }
 
   if (typeof value === 'object') {
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) && ms > 0 ? ms : null;
+    }
     const obj = value as Record<string, any>;
     if (typeof obj.toMillis === 'function') {
       const ms = Number(obj.toMillis());
-      return Number.isFinite(ms) ? ms : null;
+      return Number.isFinite(ms) && ms > 0 ? ms : null;
     }
     if (typeof obj.toDate === 'function') {
       const d = obj.toDate();
@@ -70,10 +74,14 @@ export function parseFlexibleTimestampMs(value: unknown): number | null {
         return d.getTime();
       }
     }
-    const secs = obj.seconds ?? obj._seconds;
-    const nanos = obj.nanoseconds ?? obj._nanoseconds ?? 0;
-    if (typeof secs === 'number' && Number.isFinite(secs)) {
-      return Math.round(secs * 1000 + Number(nanos || 0) / 1e6);
+    const rawSecs = obj.seconds ?? obj._seconds;
+    const rawNanos = obj.nanoseconds ?? obj._nanoseconds ?? 0;
+    if (rawSecs !== undefined && rawSecs !== null && rawSecs !== '') {
+      const secsNum = Number(rawSecs);
+      const nanosNum = Number(rawNanos || 0);
+      if (Number.isFinite(secsNum) && secsNum > 0) {
+        return Math.round(secsNum * 1000 + (Number.isFinite(nanosNum) ? nanosNum / 1e6 : 0));
+      }
     }
     if (typeof obj.timestampValue === 'string') {
       const parsed = Date.parse(obj.timestampValue);
@@ -91,7 +99,7 @@ export function formatRelativeRedemptionTime(
   timestampMs: number | null,
   nowMs = Date.now()
 ): string {
-  if (!timestampMs || !Number.isFinite(timestampMs)) return 'Unknown time';
+  if (!timestampMs || !Number.isFinite(timestampMs) || timestampMs <= 0) return '—';
   const diffSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
 
   if (diffSec < 45) return 'Just now';
@@ -111,9 +119,11 @@ export function formatRelativeRedemptionTime(
  * Formats an epoch millisecond timestamp as a full human-readable date and time.
  */
 export function formatFullRedemptionDate(timestampMs: number | null): string {
-  if (!timestampMs || !Number.isFinite(timestampMs)) return 'Timestamp unavailable';
+  if (!timestampMs || !Number.isFinite(timestampMs) || timestampMs <= 0) return '—';
   try {
-    return new Date(timestampMs).toLocaleString('en-US', {
+    const d = new Date(timestampMs);
+    if (Number.isNaN(d.getTime())) return '—';
+    const formatted = d.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -121,8 +131,9 @@ export function formatFullRedemptionDate(timestampMs: number | null): string {
       minute: '2-digit',
       hour12: true,
     });
+    return formatted && formatted !== 'Invalid Date' ? formatted : '—';
   } catch {
-    return new Date(timestampMs).toISOString();
+    return '—';
   }
 }
 
@@ -182,7 +193,9 @@ export function normalizeAdminCoupon(raw: Record<string, any> | null | undefined
   }
 
   // Detect 1-Year Free Pro campaign codes (e.g. BOARDLY-1Y-XXXXX or discount_type === '1_year_free_pro')
-  const isOneYearProCodePattern = /^BOARDLY-1Y-/i.test(code) || /1[-_]?YEAR[-_]?FREE[-_]?PRO/i.test(rawTypeStr);
+  const isOneYearProCodePattern =
+    /^(BOARDLY[-_]?1Y|.*1[-_]?Y(EAR)?[-_]?FREE)/i.test(code) ||
+    /1[-_]?YEAR[-_]?FREE[-_]?PRO/i.test(rawTypeStr);
   const isFreeProType =
     isOneYearProCodePattern ||
     rawTypeStr === '1_year_free_pro' ||
@@ -244,7 +257,10 @@ export function normalizeAdminCoupon(raw: Record<string, any> | null | undefined
   const expiresAtMs = parseFlexibleTimestampMs(src.expiresAt ?? src.expires_at ?? null);
   const expiresAt = expiresAtMs ? new Date(expiresAtMs).toISOString() : null;
 
-  const rawLabel = String(src.label ?? src.description ?? src.title ?? '').trim();
+  const rawLabelCandidate = String(src.label ?? src.description ?? src.title ?? '').trim();
+  const isBareNumberLabel =
+    /^\d+$/.test(rawLabelCandidate) || rawLabelCandidate === String(maxRedemptions);
+  const rawLabel = isBareNumberLabel ? '' : rawLabelCandidate;
   const label =
     rawLabel ||
     (type === '1_year_free_pro'
@@ -276,7 +292,10 @@ export function normalizeAdminCoupon(raw: Record<string, any> | null | undefined
  */
 export function getCouponBadgeLabel(coupon: NormalizedAdminCoupon): string | null {
   if (!coupon) return null;
-  if (coupon.type === '1_year_free_pro' || /^BOARDLY-1Y-/i.test(coupon.code)) {
+  if (
+    coupon.type === '1_year_free_pro' ||
+    /^(BOARDLY[-_]?1Y|.*1[-_]?Y(EAR)?[-_]?FREE)/i.test(coupon.code)
+  ) {
     return '1 YEAR FREE PRO';
   }
   if (
@@ -290,6 +309,13 @@ export function getCouponBadgeLabel(coupon: NormalizedAdminCoupon): string | nul
     return `${coupon.percentOff}% OFF`;
   }
   return null;
+}
+
+function cleanRedemptionField(val: unknown): string {
+  const str = String(val ?? '').trim();
+  if (!str) return '';
+  if (/^(unknown|undefined|null|n\/a|none|nan|-)$/i.test(str)) return '';
+  return str;
 }
 
 function buildUserInitials(display: string): string {
@@ -316,29 +342,45 @@ export function normalizeAdminCouponRedemption(
 ): NormalizedAdminCouponRedemption {
   const src = raw && typeof raw === 'object' ? raw : {};
 
-  const code = String(
-    src.code || src.promo_code || src.couponCode || src.promoCode || src.coupon_code || ''
-  )
-    .trim()
-    .toUpperCase();
+  const code = (
+    cleanRedemptionField(src.code) ||
+    cleanRedemptionField(src.promo_code) ||
+    cleanRedemptionField(src.couponCode) ||
+    cleanRedemptionField(src.promoCode) ||
+    cleanRedemptionField(src.coupon_code)
+  ).toUpperCase();
 
-  const userName = String(
-    src.userName || src.student_name || src.user_name || src.displayName || src.name || ''
-  ).trim();
+  const userName =
+    cleanRedemptionField(src.userName) ||
+    cleanRedemptionField(src.student_name) ||
+    cleanRedemptionField(src.user_name) ||
+    cleanRedemptionField(src.displayName) ||
+    cleanRedemptionField(src.name);
 
-  const userEmail = String(
-    src.userEmail || src.student_email || src.user_email || src.email || ''
-  ).trim();
+  const userEmail =
+    cleanRedemptionField(src.userEmail) ||
+    cleanRedemptionField(src.student_email) ||
+    cleanRedemptionField(src.user_email) ||
+    cleanRedemptionField(src.email);
 
-  const userId = String(
-    src.userId || src.student_id || src.user_id || src.uid || ''
-  ).trim();
+  const userId =
+    cleanRedemptionField(src.userId) ||
+    cleanRedemptionField(src.student_id) ||
+    cleanRedemptionField(src.user_id) ||
+    cleanRedemptionField(src.uid);
 
   const userDisplay = userEmail || userName || userId || 'Student';
   const initials = buildUserInitials(userName || userEmail || userId);
 
-  const planPart = String(src.planName || src.planId || src.plan_id || src.track || '').trim();
-  const modePart = String(src.mode || src.method || src.paymentMethod || '').trim();
+  const planPart =
+    cleanRedemptionField(src.planName) ||
+    cleanRedemptionField(src.planId) ||
+    cleanRedemptionField(src.plan_id) ||
+    cleanRedemptionField(src.track);
+  const modePart =
+    cleanRedemptionField(src.mode) ||
+    cleanRedemptionField(src.method) ||
+    cleanRedemptionField(src.paymentMethod);
   const planOrTrack =
     planPart && modePart
       ? `${planPart} · ${modePart}`
@@ -360,7 +402,7 @@ export function normalizeAdminCouponRedemption(
   const fullDate = formatFullRedemptionDate(redeemedAtMs);
 
   return {
-    id: String(src.id || `red_${code}_${userId || Math.random().toString(36).slice(2, 7)}`),
+    id: String(src.id || `red_${code || 'promo'}_${userId || Math.random().toString(36).slice(2, 7)}`),
     code: code || 'PROMO',
     userName,
     userEmail,
