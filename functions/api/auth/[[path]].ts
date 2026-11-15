@@ -1327,20 +1327,10 @@ export async function getBatchUsersTwoFactorStatusFromD1(
 
 function canCallerManageOthers2fa(
   caller: AuthenticatedD1User | null,
-  env?: AuthWorkerEnv
+  _env?: AuthWorkerEnv
 ): boolean {
   if (!caller || !caller.sessionVerified) return false;
-  const rawAllowed = String((env as Record<string, any> | undefined)?.ADMIN_2FA_ALLOWED_ROLES || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const allowedRoles = new Set<string>(
-    rawAllowed.length > 0 ? rawAllowed : ADMIN_2FA_ALLOWED_ROLES
-  );
-  if (caller.isSuperAdmin && allowedRoles.has('superadmin')) {
-    return true;
-  }
-  return allowedRoles.has(String(caller.role || '').toLowerCase());
+  return caller.isSuperAdmin === true;
 }
 
 async function isTargetAccountSuperAdmin(params: {
@@ -1349,36 +1339,39 @@ async function isTargetAccountSuperAdmin(params: {
   targetEmail?: string;
   env?: AuthWorkerEnv;
 }): Promise<boolean> {
-  const { db, targetUid, env } = params;
+  const { db, targetUid, targetEmail, env } = params;
   const cleanUid = String(targetUid || '').trim();
   if (!cleanUid) return false;
 
-  const superUids = new Set(
-    (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
+  const ownerEmail = String(
+    (env as Record<string, any> | undefined)?.OWNER_EMAIL ||
+      (typeof process !== 'undefined' ? process.env?.OWNER_EMAIL : '') ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
 
-  if (superUids.has(cleanUid) || /^(?:sa1|sa2)_/i.test(cleanUid)) {
+  if (ownerEmail && targetEmail && targetEmail.trim().toLowerCase() === ownerEmail) {
     return true;
   }
 
   const [roleRow, unameRow] = await Promise.all([
     db
-      .prepare('SELECT uid, role FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
       .bind(cleanUid)
-      .first<{ uid: string; role?: string }>()
+      .first<{ uid: string; email?: string; role?: string }>()
       .catch(() => null),
     db
-      .prepare('SELECT uid, role FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .prepare('SELECT uid, email, role FROM user_usernames WHERE uid = ?1 LIMIT 1')
       .bind(cleanUid)
-      .first<{ uid: string; role?: string }>()
+      .first<{ uid: string; email?: string; role?: string }>()
       .catch(() => null),
   ]);
 
-  if (roleRow && String(roleRow.role || '').toLowerCase() === 'superadmin') return true;
-  if (unameRow && String(unameRow.role || '').toLowerCase() === 'superadmin') return true;
+  if (ownerEmail) {
+    const dbEmail = String(roleRow?.email || unameRow?.email || '').trim().toLowerCase();
+    if (dbEmail && dbEmail === ownerEmail) return true;
+  }
 
   return false;
 }
@@ -2955,7 +2948,11 @@ export async function handleAuthApiRequest(
     const accent = body.accent !== undefined ? String(body.accent) : undefined;
     const rawUsername = String(body.username || '').trim();
 
-    const requestedRole = isCallerSuperAdmin && body.role ? String(body.role).trim() : '';
+    const rawRequestedRole = isCallerSuperAdmin && body.role ? String(body.role).trim().toLowerCase() : '';
+    const requestedRole =
+      rawRequestedRole === 'admin' || rawRequestedRole === 'captain' || rawRequestedRole === 'student'
+        ? rawRequestedRole
+        : '';
     const requestedCustomRole =
       isCallerSuperAdmin && body.customRole !== undefined
         ? body.customRole
@@ -3017,21 +3014,17 @@ export async function handleAuthApiRequest(
       }
     }
 
-    const superUids = new Set(
-      (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-    );
     const roleRow = await db
       .prepare('SELECT role, custom_role FROM user_roles WHERE uid = ?1 LIMIT 1')
       .bind(targetUid)
       .first<{ role?: string; custom_role?: string | null }>()
       .catch(() => null);
 
-    const trustedExistingRole = superUids.has(targetUid)
-      ? 'superadmin'
-      : roleRow?.role || existingRow?.role || 'student';
+    const existingNonSuperRole = roleRow?.role || existingRow?.role || 'student';
+    const trustedExistingRole =
+      existingNonSuperRole === 'superadmin' || existingNonSuperRole === 'super_admin'
+        ? 'student'
+        : existingNonSuperRole;
 
     const nextDisplayName = displayName || existingRow?.display_name || '';
     const nextAvatar = hasAvatarProp ? avatarVal : (existingRow?.avatar || '');
@@ -6248,22 +6241,11 @@ export async function handleAuthApiRequest(
       const cleanAccType = (isSwapped ? 'registered' : rawAccType) === 'guest' ? 'guest' : 'registered';
       const usernameDisplay = String(u.username_display || u.username_lower || uid);
 
-      let inferredRole = roleInfo?.role || u.role || 'student';
-      if (
-        uid === 'JBGCDTLuWUMUIUMCLek7SdgvUNn1' ||
-        uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-        uid === 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2' ||
-        uid === '2GHhpHZkYFR1keIAwlnuch08mdh1' ||
-        uid === 'uid_superadmin_1' ||
-        uid === 'uid_superadmin_2' ||
-        /^(?:sa1|sa2)_/i.test(uid) ||
-        inferredRole === 'superadmin' ||
-        inferredRole === 'super_admin'
-      ) {
-        inferredRole = 'super_admin';
-      } else if (uid === 'uid_regular_admin' || /^reg_/i.test(uid)) {
-        inferredRole = 'admin';
-      }
+      const rawInferredRole = String(roleInfo?.role || u.role || 'student').toLowerCase();
+      const inferredRole =
+        rawInferredRole === 'admin' || rawInferredRole === 'captain'
+          ? rawInferredRole
+          : 'student';
 
       const resolvedPlan: 'free' | 'pro' =
         roleInfo?.plan === 'pro' || (u as any).plan === 'pro' || (u as any).is_premium

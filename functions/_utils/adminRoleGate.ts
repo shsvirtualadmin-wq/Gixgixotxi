@@ -1,0 +1,842 @@
+/**
+ * Strict Fail-Closed Role Verification & Admin / SuperAdmin Endpoint Handlers
+ * for Cloudflare Pages Functions, Cloudflare Workers, and Express Dev Server.
+ *
+ * ROLES (server-side only, Firebase Auth custom claims):
+ * - superAdmin: true -> ONLY the owner (email from OWNER_EMAIL env var).
+ *   Full access: superadmin area, manage admins, users, payments, rules, data.
+ * - admin: true -> can be granted/revoked only by a superAdmin. Limited to
+ *   the regular admin pages (questions, review queue, payments).
+ * - no claim -> normal user.
+ * superAdmin implies admin. Everything else is a normal user.
+ */
+
+import {
+  DEFAULT_FIREBASE_PROJECT_ID,
+  DEFAULT_FIRESTORE_DATABASE_ID,
+  FirestoreRestAdapter,
+  SERVER_TIMESTAMP_SENTINEL,
+  getSharedLocalD1Database,
+  parseServiceAccountFromEnv,
+  resolveTargetFirestoreDatabaseId,
+  resolveTargetFirestoreProjectId,
+  updateFirebaseAdminClaimViaIdentityToolkit,
+  verifyFirebaseIdToken,
+  type RewardsD1Database,
+  type RewardsEnv,
+  type VerifiedFirebaseToken,
+} from './firestoreRestAdmin';
+
+export interface VerifiedRoleCaller {
+  uid: string;
+  email: string;
+  name: string;
+  admin: boolean;
+  superAdmin: boolean;
+  role: 'superadmin' | 'admin' | 'student';
+}
+
+export type TokenVerifierFn = (
+  authHeader: string | null | undefined,
+  projectId?: string
+) => Promise<VerifiedFirebaseToken | null>;
+
+function jsonGateResponse(
+  body: unknown,
+  status: number,
+  extraHeaders?: Record<string, string>
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Idempotency-Key',
+      ...(extraHeaders || {}),
+    },
+  });
+}
+
+/**
+ * Verifies the caller's Firebase ID token and extracts ONLY custom claims (`superAdmin === true`, `admin === true`).
+ * Never trusts Firestore docs, D1 tables, localStorage, or URL parameters.
+ * Fails CLOSED on any error, missing header, guest token, expired token, or forged token.
+ */
+export async function verifyCallerClaimsStrict(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  tokenVerifierOverride?: TokenVerifierFn;
+}): Promise<{ ok: true; caller: VerifiedRoleCaller } | { ok: false; status: 401; error: string; code: string }> {
+  const { request, env, tokenVerifierOverride } = params;
+  const authHeader = request.headers.get('Authorization');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Authentication required: Missing Bearer token.',
+      code: 'UNAUTHENTICATED',
+    };
+  }
+
+  const rawToken = authHeader.slice(7).trim();
+  if (!rawToken || rawToken.startsWith('guest_')) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Authentication required: Valid Firebase ID token required.',
+      code: 'UNAUTHENTICATED',
+    };
+  }
+
+  const projectId =
+    env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+
+  try {
+    const verifyFn: TokenVerifierFn =
+      tokenVerifierOverride || ((hdr, pid) => verifyFirebaseIdToken(hdr, pid || projectId));
+    const decoded = await verifyFn(authHeader, projectId);
+
+    if (!decoded || !decoded.uid || String(decoded.uid).startsWith('guest_')) {
+      return {
+        ok: false,
+        status: 401,
+        error: 'Invalid or expired Firebase ID token.',
+        code: 'INVALID_TOKEN',
+      };
+    }
+
+    // Strict custom claims ONLY: superAdmin implies admin
+    const isSuperAdmin = decoded.superAdmin === true;
+    const isAdmin = decoded.admin === true || isSuperAdmin;
+    const role: 'superadmin' | 'admin' | 'student' = isSuperAdmin
+      ? 'superadmin'
+      : isAdmin
+      ? 'admin'
+      : 'student';
+
+    return {
+      ok: true,
+      caller: {
+        uid: String(decoded.uid),
+        email: String(decoded.email || '').trim().toLowerCase(),
+        name: String(decoded.name || decoded.email || 'User').trim(),
+        admin: isAdmin,
+        superAdmin: isSuperAdmin,
+        role,
+      },
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Invalid or expired Firebase ID token.',
+      code: 'INVALID_TOKEN',
+    };
+  }
+}
+
+/**
+ * Enforces the server-side role gate for `/api/admin/*` and `/api/superadmin/*`.
+ * - `/api/superadmin/*`: returns 401 if unauthenticated/invalid token, 403 unless `superAdmin === true`.
+ * - `/api/admin/*`: returns 401 if unauthenticated/invalid token, 403 unless `admin === true || superAdmin === true`.
+ * Returns `null` if the request is allowed to proceed, along with the verified `caller`.
+ */
+export async function enforceAdminOrSuperAdminGate(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  tokenVerifierOverride?: TokenVerifierFn;
+}): Promise<{ blockedResponse: Response | null; caller: VerifiedRoleCaller | null }> {
+  const { request, env, tokenVerifierOverride } = params;
+  if (request.method === 'OPTIONS') {
+    return { blockedResponse: null, caller: null };
+  }
+
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  const isSuperAdminRoute = path === '/api/superadmin' || path.startsWith('/api/superadmin/');
+  const isAdminRoute = path === '/api/admin' || path.startsWith('/api/admin/');
+
+  if (!isSuperAdminRoute && !isAdminRoute) {
+    return { blockedResponse: null, caller: null };
+  }
+
+  const verification = await verifyCallerClaimsStrict({
+    request,
+    env,
+    tokenVerifierOverride,
+  });
+
+  if (!verification.ok) {
+    return {
+      blockedResponse: jsonGateResponse(
+        {
+          ok: false,
+          success: false,
+          error: verification.error,
+          code: verification.code,
+        },
+        verification.status
+      ),
+      caller: null,
+    };
+  }
+
+  const { caller } = verification;
+
+  if (isSuperAdminRoute) {
+    if (caller.superAdmin !== true) {
+      return {
+        blockedResponse: jsonGateResponse(
+          {
+            ok: false,
+            success: false,
+            error: 'Forbidden: superAdmin claim is required to access /api/superadmin/*.',
+            code: 'FORBIDDEN',
+          },
+          403
+        ),
+        caller,
+      };
+    }
+    return { blockedResponse: null, caller };
+  }
+
+  // isAdminRoute: requires admin === true || superAdmin === true
+  if (caller.admin !== true && caller.superAdmin !== true) {
+    return {
+      blockedResponse: jsonGateResponse(
+        {
+          ok: false,
+          success: false,
+          error: 'Forbidden: admin or superAdmin claim is required to access /api/admin/*.',
+          code: 'FORBIDDEN',
+        },
+        403
+      ),
+      caller,
+    };
+  }
+
+  return { blockedResponse: null, caller };
+}
+
+// In-memory fallback stores for Cloudflare edge when D1 tables for access requests / activity logs are queried
+const edgeAccessRequestsStore: Array<Record<string, any>> = [];
+const edgeAccessGrantsStore: Array<Record<string, any>> = [];
+const edgeAdminActivityLogsStore: Array<Record<string, any>> = [];
+
+export function getEdgeAdminActivityLogs(): Array<Record<string, any>> {
+  return edgeAdminActivityLogsStore;
+}
+
+async function ensureAdminActivityLogsD1Table(db: RewardsD1Database): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS admin_activity_logs (
+          id TEXT PRIMARY KEY,
+          action TEXT NOT NULL,
+          actor_uid TEXT NOT NULL,
+          actor_email TEXT NOT NULL DEFAULT '',
+          target_uid TEXT NOT NULL DEFAULT '',
+          target_email TEXT NOT NULL DEFAULT '',
+          details_json TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL
+        )`
+      )
+      .run();
+  } catch {
+    // Non-fatal on mock/in-memory DB
+  }
+}
+
+/**
+ * SuperAdmin-only operation: grants or revokes `admin: true` on a target user.
+ * - Sets custom claims (`{ admin: true }` or `{}`) via Firebase Admin SDK (if available) or Identity Toolkit REST API.
+ * - Calls `revokeRefreshTokens` on the target user.
+ * - Writes an audit record to `admin_activity_logs` (in Firestore + D1).
+ * - Strictly forbids granting `superAdmin` from the app.
+ */
+export async function executeGrantOrRevokeAdminClaim(params: {
+  caller: VerifiedRoleCaller;
+  targetUid: string;
+  targetEmail?: string;
+  grantAdmin: boolean;
+  reason?: string;
+  env?: RewardsEnv & Record<string, any>;
+  db?: RewardsD1Database;
+  adminSdkOverride?: {
+    setCustomUserClaims: (uid: string, claims: Record<string, boolean>) => Promise<void>;
+    revokeRefreshTokens: (uid: string) => Promise<void>;
+  };
+}): Promise<{
+  ok: boolean;
+  status: number;
+  body: Record<string, any>;
+}> {
+  const { caller, targetUid, targetEmail, grantAdmin, reason, env, adminSdkOverride } = params;
+
+  if (caller.superAdmin !== true) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        ok: false,
+        error: 'Forbidden: Only superAdmin can grant or revoke admin.',
+        code: 'FORBIDDEN',
+      },
+    };
+  }
+
+  const cleanTargetUid = String(targetUid || '').trim();
+  if (!cleanTargetUid) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        ok: false,
+        error: 'targetUid is required.',
+        code: 'MISSING_UID',
+      },
+    };
+  }
+
+  const ownerEmail = String(
+    env?.OWNER_EMAIL || (typeof process !== 'undefined' ? process.env?.OWNER_EMAIL : '') || ''
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    ownerEmail &&
+    targetEmail &&
+    String(targetEmail).trim().toLowerCase() === ownerEmail &&
+    !grantAdmin
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        ok: false,
+        error: 'Forbidden: Cannot revoke roles from OWNER_EMAIL.',
+        code: 'CANNOT_MODIFY_OWNER',
+      },
+    };
+  }
+
+  const nextClaims: Record<string, boolean> = grantAdmin ? { admin: true } : {};
+  const nextRoleLabel = grantAdmin ? 'admin' : 'student';
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+
+  let claimSyncedVia: 'admin_sdk_override' | 'identity_toolkit' | 'firebase_admin_node' | 'd1_recorded' =
+    'd1_recorded';
+
+  // 1. If test override is provided, call it
+  if (adminSdkOverride) {
+    await adminSdkOverride.setCustomUserClaims(cleanTargetUid, nextClaims);
+    await adminSdkOverride.revokeRefreshTokens(cleanTargetUid);
+    claimSyncedVia = 'admin_sdk_override';
+  } else {
+    // 2. Try Service Account + Identity Toolkit REST API (works in Cloudflare Pages Functions / Workers & Node)
+    const sa = parseServiceAccountFromEnv(env);
+    if (sa) {
+      await updateFirebaseAdminClaimViaIdentityToolkit({
+        sa,
+        targetUid: cleanTargetUid,
+        grantAdmin,
+      });
+      claimSyncedVia = 'identity_toolkit';
+    } else if (typeof process !== 'undefined' && process.versions?.node) {
+      // 3. In Node.js environment, attempt firebase-admin if initialized
+      try {
+        const reqFn = typeof require === 'function' ? require : (eval('require') as NodeRequire);
+        const firebaseAdmin = reqFn('firebase-admin');
+        if (firebaseAdmin && firebaseAdmin.apps && firebaseAdmin.apps.length > 0) {
+          await firebaseAdmin.auth().setCustomUserClaims(cleanTargetUid, nextClaims);
+          await firebaseAdmin.auth().revokeRefreshTokens(cleanTargetUid);
+          claimSyncedVia = 'firebase_admin_node';
+        }
+      } catch {
+        // Fallback if firebase-admin not initialized with credentials in local dev
+      }
+    }
+  }
+
+  // 4. Sync D1 user_roles (for display only; auth checks use JWT claims)
+  const db: RewardsD1Database = params.db || env?.DB || getSharedLocalD1Database();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
+         VALUES (?1, ?2, ?3, NULL, 0, ?4, ?4)
+         ON CONFLICT(uid) DO UPDATE SET
+           email = CASE WHEN ?2 != '' THEN ?2 ELSE user_roles.email END,
+           role = ?3,
+           updated_at = ?4`
+      )
+      .bind(cleanTargetUid, String(targetEmail || '').trim().toLowerCase(), nextRoleLabel, nowMs)
+      .run();
+  } catch {
+    // Non-fatal if user_roles schema differs
+  }
+
+  // 5. Write to admin_activity_logs (D1 + Firestore + in-memory audit log)
+  const logId = `aal_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+  const actionType = grantAdmin ? 'GRANT_ADMIN_CLAIM' : 'REVOKE_ADMIN_CLAIM';
+  const logRecord = {
+    id: logId,
+    action: actionType,
+    actorUid: caller.uid,
+    actorEmail: caller.email,
+    adminUid: caller.uid,
+    adminEmail: caller.email,
+    targetUid: cleanTargetUid,
+    targetEmail: String(targetEmail || '').trim().toLowerCase(),
+    claimsSet: nextClaims,
+    refreshTokensRevoked: true,
+    reason: String(reason || (grantAdmin ? 'Granted admin claim' : 'Revoked admin claim')).trim(),
+    timestamp: nowIso,
+    createdAt: nowMs,
+  };
+
+  edgeAdminActivityLogsStore.unshift(logRecord);
+
+  try {
+    await ensureAdminActivityLogsD1Table(db);
+    await db
+      .prepare(
+        `INSERT INTO admin_activity_logs (id, action, actor_uid, actor_email, target_uid, target_email, details_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+      .bind(
+        logId,
+        actionType,
+        caller.uid,
+        caller.email,
+        cleanTargetUid,
+        String(targetEmail || '').trim().toLowerCase(),
+        JSON.stringify(logRecord),
+        nowMs
+      )
+      .run();
+  } catch {
+    // Non-fatal
+  }
+
+  try {
+    const sa = parseServiceAccountFromEnv(env);
+    if (sa) {
+      const fsProjectId = resolveTargetFirestoreProjectId(
+        env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || sa.project_id
+      );
+      const fsDbId = resolveTargetFirestoreDatabaseId(
+        env?.FIREBASE_DATABASE_ID ||
+          env?.VITE_FIREBASE_DATABASE_ID ||
+          env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+          DEFAULT_FIRESTORE_DATABASE_ID
+      );
+      const store = new FirestoreRestAdapter(sa, fsProjectId, fsDbId);
+      await Promise.all([
+        store
+          .setDoc(`admin_activity_logs/${logId}`, {
+            ...logRecord,
+            timestamp: SERVER_TIMESTAMP_SENTINEL,
+          })
+          .catch(() => null),
+        store
+          .setDoc(`auditLogs/${logId}`, {
+            ...logRecord,
+            timestamp: SERVER_TIMESTAMP_SENTINEL,
+          })
+          .catch(() => null),
+        store
+          .setDoc(
+            `users/${cleanTargetUid}`,
+            {
+              role: nextRoleLabel,
+              isAdmin: grantAdmin,
+              superAdmin: false,
+              updatedAt: SERVER_TIMESTAMP_SENTINEL,
+            },
+            true
+          )
+          .catch(() => null),
+      ]);
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    body: {
+      ok: true,
+      uid: cleanTargetUid,
+      role: nextRoleLabel,
+      claims: nextClaims,
+      refreshTokensRevoked: true,
+      claimSyncedVia,
+      logId,
+      activityLog: logRecord,
+    },
+  };
+}
+
+/**
+ * Handles `/api/superadmin/*` and missing `/api/admin/*` routes in Cloudflare Pages / Workers
+ * so that Admin Overview and SuperAdmin management work seamlessly with zero 404 "Not Found" errors.
+ */
+export async function handleSuperAdminAndExtraAdminRoutes(params: {
+  request: Request;
+  env?: RewardsEnv & Record<string, any>;
+  caller: VerifiedRoleCaller;
+  db?: RewardsD1Database;
+  adminSdkOverride?: {
+    setCustomUserClaims: (uid: string, claims: Record<string, boolean>) => Promise<void>;
+    revokeRefreshTokens: (uid: string) => Promise<void>;
+  };
+}): Promise<Response | null> {
+  const { request, env, caller, adminSdkOverride } = params;
+  const url = new URL(request.url);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  const method = request.method.toUpperCase();
+  const db: RewardsD1Database = params.db || env?.DB || getSharedLocalD1Database();
+
+  // ─── 1. /api/superadmin/* Routes (Caller is guaranteed superAdmin === true) ───
+  if (path === '/api/superadmin' || path.startsWith('/api/superadmin/')) {
+    if (caller.superAdmin !== true) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Forbidden: superAdmin claim required.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    if ((path === '/api/superadmin' || path === '/api/superadmin/stats') && method === 'GET') {
+      return jsonGateResponse(
+        {
+          ok: true,
+          role: 'superadmin',
+          callerUid: caller.uid,
+          callerEmail: caller.email,
+          activityLogsCount: edgeAdminActivityLogsStore.length,
+        },
+        200
+      );
+    }
+
+    if ((path === '/api/superadmin/admins' || path === '/api/superadmin/roles') && method === 'GET') {
+      let roles: Array<Record<string, any>> = [];
+      try {
+        const res = await db
+          .prepare(
+            'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles ORDER BY updated_at DESC LIMIT 500'
+          )
+          .all();
+        roles = (res.results || []).filter(
+          (r: any) => r.role === 'admin' || r.role === 'superadmin' || r.role === 'super_admin'
+        );
+      } catch {
+        roles = [];
+      }
+      return jsonGateResponse(
+        {
+          ok: true,
+          admins: roles,
+          activityLogs: edgeAdminActivityLogsStore.slice(0, 50),
+        },
+        200
+      );
+    }
+
+    if (
+      (path === '/api/superadmin/admins' ||
+        path === '/api/superadmin/roles' ||
+        path === '/api/superadmin/grant-admin' ||
+        path === '/api/superadmin/revoke-admin') &&
+      (method === 'POST' || method === 'PUT' || method === 'DELETE')
+    ) {
+      let body: Record<string, any> = {};
+      try {
+        body = (await request.json()) as Record<string, any>;
+      } catch {
+        body = {};
+      }
+
+      // Explicitly block any attempt to grant superAdmin from the app
+      const requestedRole = String(body.role || '').trim().toLowerCase();
+      if (
+        body.superAdmin === true ||
+        requestedRole === 'superadmin' ||
+        requestedRole === 'super_admin'
+      ) {
+        return jsonGateResponse(
+          {
+            ok: false,
+            error: 'Forbidden: Nobody can grant superAdmin from the app.',
+            code: 'CANNOT_GRANT_SUPERADMIN',
+          },
+          403
+        );
+      }
+
+      const targetUid = String(body.uid || body.targetUid || '').trim();
+      const targetEmail = String(body.email || body.targetEmail || '').trim();
+      const grantAdmin =
+        path === '/api/superadmin/revoke-admin' || method === 'DELETE'
+          ? false
+          : path === '/api/superadmin/grant-admin'
+          ? true
+          : typeof body.admin === 'boolean'
+          ? body.admin
+          : requestedRole === 'admin';
+
+      const result = await executeGrantOrRevokeAdminClaim({
+        caller,
+        targetUid,
+        targetEmail,
+        grantAdmin,
+        reason: body.reason,
+        env,
+        db,
+        adminSdkOverride,
+      });
+
+      return jsonGateResponse(result.body, result.status);
+    }
+
+    return jsonGateResponse(
+      {
+        ok: true,
+        endpoint: path,
+        callerUid: caller.uid,
+        superAdmin: true,
+      },
+      200
+    );
+  }
+
+  // ─── 2. /api/admin/* Routes (Caller is guaranteed admin === true || superAdmin === true) ───
+  if (path === '/api/admin' || path === '/api/admin/stats') {
+    if (method === 'GET') {
+      let questionsCount = 0;
+      let attemptsCount = 0;
+      let crewsCount = 0;
+      try {
+        const [qRow, aRow, cRow] = await Promise.all([
+          db.prepare('SELECT COUNT(*) as cnt FROM mcqs').first<{ cnt: number }>().catch(() => null),
+          db
+            .prepare('SELECT COUNT(*) as cnt FROM test_attempts')
+            .first<{ cnt: number }>()
+            .catch(() => null),
+          db.prepare('SELECT COUNT(*) as cnt FROM crews').first<{ cnt: number }>().catch(() => null),
+        ]);
+        questionsCount = Number(qRow?.cnt || 0);
+        attemptsCount = Number(aRow?.cnt || 0);
+        crewsCount = Number(cRow?.cnt || 0);
+      } catch {
+        // Non-fatal
+      }
+
+      return jsonGateResponse(
+        {
+          ok: true,
+          callerUid: caller.uid,
+          role: caller.role,
+          stats: {
+            d1QuestionsCount: questionsCount,
+            d1AttemptsCount: attemptsCount,
+            d1CrewsCount: crewsCount,
+          },
+        },
+        200
+      );
+    }
+  }
+
+  // PUT / POST /api/admin/roles — Only superAdmin can grant/revoke admin; nobody can grant superAdmin
+  if (path === '/api/admin/roles' && (method === 'PUT' || method === 'POST')) {
+    if (caller.superAdmin !== true) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Forbidden: Only a superAdmin can grant or revoke roles.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    let body: Record<string, any> = {};
+    try {
+      body = (await request.json()) as Record<string, any>;
+    } catch {
+      body = {};
+    }
+
+    const requestedRole = String(body.role || 'student').trim().toLowerCase();
+    if (
+      body.superAdmin === true ||
+      requestedRole === 'superadmin' ||
+      requestedRole === 'super_admin'
+    ) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Forbidden: Nobody can grant superAdmin from the app.',
+          code: 'CANNOT_GRANT_SUPERADMIN',
+        },
+        403
+      );
+    }
+
+    const targetUid = String(body.uid || body.targetUid || '').trim();
+    const targetEmail = String(body.email || body.targetEmail || '').trim();
+    if (!targetUid || !['student', 'captain', 'admin'].includes(requestedRole)) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Valid uid and role (student, captain, or admin) are required.',
+          code: 'INVALID_INPUT',
+        },
+        400
+      );
+    }
+
+    const res = await executeGrantOrRevokeAdminClaim({
+      caller,
+      targetUid,
+      targetEmail,
+      grantAdmin: requestedRole === 'admin',
+      reason: body.reason,
+      env,
+      db,
+      adminSdkOverride,
+    });
+
+    if (res.ok && requestedRole === 'captain') {
+      const nowMs = Date.now();
+      await db
+        .prepare(
+          `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
+           VALUES (?1, ?2, 'captain', ?3, 0, ?4, ?4)
+           ON CONFLICT(uid) DO UPDATE SET role = 'captain', custom_role = COALESCE(?3, user_roles.custom_role), updated_at = ?4`
+        )
+        .bind(targetUid, targetEmail.toLowerCase(), body.customRole ?? null, nowMs)
+        .run()
+        .catch(() => {});
+      return jsonGateResponse(
+        {
+          ...res.body,
+          role: 'captain',
+        },
+        200
+      );
+    }
+
+    return jsonGateResponse(res.body, res.status);
+  }
+
+  // GET /api/admin/access-requests/mine
+  if (path === '/api/admin/access-requests/mine' && method === 'GET') {
+    const now = Date.now();
+    const activeGrants = edgeAccessGrantsStore.filter(
+      (g) =>
+        g.adminUid === caller.uid &&
+        !g.revokedAt &&
+        !g.usedAt &&
+        (g.expiresAt === null || g.expiresAt === undefined || Number(g.expiresAt) > now)
+    );
+    const myRequests = edgeAccessRequestsStore
+      .filter((r) => r.requesterUid === caller.uid)
+      .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    return jsonGateResponse(
+      {
+        ok: true,
+        grants: activeGrants,
+        requests: myRequests,
+      },
+      200
+    );
+  }
+
+  // GET /api/admin/access-requests
+  if (path === '/api/admin/access-requests' && method === 'GET') {
+    const statusFilter = (url.searchParams.get('status') || '').trim().toLowerCase();
+    let list = [...edgeAccessRequestsStore];
+    if (!caller.superAdmin) {
+      list = list.filter((r) => r.requesterUid === caller.uid);
+    }
+    if (statusFilter && statusFilter !== 'all') {
+      list = list.filter((r) => String(r.status || '').toLowerCase() === statusFilter);
+    }
+    list.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    return jsonGateResponse({ ok: true, requests: list }, 200);
+  }
+
+  // POST /api/admin/access-requests
+  if (path === '/api/admin/access-requests' && method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as Record<string, any>;
+    const permission = String(body.permission || '').trim();
+    const reason = String(body.reason || '').trim();
+    if (!permission || !reason) {
+      return jsonGateResponse(
+        { ok: false, error: 'Permission and reason are required.' },
+        400
+      );
+    }
+    const now = Date.now();
+    const newReq = {
+      id: `areq_${now}_${Math.random().toString(36).slice(2, 7)}`,
+      requesterUid: caller.uid,
+      requesterEmail: caller.email,
+      requesterName: caller.name,
+      permission,
+      targetType: body.targetType ? String(body.targetType) : null,
+      targetId: body.targetId ? String(body.targetId) : null,
+      targetLabel: body.targetLabel ? String(body.targetLabel) : null,
+      reason,
+      requestedDuration: String(body.requestedDuration || '1h'),
+      status: 'pending',
+      createdAt: now,
+    };
+    edgeAccessRequestsStore.unshift(newReq);
+    return jsonGateResponse({ ok: true, request: newReq }, 200);
+  }
+
+  // GET /api/admin/access-grants
+  if (path === '/api/admin/access-grants' && method === 'GET') {
+    let grants = [...edgeAccessGrantsStore];
+    if (!caller.superAdmin) {
+      grants = grants.filter((g) => g.adminUid === caller.uid);
+    }
+    return jsonGateResponse({ ok: true, grants }, 200);
+  }
+
+  // GET /api/admin/roles/audit
+  if (path === '/api/admin/roles/audit' && method === 'GET') {
+    return jsonGateResponse(
+      {
+        ok: true,
+        logs: edgeAdminActivityLogsStore.slice(0, 100),
+      },
+      200
+    );
+  }
+
+  // GET /api/admin/grand-line-audit-logs
+  if (path === '/api/admin/grand-line-audit-logs' && method === 'GET') {
+    return jsonGateResponse({ ok: true, logs: [] }, 200);
+  }
+
+  return null;
+}

@@ -88,7 +88,7 @@ export {
 };
 import { getDefaultWriteSource } from '@/config/questionBankSources';
 
-// ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
+// ─── DIAGNOSTIC FIRESTORE & ENDPOINT ERRORS ──────────────────────────────────
 export class AdminFirestoreError extends Error {
   code: string;
   collection: string;
@@ -100,6 +100,19 @@ export class AdminFirestoreError extends Error {
     this.code = code;
     this.collection = collection;
     this.operation = operation;
+  }
+}
+
+export class AdminStatCardError extends Error {
+  source: string;
+  status: number | string;
+
+  constructor(source: string, status: number | string, detail?: string) {
+    const cleanDetail = detail ? ` — ${detail}` : '';
+    super(`${source} [${status}]${cleanDetail}`);
+    this.name = 'AdminStatCardError';
+    this.source = source;
+    this.status = status;
   }
 }
 
@@ -561,149 +574,319 @@ export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]
   }
 }
 
+let serverAdminStatsInFlight: Promise<{
+  ok: boolean;
+  status: number;
+  stats: Record<string, any> | null;
+  errorMessage?: string;
+}> | null = null;
+let serverAdminStatsCache: {
+  at: number;
+  res: { ok: boolean; status: number; stats: Record<string, any> | null; errorMessage?: string };
+} | null = null;
+
+export async function fetchServerAdminStatsSnapshot(force = false): Promise<{
+  ok: boolean;
+  status: number;
+  stats: Record<string, any> | null;
+  errorMessage?: string;
+}> {
+  if (!force && serverAdminStatsCache && Date.now() - serverAdminStatsCache.at < 5000) {
+    return serverAdminStatsCache.res;
+  }
+  if (!force && serverAdminStatsInFlight) {
+    return serverAdminStatsInFlight;
+  }
+  serverAdminStatsInFlight = (async () => {
+    const resp = await fetchAdminJsonWithRetry<{ ok?: boolean; stats?: Record<string, any>; error?: any }>(
+      '/api/admin/stats'
+    );
+    const out = {
+      ok: resp.ok && Boolean(resp.data?.stats),
+      status: resp.status || (resp.ok ? 200 : 500),
+      stats: resp.data?.stats || null,
+      errorMessage:
+        resp.errorMessage ||
+        (typeof resp.data?.error === 'string' ? resp.data.error : resp.data?.error?.message),
+    };
+    serverAdminStatsCache = { at: Date.now(), res: out };
+    return out;
+  })().finally(() => {
+    serverAdminStatsInFlight = null;
+  });
+  return serverAdminStatsInFlight;
+}
+
+async function strictCountOrThrow(
+  targetQuery: Parameters<typeof getCountFromServer>[0],
+  collectionLabel: string,
+  serverStatKey?: string,
+  forceServer = false
+): Promise<number> {
+  await ensureAdminAuthToken(false);
+  let firestoreErr: any = null;
+
+  const tryFirestoreCount = async (refresh: boolean): Promise<number | null> => {
+    if (refresh && auth?.currentUser) {
+      await ensureAdminAuthToken(true);
+    }
+    const snap = await Promise.race([
+      getCountFromServer(targetQuery),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => {
+          const tErr: any = new Error(`Timed out reading ${collectionLabel}`);
+          tErr.code = 'DEADLINE_EXCEEDED';
+          reject(tErr);
+        }, 2500)
+      ),
+    ]);
+    if (snap && typeof snap.data === 'function') {
+      return snap.data().count;
+    }
+    return null;
+  };
+
+  try {
+    const c = await tryFirestoreCount(false);
+    if (typeof c === 'number') return c;
+  } catch (err1) {
+    firestoreErr = err1;
+    try {
+      const c2 = await tryFirestoreCount(true);
+      if (typeof c2 === 'number') return c2;
+    } catch (err2) {
+      firestoreErr = err2;
+    }
+  }
+
+  if (serverStatKey) {
+    const srv = await fetchServerAdminStatsSnapshot(forceServer);
+    if (srv.ok && srv.stats && typeof srv.stats[serverStatKey] === 'number') {
+      return Number(srv.stats[serverStatKey]);
+    }
+    const status = srv.status || firestoreErr?.code || 'ERROR';
+    const msg =
+      srv.errorMessage ||
+      firestoreErr?.message ||
+      `Failed to load metric from ${collectionLabel} and GET /api/admin/stats`;
+    throw new AdminStatCardError(`${collectionLabel} | GET /api/admin/stats`, status, msg);
+  }
+
+  const code = firestoreErr?.code || 'FIRESTORE_ERROR';
+  const msg = firestoreErr?.message || `Failed to count ${collectionLabel}`;
+  throw new AdminStatCardError(collectionLabel, code, msg);
+}
+
+export async function fetchOverviewUsersCard(options?: { force?: boolean }): Promise<{
+  totalUsers: number;
+  studentCount: number;
+  captainCount: number;
+  proCount: number;
+  guestCount: number;
+  previewUsers: UserProfile[];
+}> {
+  const [usersCountResult, usersPageResult, srvSnapshot] = await Promise.allSettled([
+    strictCountOrThrow(collection(db, 'users'), 'firestore:users', 'totalUsers', Boolean(options?.force)),
+    fetchUsersPaginated({ limitCount: 50, force: options?.force }),
+    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+  ]);
+
+  const srv = srvSnapshot.status === 'fulfilled' ? srvSnapshot.value : null;
+  const page = usersPageResult.status === 'fulfilled' ? usersPageResult.value : null;
+  const countVal = usersCountResult.status === 'fulfilled' ? usersCountResult.value : null;
+
+  if (countVal === null && !page && (!srv || !srv.ok || !srv.stats)) {
+    const errReason: any =
+      usersCountResult.status === 'rejected'
+        ? usersCountResult.reason
+        : usersPageResult.status === 'rejected'
+        ? usersPageResult.reason
+        : null;
+    if (errReason instanceof AdminStatCardError) throw errReason;
+    throw new AdminStatCardError(
+      'firestore:users | GET /api/admin/stats',
+      srv?.status || errReason?.code || 500,
+      srv?.errorMessage || errReason?.message || 'Failed to load registered users'
+    );
+  }
+
+  const directoryState = getCachedAdminUsersState();
+  const totalUsers = Math.max(
+    countVal ?? 0,
+    page?.totalCount ?? 0,
+    directoryState?.totalCount ?? 0,
+    Number(srv?.stats?.totalUsers ?? 0)
+  );
+
+  return {
+    totalUsers,
+    studentCount: directoryState?.studentCount ?? Number(srv?.stats?.studentCount ?? totalUsers),
+    captainCount: directoryState?.captainCount ?? Number(srv?.stats?.captainCount ?? 0),
+    proCount: directoryState?.proCount ?? Number(srv?.stats?.proCount ?? 0),
+    guestCount: directoryState?.guestCount ?? Number(srv?.stats?.guestCount ?? 0),
+    previewUsers: page?.users ?? directoryState?.users ?? [],
+  };
+}
+
+export async function fetchOverviewQuestionsCard(options?: { force?: boolean }): Promise<{
+  totalQuestions: number;
+}> {
+  const [qCountRes, msRes, srvRes] = await Promise.allSettled([
+    strictCountOrThrow(collection(db, 'questions'), 'firestore:questions', 'totalQuestions', Boolean(options?.force)),
+    getMultiSourceQuestionCounts(),
+    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+  ]);
+
+  const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
+  const msTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
+  const qCount = qCountRes.status === 'fulfilled' ? qCountRes.value : null;
+  const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
+
+  if (qCount === null && msTotal === 0 && (!srv || !srv.ok || !srv.stats)) {
+    const errReason = qCountRes.status === 'rejected' ? qCountRes.reason : null;
+    if (errReason instanceof AdminStatCardError) throw errReason;
+    throw new AdminStatCardError(
+      'firestore:questions | GET /api/admin/stats',
+      srv?.status || errReason?.code || 500,
+      srv?.errorMessage || errReason?.message || 'Failed to load question pool count'
+    );
+  }
+
+  return {
+    totalQuestions: Math.max(qCount ?? 0, msTotal, Number(srv?.stats?.totalQuestions ?? 0)),
+  };
+}
+
+export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): Promise<{
+  totalAttempts: number;
+}> {
+  const totalAttempts = await strictCountOrThrow(
+    collection(db, 'attempts'),
+    'firestore:attempts',
+    'totalAttempts',
+    Boolean(options?.force)
+  );
+  return { totalAttempts };
+}
+
+export async function fetchOverviewApplicationsCard(options?: { force?: boolean }): Promise<{
+  pendingCaptains: number;
+  pendingCrew: number;
+  totalPending: number;
+}> {
+  const [captains, crew] = await Promise.all([
+    strictCountOrThrow(
+      query(collection(db, 'captainApplications'), where('status', '==', 'pending')),
+      'firestore:captainApplications',
+      'pendingCaptains',
+      Boolean(options?.force)
+    ),
+    strictCountOrThrow(
+      query(collection(db, 'crewApplications'), where('status', '==', 'pending')),
+      'firestore:crewApplications',
+      'pendingCrew',
+      Boolean(options?.force)
+    ),
+  ]);
+  return {
+    pendingCaptains: captains,
+    pendingCrew: crew,
+    totalPending: captains + crew,
+  };
+}
+
+export async function fetchOverviewPaymentsCard(options?: { force?: boolean }): Promise<{
+  pendingPayments: number;
+}> {
+  const pendingPayments = await strictCountOrThrow(
+    query(collection(db, 'paymentRequests'), where('status', '==', 'pending')),
+    'firestore:paymentRequests',
+    'pendingPayments',
+    Boolean(options?.force)
+  );
+  return { pendingPayments };
+}
+
+export async function fetchOverviewReviewsCard(options?: { force?: boolean }): Promise<{
+  pendingReviews: number;
+}> {
+  const pendingReviews = await strictCountOrThrow(
+    query(collection(db, 'reviews'), where('status', '==', 'pending')),
+    'firestore:reviews',
+    'pendingReviews',
+    Boolean(options?.force)
+  );
+  return { pendingReviews };
+}
+
+export async function fetchOverviewSubjectsCard(options?: { force?: boolean }): Promise<{
+  subjectCounts: Record<string, number>;
+}> {
+  const [msRes, srvRes] = await Promise.allSettled([
+    getMultiSourceQuestionCounts(),
+    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+  ]);
+
+  const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
+  const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
+  const srvSubjects = (srv?.ok && srv?.stats?.subjectCounts) ? srv.stats.subjectCounts : null;
+
+  if (msRes.status === 'rejected' && !srvSubjects) {
+    throw new AdminStatCardError(
+      'firestore:questions (subjectCounts) | GET /api/admin/stats',
+      srv?.status || 500,
+      srv?.errorMessage || (msRes.reason as Error)?.message || 'Failed to load subject question counts'
+    );
+  }
+
+  const subjectCounts: Record<string, number> = {};
+  for (const subj of CORE_SUBJECTS) {
+    const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
+    const fromMs = Number(msSubjects[slug] || 0) + Number(msSubjects[subj] || 0);
+    const fromSrv = srvSubjects ? Number(srvSubjects[subj] ?? srvSubjects[slug] ?? 0) : 0;
+    const resolved = Math.max(fromMs, fromSrv);
+    subjectCounts[subj] = resolved;
+    subjectCounts[slug] = resolved;
+  }
+
+  return { subjectCounts };
+}
+
 export async function fetchAdminStats(options?: { force?: boolean }): Promise<AdminStats> {
   if (inFlightAdminStatsPromise && !options?.force) {
     return inFlightAdminStatsPromise;
   }
 
   const runStatsLoad = async (): Promise<AdminStats> => {
-    const startTime = performance.now();
-    await ensureAdminAuthToken(false);
-
-    const questionsCol = collection(db, 'questions');
-    const usersCol = collection(db, 'users');
-    const attemptsCol = collection(db, 'attempts');
-    const crewsCol = collection(db, 'crews');
-
-    const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 2000): Promise<T> =>
-      Promise.race([
-        p,
-        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    const [usersCard, questionsCard, attemptsCard, appsCard, paymentsCard, reviewsCard, subjectsCard] =
+      await Promise.all([
+        fetchOverviewUsersCard(options),
+        fetchOverviewQuestionsCard(options),
+        fetchOverviewAttemptsCard(options),
+        fetchOverviewApplicationsCard(options),
+        fetchOverviewPaymentsCard(options),
+        fetchOverviewReviewsCard(options),
+        fetchOverviewSubjectsCard(options),
       ]);
 
-    let firestoreCountFailureCount = 0;
-    const safeCount = async (targetQuery: Parameters<typeof getCountFromServer>[0]): Promise<number> => {
-      try {
-        let snap = await withTimeout(getCountFromServer(targetQuery), null);
-        if (!snap && auth?.currentUser) {
-          await ensureAdminAuthToken(true);
-          snap = await withTimeout(getCountFromServer(targetQuery), null, 1800);
-        }
-        if (snap && typeof snap.data === 'function') {
-          return snap.data().count;
-        }
-        firestoreCountFailureCount += 1;
-        return 0;
-      } catch (err) {
-        try {
-          await ensureAdminAuthToken(true);
-          const retrySnap = await withTimeout(getCountFromServer(targetQuery), null, 1800);
-          if (retrySnap && typeof retrySnap.data === 'function') {
-            return retrySnap.data().count;
-          }
-        } catch {
-          // ignore second failure
-        }
-        firestoreCountFailureCount += 1;
-        console.warn('[AdminService] safeCount query fallback:', err);
-        return 0;
-      }
-    };
-
-    // Run summary aggregate counts AND first page of users (50 per page + 2FA status) in parallel right away!
-    const [
-      usersTotalFromCount,
-      questionsTotal,
-      attemptsTotal,
-      crewsTotal,
-      ambassadorsTotal,
-      pendingCaptainsCount,
-      pendingCrewCount,
-      pendingPaymentsCount,
-      pendingReviewsCount,
-      multiSourceCounts,
-      usersPageResult,
-    ] = await Promise.all([
-      safeCount(usersCol),
-      safeCount(questionsCol),
-      safeCount(attemptsCol),
-      safeCount(crewsCol),
-      safeCount(query(usersCol, where('role', 'in', ['crew', 'ambassador']))),
-      safeCount(query(collection(db, 'captainApplications'), where('status', '==', 'pending'))),
-      safeCount(query(collection(db, 'crewApplications'), where('status', '==', 'pending'))),
-      safeCount(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'))),
-      safeCount(query(collection(db, 'reviews'), where('status', '==', 'pending'))),
-      getMultiSourceQuestionCounts(),
-      fetchUsersPaginated({ limitCount: 50 }).catch((err) => {
-        console.error('[AdminService] Parallel first-page users load in fetchAdminStats failed:', err);
-        return null;
-      }),
-    ]);
-
-    const directoryState = getCachedAdminUsersState();
-    const resolvedTotalUsers = Math.max(
-      usersTotalFromCount,
-      usersPageResult?.totalCount ?? 0,
-      directoryState?.totalCount ?? 0
-    );
-
-    if (firestoreCountFailureCount >= 8 && !usersPageResult && resolvedTotalUsers === 0) {
-      const fatalErr = new Error(
-        'Failed to load admin overview statistics: authentication token or Firestore connection was not ready.'
-      );
-      console.error('[AdminService] fetchAdminStats failed:', fatalErr);
-      throw fatalErr;
-    }
-
-    // Subject cards must sum all active banks (Core Bank, Alpha Bank, Beta Bank)
-    const msSubjects = multiSourceCounts?.subjectCounts || {};
-    const subjectCounts: Record<string, number> = {};
-
-    await Promise.all(
-      CORE_SUBJECTS.map(async (subj) => {
-        const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
-        let count = (msSubjects[slug] || 0) + (msSubjects[subj] || 0);
-        if (count === 0 && questionsTotal > 0) {
-          try {
-            count = await safeCount(
-              query(questionsCol, where('subject', 'in', [subj, slug, subj.toLowerCase(), subj.toUpperCase()]))
-            );
-          } catch {
-            // fallback
-          }
-        }
-        subjectCounts[subj] = count;
-        subjectCounts[slug] = count;
-      })
-    );
-
-    const multiSourceTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
-    const totalQ = Math.max(questionsTotal, multiSourceTotal);
-
-    // Questions solved estimate based on recorded attempts and active streaks
-    const totalQuestionsSolved = Math.max(attemptsTotal * 15, resolvedTotalUsers * 12);
-
-    const elapsed = Math.round(performance.now() - startTime);
-    console.log(`%c[AdminService] fetchAdminStats completed in ${elapsed}ms (totalUsers=${resolvedTotalUsers})`, 'color: #10b981; font-weight: bold;');
-
     const result: AdminStats = {
-      totalUsers: resolvedTotalUsers,
-      studentCount: directoryState?.studentCount ?? resolvedTotalUsers,
-      captainCount: directoryState?.captainCount ?? 0,
-      proCount: directoryState?.proCount ?? 0,
-      guestCount: directoryState?.guestCount ?? 0,
-      adminCount: directoryState?.adminCount ?? 0,
-      twoFactorEnabledCount: directoryState?.twoFactorEnabledCount ?? 0,
-      totalQuestions: totalQ,
-      totalAttempts: attemptsTotal,
-      totalQuestionsSolved,
-      totalActiveCrews: Math.max(crewsTotal, 1),
-      totalAmbassadors: Math.max(ambassadorsTotal, directoryState?.captainCount ? directoryState.captainCount : 1),
-      pendingCaptains: pendingCaptainsCount,
-      pendingCrew: pendingCrewCount,
-      pendingPayments: pendingPaymentsCount,
-      pendingReviews: pendingReviewsCount,
-      subjectCounts,
+      totalUsers: usersCard.totalUsers,
+      studentCount: usersCard.studentCount,
+      captainCount: usersCard.captainCount,
+      proCount: usersCard.proCount,
+      guestCount: usersCard.guestCount,
+      adminCount: getCachedAdminUsersState()?.adminCount ?? 0,
+      twoFactorEnabledCount: getCachedAdminUsersState()?.twoFactorEnabledCount ?? 0,
+      totalQuestions: questionsCard.totalQuestions,
+      totalAttempts: attemptsCard.totalAttempts,
+      totalQuestionsSolved: Math.max(attemptsCard.totalAttempts * 15, usersCard.totalUsers * 12),
+      totalActiveCrews: 1,
+      totalAmbassadors: Math.max(usersCard.captainCount, 1),
+      pendingCaptains: appsCard.pendingCaptains,
+      pendingCrew: appsCard.pendingCrew,
+      pendingPayments: paymentsCard.pendingPayments,
+      pendingReviews: reviewsCard.pendingReviews,
+      subjectCounts: subjectsCard.subjectCounts,
     };
 
     cachedAdminStats = result;
@@ -1618,21 +1801,11 @@ export async function ensureStudentWalletInitialized(uid: string): Promise<numbe
 }
 
 // ─── SUPERADMIN CHECK & RESET ALL USERS ──────────────────────────────────────
-export function isProtectedSuperAdmin(userOrProfile: { email?: string | null; role?: string | null; uid?: string | null } | null | undefined): boolean {
+export function isProtectedSuperAdmin(
+  userOrProfile: { email?: string | null; role?: string | null; uid?: string | null; superAdmin?: boolean } | null | undefined
+): boolean {
   if (!userOrProfile) return false;
-  const email = userOrProfile.email?.toLowerCase().trim();
-  const role = String(userOrProfile.role || '').toLowerCase().trim();
-  return (
-    role === 'super_admin' ||
-    role === 'superadmin' ||
-    email === 'shsvirtualadmin@gmail.com' ||
-    email === 'support@boardly.cfd' ||
-    email === 'ktkhashir90@gmail.com' ||
-    userOrProfile.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-    userOrProfile.uid === 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2' ||
-    userOrProfile.uid === '2GHhpHZkYFR1keIAwlnuch08mdh1' ||
-    userOrProfile.uid === 'JBGCDTLuWUMUIUMCLek7SdgvUNn1'
-  );
+  return userOrProfile.superAdmin === true;
 }
 
 export interface UserResetPreview {
@@ -1645,6 +1818,7 @@ export async function previewResetUsers(): Promise<UserResetPreview> {
   const usersSnap = await getDocs(collection(db, 'users'));
   const usersToDelete: { uid: string; email: string; displayName?: string | null }[] = [];
   const superadminsKept: { uid: string; email: string; role?: string }[] = [];
+  const currentUid = auth?.currentUser?.uid;
 
   usersSnap.docs.forEach((d) => {
     const data = d.data() as UserProfile;
@@ -1655,7 +1829,7 @@ export async function previewResetUsers(): Promise<UserResetPreview> {
       role: data.role,
     };
 
-    if (isProtectedSuperAdmin(item)) {
+    if (currentUid && d.id === currentUid) {
       superadminsKept.push(item);
     } else {
       usersToDelete.push(item);
@@ -1673,9 +1847,13 @@ export async function executeResetAllUsers(
   adminEmail: string,
   onProgress?: (done: number, total: number) => void
 ): Promise<{ deletedUsersCount: number; deletedRecordsCount: number; keptSuperadmins: string[] }> {
-  const emailLower = adminEmail.toLowerCase().trim();
-  if (emailLower !== 'shsvirtualadmin@gmail.com' && emailLower !== 'support@boardly.cfd') {
-    throw new Error('Unauthorized: Only platform superadmin can perform a user reset.');
+  const currentUser = auth?.currentUser;
+  if (!currentUser) {
+    throw new Error('Unauthorized: Authentication required.');
+  }
+  const tokenResult = await currentUser.getIdTokenResult();
+  if (tokenResult.claims?.superAdmin !== true) {
+    throw new Error('Unauthorized: Only a verified superAdmin (custom claim) can perform a user reset.');
   }
 
   const preview = await previewResetUsers();

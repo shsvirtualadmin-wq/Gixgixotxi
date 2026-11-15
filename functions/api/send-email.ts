@@ -74,22 +74,10 @@ function fromFirestoreFields(fields?: Record<string, any>): Record<string, any> 
   return fromFirestoreDocument(fields ? { fields } : null) || {};
 }
 
-function isSuperAdminIdentity(uid?: string | null, email?: string | null, env?: SendEmailEnv): boolean {
-  const cleanUid = String(uid || '').trim();
+function isSuperAdminIdentity(_uid?: string | null, email?: string | null, env?: SendEmailEnv): boolean {
   const cleanEmail = String(email || '').trim().toLowerCase();
-  const superUids = new Set(
-    (env?.SUPERADMIN_UIDS || [...DEFAULT_SUPERADMIN_UIDS, 'jJfb1nThG1X9phL8fFDZ0G0J7m33'].join(','))
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  );
-  const superEmails = new Set(
-    (env?.SUPERADMIN_EMAILS || [...DEFAULT_SUPERADMIN_EMAILS, 'shs.academy.virtual@gmail.com'].join(','))
-      .split(',')
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-  );
-  return (cleanUid.length > 0 && superUids.has(cleanUid)) || (cleanEmail.length > 0 && superEmails.has(cleanEmail));
+  const ownerEmail = String((env as any)?.OWNER_EMAIL || '').trim().toLowerCase();
+  return Boolean(ownerEmail && cleanEmail && cleanEmail === ownerEmail);
 }
 
 export interface EmailLogEntry {

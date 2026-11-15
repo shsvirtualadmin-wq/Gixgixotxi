@@ -40,8 +40,13 @@ import {
 
 
 import { isD1UserSessionVerified } from '../functions/_utils/firestoreRestAdmin';
+import {
+  enforceAdminOrSuperAdminGate,
+  handleSuperAdminAndExtraAdminRoutes,
+} from '../functions/_utils/adminRoleGate';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 import { handleKobanStyleRequest } from '../functions/api/koban-style';
+import jsWorker from './worker.js';
 
 export interface Env {
   DB?: D1Database;
@@ -65,7 +70,9 @@ export interface VerifiedFirebaseUser {
   email: string;
   name: string;
   picture: string;
-  role: 'student' | 'captain' | 'superadmin';
+  role: 'student' | 'captain' | 'admin' | 'superadmin';
+  admin?: boolean;
+  superAdmin?: boolean;
   customRole: string | null;
 }
 
@@ -812,31 +819,26 @@ export async function verifyFirebaseIdToken(
       }
     }
 
-    const superUids = (
-      env.SUPERADMIN_UIDS || BOARDLY_CLOUDFLARE_CONFIG.superadminUids.join(',')
-    )
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+    const isSuperAdminClaim = payload.superAdmin === true;
+    const isAdminClaim = payload.admin === true || isSuperAdminClaim;
 
-    let role: 'student' | 'captain' | 'superadmin' = 'student';
+    let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
     let customRole: string | null = payload.customRole || null;
 
-    if (
-      superUids.includes(uid) ||
-      payload.role === 'superadmin' ||
-      payload.role === 'admin' ||
-      payload.admin === true
-    ) {
+    if (isSuperAdminClaim) {
       role = 'superadmin';
+    } else if (isAdminClaim) {
+      role = 'admin';
     } else if (
-      payload.role === 'captain' ||
       payload.nakamaCaptain === true ||
       payload.customRole === 'Nakama Captain'
     ) {
       role = 'captain';
       customRole = customRole || 'Nakama Captain';
-    } else if (env.DB) {
+    }
+
+    if (env.DB) {
       try {
         const [d1Role, unameRole] = await Promise.all([
           env.DB.prepare(
@@ -858,9 +860,7 @@ export async function verifyFirebaseIdToken(
         }
         const resolvedRole = d1Role?.role || unameRole?.role || 'student';
         const resolvedCustomRole = d1Role?.custom_role || unameRole?.custom_role || null;
-        if (resolvedRole === 'superadmin' || resolvedRole === 'admin') {
-          role = 'superadmin';
-        } else if (resolvedRole === 'captain' || resolvedCustomRole === 'Nakama Captain') {
+        if (role === 'student' && (resolvedRole === 'captain' || resolvedCustomRole === 'Nakama Captain')) {
           role = 'captain';
           customRole = resolvedCustomRole || 'Nakama Captain';
         }
@@ -875,6 +875,8 @@ export async function verifyFirebaseIdToken(
       name: payload.name || email.split('@')[0] || 'Student',
       picture: payload.picture || '',
       role,
+      admin: isAdminClaim,
+      superAdmin: isSuperAdminClaim,
       customRole,
     };
   } catch (err: any) {
@@ -1054,9 +1056,11 @@ export async function resolveWorkerLiveAuthorsBatch(
       const displayName = uRow?.display_name || gRow?.display_name || username || null;
       const avatar = sanitizeStoreAvatarId(uRow?.avatar, gRow?.avatar);
       const frame = uRow?.frame || null;
-      const role = BOARDLY_CLOUDFLARE_CONFIG.superadminUids.includes(uid)
-        ? 'superadmin'
-        : rRow?.role || uRow?.role || (gRow ? 'guest' : 'student');
+      const rawStoredRole = rRow?.role || uRow?.role || (gRow ? 'guest' : 'student');
+      const role =
+        rawStoredRole === 'superadmin' || rawStoredRole === 'super_admin'
+          ? 'student'
+          : rawStoredRole;
       const customRole = rRow?.custom_role || uRow?.custom_role || null;
       if (username || displayName || avatar || frame || role || customRole) {
         result.set(uid, {
@@ -2117,6 +2121,33 @@ export default {
 
     if (env.DB) {
       await ensureD1Schema(env.DB);
+    }
+
+    // 0b. Strict server-side Firebase ID token custom-claim gate for /api/admin/* and /api/superadmin/*
+    if (
+      url.pathname === '/api/admin' ||
+      url.pathname.startsWith('/api/admin/') ||
+      url.pathname === '/api/superadmin' ||
+      url.pathname.startsWith('/api/superadmin/')
+    ) {
+      const gate = await enforceAdminOrSuperAdminGate({
+        request: req,
+        env: env as any,
+      });
+      if (gate.blockedResponse) {
+        return gate.blockedResponse;
+      }
+      if (gate.caller) {
+        const handled = await handleSuperAdminAndExtraAdminRoutes({
+          request: req,
+          env: env as any,
+          caller: gate.caller,
+          db: env.DB as any,
+        });
+        if (handled) {
+          return handled;
+        }
+      }
     }
 
     // 1. Dynamic Sitemap XML from D1
@@ -4129,13 +4160,7 @@ ${urls
       const verifyD1Admin = async (): Promise<VerifiedFirebaseUser | null> => {
         const user = await verifyFirebaseIdToken(req, env).catch(() => null);
         if (!user) return null;
-        if (user.role === 'superadmin') return user;
-        const roleRow = await env.DB!.prepare(
-          'SELECT role FROM user_roles WHERE uid = ? OR LOWER(email) = LOWER(?) LIMIT 1'
-        )
-          .bind(user.uid, user.email || '')
-          .first<{ role: string }>();
-        if (roleRow && (roleRow.role === 'admin' || roleRow.role === 'superadmin')) {
+        if (user.superAdmin === true || user.admin === true || user.role === 'superadmin' || user.role === 'admin') {
           return user;
         }
         return null;
@@ -5255,27 +5280,12 @@ ${urls
         return [];
       };
 
-      let isAuthorizedAdmin = adminUser.role === 'superadmin';
-      if (!isAuthorizedAdmin && env.DB) {
-        try {
-          const [roleRow, unameRow] = await Promise.all([
-            env.DB.prepare('SELECT role FROM user_roles WHERE uid = ? LIMIT 1')
-              .bind(adminUser.uid)
-              .first<{ role: string }>()
-              .catch(() => null),
-            env.DB.prepare('SELECT role FROM user_usernames WHERE uid = ? LIMIT 1')
-              .bind(adminUser.uid)
-              .first<{ role: string }>()
-              .catch(() => null),
-          ]);
-          const rVal = roleRow?.role || unameRow?.role || '';
-          if (rVal === 'admin' || rVal === 'superadmin') {
-            isAuthorizedAdmin = true;
-          }
-        } catch {
-          // Ignore D1 lookup error
-        }
-      }
+      // Strict fail-closed: only verified token custom claims grant admin/superadmin access
+      const isAuthorizedAdmin =
+        adminUser.superAdmin === true ||
+        adminUser.admin === true ||
+        adminUser.role === 'superadmin' ||
+        adminUser.role === 'admin';
 
       if (!isAuthorizedAdmin) {
         return jsonResponse(
@@ -6337,9 +6347,13 @@ ${urls
       }
     }
 
-    // 3. API Routes under /api/posts
+    // 3. API Routes under /api/posts (delegate non-/api/posts routes to jsWorker so no route 404s with "Not Found")
     if (!url.pathname.startsWith('/api/posts')) {
-      return jsonResponse({ error: 'Not Found' }, 404, cors);
+      const jsResp = await jsWorker.fetch(req as any, env as any);
+      if (jsResp.status !== 404) {
+        return jsResp;
+      }
+      return jsonResponse({ error: `Not Found: ${req.method} ${url.pathname}` }, 404, cors);
     }
 
     const subPath = url.pathname.slice('/api/posts'.length).replace(/\/+$/, '') || '/';

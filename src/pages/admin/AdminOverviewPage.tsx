@@ -11,7 +11,6 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
-  Coins,
   Megaphone,
   Gift,
   ShieldCheck,
@@ -26,19 +25,24 @@ import {
   getUserDisplayName,
   seedBalancedMCQPool,
   fetchAuditLogs,
-  type AdminStats,
+  fetchOverviewUsersCard,
+  fetchOverviewQuestionsCard,
+  fetchOverviewAttemptsCard,
+  fetchOverviewApplicationsCard,
+  fetchOverviewPaymentsCard,
+  fetchOverviewReviewsCard,
+  fetchOverviewSubjectsCard,
+  AdminStatCardError,
   CORE_SUBJECTS,
 } from '@/services/adminService';
-import {
-  getCachedAdminOverview,
-  fetchAdminOverviewSWR,
-} from '@/services/adminTabCache';
+import { getCachedAdminOverview } from '@/services/adminTabCache';
 import {
   fetchRewardsHealth,
   fetchRewardsState,
   setRewardsAdminMode,
   type RewardsHealthResponse,
 } from '@/services/rewardsService';
+import { showApiToast } from '@/lib/api';
 import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog, UserProfile } from '@/types';
 
@@ -54,21 +58,108 @@ const SUBJECT_TARGET_PILLS = [
   '100 NED / UET',
 ];
 
-type LoadState = 'loading' | 'loaded' | 'error';
+interface CardState<T> {
+  loading: boolean;
+  data: T | null;
+  error: { source: string; status: string | number; message: string } | null;
+}
+
+function parseCardError(
+  err: unknown,
+  fallbackSource: string
+): { source: string; status: string | number; message: string } {
+  if (err instanceof AdminStatCardError) {
+    return {
+      source: err.source,
+      status: err.status,
+      message: err.message,
+    };
+  }
+  const e = err as { code?: string; status?: number; message?: string; collection?: string };
+  const source = e?.collection ? `firestore:${e.collection}` : fallbackSource;
+  const status = e?.status ?? e?.code ?? 'ERROR';
+  const message = e?.message || `Failed to load ${source}`;
+  return { source, status, message };
+}
 
 export function AdminOverviewPage() {
-  const { user, isAdmin, profileLoading } = useAuth();
+  const { user, isAdmin, isSuperAdmin, profileLoading } = useAuth();
   const initialOverview = getCachedAdminOverview();
-  const [stats, setStats] = useState<AdminStats | null>(() => initialOverview?.stats ?? getCachedAdminStats());
-  const [previewUsers, setPreviewUsers] = useState<UserProfile[] | null>(
-    () => getCachedAdminUsersState()?.users ?? null
-  );
-  const [loadState, setLoadState] = useState<LoadState>(() =>
-    initialOverview?.stats || getCachedAdminStats() ? 'loaded' : 'loading'
-  );
-  const [loading, setLoading] = useState(() => !(initialOverview?.stats || getCachedAdminStats()));
+  const initialStats = initialOverview?.stats ?? getCachedAdminStats();
+
+  // Independent state per stat card — never returns 0 or a default on failure
+  const [usersCard, setUsersCard] = useState<
+    CardState<{
+      totalUsers: number;
+      studentCount: number;
+      captainCount: number;
+      proCount: number;
+      guestCount: number;
+      previewUsers: UserProfile[];
+    }>
+  >(() => ({
+    loading: !initialStats,
+    data: initialStats
+      ? {
+          totalUsers: initialStats.totalUsers,
+          studentCount: initialStats.studentCount ?? initialStats.totalUsers,
+          captainCount: initialStats.captainCount ?? 0,
+          proCount: initialStats.proCount ?? 0,
+          guestCount: initialStats.guestCount ?? 0,
+          previewUsers: getCachedAdminUsersState()?.users ?? [],
+        }
+      : null,
+    error: null,
+  }));
+
+  const [questionsCard, setQuestionsCard] = useState<CardState<{ totalQuestions: number }>>(() => ({
+    loading: !initialStats,
+    data: initialStats ? { totalQuestions: initialStats.totalQuestions } : null,
+    error: null,
+  }));
+
+  const [attemptsCard, setAttemptsCard] = useState<CardState<{ totalAttempts: number }>>(() => ({
+    loading: !initialStats,
+    data: initialStats ? { totalAttempts: initialStats.totalAttempts } : null,
+    error: null,
+  }));
+
+  const [applicationsCard, setApplicationsCard] = useState<
+    CardState<{ pendingCaptains: number; pendingCrew: number; totalPending: number }>
+  >(() => ({
+    loading: !initialStats,
+    data: initialStats
+      ? {
+          pendingCaptains: initialStats.pendingCaptains,
+          pendingCrew: initialStats.pendingCrew,
+          totalPending: (initialStats.pendingCaptains || 0) + (initialStats.pendingCrew || 0),
+        }
+      : null,
+    error: null,
+  }));
+
+  const [paymentsCard, setPaymentsCard] = useState<CardState<{ pendingPayments: number }>>(() => ({
+    loading: !initialStats,
+    data: initialStats ? { pendingPayments: initialStats.pendingPayments } : null,
+    error: null,
+  }));
+
+  const [reviewsCard, setReviewsCard] = useState<CardState<{ pendingReviews: number }>>(() => ({
+    loading: !initialStats,
+    data: initialStats ? { pendingReviews: initialStats.pendingReviews } : null,
+    error: null,
+  }));
+
+  const [subjectsCard, setSubjectsCard] = useState<
+    CardState<{ subjectCounts: Record<string, number> }>
+  >(() => ({
+    loading: !initialStats,
+    data: initialStats ? { subjectCounts: initialStats.subjectCounts || {} } : null,
+    error: null,
+  }));
+
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<AdminDiagnosticError | null>(null);
+  const [bannerError, setBannerError] = useState<AdminDiagnosticError | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLog[]>(() => initialOverview?.recentLogs ?? []);
 
   // Seeder state & confirmation dialog
@@ -99,89 +190,230 @@ export function AdminOverviewPage() {
     };
   }, []);
 
+  const reportCardFailure = useCallback(
+    (err: unknown, fallbackSource: string) => {
+      const parsed = parseCardError(err, fallbackSource);
+      const toastMsg = `${parsed.source} (${parsed.status}): ${parsed.message}`;
+      showApiToast(toastMsg, 'error');
+      setBannerError({
+        code: String(parsed.status),
+        message: parsed.message,
+        collection: parsed.source,
+        operation: 'AdminOverviewCardLoad',
+      });
+      return parsed;
+    },
+    []
+  );
+
+  const loadUsersCard = useCallback(
+    async (force = false) => {
+      setUsersCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewUsersCard({ force });
+        if (!isMountedRef.current) return;
+        setUsersCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(err, 'firestore:users | GET /api/admin/stats');
+        setUsersCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadQuestionsCard = useCallback(
+    async (force = false) => {
+      setQuestionsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewQuestionsCard({ force });
+        if (!isMountedRef.current) return;
+        setQuestionsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(err, 'firestore:questions | GET /api/admin/stats');
+        setQuestionsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadAttemptsCard = useCallback(
+    async (force = false) => {
+      setAttemptsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewAttemptsCard({ force });
+        if (!isMountedRef.current) return;
+        setAttemptsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(err, 'firestore:attempts | GET /api/admin/stats');
+        setAttemptsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadApplicationsCard = useCallback(
+    async (force = false) => {
+      setApplicationsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewApplicationsCard({ force });
+        if (!isMountedRef.current) return;
+        setApplicationsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(
+          err,
+          'firestore:captainApplications,crewApplications | GET /api/admin/stats'
+        );
+        setApplicationsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadPaymentsCard = useCallback(
+    async (force = false) => {
+      setPaymentsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewPaymentsCard({ force });
+        if (!isMountedRef.current) return;
+        setPaymentsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(err, 'firestore:paymentRequests | GET /api/admin/stats');
+        setPaymentsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadReviewsCard = useCallback(
+    async (force = false) => {
+      setReviewsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewReviewsCard({ force });
+        if (!isMountedRef.current) return;
+        setReviewsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(err, 'firestore:reviews | GET /api/admin/stats');
+        setReviewsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
+  const loadSubjectsCard = useCallback(
+    async (force = false) => {
+      setSubjectsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      try {
+        const data = await fetchOverviewSubjectsCard({ force });
+        if (!isMountedRef.current) return;
+        setSubjectsCard({ loading: false, data, error: null });
+      } catch (err) {
+        if (!isMountedRef.current) return;
+        const parsed = reportCardFailure(
+          err,
+          'firestore:questions (subjectCounts) | GET /api/admin/stats'
+        );
+        setSubjectsCard({ loading: false, data: null, error: parsed });
+      }
+    },
+    [reportCardFailure]
+  );
+
   const handleRunRewardsHealthCheck = useCallback(async () => {
     setCheckingRewardsHealth(true);
     try {
       const h = await fetchRewardsHealth();
       if (isMountedRef.current) setRewardsHealth(h);
+    } catch (err) {
+      reportCardFailure(err, 'GET /api/rewards/health');
     } finally {
       if (isMountedRef.current) setCheckingRewardsHealth(false);
     }
-  }, []);
-
-  const applyOverviewData = useCallback(
-    (data: {
-      stats: AdminStats;
-      recentLogs: AuditLog[];
-      rewardsMode: RewardsMode | null;
-      rewardsHealth: RewardsHealthResponse | null;
-    }) => {
-      if (!isMountedRef.current) return;
-      setStats(data.stats);
-      const cachedUsersDir = getCachedAdminUsersState();
-      if (cachedUsersDir) {
-        setPreviewUsers(cachedUsersDir.users);
-      }
-      setLoadState('loaded');
-      if (data.recentLogs.length > 0) {
-        setRecentLogs(data.recentLogs);
-      }
-      if (data.rewardsMode) {
-        setRewardsMode(data.rewardsMode);
-      }
-      if (data.rewardsHealth) {
-        setRewardsHealth(data.rewardsHealth);
-      }
-    },
-    []
-  );
+  }, [reportCardFailure]);
 
   const loadData = useCallback(
     async (options?: { force?: boolean }) => {
       if (!user || !isAdmin) return;
-      const hasCached = Boolean(getCachedAdminOverview()?.stats || getCachedAdminStats());
-      if (!hasCached) {
-        setLoading(true);
-        setLoadState('loading');
-      } else if (options?.force) {
+      const force = Boolean(options?.force);
+      if (force) {
         setIsRefreshing(true);
       }
-      setError(null);
+      setBannerError(null);
 
-      try {
-        const res = await fetchAdminOverviewSWR(user.uid, {
-          force: options?.force,
-          onUpdate: applyOverviewData,
-        });
-        applyOverviewData(res);
-      } catch (err: unknown) {
-        if (!isMountedRef.current) return;
-        console.error('[AdminOverviewPage] Failed to load admin overview:', err);
-        const e = err as Partial<AdminDiagnosticError>;
-        setError({
-          code: e?.code || 'FETCH_STATS_FAILED',
-          message:
-            e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
-          collection: e?.collection || 'questions/users',
-          operation: e?.operation || 'fetchAdminStats',
-        });
-        if (!getCachedAdminStats()) {
-          setLoadState('error');
-        }
-      } finally {
-        if (isMountedRef.current) {
-          setLoading(false);
-          setIsRefreshing(false);
-        }
+      // Fire every stat card independently in parallel so a single failure never blocks or zeros out others
+      const tasks: Promise<unknown>[] = [
+        loadQuestionsCard(force),
+        loadAttemptsCard(force),
+        loadApplicationsCard(force),
+        loadPaymentsCard(force),
+        loadReviewsCard(force),
+        loadSubjectsCard(force),
+      ];
+
+      if (isSuperAdmin) {
+        tasks.push(
+          loadUsersCard(force),
+          fetchAuditLogs(5)
+            .then((logs) => {
+              if (isMountedRef.current && Array.isArray(logs)) {
+                setRecentLogs(logs);
+              }
+            })
+            .catch((err) => {
+              reportCardFailure(err, 'firestore:auditLogs | GET /api/admin/grand-line-audit-logs');
+            }),
+          fetchRewardsState(user.uid)
+            .then((st) => {
+              if (isMountedRef.current && st?.mode) {
+                setRewardsMode(st.mode);
+              }
+            })
+            .catch((err) => {
+              reportCardFailure(err, 'GET /api/rewards/state');
+            }),
+          fetchRewardsHealth()
+            .then((rh) => {
+              if (isMountedRef.current && rh) {
+                setRewardsHealth(rh);
+              }
+            })
+            .catch((err) => {
+              reportCardFailure(err, 'GET /api/rewards/health');
+            })
+        );
+      } else {
+        tasks.push(loadUsersCard(force));
+      }
+
+      await Promise.allSettled(tasks);
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
       }
     },
-    [user, isAdmin, applyOverviewData]
+    [
+      user,
+      isAdmin,
+      isSuperAdmin,
+      loadUsersCard,
+      loadQuestionsCard,
+      loadAttemptsCard,
+      loadApplicationsCard,
+      loadPaymentsCard,
+      loadReviewsCard,
+      loadSubjectsCard,
+      reportCardFailure,
+    ]
   );
 
   // Wait for auth AND admin-role check to finish before starting fetches
   useEffect(() => {
     if (!profileLoading && user && isAdmin) {
-      loadData();
+      void loadData();
     }
   }, [profileLoading, user, isAdmin, loadData]);
 
@@ -243,7 +475,6 @@ export function AdminOverviewPage() {
     try {
       const res = await setRewardsAdminMode(targetMode);
       if (res.ok) {
-        // Re-read the stored setting from D1 via GET /api/rewards/state so the UI always matches D1
         const verifiedState = await fetchRewardsState(user?.uid);
         if (verifiedState.loadError) {
           setRewardsModeError(
@@ -277,10 +508,51 @@ export function AdminOverviewPage() {
     }
   };
 
-  const isInitialLoading = (profileLoading || loadState === 'loading') && !stats;
-  const formatMetricValue = (val: number | undefined | null): string => {
-    if (isInitialLoading || !stats) return '—';
-    return (Number.isFinite(Number(val)) ? Number(val) : 0).toLocaleString();
+  const renderCardMetric = (
+    card: CardState<any>,
+    valueAccessor: (d: any) => number,
+    retryFn: () => void,
+    testId?: string
+  ) => {
+    if (card.loading && !card.data) {
+      return (
+        <div className="my-2 flex items-center gap-2">
+          <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
+            —
+          </span>
+          <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+        </div>
+      );
+    }
+    if (card.error || !card.data) {
+      return (
+        <div className="my-2 flex flex-col gap-1" data-testid={testId ? `${testId}-error` : undefined}>
+          <div className="inline-flex items-center gap-1.5 text-[var(--red)] font-heading font-bold text-[13px]">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span>Error ({card.error?.status || 'FAILED'})</span>
+          </div>
+          <p className="text-[11px] font-mono text-[var(--muted)] line-clamp-2">
+            {card.error?.source}: {card.error?.message || 'Failed to load metric'}
+          </p>
+          <button
+            type="button"
+            onClick={retryFn}
+            className="mt-1 self-start text-[11px] font-heading font-semibold text-[var(--red)] hover:underline cursor-pointer"
+          >
+            Retry card
+          </button>
+        </div>
+      );
+    }
+    const num = valueAccessor(card.data);
+    return (
+      <p
+        data-testid={testId}
+        className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2"
+      >
+        {Number(num).toLocaleString()}
+      </p>
+    );
   };
 
   return (
@@ -309,13 +581,13 @@ export function AdminOverviewPage() {
       </div>
 
       <AdminDiagnosticBanner
-        error={error}
-        collectionName="questions, users, attempts"
+        error={bannerError}
+        collectionName={bannerError?.collection || 'questions, users, attempts'}
         onRetry={() => loadData({ force: true })}
-        retrying={loading || isRefreshing}
+        retrying={isRefreshing}
       />
 
-      {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}
+      {/* ─── 6 INDEPENDENT STAT CARDS ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {/* 1. Registered users */}
         <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
@@ -325,46 +597,43 @@ export function AdminOverviewPage() {
             </span>
             <Users size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p
-              data-testid="admin-overview-total-users"
-              className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2"
-            >
-              {formatMetricValue(stats?.totalUsers)}
-            </p>
+          {renderCardMetric(
+            usersCard,
+            (d) => d.totalUsers,
+            () => void loadUsersCard(true),
+            'admin-overview-total-users'
           )}
-          {stats && !isInitialLoading ? (
+          {usersCard.data && !usersCard.error ? (
             <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Students: {stats.studentCount ?? stats.totalUsers}
+                Students: {usersCard.data.studentCount}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Captains: {stats.captainCount ?? 0}
+                Captains: {usersCard.data.captainCount}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Pro: {stats.proCount ?? 0}
+                Pro: {usersCard.data.proCount}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Guests: {stats.guestCount ?? 0}
+                Guests: {usersCard.data.guestCount}
               </span>
             </div>
-          ) : (
+          ) : usersCard.loading ? (
             <div className="h-4 w-32 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
+          ) : null}
+          {isSuperAdmin ? (
+            <Link
+              to="/admin/users"
+              className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+            >
+              <span>Manage users</span>
+              <ArrowRight size={12} />
+            </Link>
+          ) : (
+            <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
+              Platform accounts
+            </span>
           )}
-          <Link
-            to="/admin/users"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
-          >
-            <span>Manage users</span>
-            <ArrowRight size={12} />
-          </Link>
         </div>
 
         {/* 2. Questions in pool */}
@@ -375,17 +644,11 @@ export function AdminOverviewPage() {
             </span>
             <Database size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {formatMetricValue(stats?.totalQuestions)}
-            </p>
+          {renderCardMetric(
+            questionsCard,
+            (d) => d.totalQuestions,
+            () => void loadQuestionsCard(true),
+            'admin-overview-total-questions'
           )}
           <Link
             to="/admin/questions"
@@ -404,17 +667,11 @@ export function AdminOverviewPage() {
             </span>
             <Activity size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {formatMetricValue(stats?.totalAttempts)}
-            </p>
+          {renderCardMetric(
+            attemptsCard,
+            (d) => d.totalAttempts,
+            () => void loadAttemptsCard(true),
+            'admin-overview-total-attempts'
           )}
           <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
             Student submissions
@@ -429,22 +686,11 @@ export function AdminOverviewPage() {
             </span>
             <Award size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {stats
-                ? (
-                    (Number.isFinite(Number(stats.pendingCaptains)) ? Number(stats.pendingCaptains) : 0) +
-                    (Number.isFinite(Number(stats.pendingCrew)) ? Number(stats.pendingCrew) : 0)
-                  ).toLocaleString()
-                : '—'}
-            </p>
+          {renderCardMetric(
+            applicationsCard,
+            (d) => d.totalPending,
+            () => void loadApplicationsCard(true),
+            'admin-overview-pending-applications'
           )}
           <Link
             to="/admin/applications"
@@ -463,17 +709,11 @@ export function AdminOverviewPage() {
             </span>
             <CreditCard size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {formatMetricValue(stats?.pendingPayments)}
-            </p>
+          {renderCardMetric(
+            paymentsCard,
+            (d) => d.pendingPayments,
+            () => void loadPaymentsCard(true),
+            'admin-overview-pending-payments'
           )}
           <Link
             to="/admin/payments"
@@ -492,17 +732,11 @@ export function AdminOverviewPage() {
             </span>
             <FileCheck2 size={16} className="text-[var(--text)] shrink-0" />
           </div>
-          {isInitialLoading ? (
-            <div className="my-2 flex items-center gap-2">
-              <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-                —
-              </span>
-              <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
-            </div>
-          ) : (
-            <p className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
-              {formatMetricValue(stats?.pendingReviews)}
-            </p>
+          {renderCardMetric(
+            reviewsCard,
+            (d) => d.pendingReviews,
+            () => void loadReviewsCard(true),
+            'admin-overview-pending-reviews'
           )}
           <Link
             to="/admin/commons"
@@ -514,82 +748,103 @@ export function AdminOverviewPage() {
         </div>
       </div>
 
-      {/* ─── REGISTERED USERS PREVIEW (LOADED IN PARALLEL ON DASHBOARD OPEN) ─── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-red-500 shrink-0" />
-            <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
-              Users directory ({isInitialLoading ? '—' : formatMetricValue(stats?.totalUsers)})
-            </h2>
+      {/* ─── REGISTERED USERS PREVIEW (SUPER ADMIN ONLY) ───────────────────── */}
+      {isSuperAdmin && (
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-red-500 shrink-0" />
+              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+                Users directory (
+                {usersCard.loading && !usersCard.data
+                  ? '—'
+                  : usersCard.error || !usersCard.data
+                  ? 'Error'
+                  : usersCard.data.totalUsers.toLocaleString()}
+                )
+              </h2>
+            </div>
+            <Link
+              to="/admin/users"
+              className="font-heading text-[12px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+            >
+              <span>Open full users directory</span>
+              <ArrowRight size={13} />
+            </Link>
           </div>
-          <Link
-            to="/admin/users"
-            className="font-heading text-[12px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
-          >
-            <span>Open full users directory</span>
-            <ArrowRight size={13} />
-          </Link>
-        </div>
 
-        {isInitialLoading || !previewUsers ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 animate-pulse"
-              >
-                <div className="flex flex-col gap-1.5 flex-1">
-                  <div className="h-3.5 w-28 rounded bg-[var(--surface-hover)]" />
-                  <div className="h-2.5 w-20 rounded bg-[var(--surface-hover)]" />
-                </div>
-                <div className="h-5 w-16 rounded-md bg-[var(--surface-hover)]" />
-              </div>
-            ))}
-          </div>
-        ) : previewUsers.length === 0 ? (
-          <p className="text-xs font-mono text-[var(--muted)] py-2">
-            No users found in directory.
-          </p>
-        ) : (
-          <div
-            data-testid="admin-overview-users-list"
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
-          >
-            {previewUsers.slice(0, 6).map((u) => {
-              const badge = u.twoFactorStatus?.badgeLabel || 'Off';
-              return (
-                <Link
-                  key={u.uid}
-                  to="/admin/users"
-                  className="p-3 rounded-[14px] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] flex items-center justify-between gap-3 transition-colors"
+          {usersCard.loading && !usersCard.data ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 animate-pulse"
                 >
-                  <div className="min-w-0">
-                    <div className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                      {getUserDisplayName(u)}
-                    </div>
-                    <div className="text-[11px] font-mono text-[var(--muted)] truncate">
-                      {u.username ? `@${u.username}` : u.email || u.uid}
-                    </div>
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    <div className="h-3.5 w-28 rounded bg-[var(--surface-hover)]" />
+                    <div className="h-2.5 w-20 rounded bg-[var(--surface-hover)]" />
                   </div>
-                  <span
-                    className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
-                      badge === 'Recovery pending'
-                        ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                        : badge === 'Off'
-                        ? 'bg-[var(--surface-hover)] text-[var(--muted)] border-[var(--border)]'
-                        : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                    }`}
+                  <div className="h-5 w-16 rounded-md bg-[var(--surface-hover)]" />
+                </div>
+              ))}
+            </div>
+          ) : usersCard.error || !usersCard.data ? (
+            <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+              <span>
+                {usersCard.error?.source} ({usersCard.error?.status}): {usersCard.error?.message}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadUsersCard(true)}
+                className="underline font-bold ml-3 cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          ) : usersCard.data.previewUsers.length === 0 ? (
+            <p className="text-xs font-mono text-[var(--muted)] py-2">
+              No users found in directory.
+            </p>
+          ) : (
+            <div
+              data-testid="admin-overview-users-list"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+            >
+              {usersCard.data.previewUsers.slice(0, 6).map((u) => {
+                const badge = u.twoFactorStatus?.badgeLabel || 'Off';
+                return (
+                  <Link
+                    key={u.uid}
+                    to="/admin/users"
+                    className="p-3 rounded-[14px] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] flex items-center justify-between gap-3 transition-colors"
                   >
-                    <ShieldCheck size={10} />
-                    2FA: {badge}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                    <div className="min-w-0">
+                      <div className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                        {getUserDisplayName(u)}
+                      </div>
+                      <div className="text-[11px] font-mono text-[var(--muted)] truncate">
+                        {u.username ? `@${u.username}` : u.email || u.uid}
+                      </div>
+                    </div>
+                    <span
+                      className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${
+                        badge === 'Recovery pending'
+                          ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                          : badge === 'Off'
+                          ? 'bg-[var(--surface-hover)] text-[var(--muted)] border-[var(--border)]'
+                          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      }`}
+                    >
+                      <ShieldCheck size={10} />
+                      2FA: {badge}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── QUESTIONS PER SUBJECT BREAKDOWN ─────────────────────────────────── */}
       <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
@@ -603,8 +858,8 @@ export function AdminOverviewPage() {
             </span>
             <button
               type="button"
-              onClick={() => loadData({ force: true })}
-              disabled={loading}
+              onClick={() => void loadSubjectsCard(true)}
+              disabled={subjectsCard.loading}
               className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
             >
@@ -613,335 +868,338 @@ export function AdminOverviewPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
-          {CORE_SUBJECTS.map((subj) => {
-            const rawCount = stats?.subjectCounts?.[subj] ?? stats?.subjectCounts?.[subj.toLowerCase()] ?? 0;
-            const count = Number.isFinite(Number(rawCount)) ? Number(rawCount) : 0;
-            return (
-              <div
-                key={subj}
-                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-              >
-                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
-                  {subj}
-                </span>
-                <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                  {isInitialLoading || !stats ? '—' : count.toLocaleString()}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+        {subjectsCard.error ? (
+          <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+            <span>
+              {subjectsCard.error.source} ({subjectsCard.error.status}): {subjectsCard.error.message}
+            </span>
+            <button
+              type="button"
+              onClick={() => void loadSubjectsCard(true)}
+              className="underline font-bold ml-3 cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+            {CORE_SUBJECTS.map((subj) => {
+              const counts = subjectsCard.data?.subjectCounts;
+              const rawCount = counts ? counts[subj] ?? counts[subj.toLowerCase()] : undefined;
+              return (
+                <div
+                  key={subj}
+                  className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+                >
+                  <span className="font-heading text-[12px] text-[var(--muted)] truncate">
+                    {subj}
+                  </span>
+                  <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
+                    {subjectsCard.loading && !subjectsCard.data
+                      ? '—'
+                      : typeof rawCount === 'number'
+                      ? rawCount.toLocaleString()
+                      : '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ─── BROADCAST ANNOUNCEMENTS SECTION ───────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-            <Megaphone size={20} />
-          </div>
-          <div>
-            <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-              <span>Superadmin Announcements</span>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                Broadcast
-              </span>
-            </h2>
-            <p className="text-[12px] text-[var(--muted)] mt-0.5">
-              Post announcements to every Boardly student. Appears instantly in their in-app Notifications page.
-            </p>
-          </div>
-        </div>
-        <Link
-          to="/admin/announcements"
-          className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
-        >
-          <span>Post &amp; Manage Announcements</span>
-          <ArrowRight size={14} />
-        </Link>
-      </div>
-
-      {/* ─── STORE PRICING CONTROL SECTION ─────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-            <KobanIcon size={20} decorative />
-          </div>
-          <div>
-            <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-              <span>Store Pricing &amp; Cosmetics Manager</span>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                Super Admin
-              </span>
-            </h2>
-            <p className="text-[12px] text-[var(--muted)] mt-0.5">
-              Bulk update Koban prices with batched writes, preview before applying, toggle active items, and audit price history.
-            </p>
-          </div>
-        </div>
-        <Link
-          to="/admin/pricing"
-          className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
-        >
-          <span>Open Store Pricing</span>
-          <ArrowRight size={14} />
-        </Link>
-      </div>
-
-      {/* ─── BOARDLY REWARDS D1 MODE SWITCH (SUPER ADMIN ONLY) ────────────── */}
-      {isAdmin && (
-        <div
-          data-testid="admin-rewards-mode-card"
-          className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
-        >
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* ─── SUPERADMIN-ONLY CONTROLS ────────────────────────────────────────── */}
+      {isSuperAdmin && (
+        <>
+          {/* Broadcast Announcements */}
+          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
               <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-                <Gift size={20} />
+                <Megaphone size={20} />
               </div>
               <div>
                 <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-                  <span>Rewards</span>
+                  <span>Superadmin Announcements</span>
                   <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                    Super Admin · Cloudflare D1
+                    Broadcast
                   </span>
                 </h2>
                 <p className="text-[12px] text-[var(--muted)] mt-0.5">
-                  Control who can claim daily check-ins, MCQ milestones, and referral bonuses on{' '}
-                  <Link to="/rewards" className="text-[var(--text)] underline">
-                    /rewards
-                  </Link>
-                  . Stored in D1 <code className="font-mono">reward_settings</code>.
+                  Post announcements to every Boardly student. Appears instantly in their in-app Notifications page.
                 </p>
               </div>
             </div>
-
-            {/* 3-Way Segmented Control */}
-            <div
-              role="group"
-              aria-label="Rewards mode switch"
-              data-testid="rewards-mode-segmented-control"
-              className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+            <Link
+              to="/admin/announcements"
+              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
             >
-              {(
-                [
-                  { id: 'off', label: 'Off' },
-                  { id: 'admin_only', label: 'Admin only (testing)' },
-                  { id: 'everyone', label: 'Everyone' },
-                ] as const
-              ).map((opt) => {
-                const active = rewardsMode === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    data-testid={`rewards-mode-btn-${opt.id}`}
-                    disabled={updatingRewardsMode}
-                    onClick={() => handleSelectRewardsMode(opt.id)}
-                    className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
-                      active
-                        ? 'bg-[#D71921] text-white shadow-sm'
-                        : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+              <span>Post &amp; Manage Announcements</span>
+              <ArrowRight size={14} />
+            </Link>
           </div>
 
-          {/* Live Firestore + D1 Health Check Panel (Part A5) */}
+          {/* Store Pricing Control */}
+          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+                <KobanIcon size={20} decorative />
+              </div>
+              <div>
+                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
+                  <span>Store Pricing &amp; Cosmetics Manager</span>
+                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                    Super Admin
+                  </span>
+                </h2>
+                <p className="text-[12px] text-[var(--muted)] mt-0.5">
+                  Bulk update Koban prices with batched writes, preview before applying, toggle active items, and audit price history.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/admin/pricing"
+              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+            >
+              <span>Open Store Pricing</span>
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+
+          {/* Boardly Rewards D1 Mode Switch */}
           <div
-            data-testid="admin-rewards-health-panel"
-            className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]"
+            data-testid="admin-rewards-mode-card"
+            className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
           >
-            <div className="flex items-start sm:items-center gap-2.5 min-w-0">
-              {rewardsHealth?.ok ? (
-                <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
-              ) : (
-                <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
-              )}
-              <div className="min-w-0 text-[12px]">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-heading font-semibold text-[var(--text)]">
-                    Firestore Credit Health:
-                  </span>
-                  <span
-                    data-testid="admin-rewards-health-status"
-                    className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                      rewardsHealth?.ok
-                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                    }`}
-                  >
-                    {checkingRewardsHealth
-                      ? 'checking...'
-                      : rewardsHealth
-                      ? rewardsHealth.ok
-                        ? 'ok'
-                        : rewardsHealth.reason
-                      : 'not_checked'}
-                  </span>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+                  <Gift size={20} />
                 </div>
-                {rewardsHealth && (
-                  <p className="text-[11px] text-[var(--muted)] mt-0.5 truncate">
-                    Target: <code className="font-mono">{rewardsHealth.targetProjectId || 'gen-lang-client-0365509316'}</code> · DB:{' '}
-                    <code className="font-mono">{rewardsHealth.targetDatabaseId || 'named-db'}</code>
-                    {rewardsHealth.serviceAccountClientEmail
-                      ? ` · SA: ${rewardsHealth.serviceAccountClientEmail}`
-                      : ' · SA: not configured'}
+                <div>
+                  <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
+                    <span>Rewards</span>
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                      Super Admin · Cloudflare D1
+                    </span>
+                  </h2>
+                  <p className="text-[12px] text-[var(--muted)] mt-0.5">
+                    Control who can claim daily check-ins, MCQ milestones, and referral bonuses on{' '}
+                    <Link to="/rewards" className="text-[var(--text)] underline">
+                      /rewards
+                    </Link>
+                    . Stored in D1 <code className="font-mono">reward_settings</code>.
                   </p>
-                )}
+                </div>
+              </div>
+
+              <div
+                role="group"
+                aria-label="Rewards mode switch"
+                data-testid="rewards-mode-segmented-control"
+                className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+              >
+                {(
+                  [
+                    { id: 'off', label: 'Off' },
+                    { id: 'admin_only', label: 'Admin only (testing)' },
+                    { id: 'everyone', label: 'Everyone' },
+                  ] as const
+                ).map((opt) => {
+                  const active = rewardsMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      data-testid={`rewards-mode-btn-${opt.id}`}
+                      disabled={updatingRewardsMode}
+                      onClick={() => handleSelectRewardsMode(opt.id)}
+                      className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
+                        active
+                          ? 'bg-[#D71921] text-white shadow-sm'
+                          : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <button
-              type="button"
-              data-testid="admin-rewards-health-btn"
-              disabled={checkingRewardsHealth}
-              onClick={handleRunRewardsHealthCheck}
-              className="px-3 py-1.5 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[11px] font-heading font-bold text-[var(--text)] flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={checkingRewardsHealth ? 'animate-spin' : ''} />
-              <span>{checkingRewardsHealth ? 'Checking...' : 'Check Health'}</span>
-            </button>
-          </div>
-
-          {rewardsModeSuccess && (
             <div
-              data-testid="rewards-mode-success"
-              className="flex items-center gap-2 p-3 rounded-[12px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[13px] font-heading"
+              data-testid="admin-rewards-health-panel"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]"
             >
-              <CheckCircle2 size={16} className="shrink-0" />
-              <span>{rewardsModeSuccess}</span>
-            </div>
-          )}
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                {rewardsHealth?.ok ? (
+                  <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
+                ) : (
+                  <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
+                )}
+                <div className="min-w-0 text-[12px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-heading font-semibold text-[var(--text)]">
+                      Firestore Credit Health:
+                    </span>
+                    <span
+                      data-testid="admin-rewards-health-status"
+                      className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                        rewardsHealth?.ok
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      {checkingRewardsHealth
+                        ? 'checking...'
+                        : rewardsHealth
+                        ? rewardsHealth.ok
+                          ? 'ok'
+                          : rewardsHealth.reason
+                        : 'not_checked'}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-          {rewardsModeError && (
-            <div
-              data-testid="rewards-mode-error"
-              className="flex items-center gap-2 p-3 rounded-[12px] border border-red-500/40 bg-red-500/10 text-red-500 text-[13px] font-heading"
-            >
-              <AlertTriangle size={16} className="shrink-0" />
-              <span>{rewardsModeError}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── SEED BALANCED QUESTION POOL TOOL ────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div className="max-w-[680px]">
-            <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] mb-1">
-              Seed balanced question pool
-            </h2>
-            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed mb-3">
-              Adds missing questions so every subject has 125 or more. Existing questions are never changed or deleted.
-            </p>
-
-            {/* Outlined grey pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {SUBJECT_TARGET_PILLS.map((pill) => (
-                <span
-                  key={pill}
-                  className="font-heading text-[11px] px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--muted)] bg-[var(--card-2)]"
-                >
-                  {pill}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="shrink-0 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setIsConfirmSeedOpen(true)}
-              disabled={seeding}
-              className="relative overflow-hidden w-full sm:w-auto px-4 py-2.5 rounded-[12px] border border-[var(--border)] bg-transparent hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
-            >
-              {seeding ? 'Seeding in progress...' : 'Seed balanced question pool'}
-              {seeding && <ButtonLineLoader />}
-            </button>
-          </div>
-        </div>
-
-        {/* Seeding Progress Bar */}
-        {seedProgress && (
-          <div className="pt-2 border-t border-[var(--border)] space-y-2">
-            <div className="flex items-center justify-between text-[12px] font-heading text-[var(--muted)]">
-              <span>Writing questions to pool...</span>
-              <span className="font-dot text-[13px] font-bold text-[var(--text)]">
-                {seedProgress.done} / {seedProgress.total} ({Math.round((seedProgress.done / seedProgress.total) * 100)}%)
-              </span>
-            </div>
-            <div className="h-2 w-full bg-[var(--card-2)] rounded-full overflow-hidden border border-[var(--border)]">
-              <div
-                className="h-full bg-[var(--text)] transition-all duration-150"
-                style={{ width: `${(seedProgress.done / seedProgress.total) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {seedSuccess && (
-          <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--border)] bg-[var(--card-2)] text-[var(--text)] text-[13px] font-heading">
-            <CheckCircle2 size={16} />
-            <span>{seedSuccess}</span>
-          </div>
-        )}
-
-        {seedError && (
-          <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--red)]/40 bg-[var(--card-2)] text-[var(--red)] text-[13px] font-heading">
-            <AlertTriangle size={16} />
-            <span>{seedError}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ─── AUDIT TRAIL CARD ─────────────────────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
-            Recent audit trail
-          </h2>
-          <Link
-            to="/admin/audit-logs"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1"
-          >
-            <span>View all logs</span>
-            <ArrowRight size={12} />
-          </Link>
-        </div>
-
-        {recentLogs.length === 0 ? (
-          <p className="font-heading text-[13px] text-[var(--muted)] py-4 text-center">
-            No admin actions yet
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {recentLogs.map((log, i) => (
-              <div
-                key={log.id || i}
-                className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 text-[13px] font-heading"
+              <button
+                type="button"
+                data-testid="admin-rewards-health-btn"
+                disabled={checkingRewardsHealth}
+                onClick={handleRunRewardsHealthCheck}
+                className="px-3 py-1.5 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[11px] font-heading font-bold text-[var(--text)] flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] shrink-0">
-                    {log.action}
-                  </span>
-                  <span className="text-[var(--text)] truncate">
-                    {log.targetEmail || log.targetUid || log.adminEmail}
+                <RefreshCw size={12} className={checkingRewardsHealth ? 'animate-spin' : ''} />
+                <span>{checkingRewardsHealth ? 'Checking...' : 'Check Health'}</span>
+              </button>
+            </div>
+
+            {rewardsModeSuccess && (
+              <div
+                data-testid="rewards-mode-success"
+                className="flex items-center gap-2 p-3 rounded-[12px] border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 text-[13px] font-heading"
+              >
+                <CheckCircle2 size={16} className="shrink-0" />
+                <span>{rewardsModeSuccess}</span>
+              </div>
+            )}
+
+            {rewardsModeError && (
+              <div
+                data-testid="rewards-mode-error"
+                className="flex items-center gap-2 p-3 rounded-[12px] border border-red-500/40 bg-red-500/10 text-red-500 text-[13px] font-heading"
+              >
+                <AlertTriangle size={16} className="shrink-0" />
+                <span>{rewardsModeError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Seed Balanced Question Pool Tool */}
+          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+            <div className="flex items-start justify-between flex-wrap gap-4">
+              <div className="max-w-[680px]">
+                <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] mb-1">
+                  Seed balanced question pool
+                </h2>
+                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed mb-3">
+                  Adds missing questions so every subject has 125 or more. Existing questions are never changed or deleted.
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {SUBJECT_TARGET_PILLS.map((pill) => (
+                    <span
+                      key={pill}
+                      className="font-heading text-[11px] px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--muted)] bg-[var(--card-2)]"
+                    >
+                      {pill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="shrink-0 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmSeedOpen(true)}
+                  disabled={seeding}
+                  className="relative overflow-hidden w-full sm:w-auto px-4 py-2.5 rounded-[12px] border border-[var(--border)] bg-transparent hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
+                >
+                  {seeding ? 'Seeding in progress...' : 'Seed balanced question pool'}
+                  {seeding && <ButtonLineLoader />}
+                </button>
+              </div>
+            </div>
+
+            {seedProgress && (
+              <div className="pt-2 border-t border-[var(--border)] space-y-2">
+                <div className="flex items-center justify-between text-[12px] font-heading text-[var(--muted)]">
+                  <span>Writing questions to pool...</span>
+                  <span className="font-dot text-[13px] font-bold text-[var(--text)]">
+                    {seedProgress.done} / {seedProgress.total} ({Math.round((seedProgress.done / seedProgress.total) * 100)}%)
                   </span>
                 </div>
-                <span className="text-[12px] text-[var(--muted)] shrink-0">
-                  {formatLogTime(log)}
-                </span>
               </div>
-            ))}
+            )}
+
+            {seedSuccess && (
+              <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--border)] bg-[var(--card-2)] text-[var(--text)] text-[13px] font-heading">
+                <CheckCircle2 size={16} />
+                <span>{seedSuccess}</span>
+              </div>
+            )}
+
+            {seedError && (
+              <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--red)]/40 bg-[var(--card-2)] text-[var(--red)] text-[13px] font-heading">
+                <AlertTriangle size={16} />
+                <span>{seedError}</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Audit Trail Card */}
+          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+                Recent audit trail
+              </h2>
+              <Link
+                to="/admin/audit-logs"
+                className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1"
+              >
+                <span>View all logs</span>
+                <ArrowRight size={12} />
+              </Link>
+            </div>
+
+            {recentLogs.length === 0 ? (
+              <p className="font-heading text-[13px] text-[var(--muted)] py-4 text-center">
+                No admin actions yet
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {recentLogs.map((log, i) => (
+                  <div
+                    key={log.id || i}
+                    className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 text-[13px] font-heading"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] shrink-0">
+                        {log.action}
+                      </span>
+                      <span className="text-[var(--text)] truncate">
+                        {log.targetEmail || log.targetUid || log.adminEmail}
+                      </span>
+                    </div>
+                    <span className="text-[12px] text-[var(--muted)] shrink-0">
+                      {formatLogTime(log)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ─── CONFIRMATION DIALOG FOR SEEDING ─────────────────────────────────── */}
       {isConfirmSeedOpen && (
@@ -992,26 +1250,30 @@ export function AdminOverviewPage() {
               Change Boardly Rewards mode?
             </h3>
             <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
-              {pendingRewardsMode === 'off'
-                ? 'Setting Rewards to "Off" disables all Claim buttons for everyone and shows "Coming soon" on /rewards.'
-                : pendingRewardsMode === 'admin_only'
-                ? 'Setting Rewards to "Admin only (testing)" allows only Super Admins to claim rewards while students see "Coming soon".'
-                : 'Setting Rewards to "Everyone" enables live daily check-ins, MCQ milestones, and referral payouts for all signed-in students.'}
+              Are you sure you want to set Boardly Rewards mode to{' '}
+              <strong className="text-[var(--text)] font-bold">
+                {pendingRewardsMode === 'everyone'
+                  ? 'Everyone (Live)'
+                  : pendingRewardsMode === 'admin_only'
+                  ? 'Admin only (testing)'
+                  : 'Off'}
+              </strong>
+              ? This takes effect immediately via Cloudflare D1.
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                data-testid="rewards-mode-confirm-cancel"
+                data-testid="rewards-mode-cancel-btn"
                 onClick={() => setPendingRewardsMode(null)}
-                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                data-testid="rewards-mode-confirm-submit"
+                data-testid="rewards-mode-confirm-btn"
                 onClick={handleConfirmRewardsModeChange}
-                className="px-4 py-2 rounded-[12px] bg-[#D71921] text-white text-[13px] font-heading font-bold hover:opacity-90"
+                className="px-4 py-2 rounded-[12px] bg-[#D71921] hover:bg-red-600 text-white text-[13px] font-heading font-bold cursor-pointer"
               >
                 Confirm Mode Change
               </button>

@@ -146,7 +146,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   initialPreviewAsPublic = false,
 }) => {
   const navigate = useNavigate();
-  const { user: authUser, profile: authProfile, isAdmin, isGuest, signOutUser } = useAuth();
+  const { user: authUser, profile: authProfile, isAdmin, isSuperAdmin: authIsSuperAdmin, isGuest, signOutUser } = useAuth();
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const {
@@ -547,23 +547,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             : uData?.username || pubData?.username) || null;
         const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? latestAuthUserEmail : null);
 
-        const isAdminAccountUser =
-          isAdminAccount(uid) ||
-          uData?.role === 'admin' ||
-          uData?.role === 'superadmin' ||
-          pubData?.role === 'admin' ||
-          pubData?.role === 'superadmin' ||
-          (candidateEmail && isAdminAccount(candidateEmail)) ||
-          isAdminAccount(candidateName) ||
-          (candidateName && (
-            candidateName.toLowerCase().includes('shs') ||
-            candidateName.toLowerCase().includes('virtual academy')
-          )) ||
-          (uid === currentUid && isAdmin);
+        // SECURITY: Never trust Firestore `role` or displayName substrings for admin/superAdmin.
+        // Only the signed-in user with a verified ID token claim (`isAdmin` / `authIsSuperAdmin`) is treated as admin.
+        const isSelfSuperAdmin = Boolean(uid === currentUid && !isGuest && authIsSuperAdmin);
+        const isAdminAccountUser = Boolean(uid === currentUid && !isGuest && isAdmin);
 
-        const trustedServerRole =
-          d1Live?.role ||
-          (isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'));
+        const rawDocRole = uData?.role || pubData?.role || d1Live?.role;
+        const safeNonAdminRole =
+          rawDocRole === 'captain' || rawDocRole === 'crew' || rawDocRole === 'ambassador'
+            ? rawDocRole
+            : 'student';
+
+        const trustedServerRole = isSelfSuperAdmin
+          ? 'superadmin'
+          : isAdminAccountUser
+          ? 'admin'
+          : safeNonAdminRole;
 
         const shortCode =
           uData?.studentId ||
@@ -572,20 +571,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           pubData?.shortId ||
           deriveFallbackShortId(uid);
 
-        let cleanName = '';
-        if (isAdminAccountUser) {
-          cleanName = 'SHS Virtual Academy';
-          if (uid === currentUid) {
-            if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy')) {
-              setDoc(userDocRef, { displayName: 'SHS Virtual Academy' }, { merge: true }).catch(() => {});
-            }
-            if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy')) {
-              setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy' }, { merge: true }).catch(() => {});
-            }
-          }
-        } else {
-          cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
-        }
+        const cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
 
         // Resolve each cosmetic slot using non-empty truthy priority so null in one doc never masks a valid equipped ID in another
         const selfEq = uid === currentUid ? latestOwnEquipped : null;
@@ -732,7 +718,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               updatedAt: uData?.updatedAt ?? pubData?.updatedAt,
               planExpiresAt: uData?.planExpiresAt ?? pubData?.planExpiresAt,
               premiumExpiresAt: uData?.premiumExpiresAt ?? pubData?.premiumExpiresAt,
-              isSuperAdmin: isAdminAccountUser,
+              isSuperAdmin: isSelfSuperAdmin,
             });
             const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
             if (!isActivePro) return null;
@@ -841,24 +827,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       isMounted = false;
       unsubLiveProfile();
     };
-  }, [targetUid, currentUid, isAdmin, isGuest, isViewingSelf]);
+  }, [targetUid, currentUid, isAdmin, authIsSuperAdmin, isGuest, isViewingSelf]);
 
   // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or follower counts
   useEffect(() => {
     if (isViewingSelf && (ownProfile || authProfile) && !previewAsPublic && (!walletLoading || isGuest)) {
       const op = (ownProfile || authProfile) as any;
-      const isAdminAccountUser = !isGuest && (isAdmin || isAdminAccount(currentUid));
+      const isAdminAccountUser = Boolean(!isGuest && isAdmin);
       const shortCode = op.studentId || op.shortId || (isGuest ? 'GUEST' : deriveFallbackShortId(currentUid || '0'));
       const rawDisplayName = op.displayName || op.username || authProfile?.displayName || authProfile?.username || authUser?.displayName;
       const safeSelfName =
-        !isAdminAccount(currentUid) &&
+        !authIsSuperAdmin &&
         typeof rawDisplayName === 'string' &&
         rawDisplayName.trim().toLowerCase() === 'shs virtual academy'
           ? op.username || authProfile?.username || 'Student'
           : rawDisplayName;
-      const cleanName = isAdminAccount(currentUid)
-        ? safeSelfName || 'SHS Virtual Academy'
-        : isGuest
+      const cleanName = isGuest
         ? (safeSelfName || 'Guest')
         : sanitizeStudentDisplayName(safeSelfName, shortCode);
       const resolvedUsername = op.username || authProfile?.username || (isGuest ? cleanName : undefined);
@@ -905,13 +889,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cachedSelf?.followingCount ??
           (typeof op.followingCount === 'number' ? op.followingCount : 0);
 
-        const selfTrustedRole = isAdminAccount(currentUid)
+        const selfTrustedRole = authIsSuperAdmin
           ? 'superadmin'
           : isAdminAccountUser
-          ? authProfile?.role || 'admin'
-          : authProfile?.role && authProfile.role !== 'admin' && authProfile.role !== 'superadmin'
-          ? authProfile.role
-          : op.role && op.role !== 'admin' && op.role !== 'superadmin'
+          ? 'admin'
+          : op.role === 'captain' || op.role === 'crew' || op.role === 'ambassador'
           ? op.role
           : 'student';
 
@@ -999,7 +981,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return nextProfile;
       });
     }
-  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.known, selfLayoutStatus.ready]);
+  }, [isViewingSelf, ownProfile, authProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin, authIsSuperAdmin, isGuest, selfLayoutStatus.layout, selfLayoutStatus.known, selfLayoutStatus.ready]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -1550,9 +1532,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <Users size={13} className="text-purple-500" />
         </button>
       )}
-      {((isViewingSelf && isAdmin) ||
-        profile?.role === 'superadmin' ||
-        profile?.badges?.includes('staff')) && (
+      {((isViewingSelf && isAdmin) || profile?.badges?.includes('staff')) && (
         <button
           type="button"
           onClick={() =>

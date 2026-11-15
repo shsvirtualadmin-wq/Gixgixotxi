@@ -1,18 +1,13 @@
 import { deriveFallbackShortId } from './shortId';
 
-const SUPER_ADMIN_UID_SET = new Set<string>([
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-]);
+const SUPER_ADMIN_UID_SET = new Set<string>([]);
 
 /**
- * Checks whether an immutable UID belongs to the Boardly superadmin allowlist.
- * Never checks usernames, display names, email addresses, or substrings.
+ * Deprecated UID check — always fails closed (false).
+ * Admin and SuperAdmin roles come exclusively from verified Firebase Auth custom claims.
  */
-export function isAdminAccount(uid?: string | null): boolean {
-  if (!uid || typeof uid !== 'string') return false;
-  return SUPER_ADMIN_UID_SET.has(uid.trim());
+export function isAdminAccount(_uid?: string | null): boolean {
+  return false;
 }
 
 /**

@@ -51,6 +51,7 @@ interface AdminNavItem {
   icon: typeof LayoutDashboard | typeof AdminKobanNavIcon;
   end?: boolean;
   permission?: PermissionKey;
+  superAdminOnly?: boolean;
   superAdminOnlyBadge?: boolean;
 }
 
@@ -58,23 +59,24 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/questions', label: 'Questions', icon: Database, permission: 'mcq.manage' },
   { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete' },
-  { to: '/admin/users', label: 'Users', icon: Users, permission: 'users.view' },
-  { to: '/admin/access-requests', label: 'Access Requests', icon: KeyRound, permission: 'audit.view', superAdminOnlyBadge: true },
-  { to: '/admin/announcements', label: 'Announcements', icon: Megaphone, permission: 'announcements.manage' },
-  { to: '/admin/certificates', label: 'Certificates', icon: Award, permission: 'certificates.issue' },
+  { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
+  { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
+  { to: '/superadmin', label: 'Superadmin Area', icon: ShieldAlert, superAdminOnly: true, end: true },
+  { to: '/admin/users', label: 'Users', icon: Users, permission: 'users.view', superAdminOnly: true },
+  { to: '/admin/access-requests', label: 'Access Requests', icon: KeyRound, permission: 'audit.view', superAdminOnly: true, superAdminOnlyBadge: true },
+  { to: '/admin/announcements', label: 'Announcements', icon: Megaphone, permission: 'announcements.manage', superAdminOnly: true },
+  { to: '/admin/certificates', label: 'Certificates', icon: Award, permission: 'certificates.issue', superAdminOnly: true },
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
-  { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon, permission: 'coupons.grant' },
-  { to: '/admin/pricing', label: 'Store Pricing', icon: Tag, permission: 'coupons.grant' },
-  { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2, permission: 'certificates.issue' },
-  { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award, permission: 'tests.manage' },
-  { to: '/admin/crews', label: 'Crews', icon: Shield, permission: 'users.view' },
-  { to: '/admin/bots', label: 'Bots', icon: Bot, permission: 'tests.manage' },
-  { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
-  { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
-  { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal, permission: 'audit.view' },
-  { to: '/admin/health', label: 'Health & Tests', icon: Activity },
+  { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon, permission: 'coupons.grant', superAdminOnly: true },
+  { to: '/admin/pricing', label: 'Store Pricing', icon: Tag, permission: 'coupons.grant', superAdminOnly: true },
+  { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2, permission: 'certificates.issue', superAdminOnly: true },
+  { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award, permission: 'tests.manage', superAdminOnly: true },
+  { to: '/admin/crews', label: 'Crews', icon: Shield, permission: 'users.view', superAdminOnly: true },
+  { to: '/admin/bots', label: 'Bots', icon: Bot, permission: 'tests.manage', superAdminOnly: true },
+  { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal, permission: 'audit.view', superAdminOnly: true },
+  { to: '/admin/health', label: 'Health & Tests', icon: Activity, superAdminOnly: true },
 ];
 
 const ALL_SIDEBAR_NAV: AdminNavItem[] = [
@@ -128,7 +130,7 @@ export function AdminLayout() {
       try {
         const res = await apiRequest<{ requests?: Array<{ status: string }> }>(
           '/api/admin/access-requests?status=pending',
-          { method: 'GET', skipErrorToast: true }
+          { method: 'GET', silentErrorToast: true }
         );
         if (!cancelled && Array.isArray(res?.requests)) {
           setPendingRequestsCount(res.requests.filter((r) => r.status === 'pending').length);
@@ -145,12 +147,12 @@ export function AdminLayout() {
     };
   }, [user, isSuperAdmin, location.pathname]);
 
-  // Prefetch all admin tab chunks and SWR data during idle time once AdminLayout is verified
+  // Prefetch admin tab chunks and SWR data during idle time once AdminLayout is verified
   useEffect(() => {
     if (!profileLoading && user && isSessionVerified && isAdmin) {
-      return scheduleIdleAdminPrefetchAll(user.uid);
+      return scheduleIdleAdminPrefetchAll(user.uid, isSuperAdmin);
     }
-  }, [profileLoading, user, isSessionVerified, isAdmin]);
+  }, [profileLoading, user, isSessionVerified, isAdmin, isSuperAdmin]);
 
   const handleSignOut = async () => {
     setIsMoreOpen(false);
@@ -160,16 +162,36 @@ export function AdminLayout() {
 
   const userInitial = (user?.displayName || user?.email || 'A')[0].toUpperCase();
 
+  // Hide superAdmin-only items in UI for non-superAdmins
+  const visiblePrimaryNav = PRIMARY_NAV.filter((item) => !item.superAdminOnly || isSuperAdmin);
+  const visibleSecondaryNav = SECONDARY_NAV.filter((item) => !item.superAdminOnly || isSuperAdmin);
+  const visibleSidebarNav = ALL_SIDEBAR_NAV.filter((item) => !item.superAdminOnly || isSuperAdmin);
+
   // Check if current path is in the secondary "More" section
-  const isSecondaryActive = SECONDARY_NAV.some((item) =>
+  const isSecondaryActive = visibleSecondaryNav.some((item) =>
     location.pathname.startsWith(item.to.split('?')[0])
   );
 
   const isNavItemLocked = (item: AdminNavItem): boolean => {
     if (isSuperAdmin) return false;
+    if (item.superAdminOnly) return true;
     if (!item.permission) return false;
     return !hasPermission(item.permission);
   };
+
+  // Fail-closed route guard before rendering any admin shell or children
+  if (profileLoading || otpVerificationState.status === 'checking') {
+    return <LineLoader context="admin" variant="section" />;
+  }
+  if (!user || !isSessionVerified) {
+    return <Navigate to="/login?redirect=/admin" replace />;
+  }
+  if (!isAdmin && !isSuperAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (location.pathname.startsWith('/superadmin') && !isSuperAdmin) {
+    return <Navigate to="/admin" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip">
@@ -193,7 +215,7 @@ export function AdminLayout() {
 
         {/* Sidebar Links */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {ALL_SIDEBAR_NAV.map((item) => {
+          {visibleSidebarNav.map((item) => {
             const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
             const locked = isNavItemLocked(item);
             return (
@@ -376,7 +398,7 @@ export function AdminLayout() {
               role="tablist"
               className="rounded-full glass dashboard-glass-bar allow-backdrop-blur border p-1 flex items-center justify-between select-none relative h-[54px] pointer-events-auto"
             >
-              {PRIMARY_NAV.slice(0, 5).map((item) => {
+              {visiblePrimaryNav.slice(0, 5).map((item) => {
                 const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
                 const locked = isNavItemLocked(item);
                 return (
@@ -553,7 +575,7 @@ export function AdminLayout() {
               </div>
 
               <div className="space-y-1.5">
-                {[...PRIMARY_NAV.slice(5), ...SECONDARY_NAV].map((item) => {
+                {[...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].map((item) => {
                   const { to, label, icon: Icon } = item;
                   const locked = isNavItemLocked(item);
                   return (

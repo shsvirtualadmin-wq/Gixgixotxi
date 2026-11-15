@@ -199,7 +199,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   hideProfileHeader = false,
 }) => {
   const location = useLocation();
-  const { user, profileLoading, isAdmin, isGuest } = useAuth();
+  const { user, profileLoading, isAdmin, isSuperAdmin, isGuest } = useAuth();
   const { profile } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
@@ -208,22 +208,16 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const securityStatus = useSecurityStatus();
   const unreadNotifCount = useUnreadNotificationsCount();
 
-  // Single trusted server-verified role value keyed strictly by uid
+  // SECURITY: Roles come ONLY from verified Firebase Auth custom claims (useAuth().isSuperAdmin / isAdmin)
   const confirmedRole: string | null =
     !profileLoading && user && profile?.role ? profile.role : null;
 
   const isConfirmedSuperAdmin = Boolean(
-    !profileLoading &&
-      user &&
-      !isGuest &&
-      (isAdminAccount(user.uid) || confirmedRole === 'superadmin')
+    !profileLoading && user && !isGuest && isSuperAdmin
   );
 
   const isConfirmedAdmin = Boolean(
-    !profileLoading &&
-      user &&
-      !isGuest &&
-      (isConfirmedSuperAdmin || confirmedRole === 'admin' || isAdmin)
+    !profileLoading && user && !isGuest && (isConfirmedSuperAdmin || isAdmin)
   );
 
   const role = profile?.role || 'student';

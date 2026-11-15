@@ -41,15 +41,9 @@ export interface NormalizedCoupon {
   updatedAt: string;
 }
 
-const SUPER_ADMIN_UIDS = new Set([
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-]);
-
-function isAdminIdentity(uid?: string | null, _email?: string | null): boolean {
-  if (uid && SUPER_ADMIN_UIDS.has(uid.trim())) return true;
-  return false;
+function isAdminTokenClaim(verifiedUser?: VerifiedFirebaseToken | null): boolean {
+  if (!verifiedUser) return false;
+  return verifiedUser.admin === true || verifiedUser.superAdmin === true;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -971,7 +965,7 @@ export async function handleEconomyApiRequest(context: {
   }
 
   const fsHelper = new HybridFirestoreHelper(env, authHeader);
-  const isAdmin = isAdminIdentity(verifiedUser.uid, verifiedUser.email);
+  const isAdmin = isAdminTokenClaim(verifiedUser);
 
   // ==========================================================================
   // 1. VALIDATE COUPON: POST /api/coupons/validate (or /api/pro/coupon/validate)

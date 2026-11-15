@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================================
-    // CORE SECURITY HELPERS
+    // CORE SECURITY HELPERS (FAIL-CLOSED, FIREBASE AUTH CUSTOM CLAIMS ONLY)
     // =========================================================================
 
     function signedIn() {
@@ -19,53 +19,41 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    // Roles come ONLY from verified Firebase Auth custom claims set server-side with Admin SDK.
+    // Never from a client-writable Firestore field, email allowlist, or UID list.
     function isSuperAdmin() {
-      return signedIn() && (
-        request.auth.uid in [
-          'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-          'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
-          '2GHhpHZkYFR1keIAwlnuch08mdh1',
-          'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
-          'jJfb1nThG1X9phL8fFDZ0G0J7m33'
-        ] ||
-        request.auth.token.role in ['super_admin', 'superadmin'] ||
-        (
-          request.auth.token.email != null &&
-          request.auth.token.email.lower() in [
-            'shsvirtualadmin@gmail.com',
-            'support@boardly.cfd',
-            'ktkhashir90@gmail.com',
-            'support@scholario.me'
-          ]
-        ) ||
-        (
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super_admin', 'superadmin']
-        )
-      );
+      return signedIn() && request.auth.token.superAdmin == true;
     }
 
+    // superAdmin implies admin. Everything else without admin/superAdmin claim is a normal user.
     function isAdmin() {
-      return isSuperAdmin() || (
-        signedIn() && (
-          request.auth.token.admin == true ||
-          request.auth.token.role == 'admin' ||
-          (
-            exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-          )
-        )
+      return signedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.superAdmin == true
       );
     }
 
-    // Blocks owner updates to any protected billing, plan, tier, wallet, or role fields
+    // Nobody can grant superAdmin from the client
+    function clientDoesNotGrantSuperAdmin() {
+      return (
+        (!('superAdmin' in request.resource.data) || request.resource.data.superAdmin == false) &&
+        (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false) &&
+        (!('role' in request.resource.data) || !(request.resource.data.role in ['super_admin', 'superadmin']))
+      );
+    }
+
+    // Blocks owner updates to any protected role, admin, superAdmin, plan, pro, or wallet fields
     function ownerUpdatesOnlySafeUserFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'role',
+        'isAdmin',
+        'superAdmin',
+        'isSuperAdmin',
         'plan',
+        'pro',
         'tier',
         'kobans',
         'kobanBalance',
-        'role',
         'proUntil',
         'paid_until',
         'planExpiresAt',
@@ -73,8 +61,6 @@ service cloud.firestore {
         'isPremium',
         'proPlanId',
         'premiumSource',
-        'isAdmin',
-        'isSuperAdmin',
         'isBanned',
         'isSuspended',
         'suspended',
@@ -83,22 +69,24 @@ service cloud.firestore {
       ]);
     }
 
-    // Blocks owner from creating a user doc with elevated plan, tier, kobans, role, or proUntil
+    // Blocks owner from creating a user doc with role, isAdmin, superAdmin, plan, or pro
     function ownerCreatesOnlySafeUserFields() {
       return (
+        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
+        (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
+        (!('superAdmin' in request.resource.data) || request.resource.data.superAdmin == false) &&
+        (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false) &&
         (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
+        (!('pro' in request.resource.data) || request.resource.data.pro == false) &&
         (!('tier' in request.resource.data) || request.resource.data.tier == 'free') &&
         (!('kobans' in request.resource.data) || request.resource.data.kobans == 0) &&
         (!('kobanBalance' in request.resource.data) || request.resource.data.kobanBalance == 0) &&
-        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
         (!('proUntil' in request.resource.data) || request.resource.data.proUntil == null) &&
         (!('paid_until' in request.resource.data) || request.resource.data.paid_until == null) &&
         (!('planExpiresAt' in request.resource.data) || request.resource.data.planExpiresAt == null) &&
         (!('premiumExpiresAt' in request.resource.data) || request.resource.data.premiumExpiresAt == null) &&
         (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
-        (!('proPlanId' in request.resource.data) || request.resource.data.proPlanId == null) &&
-        (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
-        (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false)
+        (!('proPlanId' in request.resource.data) || request.resource.data.proPlanId == null)
       );
     }
 
@@ -143,16 +131,25 @@ service cloud.firestore {
 
     // =========================================================================
     // 1. USERS & USER SUBCOLLECTIONS
+    //    Users cannot write role, isAdmin, superAdmin, plan, or pro on their own docs.
+    //    Nobody can grant superAdmin from the client.
     // =========================================================================
     match /users/{userId} {
-      allow read: if signedIn();
-      allow create: if isAdmin() || (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data));
-      allow update: if isAdmin() ||
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if clientDoesNotGrantSuperAdmin() && (
+        isSuperAdmin() ||
+        (isAdmin() && !('role' in request.resource.data)) ||
+        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data))
+      );
+      allow update: if clientDoesNotGrantSuperAdmin() && (
+        isSuperAdmin() ||
+        (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin', 'superAdmin', 'isSuperAdmin'])) ||
         (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data)) ||
-        (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']));
-      allow delete: if isAdmin();
+        (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']))
+      );
+      allow delete: if isSuperAdmin();
 
-      // Inventory & Unlocked Cosmetics: owner or admin read, server/admin write only
+      // Inventory & Unlocked Cosmetics: owner or admin read, admin write only
       match /inventory/{itemId} {
         allow read: if isOwner(userId) || isAdmin();
         allow write: if isAdmin();
@@ -173,8 +170,7 @@ service cloud.firestore {
       // Followers / Following subcollections
       match /followers/{followerUid} {
         allow read: if signedIn();
-        allow create, update: if isAdmin() || isOwner(followerUid) || isOwner(userId);
-        allow delete: if isAdmin() || isOwner(followerUid) || isOwner(userId);
+        allow create, update, delete: if isAdmin() || isOwner(followerUid) || isOwner(userId);
       }
 
       match /following/{targetUid} {
@@ -222,17 +218,14 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 2. PAYMENTS & KOBAN TOP-UP REQUESTS
-    //    Own-uid create only with status == "pending", own or admin read,
-    //    admin-only update/delete.
+    // 2. ADMIN COLLECTIONS (Require admin or superAdmin custom claim)
     // =========================================================================
+    match /payment_requests/{requestId} {
+      allow read, write: if isAdmin();
+    }
+
     match /paymentRequests/{requestId} {
-      allow read: if isAdmin() || (
-        signedIn() && (
-          resource.data.uid == request.auth.uid ||
-          resource.data.userId == request.auth.uid
-        )
-      );
+      allow read: if isAdmin();
       allow create: if isAdmin() || (
         signedIn() &&
         request.resource.data.status == 'pending' &&
@@ -247,12 +240,7 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow read: if isAdmin() || (
-        signedIn() && (
-          resource.data.uid == request.auth.uid ||
-          resource.data.userId == request.auth.uid
-        )
-      );
+      allow read: if isAdmin();
       allow create: if isAdmin() || (
         signedIn() &&
         request.resource.data.status == 'pending' &&
@@ -267,12 +255,7 @@ service cloud.firestore {
     }
 
     match /kobanRequests/{reqId} {
-      allow read: if isAdmin() || (
-        signedIn() && (
-          resource.data.uid == request.auth.uid ||
-          resource.data.userId == request.auth.uid
-        )
-      );
+      allow read: if isAdmin();
       allow create: if isAdmin() || (
         signedIn() &&
         request.resource.data.status == 'pending' &&
@@ -286,9 +269,71 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /admin_activity_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /captainApplications/{appId} {
+      allow read: if isAdmin() || isOwner(appId);
+      allow create: if signedIn() && (appId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /crewApplications/{appId} {
+      allow read: if isAdmin() || isOwner(appId);
+      allow create: if signedIn() && (appId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    match /supportRequests/{reqId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create: if signedIn();
+      allow update, delete: if isAdmin();
+    }
+
     // =========================================================================
-    // 3. COUPON REDEMPTIONS
-    //    Own-uid create only, own or admin read, admin-only update/delete.
+    // 3. ROLE, SETTINGS & SYSTEM COLLECTIONS (Require superAdmin custom claim ONLY)
+    // =========================================================================
+    match /roles/{docId} {
+      allow read, write: if isSuperAdmin() && clientDoesNotGrantSuperAdmin();
+    }
+
+    match /user_roles/{docId} {
+      allow read, write: if isSuperAdmin() && clientDoesNotGrantSuperAdmin();
+    }
+
+    match /admins/{docId} {
+      allow read, write: if isSuperAdmin() && clientDoesNotGrantSuperAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /config/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    match /system/{docId} {
+      allow read, write: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // 4. COUPON REDEMPTIONS, COUPONS & STORE ITEMS
     // =========================================================================
     match /couponRedemptions/{redemptionId} {
       allow read: if isAdmin() || (
@@ -326,35 +371,28 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // =========================================================================
-    // 4. COUPONS & STORE ITEMS
-    //    Signed-in read, admin write.
-    // =========================================================================
     match /coupons/{couponId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     match /promoCodes/{codeId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     match /storeItems/{itemId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     match /store_items/{itemId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // =========================================================================
     // 5. INVENTORY & WALLETS
-    //    Inventory: owner or admin read, server/admin write only.
-    //    Wallets: owner or admin read; server/admin writes balances & owned;
-    //    owner may only update equipped cosmetics or initialize a 0-balance doc.
     // =========================================================================
     match /inventory/{docId} {
       allow read: if isAdmin() || (
@@ -380,7 +418,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt']) &&
         validAvatarFieldsForUser(userId, request.resource.data)
       );
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
 
       match /ledger/{entryId} {
         allow read: if isOwner(userId) || isAdmin();
@@ -390,7 +428,6 @@ service cloud.firestore {
 
     // =========================================================================
     // 6. POSTS (Boardly Commons)
-    //    Signed-in (and public published) reads, owner-scoped writes.
     // =========================================================================
     match /commonsPosts/{postId} {
       allow read: if signedIn() || resource.data.status == 'published';
@@ -428,7 +465,7 @@ service cloud.firestore {
       );
 
       match /comments/{commentId} {
-        allow read: if signedIn() || true;
+        allow read: if true;
         allow create: if signedIn() && (
           request.resource.data.authorId == request.auth.uid ||
           request.resource.data.userId == request.auth.uid ||
@@ -444,7 +481,7 @@ service cloud.firestore {
       }
 
       match /likes/{likeUid} {
-        allow read: if signedIn() || true;
+        allow read: if true;
         allow create, update, delete: if isOwner(likeUid) || isAdmin();
       }
     }
@@ -469,7 +506,6 @@ service cloud.firestore {
 
     // =========================================================================
     // 7. CREWS, CREW MEMBERS & CREW REQUESTS
-    //    Signed-in reads, owner/member-scoped writes (blocking protected tier/paid_until).
     // =========================================================================
     match /crews/{crewId} {
       allow read: if signedIn();
@@ -555,7 +591,6 @@ service cloud.firestore {
 
     // =========================================================================
     // 8. FOLLOWS & NOTIFICATIONS
-    //    Signed-in reads, owner-scoped writes.
     // =========================================================================
     match /follows/{followId} {
       allow read: if signedIn();
@@ -604,26 +639,20 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 9. SUPPORTING APPLICATION COLLECTIONS (Preserved)
+    // 9. SUPPORTING APPLICATION COLLECTIONS
     // =========================================================================
     match /publicProfiles/{userId} {
       allow read: if true;
-      allow create: if isAdmin() || (
-        isOwner(userId) &&
-        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
-        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
-        validAvatarFieldsForUser(userId, request.resource.data)
+      allow create: if clientDoesNotGrantSuperAdmin() && (
+        isSuperAdmin() ||
+        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data))
       );
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
-        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
-        validAvatarFieldsForUser(userId, request.resource.data)
-      ) || (
-        signedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt'])
+      allow update: if clientDoesNotGrantSuperAdmin() && (
+        isSuperAdmin() ||
+        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data)) ||
+        (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']))
       );
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
 
       match /followers/{followerUid} {
         allow read: if true;
@@ -737,40 +766,14 @@ service cloud.firestore {
 
     match /announcements/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /config/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /settings/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /supportRequests/{reqId} {
-      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
-    }
-
-    match /reports/{reportId} {
-      allow read: if isAdmin();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin();
-    }
-
-    match /auditLogs/{logId} {
-      allow read, write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // =========================================================================
-    // 10. FINAL CATCH-ALL: ADMIN ONLY
+    // 10. FINAL CATCH-ALL: FAIL CLOSED
     // =========================================================================
     match /{document=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if false;
     }
   }
 }

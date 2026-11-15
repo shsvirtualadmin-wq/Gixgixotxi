@@ -94,15 +94,6 @@ import {
 import { isAdminAccount } from '@/constants/superAdmin';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
-const SUPER_ADMIN_UID_ALLOWLIST = new Set([
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
-  '2GHhpHZkYFR1keIAwlnuch08mdh1',
-  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-]);
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
 // ─── Timeout Helper (prevents hanging Firestore calls from freezing auth) ────
@@ -344,7 +335,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: opt.displayName || 'Student',
       username: opt.username || undefined,
       shortId: opt.shortId,
-      role: opt.role === 'superadmin' ? 'admin' : (opt.role as UserProfile['role']) || 'student',
+      role:
+        opt.role === 'captain' || opt.role === 'crew' || opt.role === 'ambassador'
+          ? (opt.role as UserProfile['role'])
+          : 'student',
       customRole: opt.customRole || undefined,
       plan: opt.plan || 'free',
       status: 'active',
@@ -366,6 +360,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  // Strict Firebase Auth ID token custom claims state — FAIL-CLOSED by default
+  const [tokenClaims, setTokenClaims] = useState<{
+    admin: boolean;
+    superAdmin: boolean;
+    verified: boolean;
+  }>({
+    admin: false,
+    superAdmin: false,
+    verified: false,
+  });
   const [guestSessionToken, setGuestSessionToken] = useState<string | null>(() => {
     try {
       return localStorage.getItem(GUEST_TOKEN_LS_KEY) || null;
@@ -408,19 +412,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [activeGrants, setActiveGrants] = useState<ActivePermissionGrant[]>([]);
 
-  const isSuperAdmin = !!(
+  // SECURITY: Roles come ONLY from verified Firebase Auth custom claims (token.superAdmin === true, token.admin === true).
+  // Never from client-writable Firestore fields, localStorage, or URL params. Always fail CLOSED.
+  const isSuperAdmin = Boolean(
     !isGuest &&
-    isSessionVerified &&
-    (isAdminAccount(user?.uid || profile?.uid, user?.email || profile?.email) ||
-      normalizeCanonicalRole(profile?.role) === 'super_admin' ||
-      (profile as any)?.isSuperAdmin === true)
+      user &&
+      isSessionVerified &&
+      tokenClaims.verified &&
+      tokenClaims.superAdmin === true
   );
 
-  const isLimitedAdmin = !!(
+  const isLimitedAdmin = Boolean(
     !isGuest &&
-    isSessionVerified &&
-    !isSuperAdmin &&
-    normalizeCanonicalRole(profile?.role) === 'admin'
+      user &&
+      isSessionVerified &&
+      tokenClaims.verified &&
+      !isSuperAdmin &&
+      tokenClaims.admin === true
   );
 
   const isAdmin = isSuperAdmin || isLimitedAdmin;
@@ -429,16 +437,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (permission: PermissionKey, targetId?: string | null): boolean => {
       if (isSuperAdmin) return true;
       if (!isAdmin) return false;
-      return roleHasPermission(profile?.role, permission, activeGrants, targetId);
+      return roleHasPermission('admin', permission, activeGrants, targetId);
     },
-    [isSuperAdmin, isAdmin, profile?.role, activeGrants]
+    [isSuperAdmin, isAdmin, activeGrants]
   );
 
   const refreshActiveGrants = useCallback(async () => {
     const currentUser = auth.currentUser || user;
     if (!currentUser || isGuest) return;
     try {
-      const idToken = await currentUser.getIdToken();
+      const tokenResult = await currentUser.getIdTokenResult().catch(() => null);
+      const hasAdminClaim =
+        tokenResult?.claims?.admin === true || tokenResult?.claims?.superAdmin === true;
+      if (!hasAdminClaim) return;
+      const idToken = tokenResult?.token || (await currentUser.getIdToken());
       const res = await fetch('/api/admin/access-requests/mine', {
         method: 'GET',
         credentials: 'include',
@@ -498,17 +510,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const path = `users/${firebaseUser.uid}`;
 
     const emailLower = (firebaseUser.email ?? '').toLowerCase();
-    const isSuperAdminAccount =
-      SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid) ||
-      isAdminAccount(firebaseUser.uid, emailLower);
+
+    // SECURITY: Read custom claims strictly from the verified Firebase Auth ID token.
+    // On any error, default to { admin: false, superAdmin: false } (FAIL-CLOSED).
+    let claimSuperAdmin = false;
+    let claimAdmin = false;
+    try {
+      if (typeof firebaseUser.getIdTokenResult === 'function') {
+        const idTokenResult = await firebaseUser.getIdTokenResult();
+        claimSuperAdmin = idTokenResult?.claims?.superAdmin === true;
+        claimAdmin = claimSuperAdmin || idTokenResult?.claims?.admin === true;
+      }
+    } catch {
+      claimSuperAdmin = false;
+      claimAdmin = false;
+    }
+    setTokenClaims({
+      admin: claimAdmin,
+      superAdmin: claimSuperAdmin,
+      verified: true,
+    });
 
     const fallbackName =
       firebaseUser.displayName?.trim() ||
-      (firebaseUser.email
-        ? firebaseUser.email.split('@')[0]
-        : isSuperAdminAccount
-        ? 'Super Admin'
-        : 'Student');
+      (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
+
+    const claimDerivedRole: UserProfile['role'] = claimSuperAdmin
+      ? 'super_admin'
+      : claimAdmin
+      ? 'admin'
+      : 'student';
 
     const defaultProfile: UserProfile = {
       uid: firebaseUser.uid,
@@ -516,11 +547,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       displayName: fallbackName,
       name: fallbackName,
       photoURL: null,
-      role: isSuperAdminAccount ? 'super_admin' : 'student',
-      plan: isSuperAdminAccount ? 'pro' : 'free',
+      role: claimDerivedRole,
+      plan: claimSuperAdmin ? 'pro' : 'free',
       status: 'active',
-      profileCompleted: isSuperAdminAccount ? true : false,
-      onboardingCompleted: isSuperAdminAccount ? true : false,
+      profileCompleted: claimSuperAdmin ? true : false,
+      onboardingCompleted: claimSuperAdmin ? true : false,
       streak: 0,
     };
 
@@ -545,11 +576,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: fallbackName,
             email: emailLower,
             photoURL: null,
-            role: isSuperAdminAccount ? 'super_admin' : 'student',
-            plan: isSuperAdminAccount ? 'pro' : 'free',
+            role: claimDerivedRole,
+            plan: claimSuperAdmin ? 'pro' : 'free',
             status: 'active',
-            profileCompleted: isSuperAdminAccount ? true : false,
-            onboardingCompleted: isSuperAdminAccount ? true : false,
+            profileCompleted: claimSuperAdmin ? true : false,
+            onboardingCompleted: claimSuperAdmin ? true : false,
             streak: 0,
             shortId: deriveFallbackShortId(firebaseUser.uid),
           };
@@ -559,8 +590,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: fallbackName,
             email: emailLower,
             photoURL: null,
-            profileCompleted: isSuperAdminAccount ? true : false,
-            onboardingCompleted: isSuperAdminAccount ? true : false,
+            profileCompleted: claimSuperAdmin ? true : false,
+            onboardingCompleted: claimSuperAdmin ? true : false,
             streak: 0,
             shortId: baseUserDoc.shortId,
             createdAt: serverTimestamp(),
@@ -593,6 +624,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Suspension check
         if (loadedProfile.suspended === true || loadedProfile.isSuspended === true) {
           await firebaseSignOut(auth);
+          setTokenClaims({ admin: false, superAdmin: false, verified: false });
           setUser(null);
           setProfile(null);
           setProfileLoading(false);
@@ -603,24 +635,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName and default Student role are populated in memory; never trust client Firestore role for admin unless UID is in allowlist (until verified by /api/auth/me)
+        // SECURITY: Never trust client-writable Firestore `role`, `isAdmin`, or `superAdmin` fields for admin status.
         const silentPatches: Record<string, unknown> = {};
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
           silentPatches.displayName = fallbackName;
         }
         if (
-          !isSuperAdminAccount &&
+          !claimSuperAdmin &&
           String(loadedProfile.displayName || '').trim().toLowerCase() === 'shs virtual academy'
         ) {
           loadedProfile.displayName = loadedProfile.username || fallbackName;
           silentPatches.displayName = loadedProfile.displayName;
         }
-        if (isSuperAdminAccount) {
+        if (claimSuperAdmin) {
           loadedProfile.role = 'super_admin';
-        } else if (loadedProfile.role === 'superadmin') {
-          loadedProfile.role = 'super_admin';
-        } else if (!loadedProfile.role) {
+        } else if (claimAdmin) {
+          loadedProfile.role = 'admin';
+        } else if (loadedProfile.role === 'captain' || loadedProfile.role === 'crew' || loadedProfile.role === 'ambassador') {
+          // Non-admin community badge
+        } else {
           loadedProfile.role = 'student';
         }
         if (Object.keys(silentPatches).length > 0) {
@@ -635,7 +669,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: loadedProfile.displayName || fallbackName,
           username: loadedProfile.username || null,
           shortId: loadedProfile.shortId,
-          role: loadedProfile.role || 'student',
+          role:
+            loadedProfile.role === 'captain' ||
+            loadedProfile.role === 'crew' ||
+            loadedProfile.role === 'ambassador'
+              ? loadedProfile.role
+              : 'student',
           customRole: loadedProfile.customRole || null,
           plan: loadedProfile.plan || 'free',
           isGuest: false,
@@ -654,7 +693,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       } else {
         // Doc read timed out or failed — use fallback profile in-memory ONLY.
-        // NEVER write this fallback profile to Firestore, as that would overwrite the user's real plan!
+        // NEVER grant admin on a missing doc or error!
         console.warn(`[Boardly] Profile read timed out or offline at ${path}. Keeping in-memory fallback.`);
         setProfile(defaultProfile);
         seedSharedUserProfileCache(firebaseUser.uid, defaultProfile);
@@ -1342,22 +1381,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               isPassiveSeed: true,
             });
           }
+          const idTokenResult = await firebaseUser.getIdTokenResult().catch(() => null);
+          const hasSuperAdminClaim = idTokenResult?.claims?.superAdmin === true;
+          const hasAdminClaim = hasSuperAdminClaim || idTokenResult?.claims?.admin === true;
+          setTokenClaims({
+            admin: hasAdminClaim,
+            superAdmin: hasSuperAdminClaim,
+            verified: true,
+          });
           const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
-          const isOwnerAccount =
-            SUPER_ADMIN_UID_ALLOWLIST.has(firebaseUser.uid) ||
-            isAdminAccount(firebaseUser.uid, firebaseUser.email);
-          const trustedRole: UserProfile['role'] = isOwnerAccount
+          const trustedRole: UserProfile['role'] = hasSuperAdminClaim
             ? 'super_admin'
-            : serverRoleRaw === 'super_admin' || serverRoleRaw === 'superadmin'
-            ? 'super_admin'
-            : serverRoleRaw === 'admin'
+            : hasAdminClaim
             ? 'admin'
             : serverRoleRaw === 'captain' || serverRoleRaw === 'crew'
             ? (serverRoleRaw as UserProfile['role'])
             : 'student';
-          if (Array.isArray(meData.activeGrants)) {
+          if (hasAdminClaim && Array.isArray(meData.activeGrants)) {
             setActiveGrants(meData.activeGrants);
-          } else if (trustedRole === 'admin') {
+          } else if (hasAdminClaim && !hasSuperAdminClaim) {
             refreshActiveGrants().catch(() => {});
           }
           setProfile((prev) =>
@@ -1465,6 +1507,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cooldownSeconds: 0,
           error: null,
         });
+        setTokenClaims({ admin: false, superAdmin: false, verified: false });
         setUser(null);
         setProfile(null);
         setProfileLoading(false);

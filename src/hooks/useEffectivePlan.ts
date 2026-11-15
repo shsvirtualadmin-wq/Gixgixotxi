@@ -24,23 +24,18 @@ export interface EffectivePlanResult {
   paymentRequests?: any[];
 }
 
-// ── Superadmin Identity Checker ─────────────────────────────────────────────
+// ── Superadmin Identity Checker (Strictly from verified Firebase Auth custom claims) ──
 export const SUPER_ADMIN_EMAILS: string[] = [];
-export const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
-export const SUPER_ADMIN_UIDS = [
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-];
+export const SUPER_ADMIN_UID = '';
+export const SUPER_ADMIN_UIDS: string[] = [];
 
 export function isSuperAdminEmailOrRole(
   _email?: string | null,
-  role?: string | null,
-  uid?: string | null
+  _role?: string | null,
+  _uid?: string | null,
+  isSuperAdminClaim?: boolean
 ): boolean {
-  if (uid && SUPER_ADMIN_UIDS.includes(uid.trim())) return true;
-  if (role === 'superadmin' || role === 'admin') return true;
-  return false;
+  return isSuperAdminClaim === true;
 }
 
 // ── In-Memory Plan Cache to Eliminate Flickers ─────────────────────────────
@@ -78,6 +73,7 @@ export interface PlanResolverInput {
     members?: Array<{ uid?: string; isPro?: boolean; plan?: string }>;
   } | null;
   inCrew?: boolean;
+  isSuperAdminClaim?: boolean;
 }
 
 export function isCrewPaidActive(paidUntil?: string | null, nowMs: number = Date.now()): boolean {
@@ -90,7 +86,7 @@ const noopRefresh = async () => {};
 
 export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanResult {
   const nowMs = typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
-  const isSuper = isSuperAdminEmailOrRole(input.email, input.role, input.uid);
+  const isSuper = isSuperAdminEmailOrRole(input.email, input.role, input.uid, input.isSuperAdminClaim);
 
   const expA = parseExpiryMillis(input.planExpiresAt);
   const expB = parseExpiryMillis(input.premiumExpiresAt);
@@ -281,14 +277,14 @@ export async function forceRefreshPaymentRequests(uid?: string | null): Promise<
  * real-time listener on `users/{uid}` and `paymentRequests`, and automatic expiry transition.
  */
 export function useEffectivePlan(): EffectivePlanResult {
-  const { user: authUser, isGuest } = useAuth();
+  const { user: authUser, isGuest, isSuperAdmin: authIsSuperAdmin } = useAuth();
   const { profile, loading: profileLoading, error: profileError } = useUserProfile();
 
   const currentEmail = authUser?.email || auth.currentUser?.email || profile?.email;
   const currentUid = authUser?.uid || auth.currentUser?.uid || profile?.uid;
   const currentRole = profile?.role;
 
-  const isSuper = isSuperAdminEmailOrRole(currentEmail, currentRole, currentUid);
+  const isSuper = Boolean(authIsSuperAdmin);
   const crewId = profile?.crewId;
   const inCrew = Boolean(profile?.isCrewMember || crewId);
 
@@ -489,6 +485,7 @@ export function useEffectivePlan(): EffectivePlanResult {
     crew: crewData,
     inCrew,
     nowMs,
+    isSuperAdminClaim: isSuper,
   });
 
   const withRefresh: EffectivePlanResult = {

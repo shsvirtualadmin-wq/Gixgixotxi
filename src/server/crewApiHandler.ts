@@ -43,15 +43,9 @@ function parseJsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   });
 }
 
-const SUPER_ADMIN_UIDS = new Set([
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-]);
+const SUPER_ADMIN_UIDS = new Set<string>([]);
 
-function isSuperAdmin(_email?: string, uid?: string, role?: string): boolean {
-  if (uid && SUPER_ADMIN_UIDS.has(uid.trim())) return true;
-  if (role === 'admin' || role === 'superadmin') return true;
+function isSuperAdmin(_email?: string, _uid?: string, _role?: string): boolean {
   return false;
 }
 

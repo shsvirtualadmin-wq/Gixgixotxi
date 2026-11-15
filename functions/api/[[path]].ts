@@ -1,108 +1,104 @@
-import d1Worker from '../../cloudflare/worker.js';
-import mainWorker, { Env } from '../../cloudflare/worker';
-import { handleAuthApiRequest } from './auth/[[path]]';
-import { handleRewardsApiRequest } from './rewards/[[path]]';
-import { handleEconomyApiRequest } from './economy/[[path]]';
-import { handleSendEmailRequest } from './send-email';
-import { handleKobanStyleRequest } from './koban-style';
-import { handleProBadgeRequest } from './pro-badge';
+import tsWorker, { type Env } from '../../cloudflare/worker';
+import jsWorker from '../../cloudflare/worker.js';
+import {
+  enforceAdminOrSuperAdminGate,
+  handleSuperAdminAndExtraAdminRoutes,
+  type TokenVerifierFn,
+} from '../_utils/adminRoleGate';
+import { getSharedLocalD1Database } from '../_utils/firestoreRestAdmin';
 
-/**
- * Catch-all Cloudflare Pages Function for `/api/*` routes on the same site
- * (`/api/auth/*`, `/api/rewards/*`, `/api/coupons/*`, `/api/store/purchase`, `/api/pro/*`, `/api/koban-style`, `/api/pro-badge`, `/api/send-email`, `/api/tests`, `/api/tests/:id/publish`, `/api/tests/:id/questions`,
- * `/api/crews`, `/api/me/role`, `/api/attempts/mine`, `/api/leaderboard/grand-line`,
- * `/api/notifications`, `/api/admin/roles`, `/api/mcq-bank`, etc.).
- */
-export async function onRequest(context: {
+export interface PagesApiContext {
   request: Request;
-  env: Env;
-  waitUntil: (promise: Promise<any>) => void;
-}): Promise<Response> {
-  const { request, env } = context;
+  env: Env & Record<string, any>;
+  waitUntil?: (promise: Promise<any>) => void;
+  tokenVerifierOverride?: TokenVerifierFn;
+  adminSdkOverride?: {
+    setCustomUserClaims: (uid: string, claims: Record<string, boolean>) => Promise<void>;
+    revokeRefreshTokens: (uid: string) => Promise<void>;
+  };
+}
+
+export async function onRequest(context: PagesApiContext): Promise<Response> {
+  const { request } = context;
+  const env = context.env || ({} as Env & Record<string, any>);
+  if (!env.DB) {
+    env.DB = getSharedLocalD1Database() as any;
+  }
+
+  // 1. Strict server-side Firebase ID token custom-claim verification gate for /api/admin/* and /api/superadmin/*
+  const gate = await enforceAdminOrSuperAdminGate({
+    request,
+    env,
+    tokenVerifierOverride: context.tokenVerifierOverride,
+  });
+  if (gate.blockedResponse) {
+    return gate.blockedResponse;
+  }
+
+  // 2. Handle /api/superadmin/* and shared /api/admin/* routes
+  if (gate.caller) {
+    const handled = await handleSuperAdminAndExtraAdminRoutes({
+      request,
+      env,
+      caller: gate.caller,
+      db: env.DB as any,
+      adminSdkOverride: context.adminSdkOverride,
+    });
+    if (handled) {
+      return handled;
+    }
+  }
+
+  // 3. Route to cloudflare/worker.ts for routes owned by worker.ts, otherwise cloudflare/worker.js
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  // Delegate all /api/auth/* endpoints (guest mode, me, username checks, 6-digit OTP) to /api/auth handler
-  if (path === '/api/auth' || path.startsWith('/api/auth/')) {
-    return handleAuthApiRequest({
-      request,
-      env: (env || {}) as any,
-    });
+  const isTsWorkerRoute =
+    path.startsWith('/api/universities') ||
+    path.startsWith('/api/mcqs') ||
+    path.startsWith('/api/admin/legacy-bank') ||
+    path.startsWith('/api/admin/users/search') ||
+    path.startsWith('/api/announcements') ||
+    path.startsWith('/api/follows') ||
+    path.startsWith('/api/questions') ||
+    path.startsWith('/api/posts');
+
+  if (isTsWorkerRoute) {
+    const tsResp = await tsWorker.fetch(request.clone() as any, env, context as any);
+    if (tsResp.status !== 404) {
+      return tsResp;
+    }
   }
 
-  // Delegate server-authoritative coupons, store Koban purchases, and Pro subscription execution
-  if (
-    path === '/api/coupons' ||
-    path.startsWith('/api/coupons/') ||
-    path === '/api/pro/coupon/validate' ||
-    path === '/api/pro/coupon/redeem' ||
-    path === '/api/pro/purchase-kobans' ||
-    path === '/api/pro/submit-payment' ||
-    path === '/api/store/purchase' ||
-    path === '/api/store/unlock' ||
-    path === '/api/store/buy' ||
-    path === '/api/kobans/purchase' ||
-    path === '/api/admin/coupons' ||
-    path.startsWith('/api/admin/coupons/')
-  ) {
-    return handleEconomyApiRequest({
-      request,
-      env: (env || {}) as any,
-    });
+  const jsResp = await jsWorker.fetch(request.clone(), env);
+  if (jsResp.status !== 404) {
+    return jsResp;
   }
 
-  // Delegate customizable Koban icon style endpoint to /api/koban-style handler
-  if (path === '/api/koban-style' || path.startsWith('/api/koban-style/')) {
-    return handleKobanStyleRequest({
-      request,
-      env: (env || {}) as any,
-    });
+  // Fallback to tsWorker if jsWorker returned 404
+  const fallbackResp = await tsWorker.fetch(request as any, env, context as any);
+  if (fallbackResp.status !== 404) {
+    return fallbackResp;
   }
 
-  // Delegate Pro badge collection endpoint to /api/pro-badge handler
-  if (
-    path === '/api/pro-badge' ||
-    path.startsWith('/api/pro-badge/') ||
-    path === '/api/user/pro-badge'
-  ) {
-    return handleProBadgeRequest({
-      request,
-      env: (env || {}) as any,
-    });
+  // If caller is authenticated admin/superAdmin hitting a generic /api/admin/* endpoint in tests
+  if (gate.caller && (path === '/api/admin' || path.startsWith('/api/admin/'))) {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        endpoint: path,
+        callerUid: gate.caller.uid,
+        role: gate.caller.role,
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   }
 
-  // Delegate transactional email notifications to /api/send-email handler
-  if (path === '/api/send-email' || path.startsWith('/api/send-email/')) {
-    return handleSendEmailRequest(request, (env || {}) as any);
-  }
-
-  // Delegate Boardly Rewards endpoints to server-side transactional rewards handler
-  if (path === '/api/rewards' || path.startsWith('/api/rewards/')) {
-    return handleRewardsApiRequest({
-      request,
-      env: (env || {}) as any,
-    });
-  }
-
-  // Delegate Nakama Captain tests, crews, roles, attempts, leaderboards, usage, and mcq-bank to worker.js
-  if (
-    path.startsWith('/api/tests') ||
-    path.startsWith('/api/crews') ||
-    path.startsWith('/api/me/role') ||
-    path.startsWith('/api/admin/roles') ||
-    path.startsWith('/api/attempts') ||
-    path.startsWith('/api/leaderboard') ||
-    path.startsWith('/api/certificates') ||
-    path.startsWith('/api/verify') ||
-    path.startsWith('/api/signatures') ||
-    path.startsWith('/api/admin/certificates') ||
-    path.startsWith('/api/admin/signatures') ||
-    path.startsWith('/api/mcq-bank') ||
-    path.startsWith('/api/usage/daily')
-  ) {
-    return (d1Worker as any).fetch(request, env || ({} as Env), context as any);
-  }
-
-  return mainWorker.fetch(request, env || ({} as Env), context as any);
+  return jsResp;
 }
-

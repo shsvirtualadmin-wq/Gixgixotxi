@@ -128,12 +128,14 @@ async function verifyFirebaseIdToken(token, projectId) {
   const tokenName = String(payload.name || '').trim();
   const emailPrefix = emailStr.includes('@') ? emailStr.split('@')[0].trim() : emailStr;
 
+  const isSuperAdminClaim = payload.superAdmin === true;
+  const isAdminClaim = payload.admin === true || isSuperAdminClaim;
   let claimRole = null;
-  if (payload.role === 'superadmin' || payload.superadmin === true) {
+  if (isSuperAdminClaim) {
     claimRole = 'superadmin';
-  } else if (payload.role === 'admin' || payload.admin === true) {
+  } else if (isAdminClaim) {
     claimRole = 'admin';
-  } else if (payload.role === 'captain' || payload.captain === true) {
+  } else if (payload.captain === true) {
     claimRole = 'captain';
   }
 
@@ -163,6 +165,8 @@ async function verifyFirebaseIdToken(token, projectId) {
     tokenName,
     picture: payload.picture || null,
     claimRole,
+    admin: isAdminClaim,
+    superAdmin: isSuperAdminClaim,
     emailVerified: Boolean(payload.email_verified),
     authTime: Number(payload.auth_time || payload.iat || 0),
     signInProvider,
@@ -395,19 +399,9 @@ async function checkWriteRateLimit(db, key, maxRequests = 60, windowMs = 60000) 
   return true;
 }
 
-const SUPERADMIN_UIDS = new Set([
-  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
-  '2GHhpHZkYFR1keIAwlnuch08mdh1',
-  'jJfb1nThG1X9phL8fFDZ0G0J7m33',
-]);
-const SUPERADMIN_EMAILS = new Set([
-  'ktkhashir90@gmail.com',
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-  'scholariosupport@gmail.com',
-]);
+// SECURITY: Hardcoded superAdmin UID/email sets are disabled (fail closed).
+const SUPERADMIN_UIDS = new Set([]);
+const SUPERADMIN_EMAILS = new Set([]);
 
 function extractWorkerGuestToken(request) {
   const headerToken = (request.headers.get('X-Guest-Session') || '').trim();
@@ -594,56 +588,33 @@ async function authenticateRequest(request, env, requireAuth = true) {
     }
   }
 
-  const extraUids = String(env.SUPERADMIN_UIDS || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const extraEmails = String(env.SUPERADMIN_EMAILS || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-
-  const isHardcodedSuperAdmin =
-    SUPERADMIN_UIDS.has(decoded.uid) ||
-    extraUids.includes(decoded.uid) ||
-    (decoded.email && (SUPERADMIN_EMAILS.has(decoded.email.toLowerCase()) || extraEmails.includes(decoded.email.toLowerCase()))) ||
-    decoded.claimRole === 'superadmin';
-
-  const roleRow = await env.DB.prepare(
-    'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1'
-  )
-    .bind(decoded.uid)
-    .first()
-    .catch(() =>
-      env.DB.prepare(
-        'SELECT uid, email, role, custom_role, is_posting_banned, updated_at FROM user_roles WHERE uid = ?1'
+  const roleRow = env.DB
+    ? await env.DB.prepare(
+        'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE uid = ?1'
       )
         .bind(decoded.uid)
         .first()
-    );
-
-  let role = isHardcodedSuperAdmin
-    ? 'superadmin'
-    : roleRow?.role === 'super_admin'
-    ? 'superadmin'
-    : roleRow?.role || decoded.claimRole || 'student';
-
-  if (!roleRow || (isHardcodedSuperAdmin && roleRow.role !== 'superadmin' && roleRow.role !== 'super_admin')) {
-    const now = Date.now();
-    await env.DB.prepare(
-      `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
-       VALUES (?1, ?2, ?3, NULL, 0, ?4, ?5)
-       ON CONFLICT(uid) DO UPDATE SET role = excluded.role, email = excluded.email, updated_at = excluded.updated_at`
-    )
-      .bind(decoded.uid, decoded.email, role, now, now)
-      .run()
-      .catch(() =>
-        env.DB.prepare(
-          'INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at) VALUES (?1, ?2, ?3, NULL, 0, ?4)'
+        .catch(() =>
+          env.DB.prepare(
+            'SELECT uid, email, role, custom_role, is_posting_banned, updated_at FROM user_roles WHERE uid = ?1'
+          )
+            .bind(decoded.uid)
+            .first()
+            .catch(() => null)
         )
-          .bind(decoded.uid, decoded.email, role, now)
-          .run()
-      );
+    : null;
+
+  // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+  const isSuperAdmin = decoded.superAdmin === true;
+  const isAdminOrAbove = isSuperAdmin || decoded.admin === true;
+
+  let role = 'student';
+  if (isSuperAdmin) {
+    role = 'superadmin';
+  } else if (isAdminOrAbove) {
+    role = 'admin';
+  } else if (roleRow?.role === 'captain' || decoded.claimRole === 'captain') {
+    role = 'captain';
   }
 
   return {
@@ -655,9 +626,9 @@ async function authenticateRequest(request, env, requireAuth = true) {
     role,
     customRole: roleRow?.custom_role || null,
     isPostingBanned: Boolean(roleRow?.is_posting_banned),
-    isCaptainOrAbove: ['captain', 'admin', 'superadmin', 'super_admin'].includes(role),
-    isAdminOrAbove: ['admin', 'superadmin', 'super_admin'].includes(role),
-    isSuperAdmin: role === 'superadmin' || role === 'super_admin',
+    isCaptainOrAbove: ['captain', 'admin', 'superadmin'].includes(role),
+    isAdminOrAbove,
+    isSuperAdmin,
   };
 }
 
@@ -1238,6 +1209,25 @@ export default {
         }
       }
 
+      // 1b. Strict server-side gate for all /api/superadmin/* and /api/admin/* endpoints
+      if (path === '/api/superadmin' || path.startsWith('/api/superadmin/')) {
+        const user = await authenticateRequest(request, env, true);
+        if (!user || user.isGuest) {
+          return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+        }
+        if (!user.isSuperAdmin) {
+          return errorResponse(request, env, 'Forbidden: superAdmin claim required.', 'FORBIDDEN', 403);
+        }
+      } else if (path === '/api/admin' || path.startsWith('/api/admin/')) {
+        const user = await authenticateRequest(request, env, true);
+        if (!user || user.isGuest) {
+          return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+        }
+        if (!user.isAdminOrAbove) {
+          return errorResponse(request, env, 'Forbidden: admin or superAdmin claim required.', 'FORBIDDEN', 403);
+        }
+      }
+
       // 2. Current User Role & Role Management
       if (path === '/api/me/role' && method === 'GET') {
         const user = await authenticateRequest(request, env, true);
@@ -1245,6 +1235,8 @@ export default {
           uid: user.uid,
           email: user.email,
           role: user.role,
+          admin: user.isAdminOrAbove,
+          superAdmin: user.isSuperAdmin,
           customRole: user.customRole,
           isPostingBanned: user.isPostingBanned,
         });
@@ -1261,16 +1253,16 @@ export default {
 
       if (path === '/api/admin/roles' && method === 'PUT') {
         const user = await authenticateRequest(request, env, true);
-        requireRole(user, ['admin', 'superadmin']);
+        requireRole(user, ['superadmin']);
         const body = await request.json();
         const targetUid = cleanStr(body.uid, 128);
         const targetEmail = cleanStr(body.email, 200).toLowerCase();
         const newRole = cleanStr(body.role, 32, 'student');
-        if (!targetUid || !['student', 'captain', 'admin', 'superadmin'].includes(newRole)) {
-          return errorResponse(request, env, 'Valid uid and role are required.', 'INVALID_INPUT', 400);
+        if (newRole === 'superadmin' || newRole === 'super_admin' || body.superAdmin === true) {
+          return errorResponse(request, env, 'Nobody can grant superAdmin from the app.', 'FORBIDDEN', 403);
         }
-        if (newRole === 'superadmin' && !user.isSuperAdmin) {
-          return errorResponse(request, env, 'Only a superadmin can grant superadmin role.', 'FORBIDDEN', 403);
+        if (!targetUid || !['student', 'captain', 'admin'].includes(newRole)) {
+          return errorResponse(request, env, 'Valid uid and role (student, captain, or admin) are required.', 'INVALID_INPUT', 400);
         }
         const now = Date.now();
         await db

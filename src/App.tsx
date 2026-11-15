@@ -302,7 +302,7 @@ function AppInner() {
         <Route path="/tests/:testId/redo" element={<GrandLineTestRunnerPage />} />
         <Route path="/tests/:testId/retake" element={<GrandLineTestRunnerPage />} />
 
-        {/* Super-Admin Portal — strictly guarded for admin, no public Navbar/Footer */}
+        {/* Admin & Super-Admin Portal — strictly guarded with verified custom claims */}
         <Route
           path="/admin"
           element={
@@ -312,27 +312,53 @@ function AppInner() {
           }
         >
           <Route index element={<AdminOverviewPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
-          <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="questions" element={<AdminQuestionsPage />} />
+          <Route path="commons" element={<AdminCommonsPage />} />
+          <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
+
+          {/* SuperAdmin-only pages */}
+          <Route path="users" element={<AdminGuard requireSuperAdmin><AdminUsersPage /></AdminGuard>} />
+          <Route path="pricing" element={<AdminGuard requireSuperAdmin><AdminPricingPage /></AdminGuard>} />
+          <Route path="kobans" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
+          <Route path="wallets" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
+          <Route path="wallets/:uid" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
+          <Route path="announcements" element={<AdminGuard requireSuperAdmin><AdminAnnouncementsPage /></AdminGuard>} />
+          <Route path="bots" element={<AdminGuard requireSuperAdmin><AdminBotsPage /></AdminGuard>} />
+          <Route path="captains" element={<AdminGuard requireSuperAdmin><AdminCaptainsPage /></AdminGuard>} />
+          <Route path="audit-logs" element={<AdminGuard requireSuperAdmin><AdminAuditLogsPage /></AdminGuard>} />
+          <Route path="crews" element={<AdminGuard requireSuperAdmin><AdminCrewsPage /></AdminGuard>} />
+          <Route path="certificates" element={<AdminGuard requireSuperAdmin><AdminCertificatesPage /></AdminGuard>} />
+          <Route path="signatures" element={<AdminGuard requireSuperAdmin><AdminCertificatesPage /></AdminGuard>} />
+          <Route path="settings" element={<AdminGuard requireSuperAdmin><AdminCertificatesPage /></AdminGuard>} />
+          <Route path="access-requests" element={<AdminGuard requireSuperAdmin><AdminAccessRequestsPage /></AdminGuard>} />
+          <Route path="health" element={<AdminGuard requireSuperAdmin><AdminHealthPage /></AdminGuard>} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+
+        {/* Dedicated /superadmin area — requires superAdmin === true claim */}
+        <Route
+          path="/superadmin"
+          element={
+            <AdminGuard requireSuperAdmin>
+              <AdminLayout />
+            </AdminGuard>
+          }
+        >
+          <Route index element={<AdminUsersPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
-          <Route path="wallets" element={<AdminKobansPage />} />
-          <Route path="wallets/:uid" element={<AdminKobansPage />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />
           <Route path="bots" element={<AdminBotsPage />} />
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
-          <Route path="commons" element={<AdminCommonsPage />} />
-          <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="certificates" element={<AdminCertificatesPage />} />
-          <Route path="signatures" element={<AdminCertificatesPage />} />
-          <Route path="settings" element={<AdminCertificatesPage />} />
           <Route path="access-requests" element={<AdminAccessRequestsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
-          <Route path="*" element={<NotFoundPage />} />
+          <Route path="*" element={<AdminUsersPage />} />
         </Route>
 
         {/* Dashboard shell (Student Portal) — Login-only, noindex */}

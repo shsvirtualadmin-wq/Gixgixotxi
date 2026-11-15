@@ -78,21 +78,10 @@ const FIRESTORE_DATABASE_ID =
   process.env.VITE_FIREBASE_DATABASE_ID ||
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
-const SUPERADMIN_UIDS = new Set([
-  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
-  '2GHhpHZkYFR1keIAwlnuch08mdh1',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-  ...(process.env.SUPERADMIN_UIDS || '').split(',').map((s) => s.trim()).filter(Boolean),
-]);
-
-const SUPERADMIN_EMAILS = new Set<string>([
-  'ktkhashir90@gmail.com',
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-]);
+// SECURITY: Hardcoded superAdmin UID/email sets are disabled (fail closed).
+// Admin and SuperAdmin status come strictly from verified Firebase Auth custom claims.
+const SUPERADMIN_UIDS = new Set<string>([]);
+const SUPERADMIN_EMAILS = new Set<string>([]);
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -411,74 +400,20 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
   if (!Array.isArray(store.userRoles)) store.userRoles = [];
   if (!Array.isArray(store.botAccounts)) store.botAccounts = [];
 
-  // ── One-time idempotent migration: convert all existing "admin" accounts to "super_admin" ──
+  // ── Security Cleanup: Remove any auto-migrated super_admin / superadmin / admin roles for non-owner accounts ──
   const anyStore = store as any;
-  const ownerSeedAccounts = [
-    { uid: 'JBGCDTLuWUMUIUMCLek7SdgvUNn1', email: 'ktkhashir90@gmail.com' },
-    { uid: 'A5YMRimdHRcmeDWutxtUGt2e4hf2', email: 'shsvirtualadmin@gmail.com' },
-    { uid: 'Pz5fjmLtXHbWL2ntnW1zd8nlQos2', email: 'shsvirtualadmin@gmail.com' },
-    { uid: '2GHhpHZkYFR1keIAwlnuch08mdh1', email: 'support@boardly.cfd' },
-  ];
-  for (const owner of ownerSeedAccounts) {
-    const existingOwner = store.userRoles.find((r) => r.uid === owner.uid);
-    if (!existingOwner) {
-      store.userRoles.push({
-        uid: owner.uid,
-        email: owner.email,
-        role: 'super_admin',
-        custom_role: 'Super Admin',
-        is_posting_banned: 0,
-        updated_at: now,
-      });
-      mutated = true;
-    } else if (existingOwner.role === 'admin' || existingOwner.role === 'superadmin') {
-      existingOwner.role = 'super_admin';
+  const ownerEmailEnv = String(process.env.OWNER_EMAIL || '').trim().toLowerCase();
+  for (const r of store.userRoles) {
+    const rowEmail = String(r.email || '').trim().toLowerCase();
+    const isOwnerMatch = Boolean(ownerEmailEnv && rowEmail === ownerEmailEnv);
+    if (!isOwnerMatch && (r.role === 'super_admin' || r.role === 'superadmin')) {
+      r.role = 'student';
+      r.custom_role = null;
       mutated = true;
     }
   }
-
-  if (!anyStore.roleMigrationV1) {
-    const migratedAccounts: Array<{ uid: string; email: string; previousRole: string; newRole: string }> = [];
-    for (const r of store.userRoles) {
-      const uid = String(r.uid || '').trim();
-      if (!uid || uid === 'uid_regular_admin' || /^reg_/i.test(uid)) continue;
-      if (r.role === 'admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(uid)) {
-        const prev = r.role;
-        r.role = 'super_admin';
-        migratedAccounts.push({
-          uid,
-          email: r.email || '',
-          previousRole: prev,
-          newRole: 'super_admin',
-        });
-        mutated = true;
-      }
-    }
-    try {
-      const localD1 = getSharedLocalD1Database();
-      for (const u of localD1.tables.user_usernames.values()) {
-        const uid = String(u.uid || '').trim();
-        if (!uid || uid === 'uid_regular_admin' || /^reg_/i.test(uid)) continue;
-        if (u.role === 'admin' || u.role === 'superadmin' || SUPERADMIN_UIDS.has(uid)) {
-          const prev = String(u.role || 'admin');
-          u.role = 'super_admin';
-          if (!migratedAccounts.some((m) => m.uid === uid)) {
-            migratedAccounts.push({
-              uid,
-              email: String(u.email || ''),
-              previousRole: prev,
-              newRole: 'super_admin',
-            });
-          }
-        }
-      }
-    } catch {
-      // ignore if local D1 not yet ready
-    }
-    anyStore.roleMigrationV1 = {
-      migratedAt: new Date(now).toISOString(),
-      migratedAccounts,
-    };
+  if (anyStore.roleMigrationV1) {
+    delete anyStore.roleMigrationV1;
     mutated = true;
   }
 
@@ -1405,7 +1340,9 @@ export interface VerifiedWorkerUser {
   displayName?: string;
   tokenName?: string;
   picture: string;
-  role: 'student' | 'captain' | 'superadmin';
+  role: 'student' | 'captain' | 'admin' | 'superadmin';
+  admin?: boolean;
+  superAdmin?: boolean;
   customRole: string | null;
   accountType?: 'guest' | 'registered';
   plan?: 'free' | 'pro';
@@ -1451,6 +1388,8 @@ export async function verifyFirebaseJwtZeroFirestore(
           tokenName: resolvedName,
           picture: '',
           role: 'student',
+          admin: false,
+          superAdmin: false,
           customRole: 'Guest',
           accountType: 'guest',
           plan: 'free',
@@ -1484,25 +1423,24 @@ export async function verifyFirebaseJwtZeroFirestore(
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
 
+    if (header.alg !== 'RS256' || !header.kid) return null;
+
     const nowSec = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < nowSec - 60) return null;
+    if (!payload.exp || payload.exp < nowSec - 60) return null;
+    if (!payload.iat || payload.iat > nowSec + 300) return null;
+    if (payload.aud !== FIREBASE_PROJECT_ID) return null;
+    if (payload.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`) return null;
     if (!payload.sub || typeof payload.sub !== 'string') return null;
 
-    // Verify RS256 signature against Google public x509 certificate
-    try {
-      const certs = await getGooglePublicCerts();
-      const pem = certs[header.kid];
-      if (pem) {
-        const verifier = crypto.createVerify('RSA-SHA256');
-        verifier.update(`${parts[0]}.${parts[1]}`);
-        verifier.end();
-        const sigValid = verifier.verify(pem, Buffer.from(parts[2], 'base64url'));
-        if (!sigValid) return null;
-      }
-    } catch {
-      // If offline in sandboxed test environment, still validate audience/issuer structure
-      if (payload.aud !== FIREBASE_PROJECT_ID) return null;
-    }
+    // Verify RS256 signature against Google public x509 certificate (FAIL-CLOSED)
+    const certs = await getGooglePublicCerts();
+    const pem = certs[header.kid];
+    if (!pem) return null;
+    const verifier = crypto.createVerify('RSA-SHA256');
+    verifier.update(`${parts[0]}.${parts[1]}`);
+    verifier.end();
+    const sigValid = verifier.verify(pem, Buffer.from(parts[2], 'base64url'));
+    if (!sigValid) return null;
 
     const uid = payload.sub;
     const email = String(payload.email || '').trim().toLowerCase();
@@ -1565,32 +1503,19 @@ export async function verifyFirebaseJwtZeroFirestore(
       throw new Error('POSTING_BANNED');
     }
 
+    // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+    const isSuperAdminClaim = payload.superAdmin === true;
+    const isAdminClaim = payload.admin === true || isSuperAdminClaim;
+
     let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
     let customRole: string | null =
       payload.customRole || roleRow?.custom_role || unameCustomRole || null;
 
-    const isExplicitLimitedAdmin =
-      uid === 'uid_regular_admin' ||
-      /^reg_/i.test(uid) ||
-      roleRow?.role === 'admin' ||
-      unameRole === 'admin' ||
-      payload.role === 'admin';
-
-    if (
-      SUPERADMIN_UIDS.has(uid) ||
-      (email && SUPERADMIN_EMAILS.has(email.toLowerCase())) ||
-      payload.role === 'superadmin' ||
-      payload.role === 'super_admin' ||
-      roleRow?.role === 'superadmin' ||
-      roleRow?.role === 'super_admin' ||
-      unameRole === 'superadmin' ||
-      unameRole === 'super_admin'
-    ) {
+    if (isSuperAdminClaim) {
       role = 'superadmin';
-    } else if (isExplicitLimitedAdmin) {
+    } else if (isAdminClaim) {
       role = 'admin';
     } else if (
-      payload.role === 'captain' ||
       payload.nakamaCaptain === true ||
       payload.customRole === 'Nakama Captain' ||
       roleRow?.role === 'captain' ||
@@ -1612,9 +1537,11 @@ export async function verifyFirebaseJwtZeroFirestore(
       tokenName,
       picture: payload.picture || '',
       role,
+      admin: isAdminClaim,
+      superAdmin: isSuperAdminClaim,
       customRole,
       accountType: 'registered',
-      plan: role === 'superadmin' || role === 'captain' ? 'pro' : 'free',
+      plan: isSuperAdminClaim || isAdminClaim || role === 'captain' ? 'pro' : 'free',
       isGuest: false,
     };
   } catch (err: any) {
@@ -7818,68 +7745,44 @@ ${postSitemaps}
       };
     }
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
-    let row = store.userRoles.find((r: any) => r.uid === user.uid);
-    const isSuper =
-      SUPERADMIN_UIDS.has(user.uid) ||
-      Boolean(user.email && SUPERADMIN_EMAILS.has(user.email.toLowerCase()));
-    const isExplicitLimitedAdmin =
-      user.uid === 'uid_regular_admin' || /^reg_/i.test(user.uid);
-    let unameRole: string | null = null;
-    try {
-      const localD1 = getSharedLocalD1Database();
-      for (const u of localD1.tables.user_usernames.values()) {
-        if (u.uid === user.uid && u.role) {
-          unameRole = u.role;
-          break;
-        }
-      }
-    } catch {
-      // Ignore if local D1 not initialized
-    }
-    if (!row) {
-      row = {
-        uid: user.uid,
-        email: user.email,
-        role: isSuper
-          ? 'super_admin'
-          : isExplicitLimitedAdmin
-          ? 'admin'
-          : unameRole === 'superadmin'
-          ? 'super_admin'
-          : unameRole || (user.role === 'admin' ? 'admin' : 'student'),
-        custom_role: null,
-        is_posting_banned: 0,
-        updated_at: Date.now(),
-      };
-      store.userRoles.push(row);
-      saveD1Store(store);
-    } else if (isSuper && row.role !== 'super_admin') {
-      row.role = 'super_admin';
-      saveD1Store(store);
-    } else if (row.role === 'superadmin') {
-      row.role = 'super_admin';
-      saveD1Store(store);
-    }
-    return row;
+    const existingRow = store.userRoles.find((r: any) => r.uid === user.uid);
+    // STRICT FAIL-CLOSED: Admin and SuperAdmin come ONLY from verified JWT custom claims on `user`
+    const isSuper = (user as any).superAdmin === true || user.role === 'superadmin';
+    const isAdmin = isSuper || (user as any).admin === true || user.role === 'admin';
+    const resolvedRole = isSuper
+      ? 'super_admin'
+      : isAdmin
+      ? 'admin'
+      : existingRow?.role === 'captain' || user.role === 'captain'
+      ? 'captain'
+      : 'student';
+
+    return {
+      uid: user.uid,
+      email: user.email,
+      role: resolvedRole,
+      custom_role: existingRow?.custom_role || null,
+      is_posting_banned: Number(existingRow?.is_posting_banned || 0),
+      plan: existingRow?.plan || user.plan || 'free',
+      plan_expires_at: existingRow?.plan_expires_at || null,
+      updated_at: Number(existingRow?.updated_at || Date.now()),
+    };
   };
 
   const hasAdminPermission = (
     store: any,
-    user: { uid: string; email: string; role?: string } | null,
+    user: { uid: string; email: string; role?: string; admin?: boolean; superAdmin?: boolean } | null,
     permissionKey: string,
     options?: { targetId?: string; consumeOnce?: boolean }
   ): boolean => {
     if (!user) return false;
-    const roleRow = resolveD1Role(store, user);
-    const canonicalRole =
-      roleRow.role === 'superadmin' || roleRow.role === 'super_admin' || SUPERADMIN_UIDS.has(user.uid)
-        ? 'super_admin'
-        : roleRow.role;
+    const isSuper = user.superAdmin === true || user.role === 'superadmin';
+    const isAdmin = isSuper || user.admin === true || user.role === 'admin';
 
-    if (canonicalRole === 'super_admin') {
+    if (isSuper) {
       return true;
     }
-    if (canonicalRole !== 'admin') {
+    if (!isAdmin) {
       return false;
     }
     if (ADMIN_DEFAULT_PERMISSIONS.has(permissionKey)) {
@@ -7919,10 +7822,6 @@ ${postSitemaps}
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     const store = loadD1Store() as any;
     const roleRow = resolveD1Role(store, user);
-    const canonicalRole =
-      roleRow.role === 'superadmin' || roleRow.role === 'super_admin' || SUPERADMIN_UIDS.has(user.uid)
-        ? 'super_admin'
-        : roleRow.role;
     return res.status(200).json({
       uid: user.uid,
       email: user.email,
@@ -7932,7 +7831,9 @@ ${postSitemaps}
       isGuest: Boolean(user.isGuest),
       plan: (roleRow as any).plan || user.plan || 'free',
       planExpiresAt: (roleRow as any).plan_expires_at || null,
-      role: canonicalRole,
+      role: user.superAdmin ? 'superadmin' : user.admin ? 'admin' : roleRow.role,
+      admin: Boolean(user.admin || user.superAdmin),
+      superAdmin: Boolean(user.superAdmin),
       customRole: roleRow.custom_role,
       isPostingBanned: Boolean(roleRow.is_posting_banned),
     });
@@ -8022,91 +7923,71 @@ ${postSitemaps}
 
   app.put('/api/admin/roles', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
-    if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
-    const store = loadD1Store() as any;
+    if (!user || user.isGuest) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    if (user.superAdmin !== true) {
+      return res.status(403).json({
+        error: 'Forbidden: Only superAdmin can grant or revoke roles.',
+        code: 'FORBIDDEN',
+      });
+    }
+
     const body = req.body || {};
     const targetUid = String(body.uid || '').trim();
-    const rawRole = String(body.role || 'student').trim();
-    const newRole = rawRole === 'superadmin' ? 'super_admin' : rawRole;
-
-    if (!hasAdminPermission(store, user, 'users.role', { targetId: targetUid })) {
+    const rawRole = String(body.role || 'student').trim().toLowerCase();
+    if (rawRole === 'superadmin' || rawRole === 'super_admin' || body.superAdmin === true) {
       return res.status(403).json({
-        error: 'Permission denied: users.role is required to assign roles.',
-        code: 'PERMISSION_DENIED',
-        permission: 'users.role',
+        error: 'Forbidden: Nobody can grant superAdmin from the app.',
+        code: 'CANNOT_GRANT_SUPERADMIN',
       });
     }
 
-    const callerRoleRow = resolveD1Role(store, user);
-    const callerIsSuperAdmin =
-      callerRoleRow.role === 'super_admin' ||
-      callerRoleRow.role === 'superadmin' ||
-      SUPERADMIN_UIDS.has(user.uid);
-    if (newRole === 'super_admin' && !callerIsSuperAdmin) {
-      return res.status(403).json({
-        error: 'Only a Super Admin can assign the Super Admin role.',
-        code: 'PERMISSION_DENIED',
-        permission: 'users.role',
-      });
+    if (!targetUid || !['student', 'crew', 'captain', 'admin'].includes(rawRole)) {
+      return res.status(400).json({ error: 'Valid uid and role (student, captain, or admin) are required.', code: 'INVALID_INPUT' });
     }
 
-    if (!targetUid || !['student', 'crew', 'captain', 'admin', 'super_admin'].includes(newRole)) {
-      return res.status(400).json({ error: 'Valid uid and role are required.', code: 'INVALID_INPUT' });
-    }
+    const { executeGrantOrRevokeAdminClaim } = await import('../../functions/_utils/adminRoleGate');
+    const claimRes = await executeGrantOrRevokeAdminClaim({
+      caller: {
+        uid: user.uid,
+        email: user.email,
+        name: user.name,
+        admin: true,
+        superAdmin: true,
+        role: 'superadmin',
+      },
+      targetUid,
+      targetEmail: body.email,
+      grantAdmin: rawRole === 'admin',
+      reason: body.reason,
+      env: process.env as any,
+    });
 
+    const store = loadD1Store() as any;
     let existing = store.userRoles.find((r: any) => r.uid === targetUid);
-    const wasSuperAdmin =
-      existing &&
-      (existing.role === 'super_admin' || existing.role === 'superadmin' || SUPERADMIN_UIDS.has(targetUid));
-    if (wasSuperAdmin && newRole !== 'super_admin') {
-      if (SUPERADMIN_UIDS.has(targetUid)) {
-        return res.status(403).json({
-          error: 'Cannot demote a protected Super Admin owner account.',
-          code: 'LAST_SUPERADMIN_PROTECTED',
-        });
-      }
-      const otherSuperAdmins = (store.userRoles || []).filter(
-        (r: any) =>
-          r.uid !== targetUid &&
-          (r.role === 'super_admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(r.uid))
-      );
-      if (otherSuperAdmins.length === 0) {
-        return res.status(403).json({
-          error: 'Cannot demote the last remaining Super Admin.',
-          code: 'LAST_SUPERADMIN_PROTECTED',
-        });
-      }
-    }
-
     if (!existing) {
       existing = {
         uid: targetUid,
         email: String(body.email || '').trim().toLowerCase(),
-        role: newRole,
+        role: rawRole,
         custom_role: body.customRole || null,
         is_posting_banned: body.isPostingBanned ? 1 : 0,
         updated_at: Date.now(),
       };
       store.userRoles.push(existing);
     } else {
-      existing.role = newRole;
+      existing.role = rawRole;
       if (body.email) existing.email = String(body.email).trim().toLowerCase();
       if (body.customRole !== undefined) existing.custom_role = body.customRole;
       existing.updated_at = Date.now();
     }
-    try {
-      const localD1 = getSharedLocalD1Database();
-      for (const u of localD1.tables.user_usernames.values()) {
-        if (u.uid === targetUid) {
-          u.role = newRole;
-          u.updated_at = Date.now();
-        }
-      }
-    } catch {
-      // ignore
-    }
     saveD1Store(store);
-    return res.status(200).json({ ok: true, uid: targetUid, role: newRole });
+
+    return res.status(claimRes.status).json({
+      ...claimRes.body,
+      role: rawRole,
+    });
   });
 
   // ── D1 Captain Tests & Grand Line Public Tests ─────────────────────────────
@@ -11856,10 +11737,8 @@ ${postSitemaps}
     const body = req.body || {};
     const nowMs = Date.now();
     const callerRoleRow = resolveD1Role(store, user);
-    const callerIsSuperAdmin =
-      callerRoleRow.role === 'super_admin' ||
-      callerRoleRow.role === 'superadmin' ||
-      SUPERADMIN_UIDS.has(user.uid);
+    // SECURITY: superAdmin comes ONLY from verified Firebase Auth custom claim (user.superAdmin === true)
+    const callerIsSuperAdmin = user.superAdmin === true;
 
     let roleRow = store.userRoles.find((r: any) => r.uid === targetUid);
     let d1UserRow: any = null;
@@ -11878,7 +11757,7 @@ ${postSitemaps}
     const currentRole =
       roleRow?.role === 'superadmin'
         ? 'super_admin'
-        : roleRow?.role || d1UserRow?.role || (SUPERADMIN_UIDS.has(targetUid) ? 'super_admin' : 'student');
+        : roleRow?.role || d1UserRow?.role || 'student';
     const currentPlan =
       (roleRow as any)?.plan || d1UserRow?.plan || 'free';
     const currentSuspended = Boolean(
@@ -11905,38 +11784,43 @@ ${postSitemaps}
       requestedSuspended !== undefined && requestedSuspended !== currentSuspended;
 
     if (changingRole) {
-      if (!hasAdminPermission(store, user, 'users.role', { targetId: targetUid })) {
+      if (!callerIsSuperAdmin) {
         return res.status(403).json({
-          error: 'Permission denied: users.role is required to change user roles.',
-          code: 'PERMISSION_DENIED',
+          error: 'Forbidden: superAdmin custom claim is required to grant or revoke roles.',
+          code: 'SUPERADMIN_REQUIRED',
           permission: 'users.role',
         });
       }
-      if (requestedRole === 'super_admin' && !callerIsSuperAdmin) {
+      if (requestedRole === 'super_admin') {
         return res.status(403).json({
-          error: 'Only a Super Admin can assign the Super Admin role.',
-          code: 'PERMISSION_DENIED',
+          error: 'Nobody can grant superAdmin from the application. superAdmin is reserved strictly for OWNER_EMAIL.',
+          code: 'CANNOT_GRANT_SUPERADMIN',
           permission: 'users.role',
         });
       }
       if (currentRole === 'super_admin' && requestedRole !== 'super_admin') {
-        if (SUPERADMIN_UIDS.has(targetUid)) {
-          return res.status(403).json({
-            error: 'Cannot demote a protected Super Admin owner account.',
-            code: 'LAST_SUPERADMIN_PROTECTED',
-          });
-        }
-        const otherSuperAdmins = (store.userRoles || []).filter(
-          (r: any) =>
-            r.uid !== targetUid &&
-            (r.role === 'super_admin' || r.role === 'superadmin' || SUPERADMIN_UIDS.has(r.uid))
-        );
-        if (otherSuperAdmins.length === 0) {
-          return res.status(403).json({
-            error: 'Cannot demote the last remaining Super Admin.',
-            code: 'LAST_SUPERADMIN_PROTECTED',
-          });
-        }
+        return res.status(403).json({
+          error: 'Cannot demote the protected Super Admin owner account from the application.',
+          code: 'LAST_SUPERADMIN_PROTECTED',
+        });
+      }
+      // Also synchronize Firebase Auth custom claims + revokeRefreshTokens + write admin_activity_logs
+      if (requestedRole === 'admin' || currentRole === 'admin') {
+        await executeGrantOrRevokeAdminClaim(
+          process.env as Record<string, unknown>,
+          {
+            uid: user.uid,
+            email: user.email || '',
+            admin: true,
+            superAdmin: true,
+          },
+          {
+            targetUid,
+            targetEmail: body.email || d1UserRow?.email || '',
+            action: requestedRole === 'admin' ? 'grant' : 'revoke',
+            reason: body.reason || `Role changed from ${currentRole} to ${requestedRole}`,
+          }
+        ).catch(() => null);
       }
     }
 
@@ -13150,6 +13034,86 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       });
       res.end();
       return;
+    }
+
+    // 2a. Enforce strict server-side Firebase ID token custom-claim gate on all /api/admin/* and /api/superadmin/* requests
+    if (
+      pathname === '/api/admin' ||
+      pathname.startsWith('/api/admin/') ||
+      pathname === '/api/superadmin' ||
+      pathname.startsWith('/api/superadmin/')
+    ) {
+      const { enforceAdminOrSuperAdminGate, handleSuperAdminAndExtraAdminRoutes } = await import(
+        '../../functions/_utils/adminRoleGate'
+      );
+      const headersObj = new Headers();
+      for (const [k, v] of Object.entries(req.headers || {})) {
+        if (typeof v === 'string') headersObj.set(k, v);
+        else if (Array.isArray(v)) headersObj.set(k, v.join(', '));
+      }
+
+      let rawBodyText: string | undefined;
+      if ((method === 'POST' || method === 'PUT' || method === 'PATCH') && req.body === undefined) {
+        await new Promise<void>((resolve) => {
+          const chunks: Buffer[] = [];
+          req.on('data', (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+          req.on('end', () => {
+            rawBodyText = Buffer.concat(chunks).toString('utf8');
+            try {
+              req.body = rawBodyText ? JSON.parse(rawBodyText) : {};
+            } catch {
+              req.body = {};
+            }
+            resolve();
+          });
+          req.on('error', () => {
+            req.body = {};
+            resolve();
+          });
+        });
+      } else if (req.body && typeof req.body === 'object') {
+        rawBodyText = JSON.stringify(req.body);
+      }
+
+      const webReq = new Request(parsedUrl.toString(), {
+        method,
+        headers: headersObj,
+        body: method !== 'GET' && method !== 'HEAD' ? rawBodyText : undefined,
+      });
+
+      const gate = await enforceAdminOrSuperAdminGate({
+        request: webReq,
+        env: process.env as any,
+      });
+
+      if (gate.blockedResponse) {
+        const status = gate.blockedResponse.status;
+        const text = await gate.blockedResponse.text();
+        res.writeHead(status, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(text);
+        return;
+      }
+
+      if (gate.caller && (pathname === '/api/superadmin' || pathname.startsWith('/api/superadmin/'))) {
+        const handled = await handleSuperAdminAndExtraAdminRoutes({
+          request: webReq,
+          env: process.env as any,
+          caller: gate.caller,
+        });
+        if (handled) {
+          const status = handled.status;
+          const text = await handled.text();
+          res.writeHead(status, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end(text);
+          return;
+        }
+      }
     }
 
     let matchedRoute: RouteDef | null = null;

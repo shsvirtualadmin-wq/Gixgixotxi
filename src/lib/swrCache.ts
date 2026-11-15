@@ -164,7 +164,15 @@ export function readOptimisticUserSnapshot(): OptimisticUserSnapshot | null {
     if (Date.now() - (parsed.updatedAt || 0) > 14 * 24 * 60 * 60 * 1000) {
       return null;
     }
-    return parsed;
+    // SECURITY: Never restore admin or superadmin from localStorage. Roles come ONLY from verified ID token claims.
+    const safeRole =
+      parsed.role === 'captain' || parsed.role === 'crew' || parsed.role === 'ambassador'
+        ? parsed.role
+        : 'student';
+    return {
+      ...parsed,
+      role: safeRole,
+    };
   } catch {
     return null;
   }
@@ -173,8 +181,13 @@ export function readOptimisticUserSnapshot(): OptimisticUserSnapshot | null {
 export function writeOptimisticUserSnapshot(snapshot: Omit<OptimisticUserSnapshot, 'updatedAt'>): void {
   if (typeof window === 'undefined' || !snapshot?.uid) return;
   try {
+    const safeRole =
+      snapshot.role === 'captain' || snapshot.role === 'crew' || snapshot.role === 'ambassador'
+        ? snapshot.role
+        : 'student';
     const record: OptimisticUserSnapshot = {
       ...snapshot,
+      role: safeRole,
       updatedAt: Date.now(),
     };
     window.localStorage.setItem(LAST_KNOWN_USER_KEY, JSON.stringify(record));

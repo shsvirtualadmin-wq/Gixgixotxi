@@ -108,12 +108,8 @@ export function UserOverrideDrawer({
   onSuccess,
 }: UserOverrideDrawerProps) {
   const { isSuperAdmin: authIsSuperAdmin, hasPermission, refreshActiveGrants } = useAuth();
-  const adminEmailLower = (adminEmail || '').toLowerCase().trim();
-  const isSuperAdmin =
-    authIsSuperAdmin ||
-    adminEmailLower === 'shsvirtualadmin@gmail.com' ||
-    adminEmailLower === 'support@boardly.cfd' ||
-    adminEmailLower === 'ktkhashir90@gmail.com';
+  // SECURITY: SuperAdmin comes strictly from verified Firebase Auth custom claims (token.superAdmin === true)
+  const isSuperAdmin = Boolean(authIsSuperAdmin);
 
   const canChangePlan = hasPermission('users.plan', user?.uid);
   const canChangeRole = isSuperAdmin && hasPermission('users.role', user?.uid);
@@ -552,6 +548,10 @@ export function UserOverrideDrawer({
   };
 
   const handleInitiateRoleChange = (newRole: CanonicalUserRole) => {
+    if (newRole === 'super_admin') {
+      showApiToast('Nobody can grant superAdmin from the app. superAdmin is reserved for OWNER_EMAIL.', 'error');
+      return;
+    }
     if (!canChangeRole) {
       setRequestAccessModal({
         permission: 'users.role',
@@ -625,9 +625,10 @@ export function UserOverrideDrawer({
     }
   };
 
+  // Nobody can grant superAdmin from the app; only show super_admin pill if target is already super_admin
   const visibleRoleOptions = SYSTEM_ROLE_SELECTOR_ORDER.filter((opt) => {
-    if (opt.key === 'super_admin' && !isSuperAdmin) {
-      return false;
+    if (opt.key === 'super_admin') {
+      return role === 'super_admin';
     }
     return true;
   });

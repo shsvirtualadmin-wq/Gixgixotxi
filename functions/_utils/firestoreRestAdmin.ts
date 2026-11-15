@@ -20,19 +20,10 @@ export const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 export const DEFAULT_FIRESTORE_DATABASE_ID =
   'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
-export const DEFAULT_SUPERADMIN_UIDS = [
-  'JBGCDTLuWUMUIUMCLek7SdgvUNn1',
-  'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-  'Pz5fjmLtXHbWL2ntnW1zd8nlQos2',
-  '2GHhpHZkYFR1keIAwlnuch08mdh1',
-  'uid_superadmin_1',
-  'uid_superadmin_2',
-];
-export const DEFAULT_SUPERADMIN_EMAILS: string[] = [
-  'ktkhashir90@gmail.com',
-  'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
-];
+// SECURITY: Hardcoded superAdmin UID/email allowlists are disabled (fail closed).
+// Roles come strictly from verified Firebase Auth custom claims (token.superAdmin === true, token.admin === true).
+export const DEFAULT_SUPERADMIN_UIDS: string[] = [];
+export const DEFAULT_SUPERADMIN_EMAILS: string[] = [];
 
 export interface VerifiedFirebaseToken {
   uid: string;
@@ -42,6 +33,7 @@ export interface VerifiedFirebaseToken {
   emailVerified?: boolean;
   role?: string;
   admin?: boolean;
+  superAdmin?: boolean;
   authTime?: number;
   iat?: number;
   signInProvider?: string;
@@ -207,6 +199,7 @@ export async function verifyFirebaseIdToken(
       email_verified?: boolean;
       role?: string;
       admin?: boolean;
+      superAdmin?: boolean;
       firebase?: {
         sign_in_provider?: string;
         identities?: Record<string, unknown>;
@@ -266,14 +259,19 @@ export async function verifyFirebaseIdToken(
     const hasGoogleProvider =
       signInProvider === 'google.com' || signInProviders.includes('google.com');
 
+    // STRICT FAIL-CLOSED: Roles come ONLY from verified Firebase ID token custom claims
+    const isSuperAdminClaim = payload.superAdmin === true;
+    const isAdminClaim = payload.admin === true || isSuperAdminClaim;
+
     return {
       uid: payload.sub,
       email: payload.email,
       name: payload.name,
       picture: payload.picture,
       emailVerified: Boolean(payload.email_verified),
-      role: payload.role,
-      admin: Boolean(payload.admin),
+      role: isSuperAdminClaim ? 'superadmin' : isAdminClaim ? 'admin' : undefined,
+      admin: isAdminClaim,
+      superAdmin: isSuperAdminClaim,
       authTime: authTimeSec,
       iat: iatSec,
       signInProvider,
@@ -825,13 +823,6 @@ export async function resolveCurrentUser(params: {
       const uid = verified.uid;
       const email = String(verified.email || '').trim().toLowerCase();
 
-      const superUids = new Set(
-        (env?.SUPERADMIN_UIDS || DEFAULT_SUPERADMIN_UIDS.join(','))
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      );
-
       let roleRow: {
         uid?: string;
         email?: string;
@@ -869,42 +860,23 @@ export async function resolveCurrentUser(params: {
         // Non-fatal if tables not initialized
       }
 
-      const isExplicitLimitedAdmin =
-        uid === 'uid_regular_admin' ||
-        /^reg_/i.test(uid) ||
-        roleRow?.role === 'admin' ||
-        usernameRow?.role === 'admin' ||
-        verified.role === 'admin';
-
-      const isHardcodedSuperAdmin =
-        superUids.has(uid) ||
-        DEFAULT_SUPERADMIN_EMAILS.includes(email) ||
-        /^(?:sa1|sa2)_/i.test(uid) ||
-        verified.role === 'superadmin' ||
-        verified.role === 'super_admin' ||
-        (verified.admin === true && !isExplicitLimitedAdmin);
+      // STRICT FAIL-CLOSED: Admin and SuperAdmin status come ONLY from verified Firebase Auth custom claims.
+      // Never promote a user to admin or superadmin based on D1 user_roles, user_usernames, or hardcoded lists.
+      const isSuperAdmin = verified.superAdmin === true;
+      const isAdminOrAbove = isSuperAdmin || verified.admin === true;
 
       let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
-      if (
-        isHardcodedSuperAdmin ||
-        roleRow?.role === 'superadmin' ||
-        roleRow?.role === 'super_admin' ||
-        usernameRow?.role === 'superadmin' ||
-        usernameRow?.role === 'super_admin'
-      ) {
+      if (isSuperAdmin) {
         role = 'superadmin';
-      } else if (isExplicitLimitedAdmin) {
+      } else if (isAdminOrAbove) {
         role = 'admin';
       } else if (
         roleRow?.role === 'captain' ||
-        usernameRow?.role === 'captain' ||
-        verified.role === 'captain'
+        usernameRow?.role === 'captain'
       ) {
         role = 'captain';
       }
 
-      const isSuperAdmin = role === 'superadmin';
-      const isAdminOrAbove = role === 'superadmin' || role === 'admin';
       const isPostingBanned = Boolean(roleRow?.is_posting_banned);
 
       const resolvedUsername = String(
@@ -1004,8 +976,52 @@ export function parseServiceAccountFromEnv(env?: RewardsEnv): ServiceAccountCred
 
 let cachedAccessToken: { token: string; clientEmail: string; expiresAt: number } | null = null;
 
-export const FIRESTORE_OAUTH_SCOPE = 'https://www.googleapis.com/auth/datastore';
+export const FIRESTORE_OAUTH_SCOPE =
+  'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform';
 export const FIRESTORE_TOKEN_AUDIENCE = 'https://oauth2.googleapis.com/token';
+
+/**
+ * Sets custom claims (ONLY `{ admin: true }` or `{}`) and revokes refresh tokens via
+ * Google Identity Toolkit Admin REST API using the Service Account credentials.
+ * Nobody can grant `superAdmin` from the application.
+ */
+export async function updateFirebaseAdminClaimViaIdentityToolkit(params: {
+  sa: ServiceAccountCredentials;
+  targetUid: string;
+  grantAdmin: boolean;
+}): Promise<{ customAttributes: Record<string, boolean>; validSinceSec: number }> {
+  const { sa, targetUid, grantAdmin } = params;
+  if (!targetUid || typeof targetUid !== 'string') {
+    throw new Error('INVALID_TARGET_UID');
+  }
+  const accessToken = await getServiceAccountAccessToken(sa);
+  const projectId = resolveTargetFirestoreProjectId(sa.project_id);
+  const customClaimsObj: Record<string, boolean> = grantAdmin ? { admin: true } : {};
+  const validSinceSec = Math.floor(Date.now() / 1000);
+
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/accounts:update`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      localId: targetUid,
+      customAttributes: JSON.stringify(customClaimsObj),
+      validSince: String(validSinceSec),
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`IDENTITY_TOOLKIT_UPDATE_FAILED_${res.status}: ${errText.slice(0, 300)}`);
+  }
+
+  return { customAttributes: customClaimsObj, validSinceSec };
+}
 
 export function resolveTargetFirestoreProjectId(rawProjectId?: string | null): string {
   const trimmed = (rawProjectId || '').trim();

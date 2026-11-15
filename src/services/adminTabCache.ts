@@ -691,7 +691,7 @@ export function prefetchAdminRouteOnInteraction(rawPath: string, uid?: string): 
   prefetchAdminTabData(rawPath, uid);
 }
 
-export function scheduleIdleAdminPrefetchAll(uid?: string): () => void {
+export function scheduleIdleAdminPrefetchAll(uid?: string, isSuperAdmin = false): () => void {
   if (typeof window === 'undefined') return () => {};
   if (idlePrefetchScheduled) return () => {};
   idlePrefetchScheduled = true;
@@ -707,36 +707,42 @@ export function scheduleIdleAdminPrefetchAll(uid?: string): () => void {
   };
 
   const t1 = runIdleJob(() => {
-    // 1. Prefetch primary admin tab chunks first
-    const primaryPaths = [
-      '/admin',
-      '/admin/users',
-      '/admin/crews',
-      '/admin/captains',
-      '/admin/certificates',
-      '/admin/questions',
-      '/admin/announcements',
-      '/admin/bots',
-    ];
+    // 1. Prefetch primary admin tab chunks
+    const primaryPaths = isSuperAdmin
+      ? [
+          '/admin',
+          '/admin/users',
+          '/admin/crews',
+          '/admin/captains',
+          '/admin/certificates',
+          '/admin/questions',
+          '/admin/announcements',
+          '/admin/bots',
+        ]
+      : ['/admin', '/admin/questions', '/admin/applications', '/admin/payments'];
     for (const p of primaryPaths) {
       prefetchAdminTabChunk(p);
     }
-    // 2. Prefetch data for core tabs in parallel
+    // 2. Prefetch data for allowed tabs in parallel
     if (uid) {
       prefetchAdminTabData('/admin', uid);
     }
-    prefetchAdminTabData('/admin/crews', uid);
-    prefetchAdminTabData('/admin/certificates', uid);
     prefetchAdminTabData('/admin/questions', uid);
+    if (isSuperAdmin) {
+      prefetchAdminTabData('/admin/crews', uid);
+      prefetchAdminTabData('/admin/certificates', uid);
+    }
   }, 150);
 
   const t2 = runIdleJob(() => {
-    // 3. Prefetch remaining admin chunks & data
-    for (const p of Object.keys(ADMIN_CHUNK_LOADERS)) {
-      prefetchAdminTabChunk(p);
+    // 3. Prefetch remaining admin chunks & data only for superAdmin
+    if (isSuperAdmin) {
+      for (const p of Object.keys(ADMIN_CHUNK_LOADERS)) {
+        prefetchAdminTabChunk(p);
+      }
+      prefetchAdminTabData('/admin/captains', uid);
+      prefetchAdminTabData('/admin/users', uid);
     }
-    prefetchAdminTabData('/admin/captains', uid);
-    prefetchAdminTabData('/admin/users', uid);
   }, 600);
 
   return () => {
@@ -744,3 +750,4 @@ export function scheduleIdleAdminPrefetchAll(uid?: string): () => void {
     window.clearTimeout(t2);
   };
 }
+

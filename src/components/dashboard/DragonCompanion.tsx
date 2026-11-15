@@ -138,11 +138,8 @@ export function useDragonHiddenPreference() {
   return { hideDragon, setHideDragon };
 }
 
-// ── Server-Side Verified Role Cache & Synchronous Hydration Helpers ─────────
-type VerifiedServerRole = 'admin' | 'superadmin' | 'student' | 'captain' | null;
-const verifiedRoleMemoryCache = new Map<string, VerifiedServerRole>();
+// ── Synchronous Hydration Helpers (Never caches roles in localStorage) ─────────
 const LAST_KNOWN_UID_KEY = 'boardly_zenryu_last_uid_v1';
-const VERIFIED_ROLE_STORAGE_PREFIX = 'boardly_zenryu_verified_role_v1_';
 const KNOWN_UNLOCKED_STORAGE_PREFIX = 'boardly_zenryu_known_unlocked_v1_';
 
 function resolveEffectiveUid(explicitUid?: string | null): string | null {
@@ -163,44 +160,6 @@ function resolveEffectiveUid(explicitUid?: string | null): string | null {
       if (lastUid && lastUid.trim().length > 0) {
         return lastUid.trim();
       }
-      // Scan existing cached_profile_{uid} or boardly_d1_cockpit_attempts_v2_{uid} keys if auth is still hydrating
-      for (let i = 0; i < window.localStorage.length; i++) {
-        const key = window.localStorage.key(i);
-        if (!key) continue;
-        if (key.startsWith('cached_profile_')) {
-          const candidate = key.slice('cached_profile_'.length).trim();
-          if (candidate && candidate !== 'guest') return candidate;
-        }
-        if (key.startsWith('boardly_d1_cockpit_attempts_v2_')) {
-          const candidate = key.slice('boardly_d1_cockpit_attempts_v2_'.length).trim();
-          if (candidate && candidate !== 'guest') return candidate;
-        }
-      }
-    } catch {
-      // Ignore storage errors
-    }
-  }
-  return null;
-}
-
-function readCachedVerifiedRole(uid?: string | null): VerifiedServerRole {
-  const effectiveUid = resolveEffectiveUid(uid);
-  if (!effectiveUid) return null;
-  if (verifiedRoleMemoryCache.has(effectiveUid)) {
-    return verifiedRoleMemoryCache.get(effectiveUid) ?? null;
-  }
-  if (typeof window !== 'undefined') {
-    try {
-      const stored = window.localStorage.getItem(`${VERIFIED_ROLE_STORAGE_PREFIX}${effectiveUid}`);
-      if (
-        stored === 'superadmin' ||
-        stored === 'admin' ||
-        stored === 'captain' ||
-        stored === 'student'
-      ) {
-        verifiedRoleMemoryCache.set(effectiveUid, stored);
-        return stored;
-      }
     } catch {
       // Ignore storage errors
     }
@@ -216,64 +175,6 @@ function readKnownUnlockedState(uid?: string | null): boolean {
   } catch {
     return false;
   }
-}
-
-async function fetchVerifiedServerRole(uid: string): Promise<VerifiedServerRole> {
-  if (!uid) return null;
-  if (verifiedRoleMemoryCache.has(uid)) {
-    return verifiedRoleMemoryCache.get(uid) ?? null;
-  }
-  const cachedRole = readCachedVerifiedRole(uid);
-  const backoffDelays = [0, 400, 900, 1800];
-
-  for (let attempt = 0; attempt < backoffDelays.length; attempt++) {
-    if (backoffDelays[attempt] > 0) {
-      await new Promise((r) => window.setTimeout(r, backoffDelays[attempt]));
-    }
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== uid) {
-        continue;
-      }
-      const idToken = await currentUser.getIdToken();
-      if (!idToken) continue;
-
-      const res = await fetch('/api/me/role', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          Accept: 'application/json',
-        },
-      });
-      if (!res.ok) {
-        continue;
-      }
-      const data = (await res.json()) as { role?: string | null };
-      const rawRole = typeof data?.role === 'string' ? data.role.trim().toLowerCase() : '';
-      const role: VerifiedServerRole =
-        rawRole === 'superadmin'
-          ? 'superadmin'
-          : rawRole === 'admin'
-          ? 'admin'
-          : rawRole === 'captain'
-          ? 'captain'
-          : rawRole === 'student'
-          ? 'student'
-          : null;
-      if (role) {
-        verifiedRoleMemoryCache.set(uid, role);
-        try {
-          window.localStorage.setItem(`${VERIFIED_ROLE_STORAGE_PREFIX}${uid}`, role);
-        } catch {
-          // Ignore storage errors
-        }
-        return role;
-      }
-    } catch {
-      // Transient error: continue backoff loop
-    }
-  }
-  return cachedRole;
 }
 
 /**
@@ -545,7 +446,7 @@ function DragonCompanionInner({
   currentMcq = null,
   isTestModalOpen = false,
 }: DragonCompanionProps) {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isSuperAdmin } = useAuth();
   const { hideDragon } = useDragonHiddenPreference();
 
   const featureEnabled = useMemo(() => isDragonCompanionEnabled(), []);
@@ -566,29 +467,6 @@ function DragonCompanionInner({
       if (timerId) window.clearTimeout(timerId);
     };
   }, []);
-
-  // 1. Server-verified role check + AuthContext admin check (seeded synchronously from cache)
-  const effectiveUid = resolveEffectiveUid(user?.uid);
-  const [verifiedRole, setVerifiedRole] = useState<VerifiedServerRole>(() =>
-    readCachedVerifiedRole(user?.uid)
-  );
-  useEffect(() => {
-    let active = true;
-    const targetUid = resolveEffectiveUid(user?.uid);
-    if (!targetUid) {
-      return;
-    }
-    const cached = readCachedVerifiedRole(targetUid);
-    if (cached) {
-      setVerifiedRole(cached);
-    }
-    void fetchVerifiedServerRole(targetUid).then((r) => {
-      if (active && r) setVerifiedRole(r);
-    });
-    return () => {
-      active = false;
-    };
-  }, [user?.uid]);
 
   // 2. Read-only lifetime correct MCQs count (computed synchronously on render so uid hydration never lags)
   const [correctCountState, setCorrectCountState] = useState<number>(() =>
@@ -618,8 +496,7 @@ function DragonCompanionInner({
     readKnownUnlockedState(user?.uid)
   );
 
-  const isAdminBypass =
-    Boolean(isAdmin) || verifiedRole === 'admin' || verifiedRole === 'superadmin';
+  const isAdminBypass = Boolean(isAdmin || isSuperAdmin);
   const isUnlockedByCount = correctCount >= DRAGON_UNLOCK_THRESHOLD;
   const isUnlocked =
     isAdminBypass ||
