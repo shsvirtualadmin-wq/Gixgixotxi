@@ -1341,6 +1341,7 @@ export interface VerifiedWorkerUser {
   tokenName?: string;
   picture: string;
   role: 'student' | 'captain' | 'admin' | 'superadmin';
+  captain?: boolean;
   admin?: boolean;
   superAdmin?: boolean;
   customRole: string | null;
@@ -1503,9 +1504,11 @@ export async function verifyFirebaseJwtZeroFirestore(
       throw new Error('POSTING_BANNED');
     }
 
-    // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+    // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+    // Hierarchy: superAdmin > admin > captain > student
     const isSuperAdminClaim = payload.superAdmin === true;
     const isAdminClaim = payload.admin === true || isSuperAdminClaim;
+    const isCaptainClaim = payload.captain === true || isAdminClaim;
 
     let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
     let customRole: string | null =
@@ -1515,13 +1518,7 @@ export async function verifyFirebaseJwtZeroFirestore(
       role = 'superadmin';
     } else if (isAdminClaim) {
       role = 'admin';
-    } else if (
-      payload.nakamaCaptain === true ||
-      payload.customRole === 'Nakama Captain' ||
-      roleRow?.role === 'captain' ||
-      roleRow?.custom_role === 'Nakama Captain' ||
-      unameRole === 'captain'
-    ) {
+    } else if (isCaptainClaim) {
       role = 'captain';
       customRole = customRole || 'Nakama Captain';
     }
@@ -1537,11 +1534,12 @@ export async function verifyFirebaseJwtZeroFirestore(
       tokenName,
       picture: payload.picture || '',
       role,
+      captain: isCaptainClaim,
       admin: isAdminClaim,
       superAdmin: isSuperAdminClaim,
       customRole,
       accountType: 'registered',
-      plan: isSuperAdminClaim || isAdminClaim || role === 'captain' ? 'pro' : 'free',
+      plan: isCaptainClaim ? 'pro' : 'free',
       isGuest: false,
     };
   } catch (err: any) {
@@ -7746,14 +7744,15 @@ ${postSitemaps}
     }
     if (!Array.isArray(store.userRoles)) store.userRoles = [];
     const existingRow = store.userRoles.find((r: any) => r.uid === user.uid);
-    // STRICT FAIL-CLOSED: Admin and SuperAdmin come ONLY from verified JWT custom claims on `user`
+    // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified JWT custom claims on `user`
     const isSuper = (user as any).superAdmin === true || user.role === 'superadmin';
     const isAdmin = isSuper || (user as any).admin === true || user.role === 'admin';
+    const isCaptain = isAdmin || (user as any).captain === true || user.role === 'captain';
     const resolvedRole = isSuper
       ? 'super_admin'
       : isAdmin
       ? 'admin'
-      : existingRow?.role === 'captain' || user.role === 'captain'
+      : isCaptain
       ? 'captain'
       : 'student';
 
@@ -7831,7 +7830,14 @@ ${postSitemaps}
       isGuest: Boolean(user.isGuest),
       plan: (roleRow as any).plan || user.plan || 'free',
       planExpiresAt: (roleRow as any).plan_expires_at || null,
-      role: user.superAdmin ? 'superadmin' : user.admin ? 'admin' : roleRow.role,
+      role: user.superAdmin
+        ? 'superadmin'
+        : user.admin
+        ? 'admin'
+        : user.captain
+        ? 'captain'
+        : 'student',
+      captain: Boolean(user.captain || user.admin || user.superAdmin),
       admin: Boolean(user.admin || user.superAdmin),
       superAdmin: Boolean(user.superAdmin),
       customRole: roleRow.custom_role,
@@ -7926,9 +7932,9 @@ ${postSitemaps}
     if (!user || user.isGuest) {
       return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
     }
-    if (user.superAdmin !== true) {
+    if (user.admin !== true && user.superAdmin !== true) {
       return res.status(403).json({
-        error: 'Forbidden: Only superAdmin can grant or revoke roles.',
+        error: 'Forbidden: Only admin or superAdmin can grant or revoke roles.',
         code: 'FORBIDDEN',
       });
     }
@@ -7943,9 +7949,19 @@ ${postSitemaps}
       });
     }
 
+    if (rawRole === 'admin' && user.superAdmin !== true) {
+      return res.status(403).json({
+        error: 'Forbidden: Only superAdmin can grant admin.',
+        code: 'FORBIDDEN',
+      });
+    }
+
     if (!targetUid || !['student', 'crew', 'captain', 'admin'].includes(rawRole)) {
       return res.status(400).json({ error: 'Valid uid and role (student, captain, or admin) are required.', code: 'INVALID_INPUT' });
     }
+
+    const normalizedTargetRole: 'admin' | 'captain' | 'student' =
+      rawRole === 'admin' ? 'admin' : rawRole === 'captain' ? 'captain' : 'student';
 
     const { executeGrantOrRevokeAdminClaim } = await import('../../functions/_utils/adminRoleGate');
     const claimRes = await executeGrantOrRevokeAdminClaim({
@@ -7953,13 +7969,15 @@ ${postSitemaps}
         uid: user.uid,
         email: user.email,
         name: user.name,
-        admin: true,
-        superAdmin: true,
-        role: 'superadmin',
+        captain: true,
+        admin: Boolean(user.admin || user.superAdmin),
+        superAdmin: Boolean(user.superAdmin),
+        role: user.superAdmin ? 'superadmin' : 'admin',
       },
       targetUid,
       targetEmail: body.email,
-      grantAdmin: rawRole === 'admin',
+      grantAdmin: normalizedTargetRole === 'admin',
+      targetRole: normalizedTargetRole,
       reason: body.reason,
       env: process.env as any,
     });
@@ -8136,11 +8154,16 @@ ${postSitemaps}
   app.get('/api/tests/mine', async (req: Request, res: Response) => {
     const user = await verifyFirebaseJwtZeroFirestore(req);
     if (!user) return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    if (!user.captain && !user.admin && !user.superAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: captain, admin, or superAdmin claim required.',
+        code: 'FORBIDDEN',
+      });
+    }
     const store = loadD1Store() as any;
     if (!Array.isArray(store.captainTests)) store.captainTests = [];
     const nowMs = Date.now();
-    const roleRow = resolveD1Role(store, user);
-    const isAdmin = ['admin', 'superadmin', 'super_admin'].includes(roleRow.role);
+    const isAdmin = Boolean(user.admin || user.superAdmin);
     const targetUid =
       isAdmin && req.query.captainUid
         ? String(req.query.captainUid)
@@ -8159,6 +8182,12 @@ ${postSitemaps}
       return res.status(403).json({
         error: "You can't create Captain tests as a guest. Please upgrade to a full account.",
         code: 'GUEST_FORBIDDEN',
+      });
+    }
+    if (!user.captain && !user.admin && !user.superAdmin) {
+      return res.status(403).json({
+        error: 'Forbidden: captain, admin, or superAdmin claim required to create tests.',
+        code: 'FORBIDDEN',
       });
     }
     const store = loadD1Store() as any;
@@ -11784,9 +11813,17 @@ ${postSitemaps}
       requestedSuspended !== undefined && requestedSuspended !== currentSuspended;
 
     if (changingRole) {
-      if (!callerIsSuperAdmin) {
+      const callerIsAdminOrSuper = Boolean(user.admin || user.superAdmin);
+      if (!callerIsAdminOrSuper) {
         return res.status(403).json({
-          error: 'Forbidden: superAdmin custom claim is required to grant or revoke roles.',
+          error: 'Forbidden: admin or superAdmin custom claim is required to grant or revoke roles.',
+          code: 'FORBIDDEN',
+          permission: 'users.role',
+        });
+      }
+      if ((requestedRole === 'admin' || currentRole === 'admin') && !callerIsSuperAdmin) {
+        return res.status(403).json({
+          error: 'Forbidden: superAdmin custom claim is required to grant or revoke admin.',
           code: 'SUPERADMIN_REQUIRED',
           permission: 'users.role',
         });
@@ -11805,23 +11842,29 @@ ${postSitemaps}
         });
       }
       // Also synchronize Firebase Auth custom claims + revokeRefreshTokens + write admin_activity_logs
-      if (requestedRole === 'admin' || currentRole === 'admin') {
-        await executeGrantOrRevokeAdminClaim(
-          process.env as Record<string, unknown>,
-          {
-            uid: user.uid,
-            email: user.email || '',
-            admin: true,
-            superAdmin: true,
-          },
-          {
-            targetUid,
-            targetEmail: body.email || d1UserRow?.email || '',
-            action: requestedRole === 'admin' ? 'grant' : 'revoke',
-            reason: body.reason || `Role changed from ${currentRole} to ${requestedRole}`,
-          }
-        ).catch(() => null);
-      }
+      const { executeGrantOrRevokeAdminClaim } = await import('../../functions/_utils/adminRoleGate');
+      await executeGrantOrRevokeAdminClaim({
+        caller: {
+          uid: user.uid,
+          email: user.email || '',
+          name: user.name || 'Admin',
+          captain: true,
+          admin: true,
+          superAdmin: callerIsSuperAdmin,
+          role: callerIsSuperAdmin ? 'superadmin' : 'admin',
+        },
+        targetUid,
+        targetEmail: body.email || d1UserRow?.email || '',
+        grantAdmin: requestedRole === 'admin',
+        targetRole:
+          requestedRole === 'admin'
+            ? 'admin'
+            : requestedRole === 'captain'
+            ? 'captain'
+            : 'student',
+        reason: body.reason || `Role changed from ${currentRole} to ${requestedRole}`,
+        env: process.env as any,
+      }).catch(() => null);
     }
 
     if (changingPlan) {
@@ -13036,12 +13079,14 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
       return;
     }
 
-    // 2a. Enforce strict server-side Firebase ID token custom-claim gate on all /api/admin/* and /api/superadmin/* requests
+    // 2a. Enforce strict server-side Firebase ID token custom-claim gate on all /api/admin/*, /api/superadmin/*, and /api/captain/* requests
     if (
       pathname === '/api/admin' ||
       pathname.startsWith('/api/admin/') ||
       pathname === '/api/superadmin' ||
-      pathname.startsWith('/api/superadmin/')
+      pathname.startsWith('/api/superadmin/') ||
+      pathname === '/api/captain' ||
+      pathname.startsWith('/api/captain/')
     ) {
       const { enforceAdminOrSuperAdminGate, handleSuperAdminAndExtraAdminRoutes } = await import(
         '../../functions/_utils/adminRoleGate'
@@ -13097,7 +13142,13 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         return;
       }
 
-      if (gate.caller && (pathname === '/api/superadmin' || pathname.startsWith('/api/superadmin/'))) {
+      if (
+        gate.caller &&
+        (pathname === '/api/superadmin' ||
+          pathname.startsWith('/api/superadmin/') ||
+          pathname === '/api/captain' ||
+          pathname.startsWith('/api/captain/'))
+      ) {
         const handled = await handleSuperAdminAndExtraAdminRoutes({
           request: webReq,
           env: process.env as any,

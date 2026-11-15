@@ -819,9 +819,11 @@ export async function verifyFirebaseIdToken(
       }
     }
 
-    // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+    // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+    // Hierarchy: superAdmin > admin > captain > student
     const isSuperAdminClaim = payload.superAdmin === true;
     const isAdminClaim = payload.admin === true || isSuperAdminClaim;
+    const isCaptainClaim = payload.captain === true || isAdminClaim;
 
     let role: 'student' | 'captain' | 'admin' | 'superadmin' = 'student';
     let customRole: string | null = payload.customRole || null;
@@ -830,10 +832,7 @@ export async function verifyFirebaseIdToken(
       role = 'superadmin';
     } else if (isAdminClaim) {
       role = 'admin';
-    } else if (
-      payload.nakamaCaptain === true ||
-      payload.customRole === 'Nakama Captain'
-    ) {
+    } else if (isCaptainClaim) {
       role = 'captain';
       customRole = customRole || 'Nakama Captain';
     }
@@ -858,11 +857,9 @@ export async function verifyFirebaseIdToken(
         if (d1Role?.is_posting_banned) {
           throw new Error('POSTING_BANNED');
         }
-        const resolvedRole = d1Role?.role || unameRole?.role || 'student';
         const resolvedCustomRole = d1Role?.custom_role || unameRole?.custom_role || null;
-        if (role === 'student' && (resolvedRole === 'captain' || resolvedCustomRole === 'Nakama Captain')) {
-          role = 'captain';
-          customRole = resolvedCustomRole || 'Nakama Captain';
+        if (!customRole && resolvedCustomRole) {
+          customRole = resolvedCustomRole;
         }
       } catch (e: any) {
         if (e?.message === 'POSTING_BANNED') throw e;
@@ -2123,12 +2120,14 @@ export default {
       await ensureD1Schema(env.DB);
     }
 
-    // 0b. Strict server-side Firebase ID token custom-claim gate for /api/admin/* and /api/superadmin/*
+    // 0b. Strict server-side Firebase ID token custom-claim gate for /api/admin/*, /api/superadmin/*, and /api/captain/*
     if (
       url.pathname === '/api/admin' ||
       url.pathname.startsWith('/api/admin/') ||
       url.pathname === '/api/superadmin' ||
-      url.pathname.startsWith('/api/superadmin/')
+      url.pathname.startsWith('/api/superadmin/') ||
+      url.pathname === '/api/captain' ||
+      url.pathname.startsWith('/api/captain/')
     ) {
       const gate = await enforceAdminOrSuperAdminGate({
         request: req,

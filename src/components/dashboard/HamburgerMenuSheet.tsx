@@ -208,7 +208,16 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   hideProfileHeader = false,
 }) => {
   const location = useLocation();
-  const { user, profileLoading, isAdmin, isSuperAdmin, isGuest, isSigningOut } = useAuth();
+  const {
+    user,
+    isAdmin,
+    isSuperAdmin,
+    isCaptain,
+    tokenClaims,
+    refreshTokenClaims,
+    isGuest,
+    isSigningOut,
+  } = useAuth();
   const { profile } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const { balance: kobanBalance, equipped } = useWallet();
@@ -217,27 +226,31 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const securityStatus = useSecurityStatus();
   const unreadNotifCount = useUnreadNotificationsCount();
 
-  // SECURITY: Roles come ONLY from verified Firebase Auth custom claims (useAuth().isSuperAdmin / isAdmin)
-  const confirmedRole: string | null =
-    !profileLoading && user && profile?.role ? profile.role : null;
+  // Requirement 2: Force a token refresh when the hamburger menu content mounts/opens
+  useEffect(() => {
+    if (user && !isGuest) {
+      void refreshTokenClaims(true);
+    }
+  }, [user, isGuest, refreshTokenClaims]);
 
+  // SECURITY (Requirement 1): Read roles ONLY from verified Firebase Auth custom claims
+  // ((await user.getIdTokenResult()).claims). Never from Firestore fields or localStorage.
+  // Hierarchy: superAdmin > admin > captain > student.
+  // superAdmin implies admin and captain, and admin implies captain.
   const isConfirmedSuperAdmin = Boolean(
-    !profileLoading && user && !isGuest && isSuperAdmin
+    user && !isGuest && (isSuperAdmin || tokenClaims?.superAdmin === true)
   );
 
   const isConfirmedAdmin = Boolean(
-    !profileLoading && user && !isGuest && (isConfirmedSuperAdmin || isAdmin)
+    user &&
+      !isGuest &&
+      (isConfirmedSuperAdmin || isAdmin || tokenClaims?.admin === true)
   );
 
-  const role = profile?.role || 'student';
   const isApprovedCaptain = Boolean(
     user &&
-      (role === 'captain' ||
-        role === 'ambassador' ||
-        confirmedRole === 'captain' ||
-        confirmedRole === 'ambassador' ||
-        profile?.isCaptain ||
-        profile?.isAmbassador)
+      !isGuest &&
+      (isConfirmedAdmin || isCaptain || tokenClaims?.captain === true)
   );
 
   const isPro = Boolean((effectivePlan.isUnlimited || isConfirmedAdmin) && !isGuest);
@@ -283,8 +296,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     pathname.startsWith('/settings') || pathname.startsWith('/dashboard/settings');
   const isCaptainActive =
     pathname.startsWith('/dashboard/captain') ||
-    pathname.startsWith('/dashboard/ambassador');
+    pathname.startsWith('/dashboard/ambassador') ||
+    pathname === '/captain' ||
+    pathname.startsWith('/captain/');
   const isAdminActive = pathname.startsWith('/admin');
+  const isSuperAdminActive = pathname.startsWith('/superadmin');
 
   const q = searchQuery.trim().toLowerCase();
 
@@ -371,7 +387,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     onNavigate,
   ]);
 
-  // Group 2: Settings, Superadmin Portal (super admins / admins only) + Captain Deck (for captains)
+  // Group 2: Settings, "Captain dashboard" (captain, admin or superAdmin), "Admin" (admin or superAdmin), "Super Admin" (superAdmin only)
   const group2Rows = useMemo<MenuRowDefinition[]>(() => {
     const rows: MenuRowDefinition[] = [
       {
@@ -386,32 +402,34 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
     if (isApprovedCaptain) {
       rows.push({
-        id: 'captain-deck',
-        label: 'Captain Deck',
-        keywords: 'captain deck ambassador referrals tests',
+        id: 'captain-dashboard',
+        label: 'Captain dashboard',
+        keywords: 'captain dashboard deck ambassador referrals tests',
         icon: <Award size={18} strokeWidth={1.9} />,
         active: isCaptainActive,
         onClick: () => onNavigate('/dashboard/captain'),
       });
     }
 
-    if (isConfirmedSuperAdmin) {
+    if (isConfirmedAdmin) {
       rows.push({
-        id: 'superadmin-portal',
-        label: 'Superadmin Portal',
-        keywords: 'superadmin admin portal dashboard moderation users',
+        id: 'admin',
+        label: 'Admin',
+        keywords: 'admin portal dashboard moderation users questions',
         icon: <Shield size={18} strokeWidth={1.9} />,
         active: isAdminActive,
         onClick: () => onNavigate('/admin'),
       });
-    } else if (isConfirmedAdmin) {
+    }
+
+    if (isConfirmedSuperAdmin) {
       rows.push({
-        id: 'admin-portal',
-        label: 'Admin Portal',
-        keywords: 'admin portal dashboard moderation users',
+        id: 'super-admin',
+        label: 'Super Admin',
+        keywords: 'super admin superadmin portal dashboard moderation users roles',
         icon: <Shield size={18} strokeWidth={1.9} />,
-        active: isAdminActive,
-        onClick: () => onNavigate('/admin'),
+        active: isSuperAdminActive,
+        onClick: () => onNavigate('/superadmin'),
       });
     }
 
@@ -423,6 +441,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     isConfirmedAdmin,
     isConfirmedSuperAdmin,
     isAdminActive,
+    isSuperAdminActive,
     onNavigate,
   ]);
 
@@ -500,13 +519,26 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       ...(isApprovedCaptain
         ? [
             {
-              id: 'menu-captain-deck',
-              label: 'Captain Deck',
+              id: 'menu-captain-dashboard',
+              label: 'Captain dashboard',
               subtitle: 'Ambassador & referral tools',
-              keywords: ['captain', 'captain deck', 'ambassador', 'referrals', 'crew'],
+              keywords: ['captain', 'captain dashboard', 'captain deck', 'ambassador', 'referrals', 'crew'],
               section: 'Menu items' as UniversalSearchSection,
               route: '/dashboard/captain',
               icon: <Award size={18} strokeWidth={1.9} />,
+            },
+          ]
+        : []),
+      ...(isConfirmedAdmin
+        ? [
+            {
+              id: 'menu-admin-portal',
+              label: 'Admin',
+              subtitle: 'Questions, moderation & payments',
+              keywords: ['admin', 'portal', 'moderation', 'questions', 'dashboard'],
+              section: 'Menu items' as UniversalSearchSection,
+              route: '/admin',
+              icon: <Shield size={18} strokeWidth={1.9} />,
             },
           ]
         : []),
@@ -514,11 +546,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         ? [
             {
               id: 'menu-superadmin-portal',
-              label: 'Superadmin Portal',
-              subtitle: 'User management & moderation',
+              label: 'Super Admin',
+              subtitle: 'User management, roles & system controls',
               keywords: ['superadmin', 'super admin', 'admin', 'portal', 'moderation', 'users', 'dashboard'],
               section: 'Menu items' as UniversalSearchSection,
-              route: '/admin',
+              route: '/superadmin',
               icon: <Shield size={18} strokeWidth={1.9} />,
             },
           ]
@@ -975,12 +1007,25 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         route: '/dashboard/streaks',
         icon: <Flame size={18} strokeWidth={1.9} />,
       },
+      ...(isConfirmedAdmin
+        ? [
+            {
+              id: 'page-admin-portal',
+              label: 'Admin',
+              subtitle: 'Admin dashboard & moderation',
+              keywords: ['admin', 'admin dashboard', 'portal', 'moderation'],
+              section: 'Pages' as UniversalSearchSection,
+              route: '/admin',
+              icon: <Shield size={18} strokeWidth={1.9} />,
+            },
+          ]
+        : []),
       ...(isConfirmedSuperAdmin
         ? [
             {
               id: 'page-superadmin-portal',
-              label: 'Superadmin Portal',
-              subtitle: 'Admin dashboard & user controls',
+              label: 'Super Admin',
+              subtitle: 'Super Admin dashboard & user controls',
               keywords: [
                 'superadmin portal',
                 'superadmin',
@@ -992,7 +1037,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
                 'users',
               ],
               section: 'Pages' as UniversalSearchSection,
-              route: '/admin',
+              route: '/superadmin',
               icon: <Shield size={18} strokeWidth={1.9} />,
             },
           ]
@@ -1056,6 +1101,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     commonsTarget,
     kobanBalance,
     isApprovedCaptain,
+    isConfirmedAdmin,
     isConfirmedSuperAdmin,
     messagesTarget,
     notificationsTarget,
@@ -1218,13 +1264,14 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
             </div>
           )}
 
-          {/* Group 2: Settings, Superadmin Portal (super admins / admins only) */}
+          {/* Group 2: Settings, Captain dashboard, Admin, Super Admin */}
           {group2Rows.length > 0 && (
             <div className="fsm-card">
               {group2Rows.map((row) => (
                 <button
                   key={row.id}
                   type="button"
+                  data-menu-item={row.id}
                   onClick={row.onClick}
                   className={`fsm-row ${row.active ? 'fsm-row--active' : ''}`}
                 >
@@ -1313,6 +1360,16 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
               </div>
             </button>
           </div>
+          {/* Requirement 6: Owner-only (superAdmin) debug line in the hamburger */}
+          {isConfirmedSuperAdmin && (
+            <div
+              data-testid="owner-debug-roles"
+              className="px-3 py-1 text-center text-[11px] font-mono tracking-tight"
+              style={{ color: 'var(--menu-subtext)' }}
+            >
+              {`Signed in as ${user?.email || 'shsvirtualadmin@gmail.com'} · roles: superAdmin, admin, captain`}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -1325,7 +1382,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOutUser } = useAuth();
+  const { user, isGuest, refreshTokenClaims, signOutUser } = useAuth();
   const { openProfile } = useProfileModal();
 
   const [isRendered, setIsRendered] = useState(isOpen);
@@ -1366,6 +1423,10 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       setSearchQuery('');
       setIsSearchFocused(false);
       setIsRendered(true);
+      // Requirement 2: Force a token refresh (getIdToken(true)) when the hamburger menu opens
+      if (user && !isGuest) {
+        void refreshTokenClaims(true);
+      }
       // Warm up the Rewards chunk + summary data as soon as the menu opens
       void import('@/pages/RewardsPage').catch(() => {});
       prefetchRewardsSummary(user?.uid);
@@ -1382,7 +1443,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       }, 320);
     }
     return () => clearTimeout(timer);
-  }, [isOpen, isSigningOut, user?.uid]);
+  }, [isOpen, isSigningOut, user, isGuest, refreshTokenClaims]);
 
   // Phone's back button support via history popstate
   useEffect(() => {

@@ -81,6 +81,9 @@ const AdminGuard = lazyWithRetry(() =>
 const AdminLayout = lazyWithRetry(() =>
   import('./components/admin/AdminLayout').then((m) => ({ default: m.AdminLayout }))
 );
+const RoleGuard = lazyWithRetry(() =>
+  import('./components/auth/RoleGuard').then((m) => ({ default: m.RoleGuard }))
+);
 import { DashboardShell } from './components/dashboard/DashboardShell';
 
 // Public Marketing, Knowledge & Community routes
@@ -326,7 +329,7 @@ function AppInner() {
           <Route path="wallets/:uid" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
           <Route path="announcements" element={<AdminGuard requireSuperAdmin><AdminAnnouncementsPage /></AdminGuard>} />
           <Route path="bots" element={<AdminGuard requireSuperAdmin><AdminBotsPage /></AdminGuard>} />
-          <Route path="captains" element={<AdminGuard requireSuperAdmin><AdminCaptainsPage /></AdminGuard>} />
+          <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminGuard requireSuperAdmin><AdminAuditLogsPage /></AdminGuard>} />
           <Route path="crews" element={<AdminGuard requireSuperAdmin><AdminCrewsPage /></AdminGuard>} />
           <Route path="certificates" element={<AdminGuard requireSuperAdmin><AdminCertificatesPage /></AdminGuard>} />
@@ -383,8 +386,22 @@ function AppInner() {
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="crew" element={<CrewDashboardPage />} />
-          <Route path="captain" element={<AmbassadorDashboardPage />} />
-          <Route path="ambassador" element={<AmbassadorDashboardPage />} />
+          <Route
+            path="captain"
+            element={
+              <RoleGuard requiredRole="captain">
+                <AmbassadorDashboardPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="ambassador"
+            element={
+              <RoleGuard requiredRole="captain">
+                <AmbassadorDashboardPage />
+              </RoleGuard>
+            }
+          />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
@@ -457,7 +474,7 @@ function AppInner() {
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
 
-        {/* Nakama Captain Shortcuts */}
+        {/* Nakama Captain Shortcuts & /captain* Guards */}
         <Route path="/captain" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/captain/dashboard" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/nakama-captain" element={<Navigate to="/captains" replace />} />

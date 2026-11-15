@@ -31,9 +31,10 @@ export interface VerifiedRoleCaller {
   uid: string;
   email: string;
   name: string;
+  captain: boolean;
   admin: boolean;
   superAdmin: boolean;
-  role: 'superadmin' | 'admin' | 'student';
+  role: 'superadmin' | 'admin' | 'captain' | 'student';
 }
 
 export type TokenVerifierFn = (
@@ -108,13 +109,16 @@ export async function verifyCallerClaimsStrict(params: {
       };
     }
 
-    // Strict custom claims ONLY: superAdmin implies admin
+    // Strict custom claims ONLY: superAdmin > admin > captain > student
     const isSuperAdmin = decoded.superAdmin === true;
     const isAdmin = decoded.admin === true || isSuperAdmin;
-    const role: 'superadmin' | 'admin' | 'student' = isSuperAdmin
+    const isCaptain = decoded.captain === true || isAdmin;
+    const role: 'superadmin' | 'admin' | 'captain' | 'student' = isSuperAdmin
       ? 'superadmin'
       : isAdmin
       ? 'admin'
+      : isCaptain
+      ? 'captain'
       : 'student';
 
     return {
@@ -123,6 +127,7 @@ export async function verifyCallerClaimsStrict(params: {
         uid: String(decoded.uid),
         email: String(decoded.email || '').trim().toLowerCase(),
         name: String(decoded.name || decoded.email || 'User').trim(),
+        captain: isCaptain,
         admin: isAdmin,
         superAdmin: isSuperAdmin,
         role,
@@ -159,8 +164,9 @@ export async function enforceAdminOrSuperAdminGate(params: {
 
   const isSuperAdminRoute = path === '/api/superadmin' || path.startsWith('/api/superadmin/');
   const isAdminRoute = path === '/api/admin' || path.startsWith('/api/admin/');
+  const isCaptainRoute = path === '/api/captain' || path.startsWith('/api/captain/');
 
-  if (!isSuperAdminRoute && !isAdminRoute) {
+  if (!isSuperAdminRoute && !isAdminRoute && !isCaptainRoute) {
     return { blockedResponse: null, caller: null };
   }
 
@@ -195,6 +201,24 @@ export async function enforceAdminOrSuperAdminGate(params: {
             ok: false,
             success: false,
             error: 'Forbidden: superAdmin claim is required to access /api/superadmin/*.',
+            code: 'FORBIDDEN',
+          },
+          403
+        ),
+        caller,
+      };
+    }
+    return { blockedResponse: null, caller };
+  }
+
+  if (isCaptainRoute) {
+    if (caller.captain !== true && caller.admin !== true && caller.superAdmin !== true) {
+      return {
+        blockedResponse: jsonGateResponse(
+          {
+            ok: false,
+            success: false,
+            error: 'Forbidden: captain, admin, or superAdmin claim is required to access /api/captain/*.',
             code: 'FORBIDDEN',
           },
           403
@@ -265,7 +289,8 @@ export async function executeGrantOrRevokeAdminClaim(params: {
   caller: VerifiedRoleCaller;
   targetUid: string;
   targetEmail?: string;
-  grantAdmin: boolean;
+  grantAdmin?: boolean;
+  targetRole?: 'admin' | 'captain' | 'student';
   reason?: string;
   env?: RewardsEnv & Record<string, any>;
   db?: RewardsD1Database;
@@ -278,15 +303,37 @@ export async function executeGrantOrRevokeAdminClaim(params: {
   status: number;
   body: Record<string, any>;
 }> {
-  const { caller, targetUid, targetEmail, grantAdmin, reason, env, adminSdkOverride } = params;
+  const { caller, targetUid, targetEmail, grantAdmin, targetRole, reason, env, adminSdkOverride } =
+    params;
 
-  if (caller.superAdmin !== true) {
+  const resolvedRole: 'admin' | 'captain' | 'student' = targetRole
+    ? targetRole
+    : grantAdmin
+    ? 'admin'
+    : 'student';
+
+  // Role grant hierarchy:
+  // - admin: granted/revoked ONLY by superAdmin
+  // - captain: granted/revoked by admin or superAdmin
+  if (resolvedRole === 'admin' && caller.superAdmin !== true) {
     return {
       ok: false,
       status: 403,
       body: {
         ok: false,
         error: 'Forbidden: Only superAdmin can grant or revoke admin.',
+        code: 'FORBIDDEN',
+      },
+    };
+  }
+
+  if (caller.admin !== true && caller.superAdmin !== true) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        ok: false,
+        error: 'Forbidden: Only admin or superAdmin can grant or revoke captain.',
         code: 'FORBIDDEN',
       },
     };
@@ -306,7 +353,9 @@ export async function executeGrantOrRevokeAdminClaim(params: {
   }
 
   const ownerEmail = String(
-    env?.OWNER_EMAIL || (typeof process !== 'undefined' ? process.env?.OWNER_EMAIL : '') || ''
+    env?.OWNER_EMAIL ||
+      (typeof process !== 'undefined' ? process.env?.OWNER_EMAIL : '') ||
+      'shsvirtualadmin@gmail.com'
   )
     .trim()
     .toLowerCase();
@@ -314,22 +363,26 @@ export async function executeGrantOrRevokeAdminClaim(params: {
   if (
     ownerEmail &&
     targetEmail &&
-    String(targetEmail).trim().toLowerCase() === ownerEmail &&
-    !grantAdmin
+    String(targetEmail).trim().toLowerCase() === ownerEmail
   ) {
     return {
       ok: false,
       status: 403,
       body: {
         ok: false,
-        error: 'Forbidden: Cannot revoke roles from OWNER_EMAIL.',
+        error: 'Forbidden: Cannot modify roles for OWNER_EMAIL.',
         code: 'CANNOT_MODIFY_OWNER',
       },
     };
   }
 
-  const nextClaims: Record<string, boolean> = grantAdmin ? { admin: true } : {};
-  const nextRoleLabel = grantAdmin ? 'admin' : 'student';
+  const nextClaims: Record<string, boolean> =
+    resolvedRole === 'admin'
+      ? { admin: true, captain: true }
+      : resolvedRole === 'captain'
+      ? { captain: true }
+      : {};
+  const nextRoleLabel = resolvedRole;
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
@@ -348,7 +401,8 @@ export async function executeGrantOrRevokeAdminClaim(params: {
       await updateFirebaseAdminClaimViaIdentityToolkit({
         sa,
         targetUid: cleanTargetUid,
-        grantAdmin,
+        grantAdmin: resolvedRole === 'admin',
+        customClaims: nextClaims,
       });
       claimSyncedVia = 'identity_toolkit';
     } else if (typeof process !== 'undefined' && process.versions?.node) {
@@ -387,7 +441,12 @@ export async function executeGrantOrRevokeAdminClaim(params: {
 
   // 5. Write to admin_activity_logs (D1 + Firestore + in-memory audit log)
   const logId = `aal_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
-  const actionType = grantAdmin ? 'GRANT_ADMIN_CLAIM' : 'REVOKE_ADMIN_CLAIM';
+  const actionType =
+    resolvedRole === 'admin'
+      ? 'GRANT_ADMIN_CLAIM'
+      : resolvedRole === 'captain'
+      ? 'GRANT_CAPTAIN_CLAIM'
+      : 'REVOKE_ROLE_CLAIMS';
   const logRecord = {
     id: logId,
     action: actionType,
@@ -459,8 +518,11 @@ export async function executeGrantOrRevokeAdminClaim(params: {
             `users/${cleanTargetUid}`,
             {
               role: nextRoleLabel,
-              isAdmin: grantAdmin,
+              isAdmin: resolvedRole === 'admin',
+              isCaptain: resolvedRole === 'admin' || resolvedRole === 'captain',
               superAdmin: false,
+              claimsUpdatedAt: SERVER_TIMESTAMP_SENTINEL,
+              claimsUpdatedAtMs: nowMs,
               updatedAt: SERVER_TIMESTAMP_SENTINEL,
             },
             true
@@ -625,6 +687,34 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
     );
   }
 
+  // ─── 1b. /api/captain/* Routes (Caller is guaranteed captain === true || admin === true || superAdmin === true) ───
+  if (path === '/api/captain' || path.startsWith('/api/captain/')) {
+    if (caller.captain !== true && caller.admin !== true && caller.superAdmin !== true) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Forbidden: captain, admin, or superAdmin claim required.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
+    return jsonGateResponse(
+      {
+        ok: true,
+        endpoint: path,
+        callerUid: caller.uid,
+        callerEmail: caller.email,
+        role: caller.role,
+        captain: true,
+        admin: caller.admin,
+        superAdmin: caller.superAdmin,
+      },
+      200
+    );
+  }
+
   // ─── 2. /api/admin/* Routes (Caller is guaranteed admin === true || superAdmin === true) ───
   if (path === '/api/admin' || path === '/api/admin/stats') {
     if (method === 'GET') {
@@ -663,13 +753,13 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
     }
   }
 
-  // PUT / POST /api/admin/roles — Only superAdmin can grant/revoke admin; nobody can grant superAdmin
+  // PUT / POST /api/admin/roles — superAdmin can grant/revoke admin or captain; admin can grant/revoke captain
   if (path === '/api/admin/roles' && (method === 'PUT' || method === 'POST')) {
-    if (caller.superAdmin !== true) {
+    if (caller.admin !== true && caller.superAdmin !== true) {
       return jsonGateResponse(
         {
           ok: false,
-          error: 'Forbidden: Only a superAdmin can grant or revoke roles.',
+          error: 'Forbidden: admin or superAdmin claim required.',
           code: 'FORBIDDEN',
         },
         403
@@ -699,6 +789,17 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
       );
     }
 
+    if (requestedRole === 'admin' && caller.superAdmin !== true) {
+      return jsonGateResponse(
+        {
+          ok: false,
+          error: 'Forbidden: Only a superAdmin can grant admin.',
+          code: 'FORBIDDEN',
+        },
+        403
+      );
+    }
+
     const targetUid = String(body.uid || body.targetUid || '').trim();
     const targetEmail = String(body.email || body.targetEmail || '').trim();
     if (!targetUid || !['student', 'captain', 'admin'].includes(requestedRole)) {
@@ -717,6 +818,7 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
       targetUid,
       targetEmail,
       grantAdmin: requestedRole === 'admin',
+      targetRole: requestedRole as 'student' | 'captain' | 'admin',
       reason: body.reason,
       env,
       db,
@@ -734,13 +836,6 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
         .bind(targetUid, targetEmail.toLowerCase(), body.customRole ?? null, nowMs)
         .run()
         .catch(() => {});
-      return jsonGateResponse(
-        {
-          ...res.body,
-          role: 'captain',
-        },
-        200
-      );
     }
 
     return jsonGateResponse(res.body, res.status);

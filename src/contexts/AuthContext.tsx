@@ -29,6 +29,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  onSnapshot,
   collection,
   query,
   where,
@@ -220,6 +221,16 @@ interface AuthContextValue {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isLimitedAdmin: boolean;
+  isCaptain: boolean;
+  tokenClaims: {
+    superAdmin: boolean;
+    admin: boolean;
+    captain: boolean;
+    verified: boolean;
+  };
+  refreshTokenClaims: (
+    forceRefresh?: boolean
+  ) => Promise<{ superAdmin: boolean; admin: boolean; captain: boolean } | null>;
   activeGrants: ActivePermissionGrant[];
   hasPermission: (permission: PermissionKey, targetId?: string | null) => boolean;
   refreshActiveGrants: () => Promise<void>;
@@ -340,10 +351,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: opt.displayName || 'Student',
       username: opt.username || undefined,
       shortId: opt.shortId,
-      role:
-        opt.role === 'captain' || opt.role === 'crew' || opt.role === 'ambassador'
-          ? (opt.role as UserProfile['role'])
-          : 'student',
+      // SECURITY: Never read elevated roles (superAdmin, admin, captain) from localStorage optimistic snapshots.
+      role: 'student',
       customRole: opt.customRole || undefined,
       plan: opt.plan || 'free',
       status: 'active',
@@ -366,13 +375,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   // Strict Firebase Auth ID token custom claims state — FAIL-CLOSED by default
+  // Hierarchy: superAdmin > admin > captain > student. superAdmin implies admin and captain; admin implies captain.
   const [tokenClaims, setTokenClaims] = useState<{
-    admin: boolean;
     superAdmin: boolean;
+    admin: boolean;
+    captain: boolean;
     verified: boolean;
   }>({
-    admin: false,
     superAdmin: false,
+    admin: false,
+    captain: false,
     verified: false,
   });
   const [guestSessionToken, setGuestSessionToken] = useState<string | null>(() => {
@@ -420,12 +432,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [activeGrants, setActiveGrants] = useState<ActivePermissionGrant[]>([]);
 
-  // SECURITY: Roles come ONLY from verified Firebase Auth custom claims (token.superAdmin === true, token.admin === true).
+  // SECURITY: Roles come ONLY from verified Firebase Auth custom claims:
+  // (await user.getIdTokenResult()).claims -> superAdmin, admin, captain.
+  // Hierarchy: superAdmin > admin > captain > student.
+  // superAdmin implies admin and captain; admin implies captain.
   // Never from client-writable Firestore fields, localStorage, or URL params. Always fail CLOSED.
+  const isPendingOtpLock = otpVerificationState.status === 'pending';
+
   const isSuperAdmin = Boolean(
     !isGuest &&
       user &&
-      isSessionVerified &&
+      !isPendingOtpLock &&
       tokenClaims.verified &&
       tokenClaims.superAdmin === true
   );
@@ -433,13 +450,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isLimitedAdmin = Boolean(
     !isGuest &&
       user &&
-      isSessionVerified &&
+      !isPendingOtpLock &&
       tokenClaims.verified &&
       !isSuperAdmin &&
       tokenClaims.admin === true
   );
 
   const isAdmin = isSuperAdmin || isLimitedAdmin;
+
+  const isCaptain = Boolean(
+    !isGuest &&
+      user &&
+      !isPendingOtpLock &&
+      tokenClaims.verified &&
+      (isSuperAdmin || isAdmin || tokenClaims.captain === true)
+  );
 
   const hasPermission = useCallback(
     (permission: PermissionKey, targetId?: string | null): boolean => {
@@ -474,17 +499,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, isGuest]);
 
-  // ── Helper to determine target dashboard URL by role ─────────────────────
+  // ── Helper to determine target dashboard URL by role (from verified claims ONLY) ──
   const getRoleRedirectUrl = useCallback(
-    (customRole?: string) => {
+    (_customRole?: string) => {
       if (isGuest) return '/dashboard';
       if (isAdmin) return '/admin';
-      const role = customRole || profile?.role || 'student';
-      if (role === 'crew') return '/crew';
-      if (role === 'captain') return '/captain';
+      if (isCaptain) return '/dashboard/captain';
       return '/dashboard';
     },
-    [isGuest, isAdmin, profile]
+    [isGuest, isAdmin, isCaptain]
   );
 
   // ── Create referral document after first signup ──────────────────────────
@@ -511,6 +534,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Force-refresh ID token and extract custom claims (FAIL-CLOSED) ───────
+  const refreshTokenClaims = useCallback(
+    async (
+      forceRefresh = true
+    ): Promise<{ superAdmin: boolean; admin: boolean; captain: boolean } | null> => {
+      const targetUser = auth.currentUser || userRef.current;
+      if (
+        !targetUser ||
+        (targetUser as any).isGuest === true ||
+        String(targetUser.uid || '').startsWith('guest_')
+      ) {
+        setTokenClaims({
+          superAdmin: false,
+          admin: false,
+          captain: false,
+          verified: false,
+        });
+        return null;
+      }
+
+      try {
+        if (forceRefresh && typeof targetUser.getIdToken === 'function') {
+          await targetUser.getIdToken(true);
+        }
+        if (typeof targetUser.getIdTokenResult !== 'function') {
+          throw new Error('Missing getIdTokenResult on user');
+        }
+        const idTokenResult = await targetUser.getIdTokenResult();
+        if (!idTokenResult || !idTokenResult.claims) {
+          throw new Error('Empty ID token result');
+        }
+        const claims = idTokenResult.claims;
+        const claimSuperAdmin = claims.superAdmin === true;
+        const claimAdmin = claimSuperAdmin || claims.admin === true;
+        const claimCaptain = claimAdmin || claims.captain === true;
+
+        setTokenClaims({
+          superAdmin: claimSuperAdmin,
+          admin: claimAdmin,
+          captain: claimCaptain,
+          verified: true,
+        });
+
+        const nextRole: UserProfile['role'] = claimSuperAdmin
+          ? 'super_admin'
+          : claimAdmin
+          ? 'admin'
+          : claimCaptain
+          ? 'captain'
+          : 'student';
+
+        setProfile((prev) => (prev ? { ...prev, role: nextRole } : prev));
+
+        return {
+          superAdmin: claimSuperAdmin,
+          admin: claimAdmin,
+          captain: claimCaptain,
+        };
+      } catch (err) {
+        // Requirement 5: Fail closed everywhere. If the token can't be refreshed,
+        // show the signed-out state, not an elevated role.
+        console.warn('[Boardly Auth] Token refresh failed; failing closed to signed-out state:', err);
+        setTokenClaims({
+          superAdmin: false,
+          admin: false,
+          captain: false,
+          verified: false,
+        });
+        setUser(null);
+        setProfile(null);
+        setProfileLoading(false);
+        clearOptimisticUserSnapshot();
+        try {
+          localStorage.removeItem('boardly_user_authenticated');
+        } catch {
+          // Ignore storage error
+        }
+        try {
+          await firebaseSignOut(auth);
+        } catch {
+          // Ignore sign-out error
+        }
+        return null;
+      }
+    },
+    []
+  );
+
   // ── Fetch / create user profile (protected with fast race & fallback) ────
   const loadProfile = useCallback(async (firebaseUser: User) => {
     setProfileLoading(true);
@@ -519,23 +630,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const emailLower = (firebaseUser.email ?? '').toLowerCase();
 
-    // SECURITY: Read custom claims strictly from the verified Firebase Auth ID token.
-    // On any error, default to { admin: false, superAdmin: false } (FAIL-CLOSED).
+    // SECURITY (Requirements 1, 2, 5): Force a token refresh (getIdToken(true)) on load and read roles
+    // ONLY from (await user.getIdTokenResult()).claims.
+    // If the token cannot be refreshed, fail CLOSED to the signed-out state!
     let claimSuperAdmin = false;
     let claimAdmin = false;
+    let claimCaptain = false;
     try {
-      if (typeof firebaseUser.getIdTokenResult === 'function') {
-        const idTokenResult = await firebaseUser.getIdTokenResult();
-        claimSuperAdmin = idTokenResult?.claims?.superAdmin === true;
-        claimAdmin = claimSuperAdmin || idTokenResult?.claims?.admin === true;
+      if (typeof firebaseUser.getIdToken === 'function') {
+        await firebaseUser.getIdToken(true);
       }
-    } catch {
-      claimSuperAdmin = false;
-      claimAdmin = false;
+      if (typeof firebaseUser.getIdTokenResult !== 'function') {
+        throw new Error('Missing getIdTokenResult on firebaseUser');
+      }
+      const idTokenResult = await firebaseUser.getIdTokenResult();
+      if (!idTokenResult || !idTokenResult.claims) {
+        throw new Error('Empty ID token claims');
+      }
+      claimSuperAdmin = idTokenResult.claims.superAdmin === true;
+      claimAdmin = claimSuperAdmin || idTokenResult.claims.admin === true;
+      claimCaptain = claimAdmin || idTokenResult.claims.captain === true;
+    } catch (tokenErr) {
+      console.warn('[Boardly Auth] Token refresh failed during loadProfile; failing closed:', tokenErr);
+      setTokenClaims({
+        superAdmin: false,
+        admin: false,
+        captain: false,
+        verified: false,
+      });
+      setUser(null);
+      setProfile(null);
+      setProfileLoading(false);
+      clearOptimisticUserSnapshot();
+      try {
+        localStorage.removeItem('boardly_user_authenticated');
+      } catch {
+        // Ignore
+      }
+      try {
+        await firebaseSignOut(auth);
+      } catch {
+        // Ignore
+      }
+      return;
     }
+
     setTokenClaims({
-      admin: claimAdmin,
       superAdmin: claimSuperAdmin,
+      admin: claimAdmin,
+      captain: claimCaptain,
       verified: true,
     });
 
@@ -547,6 +690,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? 'super_admin'
       : claimAdmin
       ? 'admin'
+      : claimCaptain
+      ? 'captain'
       : 'student';
 
     const defaultProfile: UserProfile = {
@@ -632,7 +777,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Suspension check
         if (loadedProfile.suspended === true || loadedProfile.isSuspended === true) {
           await firebaseSignOut(auth);
-          setTokenClaims({ admin: false, superAdmin: false, verified: false });
+          setTokenClaims({ superAdmin: false, admin: false, captain: false, verified: false });
           setUser(null);
           setProfile(null);
           setProfileLoading(false);
@@ -643,7 +788,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // SECURITY: Never trust client-writable Firestore `role`, `isAdmin`, or `superAdmin` fields for admin status.
+        // SECURITY: Never trust client-writable Firestore `role`, `isCaptain`, `isAdmin`, or `superAdmin` fields.
+        // Role comes strictly from verified Firebase Auth custom claims (`claimDerivedRole`).
         const silentPatches: Record<string, unknown> = {};
         if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
           loadedProfile.displayName = fallbackName;
@@ -656,15 +802,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           loadedProfile.displayName = loadedProfile.username || fallbackName;
           silentPatches.displayName = loadedProfile.displayName;
         }
-        if (claimSuperAdmin) {
-          loadedProfile.role = 'super_admin';
-        } else if (claimAdmin) {
-          loadedProfile.role = 'admin';
-        } else if (loadedProfile.role === 'captain' || loadedProfile.role === 'crew' || loadedProfile.role === 'ambassador') {
-          // Non-admin community badge
-        } else {
-          loadedProfile.role = 'student';
-        }
+        loadedProfile.role = claimDerivedRole;
         if (Object.keys(silentPatches).length > 0) {
           setDoc(docRef, silentPatches, { merge: true }).catch(() => {});
         }
@@ -677,12 +815,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: loadedProfile.displayName || fallbackName,
           username: loadedProfile.username || null,
           shortId: loadedProfile.shortId,
-          role:
-            loadedProfile.role === 'captain' ||
-            loadedProfile.role === 'crew' ||
-            loadedProfile.role === 'ambassador'
-              ? loadedProfile.role
-              : 'student',
+          role: 'student',
           customRole: loadedProfile.customRole || null,
           plan: loadedProfile.plan || 'free',
           isGuest: false,
@@ -1440,20 +1573,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
           }
           const idTokenResult = await firebaseUser.getIdTokenResult().catch(() => null);
-          const hasSuperAdminClaim = idTokenResult?.claims?.superAdmin === true;
-          const hasAdminClaim = hasSuperAdminClaim || idTokenResult?.claims?.admin === true;
+          if (!idTokenResult || !idTokenResult.claims) {
+            // Fail closed if token claims cannot be read
+            setTokenClaims({ superAdmin: false, admin: false, captain: false, verified: false });
+            setUser(null);
+            setProfile(null);
+            setProfileLoading(false);
+            await firebaseSignOut(auth).catch(() => {});
+            return;
+          }
+          const hasSuperAdminClaim = idTokenResult.claims.superAdmin === true;
+          const hasAdminClaim = hasSuperAdminClaim || idTokenResult.claims.admin === true;
+          const hasCaptainClaim = hasAdminClaim || idTokenResult.claims.captain === true;
           setTokenClaims({
-            admin: hasAdminClaim,
             superAdmin: hasSuperAdminClaim,
+            admin: hasAdminClaim,
+            captain: hasCaptainClaim,
             verified: true,
           });
-          const serverRoleRaw = String(meData.user.role || '').trim().toLowerCase();
           const trustedRole: UserProfile['role'] = hasSuperAdminClaim
             ? 'super_admin'
             : hasAdminClaim
             ? 'admin'
-            : serverRoleRaw === 'captain' || serverRoleRaw === 'crew'
-            ? (serverRoleRaw as UserProfile['role'])
+            : hasCaptainClaim
+            ? 'captain'
             : 'student';
           if (hasAdminClaim && Array.isArray(meData.activeGrants)) {
             setActiveGrants(meData.activeGrants);
@@ -1565,7 +1708,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           cooldownSeconds: 0,
           error: null,
         });
-        setTokenClaims({ admin: false, superAdmin: false, verified: false });
+        setTokenClaims({ superAdmin: false, admin: false, captain: false, verified: false });
         setUser(null);
         setProfile(null);
         setProfileLoading(false);
@@ -1577,6 +1720,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsubscribe();
     };
   }, [retryCount, resolveServerGuestSession, evaluateUserVerificationGate, refreshActiveGrants]);
+
+  // ── Requirement 2: Listen for `users/{uid}.claimsUpdatedAt` signal and force token refresh ──
+  const lastClaimsUpdatedAtRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    if (!user || isGuest || !user.uid || String(user.uid).startsWith('guest_')) {
+      return;
+    }
+    const uid = user.uid;
+    const userDocRef = doc(db, 'users', uid);
+    let isInitialSnapshot = true;
+
+    const unsubscribeClaimsSignal = onSnapshot(
+      userDocRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const rawSignal = data?.claimsUpdatedAt;
+        const normalizedSignal =
+          rawSignal && typeof (rawSignal as any).toMillis === 'function'
+            ? (rawSignal as any).toMillis()
+            : rawSignal && typeof (rawSignal as any).seconds === 'number'
+            ? (rawSignal as any).seconds * 1000
+            : rawSignal ?? null;
+
+        if (isInitialSnapshot) {
+          isInitialSnapshot = false;
+          lastClaimsUpdatedAtRef.current[uid] = normalizedSignal;
+          return;
+        }
+
+        if (
+          normalizedSignal !== null &&
+          normalizedSignal !== lastClaimsUpdatedAtRef.current[uid]
+        ) {
+          lastClaimsUpdatedAtRef.current[uid] = normalizedSignal;
+          void refreshTokenClaims(true);
+        }
+      },
+      () => {
+        // Ignore listener error; never elevate roles
+      }
+    );
+
+    return () => {
+      unsubscribeClaimsSignal();
+    };
+  }, [user, isGuest, refreshTokenClaims]);
 
   // ── Sliding Guest Session Keep-Alive (tab focus + periodic refresh) ──────
   useEffect(() => {
@@ -2711,7 +2901,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setGuestSessionToken(null);
       setActiveGrants([]);
-      setTokenClaims({ admin: false, superAdmin: false, verified: false });
+      setTokenClaims({ superAdmin: false, admin: false, captain: false, verified: false });
       setOtpVerificationState({
         status: 'idle',
         purpose: null,
@@ -2960,6 +3150,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'kobans',
             'kobanBalance',
             'role',
+            'isCaptain',
+            'isAmbassador',
+            'isAdmin',
+            'superAdmin',
+            'isSuperAdmin',
+            'claimsUpdatedAt',
             'proUntil',
             'paid_until',
             'planExpiresAt',
@@ -3075,6 +3271,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isSuperAdmin,
       isLimitedAdmin,
+      isCaptain,
+      tokenClaims,
+      refreshTokenClaims,
       activeGrants,
       hasPermission,
       refreshActiveGrants,
@@ -3114,6 +3313,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       isSuperAdmin,
       isLimitedAdmin,
+      isCaptain,
+      tokenClaims,
+      refreshTokenClaims,
       activeGrants,
       hasPermission,
       refreshActiveGrants,

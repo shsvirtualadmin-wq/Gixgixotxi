@@ -81,14 +81,21 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     return fallbackResp;
   }
 
-  // If caller is authenticated admin/superAdmin hitting a generic /api/admin/* endpoint in tests
-  if (gate.caller && (path === '/api/admin' || path.startsWith('/api/admin/'))) {
+  // If caller is authenticated captain/admin/superAdmin hitting a generic /api/admin/* or /api/captain/* endpoint in tests
+  if (
+    gate.caller &&
+    (path === '/api/admin' ||
+      path.startsWith('/api/admin/') ||
+      path === '/api/captain' ||
+      path.startsWith('/api/captain/'))
+  ) {
     return new Response(
       JSON.stringify({
         ok: true,
         endpoint: path,
         callerUid: gate.caller.uid,
         role: gate.caller.role,
+        captain: gate.caller.captain,
       }),
       {
         status: 200,

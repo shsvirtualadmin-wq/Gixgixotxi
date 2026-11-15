@@ -33,6 +33,15 @@ service cloud.firestore {
       );
     }
 
+    // Hierarchy: superAdmin > admin > captain > student
+    function isCaptain() {
+      return signedIn() && (
+        request.auth.token.captain == true ||
+        request.auth.token.admin == true ||
+        request.auth.token.superAdmin == true
+      );
+    }
+
     // Nobody can grant superAdmin from the client
     function clientDoesNotGrantSuperAdmin() {
       return (
@@ -42,13 +51,17 @@ service cloud.firestore {
       );
     }
 
-    // Blocks owner updates to any protected role, admin, superAdmin, plan, pro, or wallet fields
+    // Blocks owner updates to any protected role, admin, superAdmin, captain, claimsUpdatedAt, plan, pro, or wallet fields
     function ownerUpdatesOnlySafeUserFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'role',
         'isAdmin',
         'superAdmin',
         'isSuperAdmin',
+        'isCaptain',
+        'isAmbassador',
+        'claimsUpdatedAt',
+        'claimsUpdatedAtMs',
         'plan',
         'pro',
         'tier',
@@ -69,13 +82,17 @@ service cloud.firestore {
       ]);
     }
 
-    // Blocks owner from creating a user doc with role, isAdmin, superAdmin, plan, or pro
+    // Blocks owner from creating a user doc with role, isAdmin, superAdmin, isCaptain, claimsUpdatedAt, plan, or pro
     function ownerCreatesOnlySafeUserFields() {
       return (
         (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
         (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false) &&
         (!('superAdmin' in request.resource.data) || request.resource.data.superAdmin == false) &&
         (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false) &&
+        (!('isCaptain' in request.resource.data) || request.resource.data.isCaptain == false) &&
+        (!('isAmbassador' in request.resource.data) || request.resource.data.isAmbassador == false) &&
+        (!('claimsUpdatedAt' in request.resource.data)) &&
+        (!('claimsUpdatedAtMs' in request.resource.data)) &&
         (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
         (!('pro' in request.resource.data) || request.resource.data.pro == false) &&
         (!('tier' in request.resource.data) || request.resource.data.tier == 'free') &&

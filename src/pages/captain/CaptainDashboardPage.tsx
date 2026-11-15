@@ -43,7 +43,7 @@ interface CaptainRankItem {
 }
 
 export function CaptainDashboardPage() {
-  const { user } = useAuth();
+  const { user, isCaptain: hasCaptainClaim, isAdmin, isSuperAdmin } = useAuth();
   const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
 
   const [referredStudents, setReferredStudents] = useState<ReferredStudent[]>([]);
@@ -138,7 +138,7 @@ export function CaptainDashboardPage() {
     );
   }
 
-  const isCaptain = profile?.role === 'captain' || profile?.role === 'admin';
+  const isCaptain = Boolean(hasCaptainClaim || isAdmin || isSuperAdmin);
 
   // If not yet a captain, offer application
   if (!isCaptain) {

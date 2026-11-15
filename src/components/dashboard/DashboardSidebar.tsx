@@ -28,7 +28,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 
 export function DashboardSidebar() {
-  const { isAdmin, isGuest, signOutUser, isSigningOut } = useAuth();
+  const { isAdmin, isSuperAdmin, isCaptain, isGuest, signOutUser, isSigningOut } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
   const { openProfile } = useProfileModal();
@@ -50,7 +50,6 @@ export function DashboardSidebar() {
 
   const isPro = !isGuest && effectivePlan.isUnlimited;
   const { effectiveProBadge } = useProBadge();
-  const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
   const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
 
@@ -219,10 +218,10 @@ export function DashboardSidebar() {
           </NavLink>
         )}
 
-        {/* Ambassadorship role if approved */}
-        {!isGuest && (role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador)) && (
+        {/* Captain dashboard (verified custom claim: captain, admin, or superAdmin) */}
+        {!isGuest && isCaptain && (
           <NavLink
-            to="/dashboard/ambassador"
+            to="/dashboard/captain"
             className={({ isActive }) =>
               `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
                 isActive
@@ -232,37 +231,31 @@ export function DashboardSidebar() {
             }
           >
             <Award size={18} />
-            <span>Ambassador</span>
+            <span>Captain dashboard</span>
           </NavLink>
         )}
 
-        {!isGuest && role === 'captain' && (
-          <NavLink
-            to="/captain"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                isActive
-                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
-                  : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
-              }`
-            }
-          >
-            <Award size={18} />
-            <span>Captain Hub</span>
-          </NavLink>
-        )}
-
-        {/* ── SUPERADMIN PORTAL (Visible for admin accounts) ──────────────── */}
+        {/* ── ADMIN / SUPER ADMIN PORTAL (Visible for verified claim accounts) ──────────────── */}
         {isAdmin && !isGuest && (
-          <div className="pt-2 mt-1 border-t border-[var(--border)]">
+          <div className="pt-2 mt-1 border-t border-[var(--border)] flex flex-col gap-1.5">
             <Link
               to="/admin"
               className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] hover:bg-[rgba(239,68,68,0.16)] transition-colors"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               <Shield size={16} />
-              <span>Superadmin Portal</span>
+              <span>Admin</span>
             </Link>
+            {isSuperAdmin && (
+              <Link
+                to="/superadmin"
+                className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-[rgba(239,68,68,0.14)] border border-[var(--red)] text-[var(--red)] hover:bg-[rgba(239,68,68,0.22)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <Shield size={16} />
+                <span>Super Admin</span>
+              </Link>
+            )}
           </div>
         )}
       </nav>
@@ -291,7 +284,7 @@ export function DashboardSidebar() {
                   itemId={equipped.nameplate}
                   name={displayName}
                   shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
-                  roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
+                  roleBadge={isCaptain ? 'CAPTAIN' : undefined}
                 />
                 {isPro && effectiveProBadge && (
                   <ProBadge design={effectiveProBadge} size="sm" animated priority />

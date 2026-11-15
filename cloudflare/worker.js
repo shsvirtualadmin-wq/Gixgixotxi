@@ -130,12 +130,13 @@ async function verifyFirebaseIdToken(token, projectId) {
 
   const isSuperAdminClaim = payload.superAdmin === true;
   const isAdminClaim = payload.admin === true || isSuperAdminClaim;
+  const isCaptainClaim = payload.captain === true || isAdminClaim;
   let claimRole = null;
   if (isSuperAdminClaim) {
     claimRole = 'superadmin';
   } else if (isAdminClaim) {
     claimRole = 'admin';
-  } else if (payload.captain === true) {
+  } else if (isCaptainClaim) {
     claimRole = 'captain';
   }
 
@@ -165,6 +166,7 @@ async function verifyFirebaseIdToken(token, projectId) {
     tokenName,
     picture: payload.picture || null,
     claimRole,
+    captain: isCaptainClaim,
     admin: isAdminClaim,
     superAdmin: isSuperAdminClaim,
     emailVerified: Boolean(payload.email_verified),
@@ -604,16 +606,18 @@ async function authenticateRequest(request, env, requireAuth = true) {
         )
     : null;
 
-  // STRICT FAIL-CLOSED: Roles (admin/superAdmin) come ONLY from verified Firebase ID token custom claims
+  // STRICT FAIL-CLOSED: Roles (superAdmin, admin, captain) come ONLY from verified Firebase ID token custom claims
+  // Hierarchy: superAdmin > admin > captain > student
   const isSuperAdmin = decoded.superAdmin === true;
   const isAdminOrAbove = isSuperAdmin || decoded.admin === true;
+  const isCaptainOrAbove = isAdminOrAbove || decoded.captain === true || decoded.claimRole === 'captain';
 
   let role = 'student';
   if (isSuperAdmin) {
     role = 'superadmin';
   } else if (isAdminOrAbove) {
     role = 'admin';
-  } else if (roleRow?.role === 'captain' || decoded.claimRole === 'captain') {
+  } else if (isCaptainOrAbove) {
     role = 'captain';
   }
 
@@ -626,7 +630,7 @@ async function authenticateRequest(request, env, requireAuth = true) {
     role,
     customRole: roleRow?.custom_role || null,
     isPostingBanned: Boolean(roleRow?.is_posting_banned),
-    isCaptainOrAbove: ['captain', 'admin', 'superadmin'].includes(role),
+    isCaptainOrAbove,
     isAdminOrAbove,
     isSuperAdmin,
   };
@@ -1253,13 +1257,16 @@ export default {
 
       if (path === '/api/admin/roles' && method === 'PUT') {
         const user = await authenticateRequest(request, env, true);
-        requireRole(user, ['superadmin']);
+        requireRole(user, ['admin', 'superadmin']);
         const body = await request.json();
         const targetUid = cleanStr(body.uid, 128);
         const targetEmail = cleanStr(body.email, 200).toLowerCase();
         const newRole = cleanStr(body.role, 32, 'student');
         if (newRole === 'superadmin' || newRole === 'super_admin' || body.superAdmin === true) {
           return errorResponse(request, env, 'Nobody can grant superAdmin from the app.', 'FORBIDDEN', 403);
+        }
+        if (newRole === 'admin' && !user.isSuperAdmin) {
+          return errorResponse(request, env, 'Only a superAdmin can grant admin.', 'FORBIDDEN', 403);
         }
         if (!targetUid || !['student', 'captain', 'admin'].includes(newRole)) {
           return errorResponse(request, env, 'Valid uid and role (student, captain, or admin) are required.', 'INVALID_INPUT', 400);
@@ -1286,6 +1293,18 @@ export default {
           )
           .run();
         return jsonResponse(request, env, { ok: true, uid: targetUid, role: newRole });
+      }
+
+      if (path === '/api/captain' || path.startsWith('/api/captain/')) {
+        const user = await authenticateRequest(request, env, true);
+        requireRole(user, ['captain', 'admin', 'superadmin']);
+        return jsonResponse(request, env, {
+          ok: true,
+          endpoint: path,
+          callerUid: user.uid,
+          role: user.role,
+          captain: true,
+        });
       }
 
       // 3. Captain Tests & Grand Line Public Tests

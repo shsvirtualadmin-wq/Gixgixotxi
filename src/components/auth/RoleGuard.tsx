@@ -11,25 +11,36 @@ interface RoleGuardProps {
 }
 
 export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
-  const { user, profile, profileLoading, isAdmin } = useAuth();
+  const {
+    user,
+    profileLoading,
+    isCaptain,
+    isAdmin,
+    isSuperAdmin,
+    tokenClaims,
+    isGuest,
+  } = useAuth();
   const location = useLocation();
 
   if (profileLoading) {
     return <LineLoader context="dashboard" variant="section" />;
   }
 
-  // Not logged in -> redirect to login with return parameter
-  if (!user) {
+  // Not logged in or guest -> redirect to login with return parameter
+  if (!user || isGuest) {
     return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
   }
 
-  // Super admin can access anything
-  if (isAdmin) {
-    return <>{children}</>;
-  }
+  // Hierarchy: superAdmin > admin > captain > student (strictly from ID token custom claims)
+  const hasCaptainOrAboveClaim =
+    isSuperAdmin ||
+    isAdmin ||
+    isCaptain ||
+    tokenClaims?.superAdmin === true ||
+    tokenClaims?.admin === true ||
+    tokenClaims?.captain === true;
 
-  // If user has the required role
-  if (profile?.role === requiredRole) {
+  if (hasCaptainOrAboveClaim) {
     return <>{children}</>;
   }
 
@@ -44,3 +55,4 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
 
   return <Navigate to="/dashboard" replace />;
 }
+

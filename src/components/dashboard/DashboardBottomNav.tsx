@@ -98,7 +98,7 @@ function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
 }
 
 function DashboardBottomNavComponent() {
-  const { user, profile, profileLoading } = useAuth();
+  const { user, profileLoading, isCaptain, isAdmin, isSuperAdmin } = useAuth();
   const { requireAuth } = useAuthGate();
   const { isOpen: isProfileModalOpen } = useProfileModal();
   const unreadMessagesCount = useUnreadMessagesCount();
@@ -116,12 +116,7 @@ function DashboardBottomNavComponent() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const homeUrl = getHomeUrl(user, profileLoading);
 
-  const role = profile?.role || 'student';
-  const isApprovedCaptain =
-    role === 'captain' ||
-    role === 'ambassador' ||
-    Boolean(profile?.isCaptain) ||
-    Boolean(profile?.isAmbassador);
+  const isApprovedCaptain = Boolean(isCaptain || isAdmin || isSuperAdmin);
 
   // Sync lightweight route store when React Router location changes and record first paint
   useLayoutEffect(() => {
