@@ -893,12 +893,132 @@ async function runRoleLockdownTests() {
   }
   console.log('✓ 8. Bot Gemini 429 quota handling (pinned model, 3-try backoff with retryDelay, per-key queue, quota_exceeded status, clean truncated errors) verified');
 
-  console.log('\nALL ROLE LOCKDOWN & BOT QUOTA TESTS PASSED!');
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TEST 9: Coupon & Redemption Mappers (normalizeAdminCoupon, getCouponBadgeLabel, normalizeAdminCouponRedemption, PATCH active toggle)
+  // ─────────────────────────────────────────────────────────────────────────────
+  const {
+    normalizeAdminCoupon,
+    getCouponBadgeLabel,
+    normalizeAdminCouponRedemption,
+  } = await import('../utils/couponMapper');
+
+  // 9a. 1-Year Free Pro campaign code (BOARDLY-1Y-XXXXX) -> badge "1 YEAR FREE PRO", active mapped from is_active/isActive
+  const oneYearCoupon = normalizeAdminCoupon({
+    code: 'BOARDLY-1Y-PP989',
+    label: '1-Year Free Pro Campaign',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 0,
+    is_active: true,
+  });
+  assert.equal(oneYearCoupon.type, '1_year_free_pro');
+  assert.equal(oneYearCoupon.active, true);
+  assert.equal(oneYearCoupon.maxRedemptions, 1);
+  assert.equal(oneYearCoupon.redeemedCount, 0);
+  assert.equal(getCouponBadgeLabel(oneYearCoupon), '1 YEAR FREE PRO');
+
+  // 9b. Percent coupons (BOARDLY50, BOARDLY20, NEW20) -> "50% OFF", "20% OFF" and never "undefined% OFF"
+  const boardly50 = normalizeAdminCoupon(
+    ownerCouponsJson.coupons.find((c: any) => c.code === 'BOARDLY50')
+  );
+  assert.equal(boardly50.type, 'percent');
+  assert.equal(boardly50.percentOff, 50);
+  assert.equal(boardly50.active, true);
+  assert.equal(getCouponBadgeLabel(boardly50), '50% OFF');
+
+  const new20 = normalizeAdminCoupon({
+    code: 'NEW20',
+    label: 'New Student 20% Off',
+    discountPercent: 20,
+    maxRedemptions: 100,
+    isActive: true,
+  });
+  assert.equal(new20.percentOff, 20);
+  assert.equal(new20.active, true);
+  assert.equal(getCouponBadgeLabel(new20), '20% OFF');
+
+  // Missing percent on unknown coupon -> badge is null (hidden), never "undefined% OFF"
+  const missingValCoupon = normalizeAdminCoupon({
+    code: 'MYSTERYCODE',
+    label: 'Special Promo',
+    discount_type: 'fixed_pkr',
+  });
+  assert.equal(getCouponBadgeLabel(missingValCoupon), null);
+
+  // 9c. Redemption mapper handles snake_case promo_redemptions.json, Firestore timestamps, ISO strings, and epoch numbers
+  const fixedNowMs = Date.parse('2026-09-15T06:02:42.079Z'); // Exactly 2h after 04:02:42.079Z
+  const mappedIsoRed = normalizeAdminCouponRedemption(
+    {
+      id: 'red_1',
+      promo_code: 'BOARDLY-1Y-WELCOME',
+      student_id: 'student_verified_live',
+      student_email: 'student_verified_live@example.com',
+      student_name: 'Ali Khan',
+      redeemed_at: '2026-09-15T04:02:42.079Z',
+      track: 'Boardly Enrolled Track',
+    },
+    fixedNowMs
+  );
+  assert.equal(mappedIsoRed.code, 'BOARDLY-1Y-WELCOME');
+  assert.equal(mappedIsoRed.userDisplay, 'student_verified_live@example.com');
+  assert.equal(mappedIsoRed.initials, 'AK');
+  assert.equal(mappedIsoRed.relativeTime, '2h ago');
+  assert.ok(!mappedIsoRed.planOrTrack?.includes('( · )'));
+
+  const mappedFsTimestampRed = normalizeAdminCouponRedemption(
+    {
+      id: 'red_2',
+      couponCode: 'BOARDLY50',
+      userEmail: 'sara@boardly.cfd',
+      redeemedAt: { _seconds: Math.floor((fixedNowMs - 3 * 3600 * 1000) / 1000), _nanoseconds: 0 },
+    },
+    fixedNowMs
+  );
+  assert.equal(mappedFsTimestampRed.code, 'BOARDLY50');
+  assert.equal(mappedFsTimestampRed.userDisplay, 'sara@boardly.cfd');
+  assert.equal(mappedFsTimestampRed.relativeTime, '3h ago');
+
+  // 9d. PATCH /api/admin/coupons toggles active state cleanly via body.active
+  const patchDisableRes = await handleEconomyApiRequest({
+    request: new Request('https://boardly.cfd/api/admin/coupons', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer owner_already_has_claims',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code: 'BOARDLY50', active: false }),
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  assert.equal(patchDisableRes.status, 200);
+  const patchDisableJson = (await patchDisableRes.json()) as any;
+  assert.equal(patchDisableJson.ok, true);
+  assert.equal(patchDisableJson.coupon.active, false);
+  assert.equal(patchDisableJson.coupon.isActive, false);
+
+  // Restore BOARDLY50 back to active: true so no in-memory state is left changed
+  const patchRestoreRes = await handleEconomyApiRequest({
+    request: new Request('https://boardly.cfd/api/admin/coupons', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer owner_already_has_claims',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code: 'BOARDLY50', active: true }),
+    }),
+    env: { DB: db as any, OWNER_EMAIL: 'shsvirtualadmin@gmail.com' } as any,
+    tokenVerifierOverride: bootstrapVerifier,
+  });
+  const patchRestoreJson = (await patchRestoreRes.json()) as any;
+  assert.equal(patchRestoreJson.coupon.active, true);
+  console.log('✓ 9. Coupon & Redemption Mappers (normalizeAdminCoupon, 1 YEAR FREE PRO vs % OFF badges, active toggle, Firestore/ISO/epoch timestamps) verified');
+
+  console.log('\nALL ROLE LOCKDOWN, BOT QUOTA & COUPON TESTS PASSED!');
 }
 
 runRoleLockdownTests().catch((err) => {
   console.error('Role lockdown test failed:', err);
   process.exit(1);
 });
-
-

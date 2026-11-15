@@ -73,6 +73,9 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     path.startsWith('/api/follows') ||
     path.startsWith('/api/questions') ||
     path.startsWith('/api/posts') ||
+    path === '/api/admin/coupons' ||
+    path.startsWith('/api/admin/coupons/') ||
+    path.startsWith('/api/coupons') ||
     (path === '/api/bots' || (path.startsWith('/api/bots/') && !path.startsWith('/api/bots/settings')));
 
   if (isTsWorkerRoute) {

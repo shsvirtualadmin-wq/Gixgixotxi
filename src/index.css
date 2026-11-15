@@ -12310,5 +12310,217 @@ input[type="search"],
   animation: msg-bubble-pop-kf 250ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
+/* ==========================================================================
+   iOS 27 LIQUID GLASS + NOTHING OS DESIGN SYSTEM & BUBBLE TOUCH EFFECT
+   ========================================================================== */
+:root {
+  /* Dark-first defaults matching iOS 27 Liquid Glass + Nothing OS */
+  --lg-card-surface: linear-gradient(165deg, rgba(255, 255, 255, 0.095) 0%, rgba(255, 255, 255, 0.045) 100%);
+  --lg-card-border: rgba(255, 255, 255, 0.15);
+  --lg-card-specular: rgba(255, 255, 255, 0.22);
+  --lg-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 20px 44px -12px rgba(0, 0, 0, 0.62),
+    0 4px 14px rgba(0, 0, 0, 0.36);
+  --lg-pill-surface: rgba(255, 255, 255, 0.075);
+  --lg-pill-border: rgba(255, 255, 255, 0.16);
+  --lg-input-surface: rgba(255, 255, 255, 0.06);
+  --lg-input-border: rgba(255, 255, 255, 0.14);
+  --lg-dot-pattern: rgba(255, 255, 255, 0.22);
+  --lg-progress-track: rgba(255, 255, 255, 0.09);
+  --lg-red: #D71921;
+  --lg-red-glow: rgba(215, 25, 33, 0.38);
+  --lg-ripple-color: rgba(255, 255, 255, 0.28);
+}
 
+.light,
+[data-theme="light"] {
+  --lg-card-surface: linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 255, 255, 0.68) 100%);
+  --lg-card-border: rgba(17, 17, 20, 0.11);
+  --lg-card-specular: rgba(255, 255, 255, 0.92);
+  --lg-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.94),
+    0 18px 38px -12px rgba(15, 23, 42, 0.10),
+    0 4px 12px rgba(15, 23, 42, 0.05);
+  --lg-pill-surface: rgba(17, 17, 20, 0.055);
+  --lg-pill-border: rgba(17, 17, 20, 0.12);
+  --lg-input-surface: rgba(255, 255, 255, 0.82);
+  --lg-input-border: rgba(17, 17, 20, 0.14);
+  --lg-dot-pattern: rgba(17, 17, 20, 0.22);
+  --lg-progress-track: rgba(17, 17, 20, 0.10);
+  --lg-red: #D71921;
+  --lg-red-glow: rgba(215, 25, 33, 0.24);
+  --lg-ripple-color: rgba(215, 25, 33, 0.20);
+}
 
+.dark,
+[data-theme="dark"] {
+  --lg-card-surface: linear-gradient(165deg, rgba(255, 255, 255, 0.095) 0%, rgba(255, 255, 255, 0.045) 100%);
+  --lg-card-border: rgba(255, 255, 255, 0.15);
+  --lg-card-specular: rgba(255, 255, 255, 0.22);
+  --lg-card-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 20px 44px -12px rgba(0, 0, 0, 0.62),
+    0 4px 14px rgba(0, 0, 0, 0.36);
+  --lg-pill-surface: rgba(255, 255, 255, 0.075);
+  --lg-pill-border: rgba(255, 255, 255, 0.16);
+  --lg-input-surface: rgba(255, 255, 255, 0.06);
+  --lg-input-border: rgba(255, 255, 255, 0.14);
+  --lg-dot-pattern: rgba(255, 255, 255, 0.22);
+  --lg-progress-track: rgba(255, 255, 255, 0.09);
+  --lg-red: #D71921;
+  --lg-red-glow: rgba(215, 25, 33, 0.38);
+  --lg-ripple-color: rgba(255, 255, 255, 0.28);
+}
+
+.lg-nothing-card {
+  position: relative;
+  border-radius: 30px;
+  background: var(--lg-card-surface);
+  border: 1px solid var(--lg-card-border);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: var(--lg-card-shadow);
+}
+
+.lg-nothing-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--lg-card-specular) 0%, transparent 26%);
+  opacity: 0.45;
+}
+
+.lg-nothing-alert-red {
+  position: relative;
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(215, 25, 33, 0.16) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border: 1px solid rgba(215, 25, 33, 0.42);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 16px 38px -10px rgba(215, 25, 33, 0.26);
+}
+
+.lg-nothing-pill {
+  border-radius: 9999px;
+  background: var(--lg-pill-surface);
+  border: 1px solid var(--lg-pill-border);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.lg-nothing-input {
+  min-height: 44px;
+  border-radius: 9999px;
+  background: var(--lg-input-surface);
+  border: 1px solid var(--lg-input-border);
+  color: var(--text);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.lg-nothing-input:focus,
+.lg-nothing-input:focus-visible {
+  outline: none;
+  border-color: #D71921;
+  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28);
+}
+
+.lg-nothing-red-btn {
+  min-height: 44px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #e3222a 0%, #D71921 100%);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 10px 26px -4px var(--lg-red-glow);
+}
+
+.nothing-dot-divider {
+  height: 1px;
+  width: 100%;
+  background-image: radial-gradient(circle, var(--lg-dot-pattern) 1px, transparent 1px);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+}
+
+/* ─── BUBBLE TOUCH SPRING & RADIAL RIPPLE ────────────────────────────────── */
+@keyframes bubble-release-overshoot {
+  0% {
+    transform: scale(0.96);
+  }
+  55% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.bubble-touch {
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0) scale(1);
+  transition:
+    transform 190ms cubic-bezier(0.22, 1.35, 0.36, 1),
+    opacity 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+  will-change: transform, opacity;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bubble-touch[data-bubble-pressed="true"]:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: 110ms;
+}
+
+.bubble-touch[data-bubble-release="true"]:not(:disabled) {
+  animation: bubble-release-overshoot 260ms cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+}
+
+.bubble-touch-ripple::after {
+  content: '';
+  position: absolute;
+   inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    130px circle at var(--bubble-x, 50%) var(--bubble-y, 50%),
+    var(--lg-ripple-color) 0%,
+    transparent 72%
+  );
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 380ms ease-out, transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bubble-touch-ripple[data-bubble-ripple="active"]::after {
+  opacity: 1;
+  transform: scale(1.08);
+  transition: opacity 90ms ease-out, transform 180ms ease-out;
+}
+
+.bubble-touch-ripple[data-bubble-ripple="fading"]::after {
+  opacity: 0;
+  transform: scale(1.25);
+  transition: opacity 400ms ease-out, transform 400ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-touch,
+  .bubble-touch[data-bubble-pressed="true"],
+  .bubble-touch[data-bubble-release="true"] {
+    transform: none !important;
+    animation: none !important;
+    transition: border-color 160ms ease, background-color 160ms ease, opacity 160ms ease !important;
+  }
+  .bubble-touch-ripple::after {
+    display: none !important;
+  }
+}

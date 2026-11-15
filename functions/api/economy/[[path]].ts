@@ -28,14 +28,18 @@ export interface NormalizedCoupon {
   id: string;
   code: string;
   label: string;
+  type: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   discountType: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   percentOff: number;
+  discountPercent: number;
   amountOffPkr: number;
   amountOffKobans: number;
   durationMonths: number;
   durationDays: number;
   maxRedemptions: number;
+  redeemedCount: number;
   redemptionCount: number;
+  active: boolean;
   isActive: boolean;
   expiresAt: string | null;
   createdBy: string;
@@ -305,22 +309,33 @@ function saveLocalPromoRedemptions(redemptions: Array<Record<string, any>>): voi
 }
 
 function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
-  const code = String(raw.code || raw.id || '').trim().toUpperCase();
-  const discountTypeRaw = String(raw.discount_type || raw.discountType || 'percent').toLowerCase();
+  const code = String(raw.code || raw.promo_code || raw.id || '').trim().toUpperCase();
+  const discountTypeRaw = String(
+    raw.type || raw.discount_type || raw.discountType || raw.benefitType || raw.benefit_type || 'percent'
+  ).toLowerCase();
   const durationMonths = Math.max(1, Number(raw.duration_months ?? raw.durationMonths ?? 1));
   const durationDays = Number(raw.duration_days ?? raw.durationDays ?? (durationMonths >= 12 ? 365 : durationMonths * 30));
 
   let discountType: NormalizedCoupon['discountType'] = 'percent';
-  let percentOff = Number(raw.percent_off ?? raw.percentOff ?? 0);
-  const amountOffPkr = Math.max(0, Number(raw.amount_off_pkr ?? raw.amountOffPkr ?? 0));
-  const amountOffKobans = Math.max(0, Number(raw.amount_off_kobans ?? raw.amountOffKobans ?? 0));
+  let percentOff = Number(
+    raw.percent_off ??
+      raw.percentOff ??
+      raw.discountPercent ??
+      raw.discount_percent ??
+      raw.percent ??
+      0
+  );
+  const amountOffPkr = Math.max(0, Number(raw.amount_off_pkr ?? raw.amountOffPkr ?? raw.discountPkr ?? 0));
+  const amountOffKobans = Math.max(0, Number(raw.amount_off_kobans ?? raw.amountOffKobans ?? raw.discountKobans ?? 0));
+
+  const isOneYearProCode = /^BOARDLY-1Y-/i.test(code) || discountTypeRaw === '1_year_free_pro';
 
   if (
-    discountTypeRaw === '1_year_free_pro' ||
+    isOneYearProCode ||
     discountTypeRaw === 'free_pro' ||
     percentOff >= 100
   ) {
-    discountType = discountTypeRaw === '1_year_free_pro' ? '1_year_free_pro' : 'free_pro';
+    discountType = isOneYearProCode || durationMonths >= 12 ? '1_year_free_pro' : 'free_pro';
     percentOff = 100;
   } else if (discountTypeRaw === 'fixed_pkr' || amountOffPkr > 0) {
     discountType = 'fixed_pkr';
@@ -328,22 +343,57 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
     discountType = 'fixed_kobans';
   } else {
     discountType = 'percent';
-    if (percentOff <= 0) percentOff = 20;
+    if (!Number.isFinite(percentOff) || percentOff <= 0) {
+      const codePctMatch = code.match(/(\d{1,3})$/);
+      const inferredPct = codePctMatch ? Number(codePctMatch[1]) : 0;
+      percentOff = inferredPct >= 1 && inferredPct <= 100 ? inferredPct : 20;
+    }
   }
+
+  const normalizedPct = Math.min(100, Math.max(0, Math.round(percentOff)));
+  const maxRedemptions = Math.max(
+    1,
+    Number(raw.max_redemptions ?? raw.maxRedemptions ?? raw.maxUses ?? raw.max_uses ?? 100)
+  );
+  const redemptionCount = Math.max(
+    0,
+    Number(
+      raw.redeemedCount ??
+        raw.redemption_count ??
+        raw.redemptionCount ??
+        raw.usedCount ??
+        raw.used_count ??
+        0
+    )
+  );
+  const isActive =
+    raw.active !== undefined
+      ? Boolean(raw.active)
+      : raw.is_active !== undefined
+        ? Boolean(raw.is_active)
+        : raw.isActive !== undefined
+          ? Boolean(raw.isActive)
+          : raw.enabled !== undefined
+            ? Boolean(raw.enabled)
+            : true;
 
   return {
     id: String(raw.id || `promo_${code.toLowerCase()}`),
     code,
     label: String(raw.label || raw.description || `${code} Promo`),
+    type: discountType,
     discountType,
-    percentOff: Math.min(100, Math.max(0, percentOff)),
+    percentOff: normalizedPct,
+    discountPercent: normalizedPct,
     amountOffPkr,
     amountOffKobans,
     durationMonths,
     durationDays,
-    maxRedemptions: Math.max(1, Number(raw.max_redemptions ?? raw.maxRedemptions ?? raw.maxUses ?? 100)),
-    redemptionCount: Math.max(0, Number(raw.redemption_count ?? raw.redemptionCount ?? raw.usedCount ?? 0)),
-    isActive: raw.is_active !== undefined ? Boolean(raw.is_active) : raw.active !== undefined ? Boolean(raw.active) : true,
+    maxRedemptions,
+    redeemedCount: redemptionCount,
+    redemptionCount,
+    active: isActive,
+    isActive,
     expiresAt: raw.expires_at || raw.expiresAt || null,
     createdBy: String(raw.created_by || raw.createdBy || 'shsvirtualadmin@gmail.com'),
     createdAt: String(raw.created_at || raw.createdAt || new Date().toISOString()),
@@ -670,7 +720,9 @@ async function getAllCoupons(fsHelper: HybridFirestoreHelper): Promise<Normalize
       const existing = byCode.get(norm.code);
       if (existing) {
         // Take the higher redemption count so counts never regress
-        norm.redemptionCount = Math.max(existing.redemptionCount, norm.redemptionCount);
+        const mergedCount = Math.max(existing.redemptionCount, norm.redemptionCount);
+        norm.redemptionCount = mergedCount;
+        norm.redeemedCount = mergedCount;
       }
       byCode.set(norm.code, norm);
     }
@@ -797,7 +849,9 @@ async function recordCouponRedemptionAtomically(
 
   const updatedCoupon: NormalizedCoupon = {
     ...coupon,
+    redeemedCount: nextCount,
     redemptionCount: nextCount,
+    active: nextActive,
     isActive: nextActive,
     updatedAt: nowIso,
   };
@@ -2019,20 +2073,59 @@ export async function handleEconomyApiRequest(context: {
         );
       }
 
+      const rawPct = Number(
+        body.percentOff ??
+          body.percent_off ??
+          body.discountPercent ??
+          body.discount_percent ??
+          body.percent ??
+          50
+      );
+      const cleanPct = Number.isFinite(rawPct) ? Math.min(100, Math.max(1, Math.round(rawPct))) : 50;
+      const cleanMaxUses = Math.max(
+        1,
+        Math.round(
+          Number(body.maxRedemptions ?? body.max_redemptions ?? body.maxUses ?? body.max_uses ?? 100) || 100
+        )
+      );
+      const isOneYearPro =
+        /^BOARDLY-1Y-/i.test(code) ||
+        body.type === '1_year_free_pro' ||
+        body.discountType === '1_year_free_pro' ||
+        body.discount_type === '1_year_free_pro' ||
+        body.benefitType === '1_year_free_pro' ||
+        cleanPct >= 100;
+      const discountTypeVal = isOneYearPro ? '1_year_free_pro' : 'percent';
+      const rawLabelInput = String(body.label ?? '').trim();
+      const safeLabel =
+        rawLabelInput && rawLabelInput !== String(cleanMaxUses)
+          ? rawLabelInput
+          : isOneYearPro
+            ? '1-Year Free Pro Campaign'
+            : `${cleanPct}% Off Pro Pass`;
+
       const nowIso = new Date().toISOString();
       const newRaw = {
         id: `promo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         code,
-        label: String(body.label || `${code} Promo`).trim(),
-        discount_type: String(body.discountType || body.discount_type || 'percent'),
-        percent_off: Number(body.percentOff ?? body.percent_off ?? 50),
+        label: safeLabel,
+        type: discountTypeVal,
+        discount_type: discountTypeVal,
+        percentOff: isOneYearPro ? 100 : cleanPct,
+        percent_off: isOneYearPro ? 100 : cleanPct,
+        discountPercent: isOneYearPro ? 100 : cleanPct,
         amount_off_pkr: Number(body.amountOffPkr ?? body.amount_off_pkr ?? 0),
         amount_off_kobans: Number(body.amountOffKobans ?? body.amount_off_kobans ?? 0),
-        duration_months: Number(body.durationMonths ?? body.duration_months ?? 1),
-        max_redemptions: Math.max(1, Number(body.maxRedemptions ?? body.max_redemptions ?? 50)),
+        duration_months: isOneYearPro
+          ? 12
+          : Number(body.durationMonths ?? body.duration_months ?? 1),
+        maxRedemptions: cleanMaxUses,
+        max_redemptions: cleanMaxUses,
+        redeemedCount: 0,
         redemption_count: 0,
+        active: true,
         is_active: true,
-        created_by: verifiedUser.email || 'shsvirtualadmin@gmail.com',
+        created_by: adminCheck.caller.email || verifiedUser?.email || 'shsvirtualadmin@gmail.com',
         created_at: nowIso,
         expires_at: body.expiresAt || null,
         updated_at: nowIso,
@@ -2066,24 +2159,72 @@ export async function handleEconomyApiRequest(context: {
         .trim()
         .toUpperCase();
       const localCodes = loadLocalPromoCodes();
-      const idx = localCodes.findIndex(
+      let idx = localCodes.findIndex(
         (c) =>
           String(c.code || '').toUpperCase() === targetCode ||
-          String(c.id || '') === targetCode
+          String(c.id || '').toUpperCase() === targetCode
       );
-      if (idx < 0) {
+
+      let baseRecord: Record<string, any> | null = idx >= 0 ? localCodes[idx] : null;
+      if (!baseRecord) {
+        const allCoupons = await getAllCoupons(fsHelper);
+        const found = allCoupons.find(
+          (c) => c.code.toUpperCase() === targetCode || c.id.toUpperCase() === targetCode
+        );
+        if (found) {
+          baseRecord = {
+            id: found.id,
+            code: found.code,
+            label: found.label,
+            discount_type: found.discountType,
+            percent_off: found.percentOff,
+            amount_off_pkr: found.amountOffPkr,
+            amount_off_kobans: found.amountOffKobans,
+            duration_months: found.durationMonths,
+            duration_days: found.durationDays,
+            max_redemptions: found.maxRedemptions,
+            redemption_count: found.redemptionCount,
+            is_active: found.isActive,
+            expires_at: found.expiresAt,
+            created_by: found.createdBy,
+            created_at: found.createdAt,
+            updated_at: found.updatedAt,
+          };
+        }
+      }
+
+      if (!baseRecord) {
         return jsonResponse({ ok: false, error: 'Coupon not found.' }, 404);
       }
 
-      const updatedRaw = {
-        ...localCodes[idx],
-        ...(body.isActive !== undefined ? { is_active: Boolean(body.isActive) } : {}),
+      const nextActive =
+        body.active !== undefined
+          ? Boolean(body.active)
+          : body.isActive !== undefined
+            ? Boolean(body.isActive)
+            : body.is_active !== undefined
+              ? Boolean(body.is_active)
+              : undefined;
+
+      const updatedRaw: Record<string, any> = {
+        ...baseRecord,
+        ...(nextActive !== undefined
+          ? { is_active: nextActive, isActive: nextActive, active: nextActive }
+          : {}),
         ...(body.maxRedemptions !== undefined
-          ? { max_redemptions: Math.max(1, Number(body.maxRedemptions)) }
+          ? {
+              max_redemptions: Math.max(1, Number(body.maxRedemptions)),
+              maxRedemptions: Math.max(1, Number(body.maxRedemptions)),
+            }
           : {}),
         updated_at: new Date().toISOString(),
       };
-      localCodes[idx] = updatedRaw;
+
+      if (idx >= 0) {
+        localCodes[idx] = updatedRaw;
+      } else {
+        localCodes.unshift(updatedRaw);
+      }
       saveLocalPromoCodes(localCodes);
 
       await Promise.all([
