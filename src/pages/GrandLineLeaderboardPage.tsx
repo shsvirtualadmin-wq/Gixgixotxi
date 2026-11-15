@@ -138,7 +138,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
   }, [loadLeaderboardData]);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-hidden">
+    <div data-student-page="arena" className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-hidden">
       <PageMeta
         title="Grand Line Leaderboard — Live Standings & Top Scorers | Boardly"
         description="View real-time student rankings and top scorers across public Grand Line mock tests authored by Nakama Captains on Boardly."

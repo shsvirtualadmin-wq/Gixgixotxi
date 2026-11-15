@@ -59,6 +59,13 @@ export const RecentAttempts = memo(function RecentAttempts({
         <div className="space-y-2.5">
           {safeAttempts.map((a) => {
             const mins = Math.max(1, Math.round(Number(a.durationSeconds || 60) / 60));
+            const pct = Math.max(0, Math.min(100, Math.round(Number(a.accuracy) || 0)));
+            const r = 16;
+            const circ = 2 * Math.PI * r;
+            const dashOffset = circ - (pct / 100) * circ;
+            const ringColor =
+              pct >= 70 ? 'var(--ok)' : pct >= 45 ? 'var(--warn)' : 'var(--red)';
+
             return (
               <div
                 key={a.id}
@@ -107,12 +114,44 @@ export const RecentAttempts = memo(function RecentAttempts({
                   </div>
                 </div>
 
-                <div className="flex flex-col items-end shrink-0 gap-1">
-                  <span className="rs-chip rs-chip--red tabular-nums">
-                    {a.accuracy}%
-                  </span>
-                  <span className="rs-body text-[11px] font-medium text-[var(--rs-muted)] tabular-nums">
-                    Score: {a.score}/{a.maxScore}
+                <div className="flex items-center shrink-0 gap-2.5">
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="rs-chip rs-chip--red tabular-nums lg-classic-only">
+                      {a.accuracy}%
+                    </span>
+                    <span className="rs-body text-[11px] font-mono font-medium text-[var(--rs-muted)] tabular-nums">
+                      Score: {a.score}/{a.maxScore}
+                    </span>
+                  </div>
+
+                  <span
+                    className="hidden lg-only-inline relative w-10 h-10 items-center justify-center shrink-0"
+                    aria-label={`${pct}% accuracy`}
+                  >
+                    <svg className="w-10 h-10 -rotate-90" viewBox="0 0 40 40">
+                      <circle
+                        cx="20"
+                        cy="20"
+                        r={r}
+                        fill="none"
+                        stroke="var(--edge)"
+                        strokeWidth="3.5"
+                      />
+                      <circle
+                        cx="20"
+                        cy="20"
+                        r={r}
+                        fill="none"
+                        stroke={ringColor}
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        strokeDasharray={circ}
+                        strokeDashoffset={dashOffset}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold tabular-nums text-[var(--text)]">
+                      {pct}%
+                    </span>
                   </span>
                 </div>
               </div>

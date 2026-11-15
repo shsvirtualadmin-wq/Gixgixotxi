@@ -614,13 +614,25 @@ export function OverviewPage() {
     [activeUni, answers, cleanFullName, elapsedSeconds, selectedSubject, testMcqs, testResultSummary, verifiedMap]
   );
 
-  const liveCount = useMemo(
+  const [showAllSoonUnis, setShowAllSoonUnis] = useState(false);
+
+  const liveUniversities = useMemo(
     () =>
       universities.filter(
         (u) => Number(u.mcq_count || 0) > 0 || Number(u.is_live || 0) > 0
-      ).length,
+      ),
     [universities]
   );
+
+  const soonUniversities = useMemo(
+    () =>
+      universities.filter(
+        (u) => !(Number(u.mcq_count || 0) > 0 || Number(u.is_live || 0) > 0)
+      ),
+    [universities]
+  );
+
+  const liveCount = liveUniversities.length;
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
   const flaggedCount = useMemo(
@@ -719,83 +731,188 @@ export function OverviewPage() {
             </p>
           </div>
         ) : (
-          <div className="cockpit-uni-grid">
-            {universities.map((uni) => {
-              const mcqCount = Number(uni.mcq_count || 0);
-              const isLive = mcqCount > 0 || Number(uni.is_live || 0) > 0;
-              const initials = getUniversityInitials(uni.name);
+          <>
+            {/* Classic Mode Grid (preserved 100% untouched when boardlyUI = "classic") */}
+            <div className="cockpit-uni-grid lg-classic-uni-grid">
+              {universities.map((uni) => {
+                const mcqCount = Number(uni.mcq_count || 0);
+                const isLive = mcqCount > 0 || Number(uni.is_live || 0) > 0;
+                const initials = getUniversityInitials(uni.name);
 
-              return (
-                <button
-                  key={uni.id}
-                  type="button"
-                  disabled={!isLive}
-                  aria-disabled={!isLive}
-                  onClick={() => {
-                    if (isLive) {
-                      void openUniversityBubble(uni);
-                    }
-                  }}
-                  className={`cockpit-uni-bubble ${
-                    isLive ? 'cockpit-uni-bubble--live' : 'cockpit-uni-bubble--soon'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 w-full">
-                    <div
-                      className={`cockpit-uni-circle ${
-                        isLive ? 'cockpit-uni-circle--live' : ''
-                      }`}
-                    >
-                      {uni.logo_url ? (
-                        <img
-                          src={uni.logo_url}
-                          alt={uni.name}
-                          className="w-6 h-6 object-contain rounded-full"
-                          loading="lazy"
-                        />
+                return (
+                  <button
+                    key={uni.id}
+                    type="button"
+                    disabled={!isLive}
+                    aria-disabled={!isLive}
+                    onClick={() => {
+                      if (isLive) {
+                        void openUniversityBubble(uni);
+                      }
+                    }}
+                    className={`cockpit-uni-bubble ${
+                      isLive ? 'cockpit-uni-bubble--live' : 'cockpit-uni-bubble--soon'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2 w-full">
+                      <div
+                        className={`cockpit-uni-circle ${
+                          isLive ? 'cockpit-uni-circle--live' : ''
+                        }`}
+                      >
+                        {uni.logo_url ? (
+                          <img
+                            src={uni.logo_url}
+                            alt={uni.name}
+                            className="w-6 h-6 object-contain rounded-full"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span>{initials}</span>
+                        )}
+                      </div>
+
+                      {isLive ? (
+                        <span className="cockpit-uni-pill cockpit-uni-pill--live tabular-nums">
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
+                            aria-hidden="true"
+                          />
+                          {mcqCount.toLocaleString()} MCQs
+                        </span>
                       ) : (
-                        <span>{initials}</span>
+                        <span className="cockpit-uni-pill cockpit-uni-pill--soon">
+                          Coming Soon
+                        </span>
                       )}
                     </div>
 
-                    {isLive ? (
-                      <span className="cockpit-uni-pill cockpit-uni-pill--live tabular-nums">
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
-                          aria-hidden="true"
-                        />
-                        {mcqCount.toLocaleString()} MCQs
-                      </span>
-                    ) : (
-                      <span className="cockpit-uni-pill cockpit-uni-pill--soon">
-                        Coming Soon
-                      </span>
+                    <div className="mt-3.5 space-y-0.5 w-full min-w-0">
+                      <div
+                        className="text-sm sm:text-[15px] font-bold text-[var(--text)] leading-snug truncate"
+                        style={{ fontFamily: 'var(--font-heading)' }}
+                      >
+                        {uni.name}
+                      </div>
+                      <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--text-muted)]">
+                        <span className="truncate">
+                          {isLive ? 'Tap to start test' : 'Bank in preparation'}
+                        </span>
+                        {isLive && (
+                          <ArrowRight
+                            size={13}
+                            className="shrink-0 text-[var(--accent)]"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Liquid Glass Mode: Live Universities as a 2x2 Glass Grid + Coming Soon Collapsed into Chips with Show All Toggle */}
+            <div className="hidden lg-glass-uni-section space-y-4">
+              {liveUniversities.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 sm:gap-3.5">
+                  {liveUniversities.map((uni) => {
+                    const mcqCount = Number(uni.mcq_count || 0);
+                    const initials = getUniversityInitials(uni.name);
+
+                    return (
+                      <button
+                        key={uni.id}
+                        type="button"
+                        data-pressable="true"
+                        onClick={() => void openUniversityBubble(uni)}
+                        className="cockpit-uni-bubble cockpit-uni-bubble--live"
+                      >
+                        <div className="flex items-start justify-between gap-2 w-full">
+                          <div className="cockpit-uni-circle cockpit-uni-circle--live">
+                            {uni.logo_url ? (
+                              <img
+                                src={uni.logo_url}
+                                alt={uni.name}
+                                className="w-6 h-6 object-contain rounded-full"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span>{initials}</span>
+                            )}
+                          </div>
+
+                          <span className="cockpit-uni-pill cockpit-uni-pill--live font-mono tabular-nums">
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-[var(--red)]"
+                              aria-hidden="true"
+                            />
+                            {mcqCount.toLocaleString()} MCQs
+                          </span>
+                        </div>
+
+                        <div className="mt-3.5 space-y-0.5 w-full min-w-0 text-left">
+                          <div
+                            className="text-sm sm:text-[15px] font-bold text-[var(--text)] leading-snug truncate"
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {uni.name}
+                          </div>
+                          <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--mute)]">
+                            <span className="truncate">Tap to start test</span>
+                            <ArrowRight
+                              size={13}
+                              className="shrink-0 text-[var(--red)]"
+                            />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {soonUniversities.length > 0 && (
+                <div className="cockpit-surface-card p-3.5 sm:p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-[var(--mute)] uppercase tracking-wider font-mono">
+                      Coming Soon ({soonUniversities.length})
+                    </span>
+                    {soonUniversities.length > 4 && (
+                      <button
+                        type="button"
+                        data-pressable="true"
+                        onClick={() => setShowAllSoonUnis((prev) => !prev)}
+                        className="min-h-[36px] px-3 py-1 rounded-full border border-[var(--edge)] bg-[var(--glass)] text-xs font-semibold text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer"
+                      >
+                        {showAllSoonUnis ? 'Show less' : `Show all (${soonUniversities.length})`}
+                      </button>
                     )}
                   </div>
 
-                  <div className="mt-3.5 space-y-0.5 w-full min-w-0">
-                    <div
-                      className="text-sm sm:text-[15px] font-bold text-[var(--text)] leading-snug truncate"
-                      style={{ fontFamily: 'var(--font-heading)' }}
-                    >
-                      {uni.name}
-                    </div>
-                    <div className="flex items-center justify-between gap-1 text-[11px] font-medium text-[var(--text-muted)]">
-                      <span className="truncate">
-                        {isLive ? 'Tap to start test' : 'Bank in preparation'}
-                      </span>
-                      {isLive && (
-                        <ArrowRight
-                          size={13}
-                          className="shrink-0 text-[var(--accent)]"
-                        />
-                      )}
-                    </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(showAllSoonUnis ? soonUniversities : soonUniversities.slice(0, 4)).map(
+                      (uni) => {
+                        const initials = getUniversityInitials(uni.name);
+                        return (
+                          <span
+                            key={uni.id}
+                            className="cockpit-soon-chip inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--edge)] bg-[var(--glass)] text-xs text-[var(--mute)]"
+                          >
+                            <span className="w-5 h-5 rounded-full bg-[var(--glass2)] border border-[var(--edge)] inline-flex items-center justify-center font-mono text-[10px] font-bold text-[var(--text)] shrink-0">
+                              {initials.slice(0, 2)}
+                            </span>
+                            <span className="truncate max-w-[160px] font-medium text-[var(--text)]">
+                              {uni.name}
+                            </span>
+                          </span>
+                        );
+                      }
+                    )}
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </section>
 

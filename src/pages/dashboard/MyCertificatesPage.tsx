@@ -207,9 +207,15 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div
+          className={`grid grid-cols-1 lg:grid-cols-2 gap-4 ${
+            compact ? 'lg-certs-carousel' : ''
+          }`}
+        >
           {certificates.map((cert) => (
-            <CertificateCard key={cert.id} certificate={cert} />
+            <div key={cert.id} className={compact ? 'lg-certs-carousel-item' : ''}>
+              <CertificateCard certificate={cert} />
+            </div>
           ))}
         </div>
       )}
@@ -219,7 +225,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
 
 export function MyCertificatesPage() {
   return (
-    <div className="w-full max-w-5xl mx-auto py-4 sm:py-6 space-y-6">
+    <div data-student-page="certificates" className="w-full max-w-5xl mx-auto py-4 sm:py-6 space-y-6">
       <MyCertificatesSection compact={false} />
     </div>
   );

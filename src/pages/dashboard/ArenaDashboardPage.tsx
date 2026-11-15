@@ -168,7 +168,7 @@ export function ArenaDashboardPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
+    <div data-student-page="arena" className="flex flex-col gap-6 max-w-[1000px] mx-auto">
       {/* ── Segmented Control: "Leaderboard | Grand Line | My circle" ─────────────── */}
       <div className="w-full max-w-[420px] mx-auto h-11 p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-3 gap-1 items-center">
         <button

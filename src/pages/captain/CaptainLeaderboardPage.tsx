@@ -66,7 +66,7 @@ export function CaptainLeaderboardPage() {
   });
 
   return (
-    <div className="max-w-[880px] mx-auto py-8 px-4 sm:px-6 pb-24 flex flex-col gap-6">
+    <div data-student-page="arena" className="max-w-[880px] mx-auto py-8 px-4 sm:px-6 pb-24 flex flex-col gap-6">
       <Link
         to="/captains"
         className="glass-pill px-3.5 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors self-start"
