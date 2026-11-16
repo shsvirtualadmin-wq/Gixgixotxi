@@ -138,6 +138,23 @@ export function UserOverrideDrawer({
 
   const [recentAttempts, setRecentAttempts] = useState<RecentAttemptItem[]>([]);
   const [loadingAttempts, setLoadingAttempts] = useState(false);
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
+
+  const loadRecentAttemptsForUid = useCallback((uid: string) => {
+    if (!uid) return;
+    setLoadingAttempts(true);
+    setAttemptsError(null);
+    fetchUserRecentAttempts(uid, 5)
+      .then((attempts) => {
+        setRecentAttempts(attempts);
+        setAttemptsError(null);
+      })
+      .catch((err) => {
+        setRecentAttempts([]);
+        setAttemptsError(err instanceof Error ? err.message : "Couldn't load");
+      })
+      .finally(() => setLoadingAttempts(false));
+  }, []);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,11 +269,7 @@ export function UserOverrideDrawer({
 
     setTwoFactorStatus(resolveSeedTwoFactorStatus(user, initialTwoFactorStatus));
 
-    setLoadingAttempts(true);
-    fetchUserRecentAttempts(user.uid, 5)
-      .then((attempts) => setRecentAttempts(attempts))
-      .catch(() => setRecentAttempts([]))
-      .finally(() => setLoadingAttempts(false));
+    loadRecentAttemptsForUid(user.uid);
 
     if (user.crewId) {
       setLoadingCrew(true);
@@ -267,7 +280,7 @@ export function UserOverrideDrawer({
     } else {
       setUserCrew(null);
     }
-  }, [user, initialTwoFactorStatus, resolveSeedTwoFactorStatus]);
+  }, [user, initialTwoFactorStatus, resolveSeedTwoFactorStatus, loadRecentAttemptsForUid]);
 
   const targetUid = user?.uid || '';
   const targetIsGuest = Boolean(user?.isGuest || user?.accountType === 'guest');
@@ -1137,6 +1150,17 @@ export function UserOverrideDrawer({
             {loadingAttempts ? (
               <div className="p-2 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
                 <LineLoader context="admin" variant="inline" />
+              </div>
+            ) : attemptsError ? (
+              <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-2 text-[12px] font-heading text-[var(--muted)]">
+                <span>Couldn&apos;t load test attempts</span>
+                <button
+                  type="button"
+                  onClick={() => user?.uid && loadRecentAttemptsForUid(user.uid)}
+                  className="px-2.5 py-1 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text)] text-[11px] font-semibold transition-colors"
+                >
+                  Retry
+                </button>
               </div>
             ) : recentAttempts.length === 0 ? (
               <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-center text-[12px] font-heading text-[var(--muted)]">

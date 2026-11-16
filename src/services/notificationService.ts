@@ -792,6 +792,7 @@ export function updateNotificationStoreFollowingIds(
   }
   activeStore.followingIds = cleanSet;
   activeStore.followingLoaded = true;
+  cachedFollowingSetByUser.set(userId, { at: Date.now(), ids: new Set(cleanSet) });
 
   const fsIdsToDelete: string[] = [];
   activeStore.d1Notifications.forEach((n, id) => {
@@ -1517,9 +1518,16 @@ export async function fetchReadAnnouncementIds(userId: string): Promise<Set<stri
   return readSet;
 }
 
+const cachedFollowingSetByUser = new Map<string, { at: number; ids: Set<string> }>();
+const FOLLOWING_CACHE_TTL_MS = 5 * 60 * 1000;
+
 async function fetchCurrentUserFollowingSet(userId: string): Promise<Set<string>> {
   const ids = new Set<string>();
   if (!userId) return ids;
+  const cached = cachedFollowingSetByUser.get(userId);
+  if (cached && Date.now() - cached.at < FOLLOWING_CACHE_TTL_MS) {
+    return new Set(cached.ids);
+  }
   try {
     const [userSnap, pubSnap, followsSnap] = await Promise.all([
       getDocs(query(collection(db, 'users', userId, 'following'), limit(500))).catch(() => null),
@@ -1549,6 +1557,7 @@ async function fetchCurrentUserFollowingSet(userId: string): Promise<Set<string>
         }
       });
     }
+    cachedFollowingSetByUser.set(userId, { at: Date.now(), ids: new Set(ids) });
   } catch (err) {
     console.warn('[notificationService] fetchCurrentUserFollowingSet notice:', err);
   }
@@ -2035,6 +2044,9 @@ function attachUserRealtimeStore(userId: string): void {
 
   void syncUserNotificationsStore(userId);
   activePollTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return;
+    }
     if (activeStore.userId === userId && storeSubscribers.size > 0) {
       void syncUserNotificationsStore(userId);
     }

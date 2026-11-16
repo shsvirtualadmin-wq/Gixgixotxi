@@ -378,21 +378,27 @@ export async function fetchAdminCaptainsSWR(options?: {
     captainsCache = immediateNext;
     options?.onUpdate?.(immediateNext);
 
-    // Fetch allotment statuses in parallel in background without blocking initial captains render
+    // Fetch allotment statuses in bounded batches for captains not yet in cache
     const statusMap: Record<
       string,
       { granted: boolean; date: Date | null; monthLabel: string }
     > = { ...initialStatuses };
-    await Promise.all(
-      data.slice(0, 30).map(async (c) => {
-        try {
-          const st = await getCaptainAllotmentStatus(c.captainUid);
-          statusMap[c.captainUid] = st;
-        } catch {
-          // ignore single status failure
-        }
-      })
-    );
+    const missingCaptains = data
+      .slice(0, 30)
+      .filter((c) => c.captainUid && !statusMap[c.captainUid]);
+    for (let i = 0; i < missingCaptains.length; i += 6) {
+      const batch = missingCaptains.slice(i, i + 6);
+      await Promise.all(
+        batch.map(async (c) => {
+          try {
+            const st = await getCaptainAllotmentStatus(c.captainUid);
+            statusMap[c.captainUid] = st;
+          } catch {
+            // ignore single status failure
+          }
+        })
+      );
+    }
 
     const hydrated: AdminCaptainsCacheData = {
       captains: data,
@@ -691,7 +697,7 @@ export function prefetchAdminRouteOnInteraction(rawPath: string, uid?: string): 
   prefetchAdminTabData(rawPath, uid);
 }
 
-export function scheduleIdleAdminPrefetchAll(uid?: string, isSuperAdmin = false): () => void {
+export function scheduleIdleAdminPrefetchAll(_uid?: string, isSuperAdmin = false): () => void {
   if (typeof window === 'undefined') return () => {};
   if (idlePrefetchScheduled) return () => {};
   idlePrefetchScheduled = true;
@@ -707,7 +713,7 @@ export function scheduleIdleAdminPrefetchAll(uid?: string, isSuperAdmin = false)
   };
 
   const t1 = runIdleJob(() => {
-    // 1. Prefetch primary admin tab chunks
+    // 1. Prefetch primary admin tab JS chunks on idle (data prefetches on tab hover/focus via prefetchAdminRouteOnInteraction)
     const primaryPaths = isSuperAdmin
       ? [
           '/admin',
@@ -723,25 +729,14 @@ export function scheduleIdleAdminPrefetchAll(uid?: string, isSuperAdmin = false)
     for (const p of primaryPaths) {
       prefetchAdminTabChunk(p);
     }
-    // 2. Prefetch data for allowed tabs in parallel
-    if (uid) {
-      prefetchAdminTabData('/admin', uid);
-    }
-    prefetchAdminTabData('/admin/questions', uid);
-    if (isSuperAdmin) {
-      prefetchAdminTabData('/admin/crews', uid);
-      prefetchAdminTabData('/admin/certificates', uid);
-    }
   }, 150);
 
   const t2 = runIdleJob(() => {
-    // 3. Prefetch remaining admin chunks & data only for superAdmin
+    // 2. Prefetch remaining admin chunks only for superAdmin
     if (isSuperAdmin) {
       for (const p of Object.keys(ADMIN_CHUNK_LOADERS)) {
         prefetchAdminTabChunk(p);
       }
-      prefetchAdminTabData('/admin/captains', uid);
-      prefetchAdminTabData('/admin/users', uid);
     }
   }, 600);
 

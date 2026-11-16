@@ -18,17 +18,20 @@ export function AdminReviewsPage() {
   const { user } = useAuth();
   const [reviews, setReviews] = useState<StudentReview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await fetchReviews(statusFilter);
       setReviews(data);
     } catch (err) {
       console.warn('Failed to load reviews:', err);
+      setLoadError(err instanceof Error ? err.message : "Couldn't load student reviews.");
     } finally {
       setLoading(false);
     }
@@ -134,6 +137,20 @@ export function AdminReviewsPage() {
       <div className="space-y-3">
         {loading ? (
           <LineLoader context="admin" message="Loading student reviews..." />
+        ) : loadError ? (
+          <div className="glass-card p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center flex flex-col items-center gap-3">
+            <p className="font-heading text-[14px] text-[var(--muted)]">
+              Couldn&apos;t load — {loadError}
+            </p>
+            <button
+              type="button"
+              onClick={loadData}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+          </div>
         ) : reviews.length === 0 ? (
           <div className="glass-card p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
             <p className="font-heading text-[14px] text-[var(--muted)]">

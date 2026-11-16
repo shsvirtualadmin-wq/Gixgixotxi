@@ -91,10 +91,10 @@ export function AdminOverviewPage() {
   const [usersCard, setUsersCard] = useState<
     CardState<{
       totalUsers: number;
-      studentCount: number;
-      captainCount: number;
-      proCount: number;
-      guestCount: number;
+      studentCount: number | null;
+      captainCount: number | null;
+      proCount: number | null;
+      guestCount: number | null;
       previewUsers: UserProfile[];
     }>
   >(() => ({
@@ -102,10 +102,10 @@ export function AdminOverviewPage() {
     data: initialStats
       ? {
           totalUsers: initialStats.totalUsers,
-          studentCount: initialStats.studentCount ?? initialStats.totalUsers,
-          captainCount: initialStats.captainCount ?? 0,
-          proCount: initialStats.proCount ?? 0,
-          guestCount: initialStats.guestCount ?? 0,
+          studentCount: initialStats.studentCount ?? null,
+          captainCount: initialStats.captainCount ?? null,
+          proCount: initialStats.proCount ?? null,
+          guestCount: initialStats.guestCount ?? null,
           previewUsers: getCachedAdminUsersState()?.users ?? [],
         }
       : null,
@@ -606,16 +606,16 @@ export function AdminOverviewPage() {
           {usersCard.data && !usersCard.error ? (
             <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Students: {usersCard.data.studentCount}
+                Students: {usersCard.data.studentCount ?? '—'}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Captains: {usersCard.data.captainCount}
+                Captains: {usersCard.data.captainCount ?? '—'}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Pro: {usersCard.data.proCount}
+                Pro: {usersCard.data.proCount ?? '—'}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Guests: {usersCard.data.guestCount}
+                Guests: {usersCard.data.guestCount ?? '—'}
               </span>
             </div>
           ) : usersCard.loading ? (

@@ -128,6 +128,9 @@ export function AdminLayout() {
     }
     let cancelled = false;
     const loadPendingCount = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
       try {
         const res = await apiRequest<{ requests?: Array<{ status: string }> }>(
           '/api/admin/access-requests?status=pending',
@@ -140,13 +143,20 @@ export function AdminLayout() {
         // non-fatal
       }
     };
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void loadPendingCount();
+      }
+    };
     void loadPendingCount();
     const timer = window.setInterval(loadPendingCount, 30000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, isSuperAdmin, location.pathname]);
+  }, [user, isSuperAdmin]);
 
   // Prefetch admin tab chunks and SWR data during idle time once AdminLayout is verified
   useEffect(() => {

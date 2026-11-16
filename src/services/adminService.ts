@@ -163,17 +163,17 @@ export function getUserDisplayName(
 // ─── ADMIN OVERVIEW STATS & SHARED SWR CACHE ─────────────────────────────────
 export interface AdminStats {
   totalUsers: number;
-  studentCount?: number;
-  captainCount?: number;
-  proCount?: number;
-  guestCount?: number;
+  studentCount?: number | null;
+  captainCount?: number | null;
+  proCount?: number | null;
+  guestCount?: number | null;
   adminCount?: number;
   twoFactorEnabledCount?: number;
   totalQuestions: number;
   totalAttempts: number;
-  totalQuestionsSolved: number;
-  totalActiveCrews: number;
-  totalAmbassadors: number;
+  totalQuestionsSolved?: number;
+  totalActiveCrews?: number;
+  totalAmbassadors?: number | null;
   pendingCaptains: number;
   pendingCrew: number;
   pendingPayments: number;
@@ -504,8 +504,8 @@ export async function fetchAdminJsonWithRetry<T = any>(
 export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]> {
   try {
     await ensureAdminAuthToken();
-    // 1. Fetch all referrals
-    const refSnap = await getDocs(collection(db, 'referrals'));
+    // 1. Fetch bounded referrals
+    const refSnap = await getDocs(query(collection(db, 'referrals'), limit(500)));
     const referralsByAmbassador: Record<string, Array<{ name: string; shortId: string; joinedDate: string; track: string }>> = {};
 
     refSnap.docs.forEach((d) => {
@@ -535,7 +535,8 @@ export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]
     // 2. Fetch users with role 'crew', 'ambassador' or who have referrals
     const ambassadorsQuery = query(
       collection(db, 'users'),
-      where('role', 'in', ['crew', 'ambassador'])
+      where('role', 'in', ['crew', 'ambassador']),
+      limit(200)
     );
     const ambSnap = await getDocs(ambassadorsQuery);
     const ambassadorsMap = new Map<string, AdminAmbassadorItem>();
@@ -559,26 +560,55 @@ export async function fetchAdminAmbassadorsList(): Promise<AdminAmbassadorItem[]
     });
 
     // Also include anyone who has referrals in referralsByAmbassador but might have role 'student'
+    const cachedDirUsers = cachedAdminUsersDirectory?.allDirectoryUsers || [];
+    const cachedUserMap = new Map<string, UserProfile>();
+    for (const cu of cachedDirUsers) {
+      if (cu.uid) cachedUserMap.set(cu.uid, cu);
+    }
+
+    const uncachedEntries: Array<[string, Array<{ name: string; shortId: string; joinedDate: string; track: string }>]> = [];
     for (const [key, list] of Object.entries(referralsByAmbassador)) {
-      if (!ambassadorsMap.has(key)) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', key));
-          if (userDoc.exists()) {
-            const u = userDoc.data() as UserProfile;
-            ambassadorsMap.set(key, {
-              uid: key,
-              name: getUserDisplayName(u),
-              shortId: u.shortId || key.slice(0, 5),
-              email: u.email || '',
-              totalReferrals: list.length,
-              bonusWeeks: Number(u.ambassadorBonusWeeks || list.length),
-              referredStudents: list,
-            });
-          }
-        } catch {
-          // ignore
-        }
+      if (ambassadorsMap.has(key)) continue;
+      const cachedU = cachedUserMap.get(key);
+      if (cachedU) {
+        ambassadorsMap.set(key, {
+          uid: key,
+          name: getUserDisplayName(cachedU),
+          shortId: cachedU.shortId || key.slice(0, 5),
+          email: cachedU.email || '',
+          totalReferrals: list.length,
+          bonusWeeks: Number(cachedU.ambassadorBonusWeeks || list.length),
+          referredStudents: list,
+        });
+      } else {
+        uncachedEntries.push([key, list]);
       }
+    }
+
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < uncachedEntries.length; i += BATCH_SIZE) {
+      const chunk = uncachedEntries.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        chunk.map(async ([key, list]) => {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', key));
+            if (userDoc.exists()) {
+              const u = userDoc.data() as UserProfile;
+              ambassadorsMap.set(key, {
+                uid: key,
+                name: getUserDisplayName(u),
+                shortId: u.shortId || key.slice(0, 5),
+                email: u.email || '',
+                totalReferrals: list.length,
+                bonusWeeks: Number(u.ambassadorBonusWeeks || list.length),
+                referredStudents: list,
+              });
+            }
+          } catch {
+            // ignore individual lookup failure
+          }
+        })
+      );
     }
 
     return Array.from(ambassadorsMap.values()).sort((a, b) => b.totalReferrals - a.totalReferrals);
@@ -691,96 +721,148 @@ async function strictCountOrThrow(
   throw new AdminStatCardError(collectionLabel, code, msg);
 }
 
+let inFlightOverviewUsersCard: Promise<{
+  totalUsers: number;
+  studentCount: number | null;
+  captainCount: number | null;
+  proCount: number | null;
+  guestCount: number | null;
+  previewUsers: UserProfile[];
+}> | null = null;
+let inFlightOverviewQuestionsCard: Promise<{ totalQuestions: number }> | null = null;
+let inFlightOverviewAttemptsCard: Promise<{ totalAttempts: number }> | null = null;
+let inFlightOverviewApplicationsCard: Promise<{
+  pendingCaptains: number;
+  pendingCrew: number;
+  totalPending: number;
+}> | null = null;
+let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
+let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
+let inFlightOverviewSubjectsCard: Promise<{ subjectCounts: Record<string, number> }> | null = null;
+
 export async function fetchOverviewUsersCard(options?: { force?: boolean }): Promise<{
   totalUsers: number;
-  studentCount: number;
-  captainCount: number;
-  proCount: number;
-  guestCount: number;
+  studentCount: number | null;
+  captainCount: number | null;
+  proCount: number | null;
+  guestCount: number | null;
   previewUsers: UserProfile[];
 }> {
-  const [usersCountResult, usersPageResult, srvSnapshot] = await Promise.allSettled([
-    strictCountOrThrow(collection(db, 'users'), 'firestore:users', 'totalUsers', Boolean(options?.force)),
-    fetchUsersPaginated({ limitCount: 50, force: options?.force }),
-    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-  ]);
-
-  const srv = srvSnapshot.status === 'fulfilled' ? srvSnapshot.value : null;
-  const page = usersPageResult.status === 'fulfilled' ? usersPageResult.value : null;
-  const countVal = usersCountResult.status === 'fulfilled' ? usersCountResult.value : null;
-
-  if (countVal === null && !page && (!srv || !srv.ok || !srv.stats)) {
-    const errReason: any =
-      usersCountResult.status === 'rejected'
-        ? usersCountResult.reason
-        : usersPageResult.status === 'rejected'
-        ? usersPageResult.reason
-        : null;
-    if (errReason instanceof AdminStatCardError) throw errReason;
-    throw new AdminStatCardError(
-      'firestore:users | GET /api/admin/stats',
-      srv?.status || errReason?.code || 500,
-      srv?.errorMessage || errReason?.message || 'Failed to load registered users'
-    );
+  if (!options?.force && inFlightOverviewUsersCard) {
+    return inFlightOverviewUsersCard;
   }
+  const run = async () => {
+    const [usersCountResult, usersPageResult, srvSnapshot] = await Promise.allSettled([
+      strictCountOrThrow(collection(db, 'users'), 'firestore:users', 'totalUsers', Boolean(options?.force)),
+      fetchUsersPaginated({ limitCount: 50, force: options?.force }),
+      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+    ]);
 
-  const directoryState = getCachedAdminUsersState();
-  const totalUsers = Math.max(
-    countVal ?? 0,
-    page?.totalCount ?? 0,
-    directoryState?.totalCount ?? 0,
-    Number(srv?.stats?.totalUsers ?? 0)
-  );
+    const srv = srvSnapshot.status === 'fulfilled' ? srvSnapshot.value : null;
+    const page = usersPageResult.status === 'fulfilled' ? usersPageResult.value : null;
+    const countVal = usersCountResult.status === 'fulfilled' ? usersCountResult.value : null;
 
-  return {
-    totalUsers,
-    studentCount: directoryState?.studentCount ?? Number(srv?.stats?.studentCount ?? totalUsers),
-    captainCount: directoryState?.captainCount ?? Number(srv?.stats?.captainCount ?? 0),
-    proCount: directoryState?.proCount ?? Number(srv?.stats?.proCount ?? 0),
-    guestCount: directoryState?.guestCount ?? Number(srv?.stats?.guestCount ?? 0),
-    previewUsers: page?.users ?? directoryState?.users ?? [],
+    if (countVal === null && !page && (!srv || !srv.ok || !srv.stats)) {
+      const errReason: any =
+        usersCountResult.status === 'rejected'
+          ? usersCountResult.reason
+          : usersPageResult.status === 'rejected'
+          ? usersPageResult.reason
+          : null;
+      if (errReason instanceof AdminStatCardError) throw errReason;
+      throw new AdminStatCardError(
+        'firestore:users | GET /api/admin/stats',
+        srv?.status || errReason?.code || 500,
+        srv?.errorMessage || errReason?.message || 'Failed to load registered users'
+      );
+    }
+
+    const directoryState = getCachedAdminUsersState();
+    const totalUsers = Math.max(
+      countVal ?? 0,
+      page?.totalCount ?? 0,
+      directoryState?.totalCount ?? 0,
+      Number(srv?.stats?.totalUsers ?? 0)
+    );
+
+    const resolveKnownCount = (dirVal: number | undefined, srvVal: unknown): number | null => {
+      if (typeof dirVal === 'number') return dirVal;
+      if (typeof srvVal === 'number' && Number.isFinite(srvVal)) return srvVal;
+      return null;
+    };
+
+    return {
+      totalUsers,
+      studentCount: resolveKnownCount(directoryState?.studentCount, srv?.stats?.studentCount),
+      captainCount: resolveKnownCount(directoryState?.captainCount, srv?.stats?.captainCount),
+      proCount: resolveKnownCount(directoryState?.proCount, srv?.stats?.proCount),
+      guestCount: resolveKnownCount(directoryState?.guestCount, srv?.stats?.guestCount),
+      previewUsers: page?.users ?? directoryState?.users ?? [],
+    };
   };
+  inFlightOverviewUsersCard = run().finally(() => {
+    inFlightOverviewUsersCard = null;
+  });
+  return inFlightOverviewUsersCard;
 }
 
 export async function fetchOverviewQuestionsCard(options?: { force?: boolean }): Promise<{
   totalQuestions: number;
 }> {
-  const [qCountRes, msRes, srvRes] = await Promise.allSettled([
-    strictCountOrThrow(collection(db, 'questions'), 'firestore:questions', 'totalQuestions', Boolean(options?.force)),
-    getMultiSourceQuestionCounts(),
-    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-  ]);
-
-  const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
-  const msTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
-  const qCount = qCountRes.status === 'fulfilled' ? qCountRes.value : null;
-  const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
-
-  if (qCount === null && msTotal === 0 && (!srv || !srv.ok || !srv.stats)) {
-    const errReason = qCountRes.status === 'rejected' ? qCountRes.reason : null;
-    if (errReason instanceof AdminStatCardError) throw errReason;
-    throw new AdminStatCardError(
-      'firestore:questions | GET /api/admin/stats',
-      srv?.status || errReason?.code || 500,
-      srv?.errorMessage || errReason?.message || 'Failed to load question pool count'
-    );
+  if (!options?.force && inFlightOverviewQuestionsCard) {
+    return inFlightOverviewQuestionsCard;
   }
+  const run = async () => {
+    const [qCountRes, msRes, srvRes] = await Promise.allSettled([
+      strictCountOrThrow(collection(db, 'questions'), 'firestore:questions', 'totalQuestions', Boolean(options?.force)),
+      getMultiSourceQuestionCounts(),
+      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+    ]);
 
-  return {
-    totalQuestions: Math.max(qCount ?? 0, msTotal, Number(srv?.stats?.totalQuestions ?? 0)),
+    const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
+    const msTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
+    const qCount = qCountRes.status === 'fulfilled' ? qCountRes.value : null;
+    const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
+
+    if (qCount === null && msTotal === 0 && (!srv || !srv.ok || !srv.stats)) {
+      const errReason = qCountRes.status === 'rejected' ? qCountRes.reason : null;
+      if (errReason instanceof AdminStatCardError) throw errReason;
+      throw new AdminStatCardError(
+        'firestore:questions | GET /api/admin/stats',
+        srv?.status || errReason?.code || 500,
+        srv?.errorMessage || errReason?.message || 'Failed to load question pool count'
+      );
+    }
+
+    return {
+      totalQuestions: Math.max(qCount ?? 0, msTotal, Number(srv?.stats?.totalQuestions ?? 0)),
+    };
   };
+  inFlightOverviewQuestionsCard = run().finally(() => {
+    inFlightOverviewQuestionsCard = null;
+  });
+  return inFlightOverviewQuestionsCard;
 }
 
 export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): Promise<{
   totalAttempts: number;
 }> {
-  const totalAttempts = await strictCountOrThrow(
-    collection(db, 'attempts'),
-    'firestore:attempts',
-    'totalAttempts',
-    Boolean(options?.force)
-  );
-  return { totalAttempts };
+  if (!options?.force && inFlightOverviewAttemptsCard) {
+    return inFlightOverviewAttemptsCard;
+  }
+  const run = async () => {
+    const totalAttempts = await strictCountOrThrow(
+      collection(db, 'attempts'),
+      'firestore:attempts',
+      'totalAttempts',
+      Boolean(options?.force)
+    );
+    return { totalAttempts };
+  };
+  inFlightOverviewAttemptsCard = run().finally(() => {
+    inFlightOverviewAttemptsCard = null;
+  });
+  return inFlightOverviewAttemptsCard;
 }
 
 export async function fetchOverviewApplicationsCard(options?: { force?: boolean }): Promise<{
@@ -788,82 +870,118 @@ export async function fetchOverviewApplicationsCard(options?: { force?: boolean 
   pendingCrew: number;
   totalPending: number;
 }> {
-  const [captains, crew] = await Promise.all([
-    strictCountOrThrow(
-      query(collection(db, 'captainApplications'), where('status', '==', 'pending')),
-      'firestore:captainApplications',
-      'pendingCaptains',
-      Boolean(options?.force)
-    ),
-    strictCountOrThrow(
-      query(collection(db, 'crewApplications'), where('status', '==', 'pending')),
-      'firestore:crewApplications',
-      'pendingCrew',
-      Boolean(options?.force)
-    ),
-  ]);
-  return {
-    pendingCaptains: captains,
-    pendingCrew: crew,
-    totalPending: captains + crew,
+  if (!options?.force && inFlightOverviewApplicationsCard) {
+    return inFlightOverviewApplicationsCard;
+  }
+  const run = async () => {
+    const [captains, crew] = await Promise.all([
+      strictCountOrThrow(
+        query(collection(db, 'captainApplications'), where('status', '==', 'pending')),
+        'firestore:captainApplications',
+        'pendingCaptains',
+        Boolean(options?.force)
+      ),
+      strictCountOrThrow(
+        query(collection(db, 'crewApplications'), where('status', '==', 'pending')),
+        'firestore:crewApplications',
+        'pendingCrew',
+        Boolean(options?.force)
+      ),
+    ]);
+    return {
+      pendingCaptains: captains,
+      pendingCrew: crew,
+      totalPending: captains + crew,
+    };
   };
+  inFlightOverviewApplicationsCard = run().finally(() => {
+    inFlightOverviewApplicationsCard = null;
+  });
+  return inFlightOverviewApplicationsCard;
 }
 
 export async function fetchOverviewPaymentsCard(options?: { force?: boolean }): Promise<{
   pendingPayments: number;
 }> {
-  const pendingPayments = await strictCountOrThrow(
-    query(collection(db, 'paymentRequests'), where('status', '==', 'pending')),
-    'firestore:paymentRequests',
-    'pendingPayments',
-    Boolean(options?.force)
-  );
-  return { pendingPayments };
+  if (!options?.force && inFlightOverviewPaymentsCard) {
+    return inFlightOverviewPaymentsCard;
+  }
+  const run = async () => {
+    const pendingPayments = await strictCountOrThrow(
+      query(collection(db, 'paymentRequests'), where('status', '==', 'pending')),
+      'firestore:paymentRequests',
+      'pendingPayments',
+      Boolean(options?.force)
+    );
+    return { pendingPayments };
+  };
+  inFlightOverviewPaymentsCard = run().finally(() => {
+    inFlightOverviewPaymentsCard = null;
+  });
+  return inFlightOverviewPaymentsCard;
 }
 
 export async function fetchOverviewReviewsCard(options?: { force?: boolean }): Promise<{
   pendingReviews: number;
 }> {
-  const pendingReviews = await strictCountOrThrow(
-    query(collection(db, 'reviews'), where('status', '==', 'pending')),
-    'firestore:reviews',
-    'pendingReviews',
-    Boolean(options?.force)
-  );
-  return { pendingReviews };
+  if (!options?.force && inFlightOverviewReviewsCard) {
+    return inFlightOverviewReviewsCard;
+  }
+  const run = async () => {
+    const pendingReviews = await strictCountOrThrow(
+      query(collection(db, 'reviews'), where('status', '==', 'pending')),
+      'firestore:reviews',
+      'pendingReviews',
+      Boolean(options?.force)
+    );
+    return { pendingReviews };
+  };
+  inFlightOverviewReviewsCard = run().finally(() => {
+    inFlightOverviewReviewsCard = null;
+  });
+  return inFlightOverviewReviewsCard;
 }
 
 export async function fetchOverviewSubjectsCard(options?: { force?: boolean }): Promise<{
   subjectCounts: Record<string, number>;
 }> {
-  const [msRes, srvRes] = await Promise.allSettled([
-    getMultiSourceQuestionCounts(),
-    fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-  ]);
-
-  const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
-  const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
-  const srvSubjects = (srv?.ok && srv?.stats?.subjectCounts) ? srv.stats.subjectCounts : null;
-
-  if (msRes.status === 'rejected' && !srvSubjects) {
-    throw new AdminStatCardError(
-      'firestore:questions (subjectCounts) | GET /api/admin/stats',
-      srv?.status || 500,
-      srv?.errorMessage || (msRes.reason as Error)?.message || 'Failed to load subject question counts'
-    );
+  if (!options?.force && inFlightOverviewSubjectsCard) {
+    return inFlightOverviewSubjectsCard;
   }
+  const run = async () => {
+    const [msRes, srvRes] = await Promise.allSettled([
+      getMultiSourceQuestionCounts(),
+      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+    ]);
 
-  const subjectCounts: Record<string, number> = {};
-  for (const subj of CORE_SUBJECTS) {
-    const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
-    const fromMs = Number(msSubjects[slug] || 0) + Number(msSubjects[subj] || 0);
-    const fromSrv = srvSubjects ? Number(srvSubjects[subj] ?? srvSubjects[slug] ?? 0) : 0;
-    const resolved = Math.max(fromMs, fromSrv);
-    subjectCounts[subj] = resolved;
-    subjectCounts[slug] = resolved;
-  }
+    const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
+    const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
+    const srvSubjects = (srv?.ok && srv?.stats?.subjectCounts) ? srv.stats.subjectCounts : null;
 
-  return { subjectCounts };
+    if (msRes.status === 'rejected' && !srvSubjects) {
+      throw new AdminStatCardError(
+        'firestore:questions (subjectCounts) | GET /api/admin/stats',
+        srv?.status || 500,
+        srv?.errorMessage || (msRes.reason as Error)?.message || 'Failed to load subject question counts'
+      );
+    }
+
+    const subjectCounts: Record<string, number> = {};
+    for (const subj of CORE_SUBJECTS) {
+      const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
+      const fromMs = Number(msSubjects[slug] || 0) + Number(msSubjects[subj] || 0);
+      const fromSrv = srvSubjects ? Number(srvSubjects[subj] ?? srvSubjects[slug] ?? 0) : 0;
+      const resolved = Math.max(fromMs, fromSrv);
+      subjectCounts[subj] = resolved;
+      subjectCounts[slug] = resolved;
+    }
+
+    return { subjectCounts };
+  };
+  inFlightOverviewSubjectsCard = run().finally(() => {
+    inFlightOverviewSubjectsCard = null;
+  });
+  return inFlightOverviewSubjectsCard;
 }
 
 export async function fetchAdminStats(options?: { force?: boolean }): Promise<AdminStats> {
@@ -889,13 +1007,13 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
       captainCount: usersCard.captainCount,
       proCount: usersCard.proCount,
       guestCount: usersCard.guestCount,
-      adminCount: getCachedAdminUsersState()?.adminCount ?? 0,
-      twoFactorEnabledCount: getCachedAdminUsersState()?.twoFactorEnabledCount ?? 0,
+      adminCount: getCachedAdminUsersState()?.adminCount,
+      twoFactorEnabledCount: getCachedAdminUsersState()?.twoFactorEnabledCount,
       totalQuestions: questionsCard.totalQuestions,
       totalAttempts: attemptsCard.totalAttempts,
-      totalQuestionsSolved: Math.max(attemptsCard.totalAttempts * 15, usersCard.totalUsers * 12),
-      totalActiveCrews: 1,
-      totalAmbassadors: Math.max(usersCard.captainCount, 1),
+      totalQuestionsSolved: undefined,
+      totalActiveCrews: undefined,
+      totalAmbassadors: usersCard.captainCount,
       pendingCaptains: appsCard.pendingCaptains,
       pendingCrew: appsCard.pendingCrew,
       pendingPayments: paymentsCard.pendingPayments,
@@ -1361,6 +1479,41 @@ export class AdminSearchHttpError extends Error {
   }
 }
 
+type KobanSearchSnapTuple = [
+  Awaited<ReturnType<typeof getDocs>>,
+  Awaited<ReturnType<typeof getDocs>> | null,
+  Awaited<ReturnType<typeof getDocs>> | null,
+  Awaited<ReturnType<typeof getDocs>> | null,
+  Awaited<ReturnType<typeof getDocs>> | null
+];
+
+let cachedKobanSearchSnapshots: { at: number; snaps: KobanSearchSnapTuple } | null = null;
+let inFlightKobanSearchSnapshots: Promise<KobanSearchSnapTuple> | null = null;
+
+async function getKobanSearchCandidateSnapshots(): Promise<KobanSearchSnapTuple> {
+  if (cachedKobanSearchSnapshots && Date.now() - cachedKobanSearchSnapshots.at < 60_000) {
+    return cachedKobanSearchSnapshots.snaps;
+  }
+  if (inFlightKobanSearchSnapshots) {
+    return inFlightKobanSearchSnapshots;
+  }
+  inFlightKobanSearchSnapshots = Promise.all([
+    getDocs(query(collection(db, 'users'), limit(1000))),
+    getDocs(query(collection(db, 'publicProfiles'), limit(1000))).catch(() => null),
+    getDocs(query(collection(db, 'wallets'), limit(1000))).catch(() => null),
+    getDocs(query(collection(db, 'kobanRequests'), limit(300))).catch(() => null),
+    getDocs(query(collection(db, 'paymentRequests'), limit(300))).catch(() => null),
+  ])
+    .then((snaps) => {
+      cachedKobanSearchSnapshots = { at: Date.now(), snaps };
+      return snaps;
+    })
+    .finally(() => {
+      inFlightKobanSearchSnapshots = null;
+    });
+  return inFlightKobanSearchSnapshots;
+}
+
 export async function searchStudentsForKobans(
   rawQuery: string,
   options?: {
@@ -1439,14 +1592,9 @@ export async function searchStudentsForKobans(
     throw new DOMException('Search aborted', 'AbortError');
   }
 
-  // 2. Query Firestore canonical `users` collection + LEFT JOIN `publicProfiles`, `wallets`, and requests
-  const [usersSnap, pubSnap, walletsSnap, kobanReqSnap, paymentReqSnap] = await Promise.all([
-    getDocs(query(collection(db, 'users'), limit(1000))),
-    getDocs(query(collection(db, 'publicProfiles'), limit(1000))).catch(() => null),
-    getDocs(query(collection(db, 'wallets'), limit(1000))).catch(() => null),
-    getDocs(query(collection(db, 'kobanRequests'), limit(300))).catch(() => null),
-    getDocs(query(collection(db, 'paymentRequests'), limit(300))).catch(() => null),
-  ]);
+  // 2. Query Firestore canonical `users` collection + LEFT JOIN `publicProfiles`, `wallets`, and requests (cached 60s across keystrokes)
+  const [usersSnap, pubSnap, walletsSnap, kobanReqSnap, paymentReqSnap] =
+    await getKobanSearchCandidateSnapshots();
 
   if (options?.signal?.aborted) {
     throw new DOMException('Search aborted', 'AbortError');
@@ -2463,7 +2611,7 @@ export async function fetchUserRecentAttempts(
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (err) {
     console.warn('[AdminService] fetchUserRecentAttempts error:', err);
-    return [];
+    throw wrapFirestoreError(err, 'attempts', 'fetchUserRecentAttempts');
   }
 }
 
@@ -3256,7 +3404,7 @@ export async function fetchPaymentRequests(statusFilter = 'all'): Promise<Paymen
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentRequest));
   } catch (err) {
     console.error('[AdminService] fetchPaymentRequests error:', err);
-    return [];
+    throw wrapFirestoreError(err, 'paymentRequests', 'fetchPaymentRequests');
   }
 }
 
@@ -3505,7 +3653,7 @@ export async function fetchReviews(statusFilter = 'all'): Promise<StudentReview[
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as StudentReview));
   } catch (err) {
     console.error('[AdminService] fetchReviews error:', err);
-    return [];
+    throw wrapFirestoreError(err, 'reviews', 'fetchReviews');
   }
 }
 

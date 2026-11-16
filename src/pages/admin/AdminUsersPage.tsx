@@ -84,7 +84,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
   const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
   const studentId = formatStudentId(u);
-  const qSolved = u.totalQuestionsSolved ?? (u.testsCompleted || 0) * 15;
+  const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
   const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
   const lastActiveDate = formatUserTimestamp(u.lastActiveAt, null);
 
@@ -129,7 +129,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
 
         <div className="text-right shrink-0">
           <span className="font-mono font-bold text-xs text-[var(--text)] block">
-            {qSolved} MCQs
+            {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '— MCQs'}
           </span>
           <span className="text-[10px] text-[var(--text-faint)] font-mono">
             🔥 {u.streak || 0}d streak
@@ -211,7 +211,7 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
   const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
   const badgeId = (u as any).proBadgeDesign || (u as any).proBadge || (isPro ? 'ember' : null);
   const studentId = formatStudentId(u);
-  const qSolved = u.totalQuestionsSolved ?? (u.testsCompleted || 0) * 15;
+  const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
   const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
   const lastActiveDate = formatUserTimestamp(u.lastActiveAt, null);
 
@@ -275,7 +275,7 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
 
       {/* 5. Total Questions Solved */}
       <td className="py-3.5 px-4 font-mono font-bold text-[13px] text-[var(--text)]">
-        {qSolved.toLocaleString()} MCQs
+        {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '—'}
       </td>
 
       {/* 6. Streak */}
