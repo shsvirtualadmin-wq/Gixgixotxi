@@ -183,7 +183,7 @@ function ensureGlobalGlassPressDelegate(): void {
     const target = e.target as HTMLElement | null;
     if (!target || typeof target.closest !== 'function') return;
     const pressable = target.closest<HTMLElement>(
-      'button:not(:disabled), [role="tab"], [data-pressable], a.glass-row, a.glass-pill, .stg-row, .fsm-row, .sdn-tab, .akb-tab-btn'
+      'button:not(:disabled), [role="tab"], [role="button"], [data-pressable], .lg-pill, .glass-pill, .glass-card-interactive, a.glass-row, .stg-row, .fsm-row, .sdn-tab, .akb-tab-btn'
     );
     if (!pressable) return;
     if (pressable.hasAttribute('disabled') || pressable.getAttribute('aria-disabled') === 'true') {

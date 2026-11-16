@@ -65,7 +65,7 @@ html.ui-glass {
   --spring: cubic-bezier(0.22, 1.4, 0.36, 1);
   --tab-spring: cubic-bezier(0.34, 1.5, 0.5, 1);
 
-  /* Specular top highlight (30% perceived top sheen) + elevation shadow */
+  /* Specular top highlight (~30% opacity) + elevation shadow */
   --lg-surface-gradient: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.085) 0%,
@@ -73,7 +73,7 @@ html.ui-glass {
     rgba(255, 255, 255, 0) 100%
   );
   --lg-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
     inset 0 -1px 0 rgba(0, 0, 0, 0.32),
     0 12px 32px -8px rgba(0, 0, 0, 0.52);
 
@@ -127,21 +127,29 @@ html.ui-glass body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(260px circle at 16% 6%, rgba(215, 25, 33, 0.10) 0%, transparent 72%),
-    radial-gradient(320px circle at 86% 12%, rgba(255, 255, 255, 0.035) 0%, transparent 70%);
+    radial-gradient(220px circle at 16% 5%, rgba(215, 25, 33, 0.085) 0%, transparent 70%),
+    radial-gradient(280px circle at 86% 10%, rgba(255, 255, 255, 0.03) 0%, transparent 68%);
 }
 
 html.ui-glass[data-theme="light"] body::before,
 html.ui-glass.light body::before {
   background:
-    radial-gradient(260px circle at 16% 6%, rgba(215, 25, 33, 0.06) 0%, transparent 72%),
-    radial-gradient(320px circle at 86% 12%, rgba(15, 16, 20, 0.025) 0%, transparent 70%);
+    radial-gradient(220px circle at 16% 5%, rgba(215, 25, 33, 0.05) 0%, transparent 70%),
+    radial-gradient(280px circle at 86% 10%, rgba(15, 16, 20, 0.02) 0%, transparent 68%);
 }
 
 /* Disable page-level blurred blob divs so only the single static radial-gradient layer exists */
 html.ui-glass .akb-ambient-blobs,
 html.ui-glass .aqb-ambient-blobs {
   display: none !important;
+}
+
+/* Prevent page-slide transform/isolate wrapper from trapping fixed bottom sheets below nav */
+html.ui-glass .page-slide-right,
+html.ui-glass .page-slide-left {
+  animation: none !important;
+  transform: none !important;
+  isolation: auto !important;
 }
 
 /* Typography & tabular numbers */
@@ -163,20 +171,22 @@ html.ui-glass [data-tabular] {
 /* Card & row surfaces use translucent fill + top highlight + 1px border WITHOUT backdrop-filter */
 html.ui-glass .lg-surface,
 html.ui-glass .lg-card,
+html.ui-glass .lg-nothing-card,
+html.ui-glass .lg-nothing-alert-red,
 html.ui-glass [data-admin-page] .glass-card,
 html.ui-glass [data-admin-page] .aqb-glass-card,
 html.ui-glass [data-admin-page] .akb-glass-card,
-html.ui-glass [data-admin-page] .rounded-2xl:not([role="tablist"]):not(.lg-segmented),
-html.ui-glass [data-admin-page] .rounded-3xl,
-html.ui-glass [data-admin-page] .rounded-\[24px\],
-html.ui-glass [data-admin-page] .rounded-\[20px\],
+html.ui-glass [data-admin-page] .rounded-2xl:not([role="tablist"]):not(.lg-segmented):not([data-admin-sheet] *),
+html.ui-glass [data-admin-page] .rounded-3xl:not([data-admin-sheet] *),
+html.ui-glass [data-admin-page] .rounded-\[24px\]:not([data-admin-sheet] *),
+html.ui-glass [data-admin-page] .rounded-\[20px\]:not([data-admin-sheet] *),
 html.ui-glass [data-student-page] .cockpit-surface-card,
 html.ui-glass [data-student-page] .cockpit-uni-bubble,
 html.ui-glass [data-student-page] .rs-card,
 html.ui-glass [data-student-page] .cw-card,
 html.ui-glass [data-student-page] .glass-card:not(header),
 html.ui-glass [data-student-page] .captain-glass-panel,
-html.ui-glass [data-student-page] .glass-panel,
+html.ui-glass [data-student-page] .glass-panel:not(.ios-bottom-sheet):not(.more-sheet-panel),
 html.ui-glass [data-student-page] .boardly-glass-card,
 html.ui-glass [data-student-page] .notif-header,
 html.ui-glass [data-student-page] .notif-card,
@@ -195,6 +205,17 @@ html.ui-glass [data-admin-section="grand-line-tests"] .bg-white\/\[0\.025\] {
   color: var(--text);
 }
 
+html.ui-glass .lg-nothing-card::before {
+  display: none !important;
+}
+
+/* Strip backdrop-filter from all non-fixed pills/inputs inside scrolling lists */
+html.ui-glass .lg-nothing-pill:not([role="tablist"]),
+html.ui-glass .lg-nothing-input {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 html.ui-glass .lg-card {
   padding: 18px 20px;
 }
@@ -205,9 +226,9 @@ html.ui-glass .lg-card--sm {
   padding: 14px 16px;
 }
 
-/* Sub-rows inside cards */
-html.ui-glass [data-admin-page] .rounded-\[16px\],
-html.ui-glass [data-admin-page] .rounded-\[14px\],
+/* Sub-rows inside cards (excluding sheets) */
+html.ui-glass [data-admin-page] .rounded-\[16px\]:not([data-admin-sheet] *):not(:has(> button)),
+html.ui-glass [data-admin-page] .rounded-\[14px\]:not([data-admin-sheet] *),
 html.ui-glass [data-student-page="dashboard"] .cockpit-subrow,
 html.ui-glass [data-student-page="dashboard"] .rs-card2-row,
 html.ui-glass [data-student-page="arena"] .glass-row {
@@ -219,8 +240,8 @@ html.ui-glass [data-student-page="arena"] .glass-row {
   -webkit-backdrop-filter: none !important;
 }
 
-html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[16px\],
-html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[14px\],
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[16px\]:not([data-admin-sheet] *):not(:has(> button)),
+html.ui-glass[data-theme="light"] [data-admin-page] .rounded-\[14px\]:not([data-admin-sheet] *),
 html.ui-glass[data-theme="light"] [data-student-page="dashboard"] .cockpit-subrow,
 html.ui-glass[data-theme="light"] [data-student-page="dashboard"] .rs-card2-row,
 html.ui-glass[data-theme="light"] [data-student-page="arena"] .glass-row {
@@ -236,6 +257,8 @@ html.ui-glass [data-student-page="commons"] > header,
 html.ui-glass [data-student-page="store"] > header,
 html.ui-glass [data-student-page="settings"] .stg-top-header,
 html.ui-glass [data-student-page="settings"] .fsm-search-pill,
+html.ui-glass [data-admin-shell="true"] > header,
+html.ui-glass [data-admin-shell="true"] > aside,
 html.ui-glass .sdn-dock .plate,
 html.ui-glass [data-admin-bottom-nav="true"] > nav,
 html.ui-glass [role="status"].fixed > div,
@@ -256,6 +279,8 @@ html.ui-glass[data-theme="light"] [data-student-page="commons"] > header,
 html.ui-glass[data-theme="light"] [data-student-page="store"] > header,
 html.ui-glass[data-theme="light"] [data-student-page="settings"] .stg-top-header,
 html.ui-glass[data-theme="light"] [data-student-page="settings"] .fsm-search-pill,
+html.ui-glass[data-theme="light"] [data-admin-shell="true"] > header,
+html.ui-glass[data-theme="light"] [data-admin-shell="true"] > aside,
 html.ui-glass[data-theme="light"] .sdn-dock .plate,
 html.ui-glass[data-theme="light"] [data-admin-bottom-nav="true"] > nav,
 html.ui-glass[data-theme="light"] [role="status"].fixed > div {
@@ -274,14 +299,19 @@ html.ui-glass[data-theme="light"] [role="status"].fixed > div {
 
 /* Sheet root overlay above page and bottom nav */
 html.ui-glass [data-admin-sheet],
-html.ui-glass [data-fullscreen-modal="true"] {
+html.ui-glass [data-fullscreen-modal="true"],
+html.ui-glass .aqb-sheet-backdrop,
+html.ui-glass .zenryu-sheet-backdrop {
   z-index: 10010 !important;
 }
 
 /* Dimmed scrim behind every sheet (no heavy blur needed on scrim) */
 html.ui-glass [data-admin-sheet] > .overlay-blur,
 html.ui-glass [data-admin-sheet] > div.fixed.inset-0:first-child,
-html.ui-glass [data-fullscreen-modal="true"] > div.fixed.inset-0:first-child {
+html.ui-glass [data-fullscreen-modal="true"] > div.fixed.inset-0:first-child,
+html.ui-glass .more-sheet-backdrop,
+html.ui-glass .aqb-sheet-backdrop,
+html.ui-glass .zenryu-sheet-backdrop {
   background: rgba(0, 0, 0, 0.68) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -289,10 +319,15 @@ html.ui-glass [data-fullscreen-modal="true"] > div.fixed.inset-0:first-child {
 
 /* Sheet panel surface: opaque-enough 0.92 dark / 0.94 light + blur(20px) so page text NEVER bleeds through */
 html.ui-glass .lg-sheet-panel,
+html.ui-glass .ios-bottom-sheet,
+html.ui-glass .more-sheet-panel,
+html.ui-glass .aqb-sheet,
+html.ui-glass .zenryu-sheet-panel,
 html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2),
 html.ui-glass [data-admin-sheet="request-access"] > div,
 html.ui-glass [data-admin-sheet="grand-line-schedule"] > div,
-html.ui-glass [data-admin-sheet] > div.relative {
+html.ui-glass [data-admin-sheet] > div.relative,
+html.ui-glass [data-admin-sheet] > div.fixed.inset-0 > div.relative {
   background: rgba(18, 18, 22, 0.92) !important;
   backdrop-filter: blur(20px) !important;
   -webkit-backdrop-filter: blur(20px) !important;
@@ -304,10 +339,15 @@ html.ui-glass [data-admin-sheet] > div.relative {
 }
 
 html.ui-glass[data-theme="light"] .lg-sheet-panel,
+html.ui-glass[data-theme="light"] .ios-bottom-sheet,
+html.ui-glass[data-theme="light"] .more-sheet-panel,
+html.ui-glass[data-theme="light"] .aqb-sheet,
+html.ui-glass[data-theme="light"] .zenryu-sheet-panel,
 html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2),
 html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] > div,
 html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] > div,
-html.ui-glass[data-theme="light"] [data-admin-sheet] > div.relative {
+html.ui-glass[data-theme="light"] [data-admin-sheet] > div.relative,
+html.ui-glass[data-theme="light"] [data-admin-sheet] > div.fixed.inset-0 > div.relative {
   background: rgba(244, 243, 248, 0.94) !important;
   color: var(--text) !important;
   box-shadow:
@@ -315,39 +355,45 @@ html.ui-glass[data-theme="light"] [data-admin-sheet] > div.relative {
     0 20px 56px rgba(15, 16, 20, 0.16) !important;
 }
 
-/* Sheet header & sticky footer: opaque so scrolling form rows never bleed behind Cancel/Save */
-html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2) > div:nth-child(2),
+/* Inner sections inside sheets: crisp elevated surface, no nested backdrop-filter */
+html.ui-glass [data-admin-sheet] .bg-\[var\(--card-2\)\],
+html.ui-glass [data-admin-sheet] section .bg-\[var\(--card\)\] {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: var(--edge) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html.ui-glass[data-theme="light"] [data-admin-sheet] .bg-\[var\(--card-2\)\],
+html.ui-glass[data-theme="light"] [data-admin-sheet] section .bg-\[var\(--card\)\],
+html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .bg-\[\#141419\],
+html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .bg-\[\#18181d\] {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: var(--edge) !important;
+}
+
+/* Sheet header & sticky footer: opaque so scrolling form rows never bleed behind header or Cancel/Save */
+html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2) > div.border-b,
 html.ui-glass [data-testid="user-override-sticky-footer"],
-html.ui-glass [data-admin-sheet] .sticky.bottom-0 {
+html.ui-glass [data-admin-sheet] .sticky.bottom-0,
+html.ui-glass .aqb-sheet-header,
+html.ui-glass .aqb-sheet-footer,
+html.ui-glass .zenryu-sheet-header,
+html.ui-glass .zenryu-sheet-footer {
   background: rgba(18, 18, 22, 0.98) !important;
   border-color: var(--edge) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2) > div:nth-child(2),
+html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2) > div.border-b,
 html.ui-glass[data-theme="light"] [data-testid="user-override-sticky-footer"],
-html.ui-glass[data-theme="light"] [data-admin-sheet] .sticky.bottom-0 {
+html.ui-glass[data-theme="light"] [data-admin-sheet] .sticky.bottom-0,
+html.ui-glass[data-theme="light"] .aqb-sheet-header,
+html.ui-glass[data-theme="light"] .aqb-sheet-footer,
+html.ui-glass[data-theme="light"] .zenryu-sheet-header,
+html.ui-glass[data-theme="light"] .zenryu-sheet-footer {
   background: rgba(244, 243, 248, 0.98) !important;
-  border-color: var(--edge) !important;
-}
-
-/* Inner sections inside sheets: crisp elevated surface, no nested backdrop-filter */
-html.ui-glass [data-admin-sheet] section > div,
-html.ui-glass [data-admin-sheet] .bg-\[var\(--card-2\)\],
-html.ui-glass [data-admin-sheet] .bg-\[var\(--card\)\]:not(.sticky):not(.relative) {
-  background: rgba(255, 255, 255, 0.055) !important;
-  border-color: var(--edge) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-html.ui-glass[data-theme="light"] [data-admin-sheet] section > div,
-html.ui-glass[data-theme="light"] [data-admin-sheet] .bg-\[var\(--card-2\)\],
-html.ui-glass[data-theme="light"] [data-admin-sheet] .bg-\[var\(--card\)\]:not(.sticky):not(.relative),
-html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] .bg-\[\#141419\],
-html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .bg-\[\#18181d\] {
-  background: rgba(255, 255, 255, 0.88) !important;
   border-color: var(--edge) !important;
 }
 
@@ -370,15 +416,31 @@ html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] .bg-\
 
 html.ui-glass [data-pressable],
 html.ui-glass .lg-bubble,
+html.ui-glass .bubble-touch,
 html.ui-glass button:not(:disabled),
 html.ui-glass [role="tab"] {
   position: relative;
   overflow: hidden;
   transform: translateZ(0) scale(1);
+  will-change: auto !important;
   transition:
     transform 130ms cubic-bezier(0.2, 0.9, 0.25, 1),
-    opacity 130ms ease;
+    opacity 130ms ease !important;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* A2: will-change ONLY on the pressed/rebounding element during the press, then removed */
+html.ui-glass [data-pressed="true"],
+html.ui-glass [data-rebound="true"],
+html.ui-glass .bubble-touch[data-bubble-pressed="true"],
+html.ui-glass .bubble-touch[data-bubble-release="true"] {
+  will-change: transform, opacity !important;
+}
+
+html.ui-glass .ios-bottom-sheet,
+html.ui-glass .zenryu-sheet-panel,
+html.ui-glass .ios-seg-thumb {
+  will-change: auto !important;
 }
 
 /* Single radial ripple from pointer origin */
@@ -518,13 +580,19 @@ html.ui-glass [data-admin-sheet] input:not([type="checkbox"]):not([type="radio"]
 html.ui-glass [data-admin-sheet] select,
 html.ui-glass [data-admin-sheet] textarea {
   min-height: 44px;
-  border-radius: 16px;
+  border-radius: var(--r-pill);
   background: var(--glass) !important;
   border: 1px solid var(--edge) !important;
   color: var(--text) !important;
-  font-size: 16px;
+  font-size: 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   outline: none !important;
+}
+
+html.ui-glass .lg-textarea,
+html.ui-glass [data-admin-page] textarea,
+html.ui-glass [data-admin-sheet] textarea {
+  border-radius: 18px;
 }
 
 html.ui-glass .lg-input:focus,
@@ -542,12 +610,11 @@ html.ui-glass [data-student-page] select:focus {
   box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28) !important;
 }
 
-/* Container pills that wrap an icon + input or icon + select (Users search, Audit search, Store Pricing filters, Settings search, Kobans search) */
+/* Container pills that wrap an icon + input or icon + select (Users search, Audit search, Store Pricing search & category filter, Settings search, Kobans search) */
 html.ui-glass .lg-input-wrap,
 html.ui-glass [data-student-page="settings"] .fsm-search-pill,
 html.ui-glass [data-admin-page] div:has(> svg + input),
 html.ui-glass [data-admin-page] div:has(> svg + select),
-html.ui-glass [data-admin-page="pricing"] div:has(> select),
 html.ui-glass [data-admin-page="kobans"] .akb-search-box {
   min-height: 44px;
   border-radius: var(--r-pill) !important;
@@ -563,7 +630,6 @@ html.ui-glass .lg-input-wrap:focus-within,
 html.ui-glass [data-student-page="settings"] .fsm-search-pill:focus-within,
 html.ui-glass [data-admin-page] div:has(> svg + input):focus-within,
 html.ui-glass [data-admin-page] div:has(> svg + select):focus-within,
-html.ui-glass [data-admin-page="pricing"] div:has(> select):focus-within,
 html.ui-glass [data-admin-page="kobans"] .akb-search-box:focus-within {
   border-color: #D71921 !important;
   box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28) !important;
@@ -576,7 +642,6 @@ html.ui-glass [data-student-page="settings"] .stg-row > input.stg-input,
 html.ui-glass [data-student-page="settings"] .stg-row input.stg-input,
 html.ui-glass [data-admin-page] div:has(> svg + input) > input,
 html.ui-glass [data-admin-page] div:has(> svg + select) > select,
-html.ui-glass [data-admin-page="pricing"] div:has(> select) > select,
 html.ui-glass [data-admin-page="kobans"] .akb-search-box input {
   background: transparent !important;
   border: 0 !important;
@@ -597,8 +662,9 @@ html.ui-glass .lg-segmented,
 html.ui-glass [data-admin-page="certificates"] > div:first-child > div:nth-child(2),
 html.ui-glass [data-admin-page] div:has(> [data-testid="tab-pending-requests"]),
 html.ui-glass [data-admin-page="kobans"] .akb-segmented-tabs,
-html.ui-glass [data-admin-page="applications"] > div:nth-of-type(2) > div:first-child,
-html.ui-glass [data-admin-page="audit-logs"] > div:nth-of-type(2) > div:first-child > div:first-child {
+html.ui-glass [data-admin-page="applications"] div.rounded-\[16px\]:has(> button),
+html.ui-glass [data-admin-page="audit-logs"] div.rounded-\[16px\]:has(> button),
+html.ui-glass [data-admin-page="pricing"] div.rounded-xl:has(> button) {
   position: relative;
   display: inline-flex !important;
   align-items: center;
@@ -619,24 +685,29 @@ html.ui-glass .lg-segmented::-webkit-scrollbar,
 html.ui-glass [data-admin-page="certificates"] > div:first-child > div:nth-child(2)::-webkit-scrollbar,
 html.ui-glass [data-admin-page] div:has(> [data-testid="tab-pending-requests"])::-webkit-scrollbar,
 html.ui-glass [data-admin-page="kobans"] .akb-segmented-tabs::-webkit-scrollbar,
-html.ui-glass [data-admin-page="applications"] > div:nth-of-type(2) > div:first-child::-webkit-scrollbar,
+html.ui-glass [data-admin-page="applications"] div.rounded-\[16px\]:has(> button)::-webkit-scrollbar,
+html.ui-glass [data-admin-page="audit-logs"] div.rounded-\[16px\]:has(> button)::-webkit-scrollbar,
+html.ui-glass [data-admin-page="pricing"] div.rounded-xl:has(> button)::-webkit-scrollbar,
 html.ui-glass [data-admin-page="payments"] [role="tablist"]::-webkit-scrollbar {
   display: none;
 }
 
-/* Payments 3-column tab bar: keep equal grid columns with min-width so "Pro Plans" NEVER covers "Kobans" */
+/* Payments 3-column tab bar: 3 equal tracks with 6px (0.375rem) padding so the sliding indicator
+   width calc((100% - 0.75rem) / 3) aligns to the exact pixel and "Pro Plans" NEVER covers "Kobans" */
 html.ui-glass [data-admin-page="payments"] [role="tablist"] {
   position: relative;
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(128px, 1fr)) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   align-items: center;
-  overflow-x: auto !important;
-  max-width: 100%;
-  padding: 5px !important;
+  width: 100%;
+  max-width: 560px;
+  padding: 6px !important;
   border-radius: var(--r-pill) !important;
   background: var(--glass) !important;
   border: 1px solid var(--edge) !important;
   box-shadow: inset 0 1px 0 var(--border-hi) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   scrollbar-width: none;
 }
 
@@ -659,8 +730,9 @@ html.ui-glass .lg-segmented-item,
 html.ui-glass [data-admin-page="certificates"] > div:first-child > div:nth-child(2) > button,
 html.ui-glass [data-admin-page] div:has(> [data-testid="tab-pending-requests"]) > button,
 html.ui-glass [data-admin-page="kobans"] .akb-tab-btn,
-html.ui-glass [data-admin-page="applications"] > div:nth-of-type(2) > div:first-child > button,
-html.ui-glass [data-admin-page="audit-logs"] > div:nth-of-type(2) > div:first-child > div:first-child > button {
+html.ui-glass [data-admin-page="applications"] div.rounded-\[16px\]:has(> button) > button,
+html.ui-glass [data-admin-page="audit-logs"] div.rounded-\[16px\]:has(> button) > button,
+html.ui-glass [data-admin-page="pricing"] div.rounded-xl:has(> button) > button {
   flex: 0 0 auto !important;
   min-width: max-content !important;
   min-height: 40px !important;
@@ -675,21 +747,23 @@ html.ui-glass [data-admin-page="audit-logs"] > div:nth-of-type(2) > div:first-ch
 }
 
 html.ui-glass [data-admin-page="payments"] [role="tablist"] > button[role="tab"] {
-  min-width: max-content !important;
+  min-width: 0 !important;
+  width: 100% !important;
   min-height: 40px !important;
-  padding: 0 14px !important;
+  padding: 0 8px !important;
   border-radius: var(--r-pill) !important;
   white-space: nowrap !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
 
 /* Active tab pill state (#D71921 + subtle glow) */
 html.ui-glass [data-admin-page="certificates"] > div:first-child > div:nth-child(2) > button.bg-\[var\(--accent\)\],
 html.ui-glass [data-admin-page] div:has(> [data-testid="tab-pending-requests"]) > button.bg-\[\#D71921\],
 html.ui-glass [data-admin-page="kobans"] .akb-tab-btn--active,
-html.ui-glass [data-admin-page="applications"] > div:nth-of-type(2) > div:first-child > button.bg-\[var\(--text\)\],
-html.ui-glass [data-admin-page="audit-logs"] > div:nth-of-type(2) > div:first-child > div:first-child > button.bg-\[var\(--text\)\] {
+html.ui-glass [data-admin-page="applications"] div.rounded-\[16px\]:has(> button) > button.bg-\[var\(--text\)\],
+html.ui-glass [data-admin-page="audit-logs"] div.rounded-\[16px\]:has(> button) > button.bg-\[var\(--text\)\],
+html.ui-glass [data-admin-page="pricing"] div.rounded-xl:has(> button) > button.bg-\[var\(--text\)\] {
   background: #D71921 !important;
   color: #ffffff !important;
   box-shadow:
