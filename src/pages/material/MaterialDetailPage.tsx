@@ -34,6 +34,31 @@ import {
 import { routes } from '@/utils/routes';
 import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
+import { MaterialLibraryPage } from './MaterialLibraryPage';
+
+const KNOWN_SUBJECT_SLUGS = new Set([
+  'all',
+  'general',
+  'mathematics',
+  'math',
+  'maths',
+  'physics',
+  'chemistry',
+  'biology',
+  'computer-science',
+  'computer',
+  'english',
+  'urdu',
+  'islamiat',
+  'pakistan-studies',
+  'mdcat',
+  'ecat',
+  'nust',
+  'net',
+  'fast',
+  'giki',
+  'nums',
+]);
 
 export const MaterialDetailPage: React.FC = () => {
   const { idSlug, slug, itemId } = useParams<{ idSlug?: string; slug?: string; itemId?: string }>();
@@ -41,7 +66,9 @@ export const MaterialDetailPage: React.FC = () => {
   const basePrefix: '/material' | '/study-material' = location.pathname.startsWith('/study-material')
     ? '/study-material'
     : '/material';
-  const materialId = extractIdFromSlug(idSlug || slug || itemId || '');
+  const rawSlugParam = (idSlug || slug || itemId || '').trim();
+  const isSubjectRoute = KNOWN_SUBJECT_SLUGS.has(rawSlugParam.toLowerCase());
+  const materialId = isSubjectRoute ? '' : extractIdFromSlug(rawSlugParam);
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
 
@@ -53,6 +80,9 @@ export const MaterialDetailPage: React.FC = () => {
   const [reportOpen, setReportOpen] = useState(false);
 
   const loadMaterial = useCallback(async () => {
+    if (isSubjectRoute) {
+      return;
+    }
     if (!materialId) {
       setStatus('not_found');
       return;
@@ -80,11 +110,15 @@ export const MaterialDetailPage: React.FC = () => {
     } catch {
       setStatus('error');
     }
-  }, [materialId]);
+  }, [materialId, isSubjectRoute]);
 
   useEffect(() => {
     void loadMaterial();
   }, [loadMaterial]);
+
+  if (isSubjectRoute) {
+    return <MaterialLibraryPage />;
+  }
 
   if (status === 'loading') {
     return (

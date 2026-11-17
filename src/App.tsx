@@ -542,6 +542,7 @@ function AppInner() {
           <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
           <Route path="/commons/post/:idSlug" element={<PublicPostDetailPage />} />
           <Route path="/commons/subject/:subject" element={<CommonsSubjectPage />} />
+          <Route path="/commons/:idSlug" element={<PublicPostDetailPage />} />
 
           {/* Public Study Material Library, Subject Pages & Material Detail Pages */}
           <Route path="/material" element={<MaterialLibraryPage />} />

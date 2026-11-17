@@ -5,6 +5,7 @@
   ],
   "exclude": [
     "/assets/*",
+    "/api/r2/*",
     "/sw.js",
     "/manifest.json",
     "/site.webmanifest",

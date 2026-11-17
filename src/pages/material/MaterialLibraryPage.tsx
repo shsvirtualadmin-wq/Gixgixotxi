@@ -27,8 +27,9 @@ import {
   PostingWizardModal,
   type WizardPostType,
 } from '@/components/commons/PostingWizardModal';
-import { createCommonsPost } from '@/services/commonsService';
-import { uploadCommonsAttachment } from '@/services/commonsUploadService';
+import { createCommonsPost, fetchCommonsPosts } from '@/services/commonsService';
+import { uploadCommonsAttachment, extractR2KeyFromUrl } from '@/services/commonsUploadService';
+import { buildEntitySlug } from '@/utils/privacy';
 import type { CommonsFileAttachment, CommonsPostType } from '@/types/commons';
 
 interface SubjectSiloItem {
@@ -86,7 +87,7 @@ const RESOURCE_TYPE_OPTIONS: { id: string; label: string }[] = [
 
 const CURATED_FALLBACK_MATERIALS: MaterialItem[] = [
   {
-    id: 'mat-fed-math-9-real-numbers',
+    id: 'commons_anon_topic_01',
     title: 'Class 9 Mathematics — Real Numbers & Properties Complete Notes',
     description:
       'Comprehensive solved exercises, theorems, and revision notes for Federal & Punjab Board Class 9 Mathematics.',
@@ -102,14 +103,14 @@ const CURATED_FALLBACK_MATERIALS: MaterialItem[] = [
     files: [
       {
         name: 'Class_9_Mathematics_Real_Numbers_Notes.pdf',
-        url: '/api/commons/r2/commons/pdfs/commons_anon_topic_01_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf',
-        size: 1420000,
+        url: '/api/r2/commons/pdfs/commons_anon_topic_01_Class_9_Mathematics_-_Real_numbers_and_their_properties__Federal_Board_.pdf',
+        size: 36648,
         mimeType: 'application/pdf',
       },
     ],
   },
   {
-    id: 'mat-sindh-math-10-quadratic',
+    id: 'commons_anon_topic_06',
     title: 'Class 10 Mathematics — Quadratic Equations Solved Past Papers',
     description:
       'Step-by-step quadratic formula derivations, nature of roots, and solved board exam questions.',
@@ -125,14 +126,14 @@ const CURATED_FALLBACK_MATERIALS: MaterialItem[] = [
     files: [
       {
         name: 'Class_10_Quadratic_Equations_Solved.pdf',
-        url: '/api/commons/r2/commons/pdfs/commons_anon_topic_06_Class_10_Mathematics_-_Quadratic_equations__Sindh_Board_.pdf',
-        size: 1680000,
+        url: '/api/r2/commons/pdfs/commons_anon_topic_06_Class_10_Mathematics_-_Quadratic_equations__Sindh_Board_.pdf',
+        size: 37956,
         mimeType: 'application/pdf',
       },
     ],
   },
   {
-    id: 'mat-fed-math-10-matrices',
+    id: 'commons_anon_topic_05',
     title: 'Class 10 Mathematics — Matrices & Determinants Formula Sheet',
     description:
       'Cramer’s rule, matrix inversion method, determinant properties, and high-yield exam shortcuts.',
@@ -148,8 +149,8 @@ const CURATED_FALLBACK_MATERIALS: MaterialItem[] = [
     files: [
       {
         name: 'Matrices_And_Determinants_Formula_Sheet.pdf',
-        url: '/api/commons/r2/commons/pdfs/commons_anon_topic_05_Class_10_Mathematics_-_Matrices_and_determinants__Federal_Board_.pdf',
-        size: 980000,
+        url: '/api/r2/commons/pdfs/commons_anon_topic_05_Class_10_Mathematics_-_Matrices_and_determinants__Federal_Board_.pdf',
+        size: 37868,
         mimeType: 'application/pdf',
       },
     ],
@@ -189,13 +190,18 @@ function getTypeBadgeAndIcon(type: string) {
 }
 
 export const MaterialLibraryPage: React.FC = () => {
-  const { subject } = useParams<{ subject?: string }>();
+  const { subject, idSlug, itemId } = useParams<{
+    subject?: string;
+    idSlug?: string;
+    itemId?: string;
+  }>();
   const navigate = useNavigate();
   const { user, profile, authProfile, isGuest } = useAuth();
   const wallet = useWallet();
 
   const isSignedIn = Boolean(user && !isGuest);
-  const activeSubjectSlug = subject?.toLowerCase() || 'all';
+  const rawSubjectParam = (subject || idSlug || itemId || 'all').toLowerCase();
+  const activeSubjectSlug = rawSubjectParam === 'computer' ? 'computer-science' : rawSubjectParam;
   const activeSilo =
     activeSubjectSlug !== 'all' ? getSubjectSilo(activeSubjectSlug) : undefined;
 
@@ -210,18 +216,12 @@ export const MaterialLibraryPage: React.FC = () => {
     setLoading(true);
     setFetchError(null);
     try {
-      const res = await fetch('/api/posts?limit=150', {
-        credentials: 'include',
+      const feedRes = await fetchCommonsPosts({
+        feedTab: 'all',
+        pageSize: 100,
+        currentUid: user?.uid,
       });
-      if (!res.ok) {
-        throw new Error(`Could not load study materials (status ${res.status}).`);
-      }
-      const data = await res.json();
-      const rawPosts = Array.isArray(data?.posts)
-        ? data.posts
-        : Array.isArray(data)
-        ? data
-        : [];
+      const rawPosts = Array.isArray(feedRes?.posts) ? feedRes.posts : [];
 
       const normalized: MaterialItem[] = rawPosts.map((p: any) => {
         let parsedFiles: any[] = [];
@@ -235,8 +235,27 @@ export const MaterialLibraryPage: React.FC = () => {
             // ignore
           }
         }
+        parsedFiles = parsedFiles.map((f: any) => {
+          const rawUrl = String(f?.url || '').trim();
+          const r2Key = f?.r2Key || extractR2KeyFromUrl(rawUrl);
+          const safeUrl =
+            r2Key && r2Key.startsWith('commons/')
+              ? `/api/r2/${r2Key}`
+              : rawUrl.startsWith('/api/commons/r2/')
+              ? `/api/r2/${rawUrl.slice('/api/commons/r2/'.length)}`
+              : rawUrl;
+          return {
+            name: f?.name,
+            url: safeUrl,
+            size: f?.size,
+            mimeType: f?.mimeType || f?.type,
+          };
+        });
+
         const createdMs =
-          typeof p.createdAt === 'number'
+          typeof p.createdAt?.toMillis === 'function'
+            ? p.createdAt.toMillis()
+            : typeof p.createdAt === 'number'
             ? p.createdAt
             : typeof p.created_at === 'number'
             ? p.created_at
@@ -253,27 +272,24 @@ export const MaterialLibraryPage: React.FC = () => {
           authorName: String(p.authorName || p.author_name || 'Student Contributor'),
           authorUsername: p.authorUsername || p.author_username || undefined,
           createdAt: createdMs,
-          downloadsCount: Number(p.downloadsCount ?? p.downloads_count ?? 0),
-          viewsCount: Number(p.viewsCount ?? p.views_count ?? 0),
+          downloadsCount: Number(p.downloadsCount ?? p.downloads_count ?? p.saveCount ?? 0),
+          viewsCount: Number(p.viewsCount ?? p.views_count ?? p.views ?? 0),
           files: parsedFiles,
         };
       });
 
-      // Include study material items; if none exist in DB yet, merge curated academic PDFs so library is never falsely empty
       const studyItems = normalized.filter((item) => item.id && item.title);
       if (studyItems.length > 0) {
         setMaterials(studyItems);
       } else {
         setMaterials(CURATED_FALLBACK_MATERIALS);
       }
-    } catch (err: any) {
-      setFetchError(
-        err?.message || 'Unable to load study materials right now. Please try again.'
-      );
+    } catch {
+      setMaterials(CURATED_FALLBACK_MATERIALS);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.uid]);
 
   useEffect(() => {
     void loadMaterials();
@@ -720,7 +736,7 @@ export const MaterialLibraryPage: React.FC = () => {
                         </div>
 
                         <Link
-                          to={`/commons/${item.id}`}
+                          to={`/material/${buildEntitySlug(item.id, item.title)}`}
                           className="block text-[16px] font-bold text-white hover:text-[#ff6b72] transition-colors line-clamp-2 leading-snug"
                         >
                           {item.title}
@@ -762,7 +778,7 @@ export const MaterialLibraryPage: React.FC = () => {
                       </a>
                     ) : (
                       <Link
-                        to={`/commons/${item.id}`}
+                        to={`/material/${buildEntitySlug(item.id, item.title)}`}
                         className="boardly-glass-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 text-white shrink-0"
                       >
                         <Eye className="w-3.5 h-3.5 text-[#D71921]" />

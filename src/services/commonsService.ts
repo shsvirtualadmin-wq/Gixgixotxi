@@ -27,6 +27,7 @@ import {
   invalidateSwrCache,
   consumeEarlyPostsFetch,
 } from '@/lib/swrCache';
+import seedPostsDataset from '../../data/cloudflare_d1_posts.json';
 
 /**
  * ============================================================================
@@ -318,9 +319,19 @@ export function applyLiveAuthorToPost(
  * both `.toDate()` (for legacy UI components) and ISO string / Date parsing.
  */
 export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
-  const createdMs =
+  const rawCreatedNum =
     typeof raw.createdAtMs === 'number'
       ? raw.createdAtMs
+      : typeof raw.created_at === 'number'
+      ? raw.created_at
+      : typeof raw.createdAt === 'number'
+      ? raw.createdAt
+      : null;
+  const createdMs =
+    rawCreatedNum !== null
+      ? rawCreatedNum > 0 && rawCreatedNum < 10_000_000_000
+        ? rawCreatedNum * 1000
+        : rawCreatedNum
       : raw.createdAt
       ? Date.parse(String(raw.createdAt)) || Date.now()
       : Date.now();
@@ -341,8 +352,69 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     ? recordPostLikeSnapshot(id, rawLikes, currentUid, votedByMe, false)
     : { count: rawLikes };
 
-  const authorUid = raw.isAnonymous ? null : raw.authorUid || null;
+  const isAnon = Boolean(raw.isAnonymous ?? raw.is_anonymous);
+  const authorUid = isAnon ? null : raw.authorUid || raw.author_uid || null;
   const cachedAuthor = authorUid ? getCachedPublicProfile(authorUid) : null;
+
+  let parsedTags: string[] = [];
+  if (Array.isArray(raw.tags)) {
+    parsedTags = raw.tags;
+  } else if (typeof raw.tags_json === 'string') {
+    try {
+      const t = JSON.parse(raw.tags_json);
+      if (Array.isArray(t)) parsedTags = t;
+    } catch {
+      parsedTags = [];
+    }
+  }
+
+  let parsedFiles: CommonsFileAttachment[] = [];
+  if (Array.isArray(raw.files)) {
+    parsedFiles = raw.files;
+  } else if (typeof raw.files_json === 'string') {
+    try {
+      const f = JSON.parse(raw.files_json);
+      if (Array.isArray(f)) parsedFiles = f;
+    } catch {
+      parsedFiles = [];
+    }
+  }
+  parsedFiles = parsedFiles.map((f: any) => {
+    const rawFileUrl = String(f?.url || '').trim();
+    const fileR2Key =
+      String(f?.r2Key || f?.key || '').trim() ||
+      (rawFileUrl.includes('.r2.dev/')
+        ? rawFileUrl.split('.r2.dev/')[1] || ''
+        : rawFileUrl.startsWith('/api/commons/r2/')
+        ? rawFileUrl.slice('/api/commons/r2/'.length)
+        : rawFileUrl.startsWith('/api/r2/')
+        ? rawFileUrl.slice('/api/r2/'.length)
+        : '');
+    const normalizedUrl =
+      fileR2Key && fileR2Key.startsWith('commons/')
+        ? `/api/r2/${fileR2Key}`
+        : f?.localUrl && String(f.localUrl).startsWith('/api/r2/')
+        ? String(f.localUrl)
+        : rawFileUrl.startsWith('/api/commons/r2/')
+        ? `/api/r2/${rawFileUrl.slice('/api/commons/r2/'.length)}`
+        : rawFileUrl;
+    return {
+      ...f,
+      r2Key: fileR2Key || f?.r2Key,
+      url: normalizedUrl,
+      downloadUrl:
+        fileR2Key && fileR2Key.startsWith('commons/')
+          ? `/api/r2/${fileR2Key}`
+          : f?.downloadUrl || normalizedUrl,
+    };
+  });
+
+  const rawEquippedAvatar =
+    raw.authorEquippedAvatar ?? raw.author_equipped_avatar ?? raw.authorAvatar ?? raw.author_avatar;
+  const rawFrame = raw.authorFrame ?? raw.author_frame;
+  const rawRole = raw.authorRole ?? raw.author_role;
+  const rawCustomRole = raw.authorCustomRole ?? raw.author_custom_role;
+
   const basePost: CommonsPost = {
     ...(raw as any),
     id,
@@ -353,44 +425,44 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     subject: String(raw.subject || 'General'),
     chapter: String(raw.chapter || 'General'),
     target: String(raw.target || 'General'),
-    classLevel: String(raw.classLevel || raw.class || '11'),
+    classLevel: String(raw.classLevel || raw.class_level || raw.class || '11'),
     board: String(raw.board || 'Federal'),
-    tags: Array.isArray(raw.tags) ? raw.tags : [],
-    files: Array.isArray(raw.files) ? raw.files : [],
-    isAnonymous: Boolean(raw.isAnonymous),
-    anonymousAlias: String(raw.anonymousAlias || 'Anonymous Student'),
+    tags: parsedTags,
+    files: parsedFiles,
+    isAnonymous: isAnon,
+    anonymousAlias: String(raw.anonymousAlias || raw.anonymous_alias || 'Anonymous Student'),
     authorUid,
-    authorName: raw.isAnonymous
+    authorName: isAnon
       ? 'Anonymous Student'
-      : String(raw.authorName || 'Student'),
-    authorAvatar: raw.isAnonymous
+      : String(raw.authorName || raw.author_name || 'Student'),
+    authorAvatar: isAnon
       ? null
-      : resolveCosmeticItemId(raw.authorEquippedAvatar || raw.authorAvatar, 'avatar'),
-    authorFrame: raw.isAnonymous
+      : resolveCosmeticItemId(rawEquippedAvatar, 'avatar'),
+    authorFrame: isAnon
       ? null
-      : resolveCosmeticItemId(raw.authorFrame, 'frame'),
-    authorEquippedAvatar: raw.isAnonymous
+      : resolveCosmeticItemId(rawFrame, 'frame'),
+    authorEquippedAvatar: isAnon
       ? null
-      : resolveCosmeticItemId(raw.authorEquippedAvatar || raw.authorAvatar, 'avatar'),
+      : resolveCosmeticItemId(rawEquippedAvatar, 'avatar'),
     authorPhotoURL: null,
-    authorRole: raw.isAnonymous
+    authorRole: isAnon
       ? 'student'
-      : String(raw.authorUid || '').startsWith('bot_')
+      : String(authorUid || '').startsWith('bot_')
       ? 'bot'
-      : raw.authorRole || 'student',
-    authorCustomRole: raw.isAnonymous ? null : raw.authorCustomRole || null,
-    authorProBadge: raw.isAnonymous ? null : raw.authorProBadge ?? raw.proBadge ?? null,
-    proBadge: raw.isAnonymous ? null : raw.proBadge ?? raw.authorProBadge ?? null,
+      : rawRole || 'student',
+    authorCustomRole: isAnon ? null : rawCustomRole || null,
+    authorProBadge: isAnon ? null : raw.authorProBadge ?? raw.proBadge ?? null,
+    proBadge: isAnon ? null : raw.proBadge ?? raw.authorProBadge ?? null,
     upvotes: snapshot.count,
     downvotes: Number(raw.downvotes ?? 0),
     views: Number(raw.views ?? 0),
-    commentCount: Number(raw.commentCount ?? 0),
-    saveCount: Number(raw.saveCount ?? 0),
-    sharesCount: Number(raw.sharesCount ?? 0),
-    reportCount: Number(raw.reportCount ?? 0),
-    isHidden: Boolean(raw.isHidden),
-    isPinned: Boolean(raw.isPinned),
-    isFeatured: Boolean(raw.isFeatured),
+    commentCount: Number(raw.commentCount ?? raw.comment_count ?? 0),
+    saveCount: Number(raw.saveCount ?? raw.save_count ?? 0),
+    sharesCount: Number(raw.sharesCount ?? raw.shares_count ?? 0),
+    reportCount: Number(raw.reportCount ?? raw.report_count ?? 0),
+    isHidden: Boolean(raw.isHidden ?? raw.is_hidden),
+    isPinned: Boolean(raw.isPinned ?? raw.is_pinned),
+    isFeatured: Boolean(raw.isFeatured ?? raw.is_featured),
     createdAt: timestampCompat as any,
   };
   return applyLiveAuthorToPost(basePost, cachedAuthor);
@@ -729,7 +801,7 @@ export async function fetchCommonsPosts(options: {
 
   const cacheKey = `${options.currentUid || 'anon'}:${params.toString()}`;
   const cached = commonsListCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) {
+  if (cached && Date.now() < cached.expiresAt && cached.data.posts.length > 0) {
     return cached.data;
   }
   const existingPromise = commonsListInFlight.get(cacheKey);
@@ -740,24 +812,76 @@ export async function fetchCommonsPosts(options: {
   const promise = (async () => {
     let data: Record<string, any> | null = null;
 
-    // 1. Reuse early parallel fetch started in index.html if available
+    // 1. Reuse early parallel fetch started in index.html if available and non-empty
     if (isDefaultFirstPage) {
       const earlyPromise = consumeEarlyPostsFetch();
       if (earlyPromise) {
-        data = await earlyPromise.catch(() => null);
+        const earlyData = await earlyPromise.catch(() => null);
+        if (earlyData && Array.isArray(earlyData.posts) && earlyData.posts.length > 0) {
+          data = earlyData;
+        }
       }
     }
 
     // 2. Otherwise fetch from /api/posts
-    if (!data || !Array.isArray(data.posts)) {
-      const headers = await getOptionalAuthHeader();
-      const resp = await fetch(`/api/posts?${params.toString()}`, {
-        headers,
-      });
-      data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !Array.isArray(data?.posts)) {
-        throw new Error(data?.error || `Failed to load posts (HTTP ${resp.status}).`);
+    if (!data || !Array.isArray(data.posts) || data.posts.length === 0) {
+      try {
+        const headers = await getOptionalAuthHeader();
+        const resp = await fetch(`/api/posts?${params.toString()}`, {
+          headers,
+        });
+        const fetchedData = await resp.json().catch(() => ({}));
+        if (resp.ok && Array.isArray(fetchedData?.posts)) {
+          data = fetchedData;
+        } else if (!data) {
+          throw new Error(fetchedData?.error || `Failed to load posts (HTTP ${resp.status}).`);
+        }
+      } catch (fetchErr) {
+        if (options.feedTab === 'following' || options.searchQuery?.trim()) {
+          throw fetchErr;
+        }
       }
+    }
+
+    // 3. Fallback to bundled canonical D1 seed posts if the remote endpoint returned 0 posts
+    // on a public feed request (e.g. unseeded edge D1 instance or preview mode)
+    const canFallbackToSeed =
+      (!options.feedTab || options.feedTab === 'all') &&
+      !options.searchQuery?.trim() &&
+      Array.isArray((seedPostsDataset as any)?.posts) &&
+      (seedPostsDataset as any).posts.length > 0;
+
+    if ((!data || !Array.isArray(data.posts) || data.posts.length === 0) && canFallbackToSeed) {
+      let seedRows = ((seedPostsDataset as any).posts as Record<string, any>[]).filter(
+        (p) => !Number(p.is_hidden || 0)
+      );
+      if (options.subject && options.subject !== 'all') {
+        const sLow = options.subject.toLowerCase();
+        seedRows = seedRows.filter((p) => {
+          const ps = String(p.subject || '').toLowerCase();
+          return ps === sLow || ps.includes(sLow) || (sLow === 'computer' && ps.includes('computer'));
+        });
+      }
+      if (options.type && options.type !== 'all') {
+        seedRows = seedRows.filter((p) => p.type === options.type);
+      }
+      if (options.target && options.target !== 'all') {
+        const tLow = options.target.toLowerCase();
+        seedRows = seedRows.filter((p) => String(p.target || '').toLowerCase().includes(tLow));
+      }
+      const pagedSeed = seedRows.slice(offset, offset + pageSize);
+      const seedHasMore = offset + pageSize < seedRows.length;
+      data = {
+        success: true,
+        backendMode: 'cloudflare-d1-r2',
+        posts: pagedSeed,
+        hasMore: seedHasMore,
+        nextOffset: seedHasMore ? offset + pageSize : null,
+      };
+    }
+
+    if (!data || !Array.isArray(data.posts)) {
+      throw new Error('Could not load community posts');
     }
 
     const rawPosts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
@@ -798,21 +922,23 @@ export async function fetchCommonsPosts(options: {
         | 'cloudflare-d1-r2'
         | 'preview-demo',
     };
-    commonsListCache.set(cacheKey, {
-      data: result,
-      expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
-    });
-    if (isDefaultFirstPage) {
-      commonsListCache.set('anon:limit=15&offset=0', {
+    if (result.posts.length > 0) {
+      commonsListCache.set(cacheKey, {
         data: result,
         expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
       });
-      writeSwrCache(COMMONS_SWR_KEY, {
-        rawPosts: data.posts.slice(0, 15),
-        lastDoc: result.lastDoc,
-        hasMore: result.hasMore,
-        backendMode: result.backendMode,
-      });
+      if (isDefaultFirstPage) {
+        commonsListCache.set('anon:limit=15&offset=0', {
+          data: result,
+          expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+        });
+        writeSwrCache(COMMONS_SWR_KEY, {
+          rawPosts: data.posts.slice(0, 15),
+          lastDoc: result.lastDoc,
+          hasMore: result.hasMore,
+          backendMode: result.backendMode,
+        });
+      }
     }
     return result;
   })();
@@ -838,14 +964,37 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
 
   const p = (async () => {
     try {
-      const headers = await getOptionalAuthHeader();
-      const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
-        headers,
-      });
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      if (!data?.post) return null;
-      const rawNormalized = normalizeCloudflarePost(data.post);
+      let rawPost: Record<string, any> | null = null;
+      try {
+        const headers = await getOptionalAuthHeader();
+        const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
+          headers,
+        });
+        if (resp.ok) {
+          const data = await resp.json().catch(() => null);
+          if (data?.post) {
+            rawPost = data.post;
+          }
+        }
+      } catch {
+        // Fallback to seedPostsDataset below
+      }
+
+      if (!rawPost && Array.isArray((seedPostsDataset as any)?.posts)) {
+        const cleanTarget = decodeURIComponent(postIdOrSlug).trim();
+        const seedMatch = ((seedPostsDataset as any).posts as Record<string, any>[]).find(
+          (sp) =>
+            sp.id === cleanTarget ||
+            sp.slug === cleanTarget ||
+            cleanTarget.startsWith(`${sp.id}-`)
+        );
+        if (seedMatch && !Number(seedMatch.is_hidden || 0)) {
+          rawPost = seedMatch;
+        }
+      }
+
+      if (!rawPost) return null;
+      const rawNormalized = normalizeCloudflarePost(rawPost);
       let liveAuthor: PublicProfile | null = null;
       if (!rawNormalized.isAnonymous && rawNormalized.authorUid) {
         const map = await getPublicProfiles([rawNormalized.authorUid]).catch(() => null);

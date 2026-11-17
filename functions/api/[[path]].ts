@@ -29,6 +29,20 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
+  // Serve static R2 mirror files (/api/r2/* and legacy /api/commons/r2/*) from Pages static assets
+  if (path.startsWith('/api/r2/') || path.startsWith('/api/commons/r2/')) {
+    const normalizedPath = path.startsWith('/api/commons/r2/')
+      ? `/api/r2/${path.slice('/api/commons/r2/'.length)}`
+      : path;
+    const assetUrl = new URL(normalizedPath, url.origin);
+    if (typeof (context as any).next === 'function' && normalizedPath === path) {
+      return (context as any).next();
+    }
+    if (env.ASSETS && typeof env.ASSETS.fetch === 'function') {
+      return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+    }
+  }
+
   // 0. Server-side self-healing owner bootstrap: POST /api/me/roles
   if (path === '/api/me/roles') {
     return handleMeRolesRequest({

@@ -206,11 +206,13 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     }
     setLoadError(null);
     try {
+      const isFiltered = subjectFilter !== 'all' || classFilter !== 'all';
       const [targetPost, res] = await Promise.all([
         targetPostId ? fetchCommonsPostById(targetPostId) : Promise.resolve(null),
         fetchCommonsPosts({
           feedTab: feedTab === 'following' ? 'following' : 'all',
-          pageSize: 15,
+          subject: subjectFilter !== 'all' ? subjectFilter : undefined,
+          pageSize: isFiltered ? 60 : 15,
           currentUid: user?.uid,
         }),
       ]);
@@ -247,7 +249,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     } finally {
       setLoading(false);
     }
-  }, [feedTab, user?.uid, targetPostId]);
+  }, [feedTab, user?.uid, targetPostId, subjectFilter, classFilter]);
 
   useEffect(() => {
     loadPosts();
@@ -259,6 +261,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     try {
       const res = await fetchCommonsPosts({
         feedTab: feedTab === 'following' ? 'following' : 'all',
+        subject: subjectFilter !== 'all' ? subjectFilter : undefined,
         lastDoc,
         pageSize: 15,
         currentUid: user?.uid,
@@ -275,20 +278,48 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     } finally {
       setLoadingMore(false);
     }
-  }, [lastDoc, loadingMore, feedTab, user?.uid]);
+  }, [lastDoc, loadingMore, feedTab, user?.uid, subjectFilter]);
 
   const displayedPosts = useMemo(() => {
     let list = [...posts];
     if (subjectFilter !== 'all') {
+      const sf = subjectFilter.toLowerCase();
       list = list.filter((p) => {
         const sub = (p.subject || '').toLowerCase();
-        return sub.includes(subjectFilter) || (p.tags || []).some((t) => t.toLowerCase().includes(subjectFilter));
+        return (
+          sub.includes(sf) ||
+          (sf === 'computer' && sub.includes('computer')) ||
+          (p.tags || []).some((t) => t.toLowerCase().includes(sf))
+        );
       });
     }
     if (classFilter !== 'all') {
+      const cf = classFilter.toLowerCase();
       list = list.filter((p) => {
-        const target = `${p.target || ''} ${p.classLevel || ''} ${p.board || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
-        return target.includes(classFilter.toLowerCase());
+        const rawClass = String(p.classLevel || '').replace(/^Class\s+/i, '').trim().toLowerCase();
+        const hay = `${p.target || ''} ${p.classLevel || ''} ${p.board || ''} ${p.chapter || ''} ${p.title || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
+        if (cf === 'fbise') {
+          return hay.includes('fbise') || hay.includes('federal');
+        }
+        if (cf === 'ecat') {
+          return hay.includes('ecat') || hay.includes('net') || hay.includes('nust') || hay.includes('fast') || hay.includes('engineering') || String(p.subject || '').toLowerCase() === 'mathematics';
+        }
+        if (cf === 'punjab') {
+          return hay.includes('punjab') || hay.includes('lahore') || hay.includes('bise') || hay.includes('general');
+        }
+        if (cf === 'class 9' || cf === '9') {
+          return rawClass === '9' || hay.includes('class 9') || hay.includes('ssc-i');
+        }
+        if (cf === 'class 10' || cf === '10') {
+          return rawClass === '10' || hay.includes('class 10') || hay.includes('ssc-ii');
+        }
+        if (cf === '11' || cf === 'class 11') {
+          return rawClass === '11' || hay.includes('class 11') || hay.includes('hssc-i');
+        }
+        if (cf === '12' || cf === 'class 12') {
+          return rawClass === '12' || hay.includes('class 12') || hay.includes('hssc-ii') || hay.includes('mdcat');
+        }
+        return hay.includes(cf);
       });
     }
     if (feedTab === 'trending') {

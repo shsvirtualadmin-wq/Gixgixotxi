@@ -442,128 +442,140 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcq_reports_mcq_id ON mcq_reports(mcq_id)`),
     ]);
 
-    const uniSeedStmts = PRE_SEEDED_UNIVERSITIES.map((u) =>
-      db
-        .prepare(
-          `INSERT OR IGNORE INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at)
-           VALUES (?, ?, ?, ?, ?, 0, 0, datetime('now'))`
-        )
-        .bind(u.id, u.name, u.slug, u.logo_url || '', u.sort_order)
-    );
-    await db.batch(uniSeedStmts);
-
-    // Seed 12 bot accounts in user_roles (role = 'bot') and bot_accounts
-    const botRoleStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
-      db
-        .prepare(
-          `INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at)
-           VALUES (?, ?, 'bot', ?, 0, ?)`
-        )
-        .bind(b.uid, b.email, `${b.subject} Bot`, 1743465600000)
-    );
-    const botAccountStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
-      db
-        .prepare(
-          `INSERT OR IGNORE INTO bot_accounts (
-            uid, placeholder_name, display_name, subject, class_level, board, equipped_avatar,
-            enabled, post_count, comment_count, like_count, last_run_at, last_status, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, NULL, 'Ready', ?)`
-        )
-        .bind(
-          b.uid,
-          b.placeholderName,
-          b.displayName,
-          b.subject,
-          b.classLevel,
-          b.board,
-          b.equippedAvatar,
-          1743465600000
-        )
-    );
-    const welcomeStmt = db
-      .prepare(
-        `INSERT OR IGNORE INTO announcements (
-          id, title, message, author_id, author_email, author_name, is_pinned, is_welcome, created_at, updated_at
-        ) VALUES (
-          'welcome_to_boardly',
-          'Welcome to Boardly',
-          'Welcome to Boardly! Practice entrance and board exam MCQs, share and download verified notes and past papers in Boardly Commons, track your daily study streaks, and climb the Grand Line leaderboard. Click this notification anytime to review what is new — we are glad to have you onboard!',
-          'A5YMRimdHRcmeDWutxtUGt2e4hf2',
-          'shsvirtualadmin@gmail.com',
-          'SHS Virtual Academy',
-          1,
-          1,
-          1743465600000,
-          1743465600000
-        )`
+    try {
+      const uniSeedStmts = PRE_SEEDED_UNIVERSITIES.map((u) =>
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO universities (id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at)
+             VALUES (?, ?, ?, ?, ?, 0, 0, datetime('now'))`
+          )
+          .bind(u.id, u.name, u.slug, u.logo_url || '', u.sort_order)
       );
-    await db.batch([...botRoleStmts, ...botAccountStmts, welcomeStmt]);
+      await db.batch(uniSeedStmts);
+    } catch (uniErr) {
+      console.warn('[CloudflareWorker] University seed warning:', uniErr);
+    }
 
-    // Seed initial Commons study material posts if table is completely empty
-    const countRow = await db.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
-    if (Number(countRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.posts)) {
-      const initialPosts = (seedDataset as any).posts as Record<string, any>[];
-      const chunkSize = 20;
-      const basePastMs = 1743465600000;
-      for (let i = 0; i < initialPosts.length; i += chunkSize) {
-        const chunk = initialPosts.slice(i, i + chunkSize);
-        const stmts = chunk.map((p, idx) => {
-          const pastTs = basePastMs - (i + idx) * 3600000;
-          return db
-            .prepare(
-              `INSERT OR IGNORE INTO posts (
-                id, slug, type, title, description, subject, chapter, target,
-                class_level, board, format, tags_json, files_json, is_anonymous,
-                anonymous_alias, author_uid, real_author_uid, author_name,
-                author_avatar, author_frame, author_equipped_avatar, author_photo_url,
-                author_role, author_custom_role, status, visibility,
-                is_hidden, is_pinned, is_featured, upvotes, downvotes, views,
-                comment_count, save_count, shares_count, report_count, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              String(p.id),
-              String(p.slug || `${p.id}-post`),
-              String(p.type || 'notes'),
-              String(p.title || ''),
-              String(p.description || ''),
-              String(p.subject || 'General'),
-              String(p.chapter || 'General'),
-              String(p.target || 'General'),
-              String(p.class_level || '11'),
-              String(p.board || 'Federal'),
-              String(p.format || 'text'),
-              typeof p.tags_json === 'string' ? p.tags_json : JSON.stringify(p.tags || []),
-              typeof p.files_json === 'string' ? p.files_json : JSON.stringify(p.files || []),
-              Number(p.is_anonymous ? 1 : 0),
-              String(p.anonymous_alias || 'Anonymous Student'),
-              p.author_uid || null,
-              p.real_author_uid || null,
-              String(p.author_name || 'Anonymous Student'),
-              p.author_avatar || null,
-              p.author_frame || null,
-              p.author_equipped_avatar || null,
-              p.author_photo_url || null,
-              String(p.author_role || 'student'),
-              p.author_custom_role || null,
-              String(p.status || 'published'),
-              String(p.visibility || 'public'),
-              Number(p.is_hidden || 0),
-              Number(p.is_pinned || 0),
-              Number(p.is_featured || 0),
-              Number(p.upvotes || 0),
-              Number(p.downvotes || 0),
-              Number(p.views || 0),
-              Number(p.comment_count || 0),
-              Number(p.save_count || 0),
-              Number(p.shares_count || 0),
-              Number(p.report_count || 0),
-              pastTs,
-              pastTs
-            );
-        });
-        await db.batch(stmts);
+    try {
+      // Seed 12 bot accounts in user_roles (role = 'bot') and bot_accounts
+      const botRoleStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at)
+             VALUES (?, ?, 'bot', ?, 0, ?)`
+          )
+          .bind(b.uid, b.email, `${b.subject} Bot`, 1743465600000)
+      );
+      const botAccountStmts = BOARDLY_BOT_ACCOUNTS.map((b) =>
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO bot_accounts (
+              uid, placeholder_name, display_name, subject, class_level, board, equipped_avatar,
+              enabled, post_count, comment_count, like_count, last_run_at, last_status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, NULL, 'Ready', ?)`
+          )
+          .bind(
+            b.uid,
+            b.placeholderName,
+            b.displayName,
+            b.subject,
+            b.classLevel,
+            b.board,
+            b.equippedAvatar,
+            1743465600000
+          )
+      );
+      const welcomeStmt = db
+        .prepare(
+          `INSERT OR IGNORE INTO announcements (
+            id, title, message, author_id, author_email, author_name, is_pinned, is_welcome, created_at, updated_at
+          ) VALUES (
+            'welcome_to_boardly',
+            'Welcome to Boardly',
+            'Welcome to Boardly! Practice entrance and board exam MCQs, share and download verified notes and past papers in Boardly Commons, track your daily study streaks, and climb the Grand Line leaderboard. Click this notification anytime to review what is new — we are glad to have you onboard!',
+            'A5YMRimdHRcmeDWutxtUGt2e4hf2',
+            'shsvirtualadmin@gmail.com',
+            'SHS Virtual Academy',
+            1,
+            1,
+            1743465600000,
+            1743465600000
+          )`
+        );
+      await db.batch([...botRoleStmts, ...botAccountStmts, welcomeStmt]);
+    } catch (botErr) {
+      console.warn('[CloudflareWorker] Bot/welcome seed warning:', botErr);
+    }
+
+    try {
+      // Seed initial Commons study material posts if table is completely empty
+      const countRow = await db.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
+      if (Number(countRow?.cnt ?? 0) === 0 && Array.isArray((seedDataset as any)?.posts)) {
+        const initialPosts = (seedDataset as any).posts as Record<string, any>[];
+        const chunkSize = 20;
+        const basePastMs = 1743465600000;
+        for (let i = 0; i < initialPosts.length; i += chunkSize) {
+          const chunk = initialPosts.slice(i, i + chunkSize);
+          const stmts = chunk.map((p, idx) => {
+            const pastTs = basePastMs - (i + idx) * 3600000;
+            return db
+              .prepare(
+                `INSERT OR IGNORE INTO posts (
+                  id, slug, type, title, description, subject, chapter, target,
+                  class_level, board, format, tags_json, files_json, is_anonymous,
+                  anonymous_alias, author_uid, real_author_uid, author_name,
+                  author_avatar, author_frame, author_equipped_avatar, author_photo_url,
+                  author_role, author_custom_role, status, visibility,
+                  is_hidden, is_pinned, is_featured, upvotes, downvotes, views,
+                  comment_count, save_count, shares_count, report_count, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .bind(
+                String(p.id),
+                String(p.slug || `${p.id}-post`),
+                String(p.type || 'notes'),
+                String(p.title || ''),
+                String(p.description || ''),
+                String(p.subject || 'General'),
+                String(p.chapter || 'General'),
+                String(p.target || 'General'),
+                String(p.class_level || '11'),
+                String(p.board || 'Federal'),
+                String(p.format || 'text'),
+                typeof p.tags_json === 'string' ? p.tags_json : JSON.stringify(p.tags || []),
+                typeof p.files_json === 'string' ? p.files_json : JSON.stringify(p.files || []),
+                Number(p.is_anonymous ? 1 : 0),
+                String(p.anonymous_alias || 'Anonymous Student'),
+                p.author_uid ?? null,
+                p.real_author_uid ?? null,
+                String(p.author_name || 'Anonymous Student'),
+                p.author_avatar ?? null,
+                p.author_frame ?? null,
+                p.author_equipped_avatar ?? null,
+                p.author_photo_url ?? null,
+                String(p.author_role || 'student'),
+                p.author_custom_role ?? null,
+                String(p.status || 'published'),
+                String(p.visibility || 'public'),
+                Number(p.is_hidden || 0),
+                Number(p.is_pinned || 0),
+                Number(p.is_featured || 0),
+                Number(p.upvotes || 0),
+                Number(p.downvotes || 0),
+                Number(p.views || 0),
+                Number(p.comment_count || 0),
+                Number(p.save_count || 0),
+                Number(p.shares_count || 0),
+                Number(p.report_count || 0),
+                pastTs,
+                pastTs
+              );
+          });
+          await db.batch(stmts);
+        }
       }
+    } catch (postSeedErr) {
+      console.warn('[CloudflareWorker] Posts seed warning:', postSeedErr);
     }
 
     // Old Admin Bank questions are no longer auto-seeded; the D1 university bank starts empty.
@@ -945,8 +957,10 @@ export function normalizeStoredFileEntry(f: any): Record<string, any> {
   const size = Number(f?.size || 0);
   const type = String(f?.type || 'application/octet-stream');
   const rawUrl = String(f?.url || '').trim();
+  const r2DevMatch = rawUrl.match(/^https?:\/\/[^/]+\.r2\.dev\/(commons\/.+)$/i);
   const r2Key =
     String(f?.r2Key || f?.key || '').trim() ||
+    (r2DevMatch ? r2DevMatch[1] : '') ||
     (rawUrl.startsWith('posts/') || rawUrl.startsWith('commons/') ? rawUrl : '');
 
   const isImage =
@@ -957,6 +971,10 @@ export function normalizeStoredFileEntry(f: any): Record<string, any> {
     url = isImage
       ? `${BOARDLY_CLOUDFLARE_CONFIG.inlineFileEndpoint}?key=${encodeURIComponent(r2Key)}`
       : `${BOARDLY_CLOUDFLARE_CONFIG.downloadEndpoint}?key=${encodeURIComponent(r2Key)}`;
+  } else if (r2Key && r2Key.startsWith('commons/')) {
+    url = String(f?.localUrl || '').trim() || `/api/r2/${r2Key}`;
+  } else if (url.startsWith('/api/commons/r2/')) {
+    url = `/api/r2/${url.slice('/api/commons/r2/'.length)}`;
   } else if (!url && r2Key) {
     url = `/api/r2/${r2Key}`;
   }
@@ -6935,7 +6953,52 @@ ${urls
         binds.push(pageSize + 1, offset);
 
         const { results } = await env.DB.prepare(sql).bind(...binds).all();
-        const rows = results || [];
+        let rows: any[] = results || [];
+        if (
+          rows.length === 0 &&
+          !flaggedOnly &&
+          !authorUid &&
+          !savedBy &&
+          !likedBy &&
+          !followingUidsRaw &&
+          Array.isArray((seedDataset as any)?.posts)
+        ) {
+          const totalInDb = await env.DB.prepare('SELECT COUNT(*) as cnt FROM posts')
+            .first<{ cnt: number }>()
+            .catch(() => ({ cnt: 0 }));
+          if (Number(totalInDb?.cnt ?? 0) === 0) {
+            let fallbackRows = ((seedDataset as any).posts as Record<string, any>[]).filter(
+              (p) => !Number(p.is_hidden || 0)
+            );
+            if (subject && subject !== 'all') {
+              const sLow = subject.toLowerCase();
+              fallbackRows = fallbackRows.filter((p) => {
+                const ps = String(p.subject || '').toLowerCase();
+                return ps === sLow || ps.includes(sLow) || (sLow === 'computer' && ps.includes('computer'));
+              });
+            }
+            if (type && type !== 'all') {
+              fallbackRows = fallbackRows.filter((p) => p.type === type);
+            }
+            if (target && target !== 'all') {
+              const tLow = target.toLowerCase();
+              fallbackRows = fallbackRows.filter((p) =>
+                String(p.target || '').toLowerCase().includes(tLow)
+              );
+            }
+            if (search) {
+              const qLow = search.toLowerCase();
+              fallbackRows = fallbackRows.filter(
+                (p) =>
+                  String(p.title || '').toLowerCase().includes(qLow) ||
+                  String(p.description || '').toLowerCase().includes(qLow) ||
+                  String(p.subject || '').toLowerCase().includes(qLow) ||
+                  String(p.tags_json || '').toLowerCase().includes(qLow)
+              );
+            }
+            rows = fallbackRows.slice(offset, offset + pageSize + 1);
+          }
+        }
         const hasMore = rows.length > pageSize;
         const pageRows = rows.slice(0, pageSize);
         const liveAuthorsMap = await resolveWorkerLiveAuthorsBatch(

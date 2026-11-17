@@ -455,8 +455,14 @@ export function extractR2KeyFromUrl(rawUrl: string): string {
     const parsed = new URL(trimmed, 'https://boardly.cfd');
     const keyParam = parsed.searchParams.get('key');
     if (keyParam) return keyParam;
+    if (parsed.pathname.startsWith('/api/commons/r2/')) {
+      return decodeURIComponent(parsed.pathname.slice('/api/commons/r2/'.length));
+    }
     if (parsed.pathname.startsWith('/api/r2/')) {
       return decodeURIComponent(parsed.pathname.slice('/api/r2/'.length));
+    }
+    if (parsed.hostname.endsWith('.r2.dev') && parsed.pathname.length > 1) {
+      return decodeURIComponent(parsed.pathname.slice(1));
     }
     if (trimmed.startsWith(R2_PUBLIC_BUCKET_URL)) {
       return trimmed.slice(R2_PUBLIC_BUCKET_URL.length + 1);
@@ -484,9 +490,12 @@ export async function downloadCommonsAttachment(file: {
     extractR2KeyFromUrl(file.downloadUrl || '') ||
     extractR2KeyFromUrl(file.url || '');
 
-  const downloadEndpoint = r2Key
-    ? `${BOARDLY_CLOUDFLARE_CONFIG.downloadEndpoint}?key=${encodeURIComponent(r2Key)}`
-    : file.downloadUrl || file.url || '';
+  const downloadEndpoint =
+    r2Key && r2Key.startsWith('commons/')
+      ? `/api/r2/${r2Key}`
+      : r2Key
+      ? `${BOARDLY_CLOUDFLARE_CONFIG.downloadEndpoint}?key=${encodeURIComponent(r2Key)}`
+      : file.downloadUrl || file.url || '';
 
   if (!downloadEndpoint) {
     throw new Error('Download link is missing.');
@@ -524,18 +533,24 @@ export async function downloadCommonsAttachment(file: {
 }
 
 /**
- * Resolves any attachment URL for inline display (e.g. images).
+ * Resolves any attachment URL for inline display or direct download.
  */
 export async function resolveCommonsAttachmentUrl(
   rawUrl: string,
   r2Key?: string
 ): Promise<string> {
   const key = r2Key || extractR2KeyFromUrl(rawUrl);
+  if (key && key.startsWith('commons/')) {
+    return `/api/r2/${key}`;
+  }
   if (key && key.startsWith('posts/')) {
     return `${BOARDLY_CLOUDFLARE_CONFIG.inlineFileEndpoint}?key=${encodeURIComponent(key)}`;
   }
   const trimmed = (rawUrl || '').trim();
   if (!trimmed) return '';
+  if (trimmed.startsWith('/api/commons/r2/')) {
+    return `/api/r2/${trimmed.slice('/api/commons/r2/'.length)}`;
+  }
   if (
     trimmed.startsWith('https://') ||
     trimmed.startsWith('http://') ||

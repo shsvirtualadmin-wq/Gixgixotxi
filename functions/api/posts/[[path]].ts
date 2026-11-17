@@ -343,16 +343,19 @@ export async function onRequest(context: {
       .toLowerCase();
     const sort = (url.searchParams.get('sort') || 'newest').trim();
 
-    let rows = memoryStore.posts.filter((p) => !p.is_hidden);
+    let rows = memoryStore.posts.filter((p) => !Number(p.is_hidden || 0));
 
     if (subject && subject !== 'all') {
-      rows = rows.filter((p) => String(p.subject || '').toLowerCase() === subject);
+      rows = rows.filter((p) => {
+        const ps = String(p.subject || '').toLowerCase();
+        return ps === subject || ps.includes(subject) || (subject === 'computer' && ps.includes('computer'));
+      });
     }
     if (type && type !== 'all') {
       rows = rows.filter((p) => p.type === type);
     }
     if (target && target !== 'all') {
-      rows = rows.filter((p) => String(p.target || '').toLowerCase() === target);
+      rows = rows.filter((p) => String(p.target || '').toLowerCase().includes(target));
     }
     if (search) {
       rows = rows.filter(

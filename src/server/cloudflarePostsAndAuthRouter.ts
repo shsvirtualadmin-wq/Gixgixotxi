@@ -2001,8 +2001,12 @@ ${postSitemaps}
         });
       }
 
-      const localPath = path.join(R2_LOCAL_DIR, rawKey);
-      if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
+      const candidatePaths = [
+        path.join(R2_LOCAL_DIR, rawKey),
+        path.join(process.cwd(), 'public', 'api', 'r2', rawKey),
+      ];
+      const localPath = candidatePaths.find((p) => fs.existsSync(p) && fs.statSync(p).isFile());
+      if (localPath) {
         const ext = path.extname(localPath).toLowerCase();
         const mime =
           ext === '.pdf'
@@ -2069,8 +2073,8 @@ ${postSitemaps}
     return res.status(404).json({ success: false, error: 'Image not found.' });
   });
 
-  // 2. Serve R2 files from local R2 mirror or proxy to R2_PUBLIC_BASE_URL
-  app.get('/api/r2/*', async (req, res) => {
+  // 2. Serve R2 files from local R2 mirror or public/api/r2 static directory
+  app.get(['/api/r2/*', '/api/commons/r2/*'], async (req, res) => {
     const rawKey = (req.params as any)[0] || '';
     const safeKey = String(rawKey).replace(/\.\./g, '').replace(/^\/+/, '');
     if (!safeKey) {
@@ -2084,8 +2088,12 @@ ${postSitemaps}
       });
     }
 
-    const localPath = path.join(R2_LOCAL_DIR, safeKey);
-    if (fs.existsSync(localPath) && fs.statSync(localPath).isFile()) {
+    const candidatePaths = [
+      path.join(R2_LOCAL_DIR, safeKey),
+      path.join(process.cwd(), 'public', 'api', 'r2', safeKey),
+    ];
+    const localPath = candidatePaths.find((p) => fs.existsSync(p) && fs.statSync(p).isFile());
+    if (localPath) {
       const ext = path.extname(localPath).toLowerCase();
       const mime =
         ext === '.pdf'
@@ -2106,8 +2114,7 @@ ${postSitemaps}
       return res.sendFile(localPath);
     }
 
-    // Redirect to public Cloudflare R2 URL if not cached on local disk
-    return res.redirect(302, `${R2_PUBLIC_BASE_URL}/${safeKey}`);
+    return res.status(404).json({ success: false, error: 'Resource file not found.' });
   });
 
   // 3. GET /api/posts — Paginated list, filter, search (Zero Firebase reads)
@@ -2138,26 +2145,45 @@ ${postSitemaps}
 
       let rows = store.posts.filter((p) => {
         if (flaggedOnly) {
-          return p.report_count >= 1 || p.is_hidden === 1;
+          return Number(p.report_count || 0) >= 1 || Number(p.is_hidden || 0) === 1;
         }
-        return p.is_hidden === 0;
+        return !Number(p.is_hidden || 0);
       });
 
       if (subject && subject !== 'all') {
-        rows = rows.filter((p) => p.subject.toLowerCase() === subject.toLowerCase());
+        const subjLower = subject.toLowerCase();
+        rows = rows.filter((p) => {
+          const ps = String(p.subject || '').toLowerCase();
+          if (ps === subjLower || ps.includes(subjLower)) return true;
+          if (subjLower === 'computer' && ps.includes('computer')) return true;
+          return false;
+        });
       }
       if (type && type !== 'all') {
         rows = rows.filter((p) => p.type === type);
       }
       if (target && target !== 'all') {
-        rows = rows.filter((p) => p.target.toLowerCase() === target.toLowerCase());
+        const targetLower = target.toLowerCase();
+        rows = rows.filter(
+          (p) =>
+            String(p.target || '').toLowerCase() === targetLower ||
+            String(p.target || '').toLowerCase().includes(targetLower)
+        );
       }
       if (classLevel && classLevel !== 'all') {
-        const cleanClass = classLevel.replace(/^Class\s+/i, '').trim();
-        rows = rows.filter((p) => p.class_level === cleanClass);
+        const cleanClass = classLevel.replace(/^Class\s+/i, '').trim().toLowerCase();
+        rows = rows.filter((p) => {
+          const pcl = String(p.class_level || '').replace(/^Class\s+/i, '').trim().toLowerCase();
+          return pcl === cleanClass || String(p.target || '').toLowerCase().includes(`class ${cleanClass}`);
+        });
       }
       if (board && board !== 'all') {
-        rows = rows.filter((p) => p.board.toLowerCase() === board.toLowerCase());
+        const boardLower = board.toLowerCase() === 'fbise' ? 'federal' : board.toLowerCase();
+        rows = rows.filter(
+          (p) =>
+            String(p.board || '').toLowerCase().includes(boardLower) ||
+            String(p.target || '').toLowerCase().includes(boardLower)
+        );
       }
       if (authorUid) {
         rows = rows.filter((p) => {
@@ -12623,6 +12649,23 @@ export function resolveServerRouteMeta(pathname: string) {
         .replace(/^\/material\//, '')
         .replace(/\/+$/, '')
     );
+    const knownMaterialSubjects = new Set([
+      'mathematics',
+      'physics',
+      'chemistry',
+      'biology',
+      'computer-science',
+      'english',
+      'urdu',
+      'islamiat',
+      'pakistan-studies',
+    ]);
+    if (
+      (cleanPath.startsWith('/material/') || cleanPath.startsWith('/study-material/')) &&
+      knownMaterialSubjects.has(slugParam.toLowerCase())
+    ) {
+      return baseMeta;
+    }
     const lookupId = extractIdFromSlugOrId(slugParam);
     const store = loadD1Store();
     const d1Row = store.posts.find(
