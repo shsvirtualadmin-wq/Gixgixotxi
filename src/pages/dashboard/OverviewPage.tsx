@@ -48,12 +48,12 @@ import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import type { AttemptQuestion } from '@/types/index';
 import type { GradedAttemptQuestion } from '@/services/ambassadorTestService';
 
-const LazyDragonCompanion = lazy(() =>
-  import('@/components/dashboard/DragonCompanion').then((m) => ({ default: m.DragonCompanion }))
-);
+import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
 
-const LazyMyCertificatesSection = lazy(() =>
-  import('@/pages/dashboard/MyCertificatesPage').then((m) => ({ default: m.MyCertificatesSection }))
+const LazyDragonCompanion = lazy(() =>
+  import('@/components/dashboard/DragonCompanion')
+    .then((m) => ({ default: m?.DragonCompanion || (() => null) }))
+    .catch(() => ({ default: () => null }))
 );
 
 function getUniversityInitials(name: string): string {
@@ -1054,9 +1054,7 @@ export function OverviewPage() {
 
       {/* 7. My Certificates */}
       <div className="cv-auto">
-        <Suspense fallback={null}>
-          <LazyMyCertificatesSection compact={true} />
-        </Suspense>
+        <MyCertificatesSection compact={true} />
       </div>
 
       {/* ── FULL-SCREEN UNIVERSITY TEST RUNNER (Apple × Nothing OS 100dvh layout) ── */}

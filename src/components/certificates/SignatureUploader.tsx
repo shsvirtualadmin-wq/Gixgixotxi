@@ -69,6 +69,23 @@ async function processSignatureFileClientSide(fileOrDataUrl: File | string): Pro
   const imgData = ctx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
+  // Detect whether image has a mostly opaque white/light background vs transparent/dark background
+  let opaqueCount = 0;
+  let lightOpaqueCount = 0;
+  let darkOpaqueCount = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const a = data[i + 3];
+    if (a >= 128) {
+      opaqueCount++;
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      if (lum >= 200) lightOpaqueCount++;
+      else if (lum <= 55) darkOpaqueCount++;
+    }
+  }
+  const totalPixels = w * h;
+  const hasOpaqueLightBg = opaqueCount > totalPixels * 0.4 && lightOpaqueCount > opaqueCount * 0.5;
+  const hasOpaqueDarkBg = opaqueCount > totalPixels * 0.4 && darkOpaqueCount > opaqueCount * 0.5;
+
   let minX = w;
   let minY = h;
   let maxX = -1;
@@ -89,20 +106,37 @@ async function processSignatureFileClientSide(fileOrDataUrl: File | string): Pro
 
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
       const minCh = Math.min(r, g, b);
+      const maxCh = Math.max(r, g, b);
 
-      if (minCh >= 236 || lum >= 242) {
-        data[idx + 3] = 0;
-        continue;
-      } else if (lum >= 205 && minCh >= 190) {
-        const factor = Math.max(0, Math.min(1, (242 - lum) / 37));
-        data[idx + 3] = Math.round(a * factor);
+      if (hasOpaqueLightBg) {
+        if (minCh >= 236 || lum >= 242) {
+          data[idx + 3] = 0;
+          continue;
+        } else if (lum >= 205 && minCh >= 190) {
+          const factor = Math.max(0, Math.min(1, (242 - lum) / 37));
+          data[idx + 3] = Math.round(a * factor);
+        }
+      } else if (hasOpaqueDarkBg) {
+        if (maxCh <= 24 || lum <= 20) {
+          data[idx + 3] = 0;
+          continue;
+        } else if (lum <= 60 && maxCh <= 70) {
+          const factor = Math.max(0, Math.min(1, (lum - 20) / 40));
+          data[idx + 3] = Math.round(a * factor);
+        }
       }
 
       if (data[idx + 3] > 18) {
+        // Normalize stroke ink to deep navy (#0F172A) while keeping smooth alpha
+        data[idx] = 15;
+        data[idx + 1] = 23;
+        data[idx + 2] = 42;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+      } else {
+        data[idx + 3] = 0;
       }
     }
   }
@@ -169,6 +203,25 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
     }
     return 'dark';
   });
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+    const syncTheme = () => {
+      const attr =
+        document.documentElement.getAttribute('data-theme') ||
+        document.body.getAttribute('data-theme') ||
+        '';
+      const isLight =
+        attr.toLowerCase() === 'light' || document.documentElement.classList.contains('light');
+      setPreviewThemeMode(isLight ? 'light' : 'dark');
+    };
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'class'],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -461,7 +514,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
       )}
 
       {errorMsg && (
-        <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/10 text-xs text-red-400 flex items-center justify-between gap-2">
+        <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/10 text-xs text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle size={15} className="shrink-0" />
             <span>{errorMsg}</span>
@@ -470,7 +523,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
             <button
               type="button"
               onClick={() => void loadSignatures()}
-              className="px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-[11px] font-bold text-red-200 hover:bg-red-500/30 cursor-pointer shrink-0"
+              className="px-2.5 py-1 rounded-lg bg-red-500/20 border border-red-500/40 text-[11px] font-bold text-red-700 dark:text-red-200 hover:bg-red-500/30 cursor-pointer shrink-0"
             >
               Retry
             </button>
@@ -479,7 +532,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
       )}
 
       {successMsg && (
-        <div className="p-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-400 flex items-center gap-2">
+        <div className="p-3.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
           <CheckCircle2 size={15} className="shrink-0" />
           <span>{successMsg}</span>
         </div>
@@ -498,7 +551,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
               </p>
             </div>
             {activeSignature && (
-              <span className="px-2.5 py-1 rounded-md font-mono text-[10px] uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span className="px-2.5 py-1 rounded-md font-mono text-[10px] uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
                 ACTIVE · v{activeSignature.version}
               </span>
             )}
@@ -593,34 +646,52 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
             </span>
             <div className="grid grid-cols-2 gap-3">
               {/* Light Preview */}
-              <div className="p-3 rounded-xl border border-slate-300 bg-[#F8FAFC] flex flex-col items-center justify-center min-h-[88px]">
-                <span className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">
+              <div
+                data-signature-preview="light"
+                style={{ backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }}
+                className="p-3 rounded-xl border border-slate-300 bg-[#F8FAFC] flex flex-col items-center justify-center min-h-[88px]"
+              >
+                <span
+                  style={{ color: '#475569' }}
+                  className="font-mono text-[9px] uppercase tracking-wider text-slate-600 mb-1"
+                >
                   LIGHT THEME PREVIEW
                 </span>
                 {effectivePreviewSignatureUrl ? (
                   <img
                     src={effectivePreviewSignatureUrl}
                     alt="Signature on light background"
-                    className="max-h-12 w-auto object-contain"
+                    className="max-h-12 w-auto object-contain brightness-0"
                   />
                 ) : (
-                  <span className="text-[11px] text-slate-400 italic">No signature loaded</span>
+                  <span style={{ color: '#64748B' }} className="text-[11px] text-slate-500 italic">
+                    No signature loaded
+                  </span>
                 )}
               </div>
 
               {/* Dark Preview */}
-              <div className="p-3 rounded-xl border border-slate-800 bg-[#0A0A0D] flex flex-col items-center justify-center min-h-[88px]">
-                <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400 mb-1">
+              <div
+                data-signature-preview="dark"
+                style={{ backgroundColor: '#0A0A0D', borderColor: '#1E293B' }}
+                className="p-3 rounded-xl border border-slate-800 bg-[#0A0A0D] flex flex-col items-center justify-center min-h-[88px]"
+              >
+                <span
+                  style={{ color: '#94A3B8' }}
+                  className="font-mono text-[9px] uppercase tracking-wider text-slate-400 mb-1"
+                >
                   DARK THEME PREVIEW
                 </span>
                 {effectivePreviewSignatureUrl ? (
                   <img
                     src={effectivePreviewSignatureUrl}
                     alt="Signature on dark background"
-                    className="max-h-12 w-auto object-contain invert brightness-200 contrast-125"
+                    className="max-h-12 w-auto object-contain brightness-0 invert"
                   />
                 ) : (
-                  <span className="text-[11px] text-slate-600 italic">No signature loaded</span>
+                  <span style={{ color: '#64748B' }} className="text-[11px] text-slate-500 italic">
+                    No signature loaded
+                  </span>
                 )}
               </div>
             </div>
@@ -670,7 +741,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 type="button"
                 onClick={handleRemoveSignature}
                 disabled={saving || !activeSignature}
-                className="min-h-[44px] px-3.5 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-xs font-semibold text-red-400 hover:bg-red-500/20 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                className="min-h-[44px] px-3.5 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/20 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
               >
                 <Trash2 size={13} />
                 <span>Remove</span>
@@ -779,11 +850,11 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       {item.previewDataUrl ? (
-                        <div className="w-16 h-9 rounded bg-white p-1 flex items-center justify-center shrink-0">
+                        <div className="w-16 h-9 rounded bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0">
                           <img
                             src={item.previewDataUrl}
                             alt={`v${item.version}`}
-                            className="max-h-full max-w-full object-contain"
+                            className="max-h-full max-w-full object-contain brightness-0"
                           />
                         </div>
                       ) : null}
@@ -797,7 +868,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                       </div>
                     </div>
                     {item.active ? (
-                      <span className="px-2 py-1 rounded font-mono text-[10px] uppercase bg-emerald-500/15 text-emerald-400">
+                      <span className="px-2 py-1 rounded font-mono text-[10px] uppercase bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
                         Active
                       </span>
                     ) : (

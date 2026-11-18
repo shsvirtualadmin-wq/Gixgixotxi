@@ -133,8 +133,8 @@ export const MaterialDetailPage: React.FC = () => {
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
         <div className="glass-panel p-8 max-w-md w-full text-center">
           <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
-          <h1 className="font-dot text-xl font-bold text-white mb-2">Could not load study material</h1>
-          <p className="text-xs text-white/65 mb-6">
+          <h1 className="font-dot text-xl font-bold text-[var(--text)] mb-2">Could not load study material</h1>
+          <p className="text-xs text-[var(--text-secondary)] mb-6">
             Please check your connection and try again.
           </p>
           <div className="flex items-center justify-center gap-3">
@@ -203,7 +203,10 @@ export const MaterialDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
+    <div
+      data-student-page="material-detail"
+      className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-hidden bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6"
+    >
       <PageMeta
         title={`${material.title} — ${practiceTarget.subjectSlug ? practiceTarget.label : material.subject || 'Study Material'} PDF & Notes`}
         description={
@@ -246,16 +249,16 @@ export const MaterialDetailPage: React.FC = () => {
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
-                className="glass-pill px-3 py-1.5 text-xs text-white/75 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
+                className="glass-pill px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text)] inline-flex items-center gap-1.5 cursor-pointer"
               >
-                {copied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
+                {copied ? <Check size={13} className="text-emerald-500 dark:text-emerald-400" /> : <Share2 size={13} />}
                 <span>{copied ? 'Link Copied' : 'Share'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => requireAuth('report this study material', () => setReportOpen(true))}
-                className="glass-pill px-3 py-1.5 text-xs text-white/60 hover:text-[#D71921] inline-flex items-center gap-1.5 cursor-pointer"
+                className="glass-pill px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-[#D71921] inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Flag size={13} />
                 <span>Report</span>
@@ -263,41 +266,41 @@ export const MaterialDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-white mb-3 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-[var(--text)] mb-3 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
             <MathText text={material.title} />
           </h1>
 
           {/* Public Metadata Table */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 min-w-0">
             <div className="glass-card p-3.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-wider text-white/45 block">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">
                 Subject
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate block">
                 {material.subject || 'General'}
               </span>
             </div>
             <div className="glass-card p-3.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-wider text-white/45 block">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">
                 Resource Type
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate block">
                 {typeMeta.badgeLabel}
               </span>
             </div>
             <div className="glass-card p-3.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-wider text-white/45 block">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">
                 Uploader
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate block">
                 {uploaderName}
               </span>
             </div>
             <div className="glass-card p-3.5 min-w-0">
-              <span className="text-[10px] uppercase tracking-wider text-white/45 block">
+              <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">
                 Attachments
               </span>
-              <span className="text-xs sm:text-sm font-bold text-white truncate block">
+              <span className="text-xs sm:text-sm font-bold text-[var(--text)] truncate block">
                 {files.length > 0 ? `${files.length} File(s)` : 'Text Note'}
               </span>
             </div>
@@ -306,11 +309,11 @@ export const MaterialDetailPage: React.FC = () => {
           {/* Public Description / Preview */}
           {material.description && (
             <div className="glass-card p-4 sm:p-5 mb-6 min-w-0 max-w-full overflow-x-hidden">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-2">
                 <Eye size={14} className="text-[#D71921]" />
                 <span>Public Overview &amp; Notes Preview</span>
               </div>
-              <div className="boardly-post-content text-sm text-white/80 whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+              <div className="boardly-post-content text-sm text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                 <MathText text={maskPublicUserText(material.description)} block />
               </div>
             </div>
@@ -334,7 +337,7 @@ export const MaterialDetailPage: React.FC = () => {
 
           {/* Downloadable Files Section (Requires Login) */}
           <div className="space-y-3 w-full max-w-full min-w-0">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-white/50">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
               Download Files
             </h2>
             {docFiles.length > 0 ? (
@@ -348,8 +351,8 @@ export const MaterialDetailPage: React.FC = () => {
                       <FileText size={20} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-white truncate">{file.name}</p>
-                      <p className="text-xs text-white/50">
+                      <p className="text-sm font-bold text-[var(--text)] truncate">{file.name}</p>
+                      <p className="text-xs text-[var(--text-muted)]">
                         {file.type || 'Document'} ·{' '}
                         {file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'Verified Resource'}
                       </p>
@@ -393,7 +396,7 @@ export const MaterialDetailPage: React.FC = () => {
               ))
             ) : (
               <div className="glass-card p-4 flex flex-wrap items-center justify-between gap-4 min-w-0">
-                <span className="text-xs text-white/65 min-w-0">
+                <span className="text-xs text-[var(--text-secondary)] min-w-0">
                   View full community discussion and comments on this study note:
                 </span>
                 <Link
@@ -412,10 +415,10 @@ export const MaterialDetailPage: React.FC = () => {
           <div className="flex items-center gap-3 min-w-0">
             <BookOpen size={20} className="text-[#D71921] shrink-0" />
             <div className="min-w-0">
-              <h2 className="font-dot text-lg font-bold text-white">
+              <h2 className="font-dot text-lg font-bold text-[var(--text)]">
                 Practice {practiceTarget.label} MCQs
               </h2>
-              <p className="text-xs text-white/65">
+              <p className="text-xs text-[var(--text-secondary)]">
                 Test your understanding with chapter-by-chapter MCQs and step-by-step KaTeX derivations.
               </p>
             </div>
@@ -432,7 +435,7 @@ export const MaterialDetailPage: React.FC = () => {
         {relatedMaterials.length > 0 && (
           <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             <div className="flex items-center justify-between gap-2 mb-4">
-              <h2 className="font-dot text-xl font-bold text-white">
+              <h2 className="font-dot text-xl font-bold text-[var(--text)]">
                 More Study Materials in Library
               </h2>
               <Link
@@ -452,8 +455,8 @@ export const MaterialDetailPage: React.FC = () => {
                   <span className="text-[11px] text-[#D71921] font-semibold uppercase">
                     {rm.subject || 'Study Material'}
                   </span>
-                  <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">{rm.title}</h3>
-                  <p className="boardly-post-content text-xs text-white/60 mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
+                  <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">{rm.title}</h3>
+                  <p className="boardly-post-content text-xs text-[var(--text-secondary)] mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     {maskPublicUserText(rm.description)}
                   </p>
                 </Link>

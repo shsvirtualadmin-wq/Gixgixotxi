@@ -400,7 +400,10 @@ export const MaterialLibraryPage: React.FC = () => {
   const canonicalPath = activeSilo ? `/material/${activeSilo.slug}` : '/material';
 
   return (
-    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom overflow-x-hidden">
+    <div
+      data-student-page="material"
+      className="relative min-h-screen bg-[var(--bg)] text-[var(--text)] boardly-page-safe-bottom overflow-x-hidden"
+    >
       <PageMeta
         title={pageTitle}
         description={pageDescription}
@@ -412,8 +415,8 @@ export const MaterialLibraryPage: React.FC = () => {
         className="pointer-events-none fixed inset-0 overflow-hidden z-0"
         aria-hidden="true"
       >
-        <div className="absolute -top-28 -left-24 w-[360px] h-[360px] rounded-full bg-[#D71921]/20 blur-[120px]" />
-        <div className="absolute top-1/3 -right-28 w-[340px] h-[340px] rounded-full bg-[#3a4cff]/16 blur-[130px]" />
+        <div className="absolute -top-28 -left-24 w-[360px] h-[360px] rounded-full bg-[#D71921]/15 dark:bg-[#D71921]/20 blur-[120px]" />
+        <div className="absolute top-1/3 -right-28 w-[340px] h-[340px] rounded-full bg-[#3a4cff]/12 dark:bg-[#3a4cff]/16 blur-[130px]" />
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-3.5 sm:px-6 pt-3 pb-16 space-y-4">
@@ -430,11 +433,11 @@ export const MaterialLibraryPage: React.FC = () => {
                 }
               }}
               aria-label="Go back"
-              className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer shrink-0"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <span className="font-doto-title text-[15px] sm:text-[16px] tracking-[0.14em] text-white truncate">
+            <span className="font-doto-title text-[15px] sm:text-[16px] tracking-[0.14em] text-[var(--text)] truncate">
               MATERIAL
             </span>
           </div>
@@ -443,9 +446,9 @@ export const MaterialLibraryPage: React.FC = () => {
             <button
               type="button"
               onClick={() => navigate('/store')}
-              className="press-scale h-9 px-3 rounded-full bg-amber-500/15 border border-amber-400/40 inline-flex items-center gap-1.5 text-xs font-bold text-amber-200 font-inter-num cursor-pointer"
+              className="press-scale h-9 px-3 rounded-full bg-amber-500/15 border border-amber-400/40 inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-200 font-inter-num cursor-pointer"
             >
-              <Coins className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <Coins className="w-3.5 h-3.5 text-amber-500 dark:text-amber-300 shrink-0" />
               <span>{Number(wallet.balance || 0).toLocaleString()}</span>
             </button>
 
@@ -453,7 +456,7 @@ export const MaterialLibraryPage: React.FC = () => {
               type="button"
               onClick={() => navigate(user ? '/profile' : '/login')}
               aria-label="Profile"
-              className="press-scale rounded-full p-0.5 border border-white/20 cursor-pointer shrink-0"
+              className="press-scale rounded-full p-0.5 border border-[var(--border)] cursor-pointer shrink-0"
             >
               <BoardlyAvatar
                 size={34}
@@ -473,25 +476,25 @@ export const MaterialLibraryPage: React.FC = () => {
         >
           <Link
             to="/"
-            className="px-3 py-1 rounded-full text-[11px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/14 text-white/75 hover:text-white transition-colors"
+            className="px-3 py-1 rounded-full text-[11px] font-semibold bg-[var(--surface)] hover:bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text)] transition-colors"
           >
             Home
           </Link>
-          <span className="text-white/35 text-xs">/</span>
+          <span className="text-[var(--text-muted)] text-xs">/</span>
           <Link
             to="/material"
             className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-colors ${
               !activeSilo
-                ? 'bg-[#D71921]/20 border-[#D71921]/45 text-white'
-                : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/14 text-white/75 hover:text-white'
+                ? 'bg-[#D71921]/15 border-[#D71921]/45 text-[#D71921] dark:text-white'
+                : 'bg-[var(--surface)] hover:bg-[var(--surface-2)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text)]'
             }`}
           >
             Study Material
           </Link>
           {activeSilo && (
             <>
-              <span className="text-white/35 text-xs">/</span>
-              <span className="px-3 py-1 rounded-full text-[11px] font-semibold bg-[#D71921]/20 border border-[#D71921]/45 text-white">
+              <span className="text-[var(--text-muted)] text-xs">/</span>
+              <span className="px-3 py-1 rounded-full text-[11px] font-semibold bg-[#D71921]/15 border border-[#D71921]/45 text-[#D71921] dark:text-white">
                 {activeSilo.name}
               </span>
             </>
@@ -501,28 +504,28 @@ export const MaterialLibraryPage: React.FC = () => {
         {/* 3. HERO GLASS CARD */}
         <section className="boardly-glass-card rounded-[32px] p-5 sm:p-7 relative overflow-hidden">
           <div
-            className="pointer-events-none absolute inset-0 opacity-20"
+            className="pointer-events-none absolute inset-0 opacity-20 dark:opacity-20"
             style={{
               backgroundImage:
-                'radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px)',
+                'radial-gradient(currentColor 1px, transparent 1px)',
               backgroundSize: '12px 12px',
             }}
           />
           <div className="relative z-10 space-y-3">
             {/* Small Doto label "STUDY RESOURCE INDEX" (not a red button) */}
-            <div className="font-doto-title text-[11px] tracking-[0.18em] text-white/72 uppercase">
+            <div className="font-doto-title text-[11px] tracking-[0.18em] text-[var(--text-secondary)] uppercase">
               STUDY RESOURCE INDEX
             </div>
 
             {/* Doto title "Study Material Library" (28px) */}
-            <h1 className="font-doto-title text-[26px] sm:text-[28px] leading-tight text-white">
+            <h1 className="font-doto-title text-[26px] sm:text-[28px] leading-tight text-[var(--text)]">
               {activeSilo
                 ? `${activeSilo.name} Study Material`
                 : 'Study Material Library'}
             </h1>
 
             {/* Short Inter description: Signed-in vs Signed-out copy */}
-            <p className="text-[14px] sm:text-[15px] text-white/72 font-sans leading-relaxed max-w-2xl">
+            <p className="text-[14px] sm:text-[15px] text-[var(--text-secondary)] font-sans leading-relaxed max-w-2xl">
               {isSignedIn
                 ? 'Browse, download and share study material.'
                 : 'Sign in to download full PDFs or upload your own notes.'}
@@ -552,7 +555,7 @@ export const MaterialLibraryPage: React.FC = () => {
             className={`press-scale min-h-[48px] px-4 rounded-full inline-flex items-center justify-center text-xs font-bold tracking-wide whitespace-nowrap transition-all ${
               activeSubjectSlug === 'all'
                 ? 'boardly-red-pill text-white'
-                : 'boardly-glass-pill text-white/75 hover:text-white'
+                : 'boardly-glass-pill text-[var(--text-secondary)] hover:text-[var(--text)]'
             }`}
           >
             All Subjects
@@ -566,7 +569,7 @@ export const MaterialLibraryPage: React.FC = () => {
                 className={`press-scale min-h-[48px] px-4 rounded-full inline-flex items-center justify-center text-xs font-bold tracking-wide whitespace-nowrap transition-all ${
                   active
                     ? 'boardly-red-pill text-white'
-                    : 'boardly-glass-pill text-white/75 hover:text-white'
+                    : 'boardly-glass-pill text-[var(--text-secondary)] hover:text-[var(--text)]'
                 }`}
               >
                 {s.name}
@@ -578,21 +581,21 @@ export const MaterialLibraryPage: React.FC = () => {
         {/* 5. ONE GLASS SEARCH PILL (S1) + RESOURCE-TYPE FILTER AS iOS-STYLE MENU CHIP */}
         <div className="flex flex-col sm:flex-row gap-2.5">
           <div className="search-pill-wrapper boardly-glass-pill flex-1 min-h-[48px] px-4 flex items-center gap-2.5 transition-all">
-            <Search className="w-4 h-4 text-white/60 shrink-0 pointer-events-none" />
+            <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search notes, formula sheets, or chapters..."
               aria-label="Search study material"
-              className="flex-1 text-sm text-white placeholder:text-white/50"
+              className="flex-1 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)]"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
                 aria-label="Clear search"
-                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/75 cursor-pointer"
+                className="w-7 h-7 rounded-full bg-[var(--surface-2)] hover:bg-[var(--border)] flex items-center justify-center text-[var(--text-secondary)] cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -606,13 +609,13 @@ export const MaterialLibraryPage: React.FC = () => {
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
               aria-label="Filter by resource type"
-              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer pr-2"
+              className="bg-transparent text-xs font-bold text-[var(--text)] outline-none cursor-pointer pr-2"
             >
               {RESOURCE_TYPE_OPTIONS.map((opt) => (
                 <option
                   key={opt.id}
                   value={opt.id}
-                  className="bg-[#111115] text-white"
+                  className="bg-[var(--surface)] text-[var(--text)]"
                 >
                   {opt.label}
                 </option>
@@ -630,24 +633,24 @@ export const MaterialLibraryPage: React.FC = () => {
                 className="boardly-glass-card rounded-[26px] p-5 animate-pulse space-y-3"
               >
                 <div className="flex items-start gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 shrink-0" />
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] shrink-0" />
                   <div className="space-y-2 flex-1">
-                    <div className="h-4 w-3/4 rounded bg-white/10" />
-                    <div className="h-3 w-1/2 rounded bg-white/10" />
+                    <div className="h-4 w-3/4 rounded bg-[var(--surface-2)]" />
+                    <div className="h-3 w-1/2 rounded bg-[var(--surface-2)]" />
                   </div>
                 </div>
-                <div className="h-10 w-full rounded-xl bg-white/5" />
-                <div className="h-9 w-full rounded-full bg-white/10" />
+                <div className="h-10 w-full rounded-xl bg-[var(--surface-2)]" />
+                <div className="h-9 w-full rounded-full bg-[var(--surface-2)]" />
               </div>
             ))}
           </div>
         ) : fetchError ? (
           <div className="boardly-glass-card rounded-[28px] p-8 text-center space-y-3">
             <AlertCircle className="w-10 h-10 text-[#D71921] mx-auto" />
-            <h2 className="text-base font-bold text-white">
+            <h2 className="text-base font-bold text-[var(--text)]">
               Could not load study material
             </h2>
-            <p className="text-xs text-white/70 max-w-md mx-auto">{fetchError}</p>
+            <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">{fetchError}</p>
             <button
               type="button"
               onClick={() => void loadMaterials()}
@@ -660,11 +663,11 @@ export const MaterialLibraryPage: React.FC = () => {
         ) : filteredMaterials.length === 0 ? (
           hasActiveFilterOrSearch ? (
             <div className="boardly-glass-card rounded-[28px] p-10 text-center space-y-3">
-              <BookOpen className="w-10 h-10 text-white/45 mx-auto" />
-              <h2 className="text-base font-bold text-white">
+              <BookOpen className="w-10 h-10 text-[var(--text-muted)] mx-auto" />
+              <h2 className="text-base font-bold text-[var(--text)]">
                 No study materials match your current filter
               </h2>
-              <p className="text-xs text-white/65 max-w-md mx-auto">
+              <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
                 Try clearing your search or switching to All Subjects and All Resource
                 Types.
               </p>
@@ -677,18 +680,18 @@ export const MaterialLibraryPage: React.FC = () => {
                     navigate('/material');
                   }
                 }}
-                className="boardly-glass-pill press-scale min-h-[48px] px-5 rounded-full text-xs font-bold text-white cursor-pointer"
+                className="boardly-glass-pill press-scale min-h-[48px] px-5 rounded-full text-xs font-bold text-[var(--text)] cursor-pointer"
               >
                 Reset Filters
               </button>
             </div>
           ) : (
             <div className="boardly-glass-card rounded-[28px] p-10 text-center space-y-3">
-              <BookOpen className="w-10 h-10 text-white/45 mx-auto" />
-              <h2 className="text-base font-bold text-white">
+              <BookOpen className="w-10 h-10 text-[var(--text-muted)] mx-auto" />
+              <h2 className="text-base font-bold text-[var(--text)]">
                 No study material yet. Be the first to share
               </h2>
-              <p className="text-xs text-white/65 max-w-md mx-auto">
+              <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
                 Upload your notes, past papers, or formula sheets to help students across
                 Pakistan.
               </p>
@@ -716,28 +719,28 @@ export const MaterialLibraryPage: React.FC = () => {
                 <article
                   key={item.id}
                   style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
-                  className="boardly-glass-card rounded-[26px] p-5 flex flex-col justify-between gap-4 transition-all hover:border-white/30"
+                  className="boardly-glass-card rounded-[26px] p-5 flex flex-col justify-between gap-4 transition-all hover:border-[var(--border-strong)]"
                 >
                   <div className="space-y-3">
                     {/* Top Row: Type Icon Tile + Title + Subject Chip */}
                     <div className="flex items-start gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-[#D71921]/18 border border-[#D71921]/40 flex items-center justify-center text-[#ff6b72] shrink-0">
+                      <div className="w-12 h-12 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/35 flex items-center justify-center text-[#D71921] dark:text-[#ff6b72] shrink-0">
                         <TypeIcon className="w-6 h-6" />
                       </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D71921]/20 border border-[#D71921]/40 text-[#ff8b90]">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D71921]/15 border border-[#D71921]/35 text-[#D71921] dark:text-[#ff8b90]">
                             {item.subject || 'General'}
                           </span>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-white/[0.07] border border-white/15 text-white/80">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)]">
                             {typeLabel}
                           </span>
                         </div>
 
                         <Link
                           to={`/material/${buildEntitySlug(item.id, item.title)}`}
-                          className="block text-[16px] font-bold text-white hover:text-[#ff6b72] transition-colors line-clamp-2 leading-snug"
+                          className="block text-[16px] font-bold text-[var(--text)] hover:text-[#D71921] dark:hover:text-[#ff6b72] transition-colors line-clamp-2 leading-snug"
                         >
                           {item.title}
                         </Link>
@@ -745,7 +748,7 @@ export const MaterialLibraryPage: React.FC = () => {
                     </div>
 
                     {item.description && (
-                      <p className="text-[13px] text-white/70 line-clamp-2 leading-relaxed">
+                      <p className="text-[13px] text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
                         {item.description}
                       </p>
                     )}
@@ -753,8 +756,8 @@ export const MaterialLibraryPage: React.FC = () => {
 
                   {/* Footer Metadata: Uploader, Date, File Type + Size, Download Button */}
                   <div className="pt-3 nothing-dotted-divider flex items-center justify-between gap-3">
-                    <div className="min-w-0 text-[11px] text-white/65 space-y-0.5">
-                      <div className="font-semibold text-white/85 truncate">
+                    <div className="min-w-0 text-[11px] text-[var(--text-muted)] space-y-0.5">
+                      <div className="font-semibold text-[var(--text-secondary)] truncate">
                         By {item.authorName}
                       </div>
                       <div className="flex items-center gap-1.5 font-inter-num">
@@ -779,7 +782,7 @@ export const MaterialLibraryPage: React.FC = () => {
                     ) : (
                       <Link
                         to={`/material/${buildEntitySlug(item.id, item.title)}`}
-                        className="boardly-glass-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 text-white shrink-0"
+                        className="boardly-glass-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 text-[var(--text)] shrink-0"
                       >
                         <Eye className="w-3.5 h-3.5 text-[#D71921]" />
                         <span>Open</span>

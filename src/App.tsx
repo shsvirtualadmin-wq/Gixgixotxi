@@ -25,6 +25,9 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
       const attempt = (remaining: number) => {
         factory()
           .then((mod) => {
+            if (!mod || (typeof mod === 'object' && !mod.default && Object.keys(mod).length === 0)) {
+              throw new Error('Dynamically imported module resolved to empty or undefined');
+            }
             try {
               sessionStorage.removeItem('boardly_chunk_retry_reloaded');
             } catch {
@@ -45,7 +48,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
                 return;
               }
             }
-            resolve(mod as { default: T });
+            throw new Error('Dynamically imported module has no valid component export');
           })
           .catch((error) => {
             if (remaining > 0) {

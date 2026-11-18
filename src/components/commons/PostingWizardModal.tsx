@@ -440,30 +440,30 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
       />
 
       {/* iOS Bottom Sheet (radius 40 on mobile, grabber, glass, Fixed Header + Scrolling Body + Sticky Footer) */}
-      <div className="boardly-glass-card relative z-10 w-full sm:max-w-xl h-[94dvh] sm:h-auto sm:max-h-[90dvh] rounded-t-[40px] sm:rounded-[36px] flex flex-col overflow-hidden text-white shadow-[0_-18px_60px_rgba(0,0,0,0.85)]">
+      <div className="boardly-glass-card relative z-10 w-full sm:max-w-xl h-[94dvh] sm:h-auto sm:max-h-[90dvh] rounded-t-[40px] sm:rounded-[36px] flex flex-col overflow-hidden text-[var(--text)] shadow-[0_-18px_60px_rgba(0,0,0,0.35)] dark:shadow-[0_-18px_60px_rgba(0,0,0,0.85)]">
         {/* Grabber Handle */}
         <div className="pt-2.5 pb-1 flex justify-center shrink-0">
-          <div className="w-11 h-1.5 rounded-full bg-white/25" />
+          <div className="w-11 h-1.5 rounded-full bg-[var(--border-strong)]" />
         </div>
 
         {/* FIXED HEADER: Red dot, Doto title, "Step N of 2" chip, Close button */}
         <header className="px-5 pt-2 pb-3.5 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full bg-[#D71921] shadow-[0_0_10px_#D71921] shrink-0" />
-            <h2 className="font-doto-title text-[14px] sm:text-[15px] tracking-[0.12em] text-white truncate">
+            <h2 className="font-doto-title text-[14px] sm:text-[15px] tracking-[0.12em] text-[var(--text)] truncate">
               SHARE STUDY RESOURCE
             </h2>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-white/10 border border-white/18 text-white/90 font-inter-num">
+            <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] font-inter-num">
               Step {step} of 2
             </span>
             <button
               type="button"
               onClick={() => !isSubmitting && onClose()}
               aria-label="Close modal"
-              className="press-scale w-11 h-11 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/15 flex items-center justify-center text-white/85 cursor-pointer"
+              className="press-scale w-11 h-11 rounded-full bg-[var(--surface-2)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -471,7 +471,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         </header>
 
         {/* Thin Progress Line (50% on Step 1, 100% on Step 2) */}
-        <div className="w-full h-[2px] bg-white/10 shrink-0 overflow-hidden">
+        <div className="w-full h-[2px] bg-[var(--border)] shrink-0 overflow-hidden">
           <div
             className="h-full bg-[#D71921] shadow-[0_0_10px_#D71921] transition-all duration-300"
             style={{ width: step === 1 ? '50%' : '100%' }}
@@ -480,14 +480,14 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
         {/* Success Overlay Toast / Check Pop */}
         {publishedSuccess && (
-          <div className="absolute inset-0 z-30 bg-[#050506]/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-bounce">
+          <div className="absolute inset-0 z-30 bg-[var(--surface)]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-500 dark:text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-bounce">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
-            <h3 className="mt-4 font-doto-title text-lg tracking-[0.14em] text-white">
+            <h3 className="mt-4 font-doto-title text-lg tracking-[0.14em] text-[var(--text)]">
               PUBLISHED
             </h3>
-            <p className="mt-1 text-sm text-white/75">
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
               Your study resource is now live for the community.
             </p>
           </div>
@@ -496,7 +496,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         {/* SCROLLING BODY */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 overscroll-contain">
           {error && (
-            <div className="p-3.5 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/40 text-red-200 text-xs font-semibold flex items-start gap-2.5">
+            <div className="p-3.5 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/40 text-[#D71921] dark:text-red-200 text-xs font-semibold flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-[#D71921] shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -504,7 +504,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
           {step === 1 ? (
             <div className="space-y-3">
-              <p className="text-[15px] font-bold text-white/90">
+              <p className="text-[15px] font-bold text-[var(--text)]">
                 What type of material are you sharing?
               </p>
 
@@ -521,7 +521,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                       className={`press-scale w-full text-left rounded-[22px] p-3.5 flex items-center justify-between gap-3.5 transition-all cursor-pointer ${
                         selected
                           ? 'bg-[#D71921]/15 border-2 border-[#D71921] shadow-[0_0_24px_rgba(215,25,33,0.28)]'
-                          : 'bg-white/[0.04] hover:bg-white/[0.08] border border-white/14'
+                          : 'bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)]'
                       }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
@@ -529,16 +529,16 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                           className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
                             selected
                               ? 'bg-[#D71921] text-white border-white/30'
-                              : 'bg-white/[0.06] text-white/80 border-white/12'
+                              : 'bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)]'
                           }`}
                         >
                           <IconComp className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[15px] font-bold text-white truncate">
+                          <div className="text-[15px] font-bold text-[var(--text)] truncate">
                             {item.label}
                           </div>
-                          <div className="text-[12px] text-white/70 truncate mt-0.5">
+                          <div className="text-[12px] text-[var(--text-secondary)] truncate mt-0.5">
                             {item.desc}
                           </div>
                         </div>
@@ -548,7 +548,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                         className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
                           selected
                             ? 'bg-[#D71921] border-[#D71921] text-white'
-                            : 'border-white/25 bg-transparent'
+                            : 'border-[var(--border-strong)] bg-transparent'
                         }`}
                       >
                         {selected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
@@ -561,19 +561,19 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
           ) : (
             <div className="space-y-4">
               {/* "Material type: NOTES [Change]" chip */}
-              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-white/[0.06] border border-white/15">
+              <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-doto-title text-[11px] tracking-[0.12em] text-white/70">
+                  <span className="font-doto-title text-[11px] tracking-[0.12em] text-[var(--text-secondary)]">
                     MATERIAL TYPE:
                   </span>
-                  <span className="font-doto-title text-[12px] tracking-[0.14em] text-[#ff6b72] uppercase truncate">
+                  <span className="font-doto-title text-[12px] tracking-[0.14em] text-[#D71921] dark:text-[#ff6b72] uppercase truncate">
                     {selectedTypeObj.label}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="min-h-[36px] px-3 rounded-full text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 cursor-pointer"
+                  className="min-h-[36px] px-3 rounded-full text-xs font-bold text-[var(--text)] bg-[var(--surface)] hover:bg-[var(--border)] border border-[var(--border)] cursor-pointer"
                 >
                   Change
                 </button>
@@ -582,16 +582,16 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Board / Class / Subject selectors */}
               <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-white/65 mb-1">
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
                     SUBJECT
                   </label>
                   <select
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[#121216] border border-white/15 text-xs font-semibold text-white outline-none"
+                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] outline-none"
                   >
                     {SUBJECTS.map((s) => (
-                      <option key={s} value={s}>
+                      <option key={s} value={s} className="bg-[var(--surface)] text-[var(--text)]">
                         {s}
                       </option>
                     ))}
@@ -599,16 +599,16 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-white/65 mb-1">
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
                     BOARD
                   </label>
                   <select
                     value={board}
                     onChange={(e) => setBoard(e.target.value as BoardType)}
-                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[#121216] border border-white/15 text-xs font-semibold text-white outline-none"
+                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] outline-none"
                   >
                     {BOARDS.map((b) => (
-                      <option key={b} value={b}>
+                      <option key={b} value={b} className="bg-[var(--surface)] text-[var(--text)]">
                         {b}
                       </option>
                     ))}
@@ -616,16 +616,16 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-white/65 mb-1">
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
                     CLASS
                   </label>
                   <select
                     value={classLevel}
                     onChange={(e) => setClassLevel(e.target.value as ClassLevel)}
-                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[#121216] border border-white/15 text-xs font-semibold text-white outline-none"
+                    className="w-full min-h-[44px] px-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] outline-none"
                   >
                     {CLASSES.map((c) => (
-                      <option key={c} value={c}>
+                      <option key={c} value={c} className="bg-[var(--surface)] text-[var(--text)]">
                         {c}
                       </option>
                     ))}
@@ -634,8 +634,8 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               </div>
 
               {/* Floating Label Title Input with Required Marker */}
-              <div className="search-pill-wrapper relative rounded-2xl bg-white/[0.05] border border-white/16 px-4 pt-5 pb-2.5 transition-all">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-white/65">
+              <div className="search-pill-wrapper relative rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 pt-5 pb-2.5 transition-all">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                   Title <span className="text-[#D71921]">*</span>
                 </label>
                 <input
@@ -645,13 +645,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   placeholder="e.g., Chapter 4 Rotational & Circular Motion Notes"
                   maxLength={140}
                   required
-                  className="w-full mt-0.5 text-[14px] font-medium text-white placeholder:text-white/40"
+                  className="w-full mt-0.5 text-[14px] font-medium text-[var(--text)] placeholder:text-[var(--text-muted)]"
                 />
               </div>
 
               {/* Floating Label Description Input with Required Marker */}
-              <div className="search-pill-wrapper relative rounded-2xl bg-white/[0.05] border border-white/16 px-4 pt-5 pb-3 transition-all">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-white/65">
+              <div className="search-pill-wrapper relative rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 pt-5 pb-3 transition-all">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                   Description <span className="text-[#D71921]">*</span>
                 </label>
                 <textarea
@@ -660,17 +660,17 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   rows={3}
                   placeholder="Describe what chapters, key topics, or solved questions are included..."
                   required
-                  className="w-full mt-1 bg-transparent border-0 outline-none text-[14px] text-white placeholder:text-white/40 resize-none"
+                  className="w-full mt-1 bg-transparent border-0 outline-none text-[14px] text-[var(--text)] placeholder:text-[var(--text-muted)] resize-none"
                 />
               </div>
 
               {/* Attach Files Drop Zone (dashed, dot texture, "0/5 files", thumbnails with remove buttons, per-file upload progress) */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-white/80">
+                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
                     ATTACH FILES
                   </span>
-                  <span className="text-xs font-semibold font-inter-num text-white/65">
+                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)]">
                     {files.length}/{MAX_FILES} files
                   </span>
                 </div>
@@ -688,20 +688,20 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={files.length >= MAX_FILES}
-                  className="w-full rounded-[24px] p-5 border border-dashed border-white/25 hover:border-[#D71921]/70 bg-white/[0.03] hover:bg-white/[0.06] flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer relative overflow-hidden"
+                  className="w-full rounded-[24px] p-5 border border-dashed border-[var(--border-strong)] hover:border-[#D71921]/70 bg-[var(--surface-2)] hover:bg-[var(--border)]/30 flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer relative overflow-hidden"
                   style={{
                     backgroundImage:
-                      'radial-gradient(rgba(255,255,255,0.12) 1px, transparent 1px)',
+                      'radial-gradient(currentColor 1px, transparent 1px)',
                     backgroundSize: '12px 12px',
                   }}
                 >
                   <div className="w-11 h-11 rounded-full bg-[#D71921]/18 border border-[#D71921]/40 flex items-center justify-center text-[#D71921]">
                     <Upload className="w-5 h-5" />
                   </div>
-                  <div className="text-sm font-bold text-white">
+                  <div className="text-sm font-bold text-[var(--text)]">
                     Tap to select photos or documents
                   </div>
-                  <div className="text-xs text-white/60">
+                  <div className="text-xs text-[var(--text-secondary)]">
                     PDF, PNG, JPG, WEBP up to 10 MB each
                   </div>
                 </button>
@@ -717,28 +717,28 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                       return (
                         <div
                           key={`${fileKey}_${idx}`}
-                          className="rounded-2xl p-2.5 bg-white/[0.06] border border-white/15 flex items-center justify-between gap-3"
+                          className="rounded-2xl p-2.5 bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             {thumbUrl ? (
                               <img
                                 src={thumbUrl}
                                 alt={file.name}
-                                className="w-11 h-11 rounded-xl object-cover border border-white/15 shrink-0"
+                                className="w-11 h-11 rounded-xl object-cover border border-[var(--border)] shrink-0"
                               />
                             ) : (
-                              <div className="w-11 h-11 rounded-xl bg-[#D71921]/20 border border-[#D71921]/35 flex items-center justify-center text-[#ff6b72] shrink-0">
+                              <div className="w-11 h-11 rounded-xl bg-[#D71921]/15 border border-[#D71921]/35 flex items-center justify-center text-[#D71921] dark:text-[#ff6b72] shrink-0">
                                 <FileText className="w-5 h-5" />
                               </div>
                             )}
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-bold text-white truncate">
+                              <div className="text-xs font-bold text-[var(--text)] truncate">
                                 {file.name}
                               </div>
-                              <div className="text-[11px] text-white/60 font-inter-num">
+                              <div className="text-[11px] text-[var(--text-secondary)] font-inter-num">
                                 {sizeMb} MB · {progress}%
                               </div>
-                              <div className="mt-1 w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                              <div className="mt-1 w-full h-1 rounded-full bg-[var(--border)] overflow-hidden">
                                 <div
                                   className="h-full bg-[#D71921] transition-all duration-300"
                                   style={{ width: `${progress}%` }}
@@ -751,7 +751,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                             type="button"
                             onClick={() => removeFileAt(idx)}
                             aria-label={`Remove ${file.name}`}
-                            className="w-10 h-10 rounded-full hover:bg-red-500/20 text-white/65 hover:text-[#ff6b72] flex items-center justify-center shrink-0 cursor-pointer"
+                            className="w-10 h-10 rounded-full hover:bg-red-500/20 text-[var(--text-secondary)] hover:text-[#D71921] dark:hover:text-[#ff6b72] flex items-center justify-center shrink-0 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -765,21 +765,21 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Tags as Chips with an Add Input ("0/8") */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-white/80">
+                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
                     TAGS
                   </span>
-                  <span className="text-xs font-semibold font-inter-num text-white/65">
+                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)]">
                     {tagsList.length}/{MAX_TAGS}
                   </span>
                 </div>
 
-                <div className="rounded-2xl p-2.5 bg-white/[0.05] border border-white/16 space-y-2">
+                <div className="rounded-2xl p-2.5 bg-[var(--surface-2)] border border-[var(--border)] space-y-2">
                   {tagsList.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {tagsList.map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#D71921]/20 border border-[#D71921]/40 text-white"
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#D71921]/15 border border-[#D71921]/40 text-[#D71921] dark:text-white"
                         >
                           #{tag}
                           <button
@@ -788,7 +788,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                               setTagsList((prev) => prev.filter((t) => t !== tag))
                             }
                             aria-label={`Remove tag ${tag}`}
-                            className="hover:text-red-300 cursor-pointer"
+                            className="hover:opacity-75 cursor-pointer"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -805,13 +805,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                         onChange={(e) => setTagDraft(e.target.value)}
                         onKeyDown={handleTagKeyDown}
                         placeholder="Add a tag (e.g., physics, ch4) and press Enter"
-                        className="flex-1 text-xs text-white placeholder:text-white/45 px-2 py-1.5"
+                        className="flex-1 text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] px-2 py-1.5"
                       />
                       <button
                         type="button"
                         onClick={handleAddTag}
                         disabled={!tagDraft.trim()}
-                        className="min-h-[36px] px-3 rounded-full text-xs font-bold bg-white/10 hover:bg-white/20 text-white disabled:opacity-40 inline-flex items-center gap-1 cursor-pointer"
+                        className="min-h-[36px] px-3 rounded-full text-xs font-bold bg-[var(--surface)] hover:bg-[var(--border)] text-[var(--text)] border border-[var(--border)] disabled:opacity-40 inline-flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         Add
@@ -823,17 +823,17 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
               {/* Post Visibility as an iOS Segmented Control (Public / Anonymous) with explanation underneath */}
               <div className="space-y-2">
-                <span className="block font-doto-title text-[11px] tracking-[0.14em] text-white/80">
+                <span className="block font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
                   POST VISIBILITY
                 </span>
-                <div className="relative p-1 rounded-full bg-white/[0.06] border border-white/15 grid grid-cols-2 h-12">
+                <div className="relative p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 h-12">
                   <button
                     type="button"
                     onClick={() => setIsAnonymous(false)}
                     className={`rounded-full text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       !isAnonymous
                         ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.45)]'
-                        : 'text-white/70 hover:text-white'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text)]'
                     }`}
                   >
                     <Globe className="w-3.5 h-3.5" />
@@ -845,14 +845,14 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                     className={`rounded-full text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                       isAnonymous
                         ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.45)]'
-                        : 'text-white/70 hover:text-white'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text)]'
                     }`}
                   >
                     <EyeOff className="w-3.5 h-3.5" />
                     Anonymous
                   </button>
                 </div>
-                <p className="text-xs text-white/65 px-1">
+                <p className="text-xs text-[var(--text-secondary)] px-1">
                   {isAnonymous
                     ? 'Your name and profile are hidden from other students on this resource.'
                     : 'Shows your profile name, avatar, and academic badge to the community.'}
@@ -860,14 +860,14 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               </div>
 
               {/* Guidelines Checkbox (44px target) */}
-              <label className="min-h-[44px] p-3 rounded-2xl bg-white/[0.04] border border-white/14 flex items-center gap-3 cursor-pointer select-none">
+              <label className="min-h-[44px] p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center gap-3 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={agreedToRules}
                   onChange={(e) => setAgreedToRules(e.target.checked)}
                   className="w-5 h-5 rounded accent-[#D71921] shrink-0 cursor-pointer"
                 />
-                <span className="text-xs text-white/80 leading-relaxed">
+                <span className="text-xs text-[var(--text-secondary)] leading-relaxed">
                   I confirm this study material follows Boardly community guidelines and
                   contains no spam or copyrighted exam leaks.
                 </span>
@@ -877,7 +877,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         </div>
 
         {/* STICKY FOOTER above safe area holding the main action ("Continue" / "Publish Resource") */}
-        <footer className="px-5 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] bg-[#0a0a0e]/90 backdrop-blur-xl border-t border-white/12 shrink-0">
+        <footer className="px-5 pt-3 pb-[calc(16px+env(safe-area-inset-bottom,0px))] bg-[var(--surface)]/95 backdrop-blur-xl border-t border-[var(--border)] shrink-0">
           {step === 1 ? (
             <button
               type="button"
@@ -892,7 +892,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 type="button"
                 onClick={() => setStep(1)}
                 disabled={isSubmitting}
-                className="boardly-glass-pill press-scale h-[52px] px-5 rounded-full text-xs font-bold text-white/85 hover:text-white cursor-pointer"
+                className="boardly-glass-pill press-scale h-[52px] px-5 rounded-full text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
               >
                 Back
               </button>

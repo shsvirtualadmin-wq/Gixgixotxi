@@ -158,6 +158,7 @@ export const CertificateRenderer: React.FC<CertificateRendererProps> = ({
   return (
     <div
       ref={containerRef}
+      data-certificate-renderer="true"
       className={`relative w-full overflow-hidden rounded-2xl border border-[var(--border)] select-none ${className}`}
       style={{
         aspectRatio: `${CERTIFICATE_WIDTH} / ${CERTIFICATE_HEIGHT}`,

@@ -406,7 +406,7 @@ export const AdminCertificatesPage: React.FC = () => {
       {!loading && !hasActiveSignature && activeTab !== 'signature' && (
         <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <AlertCircle size={18} className="text-amber-400 shrink-0" />
+            <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
               <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
                 Add your signature to finish certificates
@@ -430,8 +430,8 @@ export const AdminCertificatesPage: React.FC = () => {
         <div
           className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
             notice.type === 'success'
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-              : 'border-red-500/40 bg-red-500/10 text-red-300'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              : 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300'
           }`}
         >
           <div className="flex items-center gap-2">
@@ -538,8 +538,8 @@ export const AdminCertificatesPage: React.FC = () => {
                         <span
                           className={`px-2 py-0.5 rounded font-mono text-[10px] uppercase ${
                             cert.status === 'active'
-                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                              : 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
                           }`}
                         >
                           {cert.status}
@@ -631,8 +631,8 @@ export const AdminCertificatesPage: React.FC = () => {
                         onClick={() => void handleToggleRevoke(cert)}
                         className={`min-h-[40px] px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
                           cert.status === 'revoked'
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                            : 'border-red-500/40 bg-red-500/10 text-red-400'
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
                         }`}
                       >
                         {cert.status === 'revoked' ? (
@@ -798,7 +798,7 @@ export const AdminCertificatesPage: React.FC = () => {
                     className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
                       hasPermission('certificates.issue', selectedMock.id)
                         ? 'bg-[var(--accent)] text-white hover:opacity-90'
-                        : 'bg-amber-500/15 border border-amber-500/30 text-amber-300 opacity-85'
+                        : 'bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 opacity-85'
                     }`}
                   >
                     {hasPermission('certificates.issue', selectedMock.id) ? (

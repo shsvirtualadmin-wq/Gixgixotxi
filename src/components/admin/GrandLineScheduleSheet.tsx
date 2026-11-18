@@ -86,17 +86,17 @@ export const GrandLineStatusPills: React.FC<{
   const countdownStr = showCountdown ? getGrandLineCountdownLabel(test, nowMs, compact) : null;
 
   const pillStyles: Record<GrandLineEffectiveStatus, string> = {
-    live: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-    scheduled: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    ended: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
-    draft: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    live: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
+    scheduled: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    ended: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/30',
+    draft: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
   };
 
   const dotStyles: Record<GrandLineEffectiveStatus, string> = {
-    live: 'bg-emerald-400 animate-pulse',
-    scheduled: 'bg-amber-400',
-    ended: 'bg-zinc-400',
-    draft: 'bg-purple-400',
+    live: 'bg-emerald-500 dark:bg-emerald-400 animate-pulse',
+    scheduled: 'bg-amber-500 dark:bg-amber-400',
+    ended: 'bg-zinc-500 dark:bg-zinc-400',
+    draft: 'bg-purple-500 dark:bg-purple-400',
   };
 
   return (
@@ -110,15 +110,15 @@ export const GrandLineStatusPills: React.FC<{
       </span>
 
       {countdownStr && (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white/[0.05] text-[#f0f0f2] border border-white/[0.1] tabular-nums">
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--surface-2)] text-[var(--text)] border border-[var(--border)] tabular-nums">
           <Clock size={11} className="text-[#ef4444] shrink-0" />
           <span>{countdownStr}</span>
         </span>
       )}
 
       {windowStr && (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-white/[0.03] text-[#9a9aa2] border border-white/[0.07]">
-          <Calendar size={11} className="shrink-0 text-[#9a9aa2]" />
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border)]">
+          <Calendar size={11} className="shrink-0 text-[var(--text-muted)]" />
           <span>{windowStr}</span>
         </span>
       )}
@@ -355,22 +355,22 @@ export const GrandLineScheduleSheet: React.FC<{
         if (e.target === e.currentTarget && !saving) onClose();
       }}
     >
-      <div className="w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-[28px] sm:rounded-[28px] bg-[#121216] border border-white/[0.1] shadow-2xl overflow-hidden text-[#f0f0f2]">
+      <div className="w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-[28px] sm:rounded-[28px] bg-[var(--surface)] border border-[var(--border)] shadow-2xl overflow-hidden text-[var(--text)]">
         {/* Pinned Header */}
-        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4 border-b border-white/[0.08] shrink-0">
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4 border-b border-[var(--border)] shrink-0">
           <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/15 text-[#f87171] border border-[#ef4444]/30 mb-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/15 text-[#dc2626] dark:text-[#f87171] border border-[#ef4444]/30 mb-1.5">
               <Calendar size={11} />
               <span>Schedule &amp; Status • PKT (UTC+5)</span>
             </div>
             <h2
               id="gl-schedule-sheet-title"
-              className="text-base sm:text-lg font-bold text-white truncate"
+              className="text-base sm:text-lg font-bold text-[var(--text)] truncate"
             >
               {test.title}
             </h2>
             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-[#9a9aa2]">Resulting status:</span>
+              <span className="text-xs text-[var(--text-muted)]">Resulting status:</span>
               <GrandLineStatusPills
                 test={previewTest}
                 nowMs={nowMs}
@@ -385,7 +385,7 @@ export const GrandLineScheduleSheet: React.FC<{
             onClick={onClose}
             disabled={saving}
             aria-label="Close modal"
-            className="w-9 h-9 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] flex items-center justify-center text-[#9a9aa2] hover:text-white transition-colors shrink-0"
+            className="w-9 h-9 rounded-full bg-[var(--surface-2)] hover:border-[var(--accent)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors shrink-0"
           >
             <X size={16} />
           </button>
@@ -395,7 +395,7 @@ export const GrandLineScheduleSheet: React.FC<{
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* 1. Status Control */}
           <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-[#9a9aa2]">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Status Mode
             </label>
             <div className="grid grid-cols-1 gap-2">
@@ -408,23 +408,23 @@ export const GrandLineScheduleSheet: React.FC<{
                     onClick={() => setStatusMode(opt.value)}
                     className={`w-full text-left px-3.5 py-3 rounded-2xl border transition-all flex items-start gap-3 ${
                       selected
-                        ? 'bg-[#ef4444]/12 border-[#ef4444]/50 text-white shadow-sm'
-                        : 'bg-white/[0.025] border-white/[0.08] text-[#d4d4d8] hover:bg-white/[0.05]'
+                        ? 'bg-[#ef4444]/12 border-[#ef4444]/50 text-[var(--text)] shadow-sm'
+                        : 'bg-[var(--surface-2)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
                     }`}
                   >
                     <div className="mt-0.5">{opt.icon}</div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs sm:text-sm font-bold">{opt.label}</span>
+                        <span className="text-xs sm:text-sm font-bold text-[var(--text)]">{opt.label}</span>
                         <span
                           className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                            selected ? 'border-[#ef4444] bg-[#ef4444]' : 'border-white/25'
+                            selected ? 'border-[#ef4444] bg-[#ef4444]' : 'border-[var(--border-strong)]'
                           }`}
                         >
                           {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#9a9aa2] mt-0.5 leading-relaxed">
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
                         {opt.desc}
                       </p>
                     </div>
@@ -439,13 +439,13 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="checkbox"
                   checked={closeAllAttemptsNow}
                   onChange={(e) => setCloseAllAttemptsNow(e.target.checked)}
-                  className="mt-0.5 rounded border-white/20 bg-black/40 text-[#ef4444] focus:ring-[#ef4444]"
+                  className="mt-0.5 rounded border-[var(--border)] bg-[var(--surface)] text-[#ef4444] focus:ring-[#ef4444]"
                 />
                 <div className="text-xs">
-                  <span className="font-bold text-amber-200 block">
+                  <span className="font-bold text-amber-700 dark:text-amber-200 block">
                     End now and close all attempts
                   </span>
-                  <span className="text-[11px] text-amber-200/80">
+                  <span className="text-[11px] text-amber-700/80 dark:text-amber-200/80">
                     If unchecked, students currently taking the test can still submit within their remaining time. If checked, all submissions lock after a 60-second grace period.
                   </span>
                 </div>
@@ -454,14 +454,14 @@ export const GrandLineScheduleSheet: React.FC<{
           </div>
 
           {/* 2. Schedule Window (PKT, UTC+5) */}
-          <div className="space-y-3 pt-1 border-t border-white/[0.07]">
+          <div className="space-y-3 pt-1 border-t border-[var(--border)]">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#9a9aa2]">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
                   Schedule Window (PKT, UTC+5)
                 </label>
-                <p className="text-[11px] text-[#9a9aa2] mt-0.5">
-                  Optional. Current PKT time: <strong className="text-white">{formatPktDateTime(nowMs)}</strong>
+                <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  Optional. Current PKT time: <strong className="text-[var(--text)]">{formatPktDateTime(nowMs)}</strong>
                 </p>
               </div>
             </div>
@@ -471,24 +471,24 @@ export const GrandLineScheduleSheet: React.FC<{
               <button
                 type="button"
                 onClick={handlePresetStartsNow}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-white transition-colors inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-2)] hover:border-[var(--accent)] border border-[var(--border)] text-[var(--text)] transition-colors inline-flex items-center gap-1.5"
               >
-                <Play size={11} className="text-emerald-400" />
+                <Play size={11} className="text-emerald-500 dark:text-emerald-400" />
                 <span>Starts now</span>
               </button>
               <button
                 type="button"
                 onClick={handlePresetEndsIn24h}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-white transition-colors inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-2)] hover:border-[var(--accent)] border border-[var(--border)] text-[var(--text)] transition-colors inline-flex items-center gap-1.5"
               >
-                <Clock size={11} className="text-amber-400" />
+                <Clock size={11} className="text-amber-500 dark:text-amber-400" />
                 <span>Ends in 24 hours</span>
               </button>
               <button
                 type="button"
                 onClick={handlePresetClearSchedule}
                 disabled={!startLocalPkt && !endLocalPkt}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white/[0.04] hover:bg-white/[0.09] disabled:opacity-40 border border-white/[0.08] text-[#d4d4d8] transition-colors inline-flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-2)] hover:border-[var(--accent)] disabled:opacity-40 border border-[var(--border)] text-[var(--text-secondary)] transition-colors inline-flex items-center gap-1.5"
               >
                 <RotateCcw size={11} />
                 <span>Clear schedule</span>
@@ -500,7 +500,7 @@ export const GrandLineScheduleSheet: React.FC<{
                 <div className="flex items-center justify-between">
                   <label
                     htmlFor="gl-start-pkt"
-                    className="text-xs font-semibold text-[#d4d4d8]"
+                    className="text-xs font-semibold text-[var(--text-secondary)]"
                   >
                     Start Date &amp; Time (PKT)
                   </label>
@@ -508,7 +508,7 @@ export const GrandLineScheduleSheet: React.FC<{
                     <button
                       type="button"
                       onClick={() => setStartLocalPkt('')}
-                      className="text-[11px] text-[#9a9aa2] hover:text-white"
+                      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)]"
                     >
                       Clear
                     </button>
@@ -519,10 +519,10 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="datetime-local"
                   value={startLocalPkt}
                   onChange={(e) => setStartLocalPkt(e.target.value)}
-                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:border-[#ef4444]"
+                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#ef4444]"
                 />
                 {parsedStartMs && (
-                  <p className="text-[11px] text-[#9a9aa2]">
+                  <p className="text-[11px] text-[var(--text-muted)]">
                     {formatPktDateTime(parsedStartMs)}
                   </p>
                 )}
@@ -532,7 +532,7 @@ export const GrandLineScheduleSheet: React.FC<{
                 <div className="flex items-center justify-between">
                   <label
                     htmlFor="gl-end-pkt"
-                    className="text-xs font-semibold text-[#d4d4d8]"
+                    className="text-xs font-semibold text-[var(--text-secondary)]"
                   >
                     End Date &amp; Time (PKT)
                   </label>
@@ -540,7 +540,7 @@ export const GrandLineScheduleSheet: React.FC<{
                     <button
                       type="button"
                       onClick={() => setEndLocalPkt('')}
-                      className="text-[11px] text-[#9a9aa2] hover:text-white"
+                      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)]"
                     >
                       Clear
                     </button>
@@ -551,10 +551,10 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="datetime-local"
                   value={endLocalPkt}
                   onChange={(e) => setEndLocalPkt(e.target.value)}
-                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.12] text-xs sm:text-sm text-white focus:outline-none focus:border-[#ef4444]"
+                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#ef4444]"
                 />
                 {parsedEndMs && (
-                  <p className="text-[11px] text-[#9a9aa2]">
+                  <p className="text-[11px] text-[var(--text-muted)]">
                     {formatPktDateTime(parsedEndMs)}
                   </p>
                 )}
@@ -562,25 +562,25 @@ export const GrandLineScheduleSheet: React.FC<{
             </div>
 
             {validationError && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300">
-                <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-400" />
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-700 dark:text-red-300">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
                 <span>{validationError}</span>
               </div>
             )}
 
             {!validationError && endInPastWarning && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/12 border border-amber-500/30 text-xs text-amber-200">
-                <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-400" />
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/12 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-200">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <span>{endInPastWarning}</span>
               </div>
             )}
           </div>
 
           {/* 3. Optional Admin Note (reason) */}
-          <div className="space-y-1.5 pt-1 border-t border-white/[0.07]">
+          <div className="space-y-1.5 pt-1 border-t border-[var(--border)]">
             <label
               htmlFor="gl-admin-reason"
-              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#9a9aa2]"
+              className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]"
             >
               <FileText size={12} />
               <span>Admin Note / Reason (Optional — Hidden from Students)</span>
@@ -592,25 +592,25 @@ export const GrandLineScheduleSheet: React.FC<{
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Extended by 2 hours for evening batch, or ended early for maintenance..."
-              className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.12] text-xs sm:text-sm text-white placeholder-[#9a9aa2]/60 focus:outline-none focus:border-[#ef4444] resize-none"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)]/60 focus:outline-none focus:border-[#ef4444] resize-none"
             />
           </div>
 
           {submitError && (
-            <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-300">
-              <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-400" />
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-xs text-red-700 dark:text-red-300">
+              <AlertCircle size={15} className="shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
               <span>{submitError}</span>
             </div>
           )}
         </div>
 
         {/* Pinned Footer */}
-        <div className="flex items-center justify-end gap-2.5 px-5 py-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] sm:pb-3.5 border-t border-white/[0.08] bg-[#121216] shrink-0">
+        <div className="flex items-center justify-end gap-2.5 px-5 py-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] sm:pb-3.5 border-t border-[var(--border)] bg-[var(--surface)] shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="min-h-[42px] px-4 py-2 rounded-full text-xs sm:text-sm font-bold bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-[#d4d4d8] transition-colors"
+            className="min-h-[42px] px-4 py-2 rounded-full text-xs sm:text-sm font-bold bg-[var(--surface-2)] hover:border-[var(--text-muted)] border border-[var(--border)] text-[var(--text-secondary)] transition-colors"
           >
             Cancel
           </button>
@@ -716,54 +716,54 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="w-full sm:max-w-md rounded-t-[28px] sm:rounded-[28px] bg-[#121216] border border-white/[0.1] p-5 shadow-2xl text-[#f0f0f2] space-y-4">
+      <div className="w-full sm:max-w-md rounded-t-[28px] sm:rounded-[28px] bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl text-[var(--text)] space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div
               className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
                 isEnding
-                  ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                  : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                  ? 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
+                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
               }`}
             >
               {isEnding ? <Square size={18} /> : <Play size={18} />}
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">
+              <h3 className="text-base font-bold text-[var(--text)]">
                 {isEnding ? 'End this test now?' : 'Make this test Live now?'}
               </h3>
-              <p className="text-xs text-[#9a9aa2] line-clamp-1">{test.title}</p>
+              <p className="text-xs text-[var(--text-muted)] line-clamp-1">{test.title}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="w-8 h-8 rounded-full bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center text-[#9a9aa2]"
+            className="w-8 h-8 rounded-full bg-[var(--surface-2)] hover:border-[var(--accent)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]"
           >
             <X size={15} />
           </button>
         </div>
 
-        <p className="text-xs sm:text-sm text-[#d4d4d8] leading-relaxed">
+        <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
           {isEnding
             ? 'Students will no longer be able to start this test. Past results, answers, and the leaderboard will remain visible.'
             : 'Students will immediately be able to start and submit this Grand Line test regardless of any prior end date.'}
         </p>
 
         {isEnding && (
-          <label className="flex items-start gap-2.5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.08] cursor-pointer">
+          <label className="flex items-start gap-2.5 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] cursor-pointer">
             <input
               type="checkbox"
               checked={closeAllAttemptsNow}
               onChange={(e) => setCloseAllAttemptsNow(e.target.checked)}
-              className="mt-0.5 rounded border-white/20 bg-black/40 text-[#ef4444]"
+              className="mt-0.5 rounded border-[var(--border)] bg-[var(--surface)] text-[#ef4444]"
             />
             <div className="text-xs">
-              <span className="font-bold text-white block">
+              <span className="font-bold text-[var(--text)] block">
                 End now and close all in-progress attempts
               </span>
-              <span className="text-[11px] text-[#9a9aa2]">
+              <span className="text-[11px] text-[var(--text-muted)]">
                 Leave unchecked to let students who already started finish within their remaining timer. Check to lock all submissions after a 60s grace period.
               </span>
             </div>
@@ -775,7 +775,7 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="min-h-[40px] px-4 py-2 rounded-full text-xs font-bold bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] text-[#d4d4d8]"
+            className="min-h-[40px] px-4 py-2 rounded-full text-xs font-bold bg-[var(--surface-2)] hover:border-[var(--text-muted)] border border-[var(--border)] text-[var(--text-secondary)]"
           >
             Cancel
           </button>
@@ -848,8 +848,8 @@ export const GrandLineAdminRowControls: React.FC<{
           }}
           className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
             canManageTests
-              ? 'border-white/[0.12] bg-white/[0.05] hover:bg-white/[0.1] text-[#f0f0f2]'
-              : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+              ? 'border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--accent)] text-[var(--text)]'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300/80 opacity-80'
           } ${
             compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
           }`}
@@ -857,7 +857,7 @@ export const GrandLineAdminRowControls: React.FC<{
           {canManageTests ? (
             <Calendar size={compact ? 12 : 13} className="text-[#ef4444] shrink-0" />
           ) : (
-            <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+            <Lock size={compact ? 11 : 12} className="text-amber-600 dark:text-amber-400 shrink-0" />
           )}
           <span>Schedule &amp; Status</span>
         </button>
@@ -878,8 +878,8 @@ export const GrandLineAdminRowControls: React.FC<{
             }}
             className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
               canEndTests
-                ? 'border-red-500/30 bg-red-500/12 hover:bg-red-500/20 text-red-300'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+                ? 'border-red-500/30 bg-red-500/12 hover:bg-red-500/20 text-red-600 dark:text-red-300'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300/80 opacity-80'
             } ${
               compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
             }`}
@@ -887,7 +887,7 @@ export const GrandLineAdminRowControls: React.FC<{
             {canEndTests ? (
               <Square size={compact ? 11 : 12} className="shrink-0" />
             ) : (
-              <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+              <Lock size={compact ? 11 : 12} className="text-amber-600 dark:text-amber-400 shrink-0" />
             )}
             <span>End now</span>
           </button>
@@ -908,8 +908,8 @@ export const GrandLineAdminRowControls: React.FC<{
             }}
             className={`inline-flex items-center gap-1.5 rounded-full font-bold border transition-colors cursor-pointer ${
               canManageTests
-                ? 'border-emerald-500/30 bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-300'
-                : 'border-amber-500/30 bg-amber-500/10 text-amber-300/80 opacity-80'
+                ? 'border-emerald-500/30 bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300/80 opacity-80'
             } ${
               compact ? 'min-h-[34px] px-3 py-1 text-[11px]' : 'min-h-[38px] px-3.5 py-1.5 text-xs'
             }`}
@@ -917,7 +917,7 @@ export const GrandLineAdminRowControls: React.FC<{
             {canManageTests ? (
               <Play size={compact ? 11 : 12} className="shrink-0" />
             ) : (
-              <Lock size={compact ? 11 : 12} className="text-amber-400 shrink-0" />
+              <Lock size={compact ? 11 : 12} className="text-amber-600 dark:text-amber-400 shrink-0" />
             )}
             <span>Make Live</span>
           </button>

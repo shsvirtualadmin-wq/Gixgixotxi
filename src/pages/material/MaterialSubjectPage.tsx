@@ -87,10 +87,10 @@ export const MaterialSubjectPage: React.FC = () => {
               <FolderOpen size={13} />
               <span>Subject Study Library</span>
             </div>
-            <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-2">
+            <h1 className="font-dot text-3xl sm:text-4xl font-bold text-[var(--text)] mb-2">
               {subjectTitle} Study Material &amp; Notes
             </h1>
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-[var(--text-secondary)]">
               Preview {subjectTitle} notes, formula sheets, and past papers publicly. Sign in to download full files.
             </p>
           </div>
@@ -109,10 +109,10 @@ export const MaterialSubjectPage: React.FC = () => {
         ) : loadError ? (
           <div className="glass-panel p-10 text-center">
             <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
-            <h2 className="font-dot text-xl font-bold text-white mb-2">
+            <h2 className="font-dot text-xl font-bold text-[var(--text)] mb-2">
               Could not load {subjectTitle} study materials
             </h2>
-            <p className="text-xs text-white/60 mb-6">
+            <p className="text-xs text-[var(--text-secondary)] mb-6">
               Please check your connection and try again.
             </p>
             <button
@@ -126,11 +126,11 @@ export const MaterialSubjectPage: React.FC = () => {
           </div>
         ) : materials.length === 0 ? (
           <div className="glass-panel p-10 text-center">
-            <FileText size={28} className="text-white/40 mx-auto mb-3" />
-            <h2 className="font-dot text-xl font-bold text-white mb-2">
+            <FileText size={28} className="text-[var(--text-muted)] mx-auto mb-3" />
+            <h2 className="font-dot text-xl font-bold text-[var(--text)] mb-2">
               No {subjectTitle} study materials uploaded yet
             </h2>
-            <p className="text-xs text-white/60 mb-6">
+            <p className="text-xs text-[var(--text-secondary)] mb-6">
               Explore all study materials or practice {resolvedPractice.label} chapters right away.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
@@ -163,17 +163,17 @@ export const MaterialSubjectPage: React.FC = () => {
                     </span>
                     <Link
                       to={`/material/${slug}`}
-                      className="boardly-post-title font-dot text-lg font-bold text-white hover:text-[#D71921] transition-colors block mb-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
+                      className="boardly-post-title font-dot text-lg font-bold text-[var(--text)] hover:text-[#D71921] transition-colors block mb-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]"
                     >
                       {item.title}
                     </Link>
-                    <p className="boardly-post-content text-xs text-white/65 line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+                    <p className="boardly-post-content text-xs text-[var(--text-secondary)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       {maskPublicUserText(item.description)}
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/[0.08] min-w-0">
-                    <span className="text-[11px] text-white/50 truncate min-w-0">By {authorLabel}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[var(--border)] min-w-0">
+                    <span className="text-[11px] text-[var(--text-muted)] truncate min-w-0">By {authorLabel}</span>
                     <div className="flex items-center gap-2 shrink-0">
                       <Link
                         to={`/material/${slug}`}

@@ -98,8 +98,9 @@ if (typeof window !== 'undefined') {
   // Handle Vite module preload errors (e.g. stale hashed chunk after deploy)
   window.addEventListener('vite:preloadError', (event) => {
     console.error('[Boardly] vite:preloadError:', event);
-    event.preventDefault();
-    if (!tryOneTimeChunkReload()) {
+    if (tryOneTimeChunkReload()) {
+      event.preventDefault();
+    } else {
       renderFatalFallbackIfRootUnmounted('A newer version of Boardly is available. Please reload.');
     }
   });
