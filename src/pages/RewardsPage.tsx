@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  Gift,
   CheckCircle2,
   Lock,
   Copy,
@@ -11,8 +10,11 @@ import {
   ShieldCheck,
   ArrowRight,
   AlertCircle,
-  ExternalLink,
   ChevronDown,
+  Users,
+  BellRing,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -28,7 +30,6 @@ import {
   KobanBadge,
   KobanCoinSvg,
   TreasureChestSvg,
-  DragonCrestSvg,
   getJellyHandlers,
   spawnClaimCoinBurst,
   type TabPillItem,
@@ -45,10 +46,13 @@ import {
   attachReferralCode,
   buildFallbackClientState,
   claimDailyReward,
-  claimMilestoneReward,
   fetchRewardsState,
+  fetchWingmatesFeed,
   getPendingReferralCode,
   readCachedRewardsState,
+  triggerWingmateAction,
+  type WingmateFeedItem,
+  type WingmatesCounters,
 } from '@/services/rewardsService';
 import { recordRewardsContentPaint } from '@/lib/navStore';
 
@@ -58,11 +62,11 @@ const LazyGuestUpgradeModal = React.lazy(() =>
   }))
 );
 
-type RewardsTabId = 'checkin' | 'milestones' | 'invite' | 'faq';
+type RewardsTabId = 'checkin' | 'wingmates' | 'invite' | 'faq';
 
 const REWARDS_TABS: TabPillItem<RewardsTabId>[] = [
   { id: 'checkin', label: 'Check-In' },
-  { id: 'milestones', label: 'Milestones' },
+  { id: 'wingmates', label: 'Wingmates' },
   { id: 'invite', label: 'Invite' },
   { id: 'faq', label: 'FAQ' },
 ];
@@ -75,10 +79,10 @@ const FAQ_ITEMS = [
       'Your 30-day check-in progress is cumulative and does not reset if you miss a day. Each day resets at 00:00 PKT (Asia/Karachi, UTC+5), and after Day 30 the cycle renews at Day 1.',
   },
   {
-    id: 'faq-milestones',
-    question: 'How are MCQ milestones counted?',
+    id: 'faq-wingmates',
+    question: 'Who appears in my Wingmates live feed?',
     answer:
-      'Milestones count verified answered questions from your completed practice test attempts on the server. Each milestone (50, 100, 250, 500 MCQs) can be claimed once per student account.',
+      'Your Wingmates feed shows classmates connected with you through referrals. You can cheer them on when they finish a test or send one study nudge per wingmate every 24 hours.',
   },
   {
     id: 'faq-two-way',
@@ -96,10 +100,25 @@ const FAQ_ITEMS = [
 
 function parseTabFromHash(hash: string): RewardsTabId {
   const clean = hash.replace(/^#/, '').toLowerCase();
-  if (clean === 'milestones' || clean === 'invite' || clean === 'faq' || clean === 'checkin') {
+  if (clean === 'wingmates' || clean === 'milestones') {
+    return 'wingmates';
+  }
+  if (clean === 'invite' || clean === 'faq' || clean === 'checkin') {
     return clean;
   }
   return 'checkin';
+}
+
+function formatLiveTimeAgo(timestampMs: number, nowMs: number): string {
+  if (!timestampMs || timestampMs <= 0) return 'Inactive';
+  const diffSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
 }
 
 function formatCountdownHms(totalSeconds: number): string {
@@ -156,13 +175,24 @@ export function RewardsPage() {
 
   // Action feedback states
   const [claimingDaily, setClaimingDaily] = useState(false);
-  const [claimingMilestoneId, setClaimingMilestoneId] = useState<string | null>(null);
   const [manualCodeInput, setManualCodeInput] = useState<string>(
     () => getPendingReferralCode() || ''
   );
   const [attachingCode, setAttachingCode] = useState(false);
   const [confirmInputs, setConfirmInputs] = useState<Record<string, string>>({});
   const [confirmingRefId, setConfirmingRefId] = useState<string | null>(null);
+
+  // Wingmates live state
+  const [wingmates, setWingmates] = useState<WingmateFeedItem[]>([]);
+  const [wingmatesCounters, setWingmatesCounters] = useState<WingmatesCounters>({
+    practicingNow: 0,
+    streakAtRisk: 0,
+    inactive2PlusDays: 0,
+  });
+  const [wingmatesLoading, setWingmatesLoading] = useState<boolean>(true);
+  const [wingmatesError, setWingmatesError] = useState<string | null>(null);
+  const [actionInFlightUid, setActionInFlightUid] = useState<string | null>(null);
+  const [liveClockMs, setLiveClockMs] = useState<number>(() => Date.now());
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -174,12 +204,10 @@ export function RewardsPage() {
   // Refs for claim coin burst & balance count-up animation
   const balanceNumberRef = useRef<HTMLSpanElement | null>(null);
   const dailyClaimBtnRef = useRef<HTMLButtonElement | null>(null);
-  const milestoneBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const confirmBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Synchronous in-flight locks to prevent double claims on rapid taps
   const claimingDailyLockRef = useRef<boolean>(false);
-  const claimingMilestoneLockRef = useRef<string | null>(null);
   const attachingCodeLockRef = useRef<boolean>(false);
   const confirmingRefLockRef = useRef<string | null>(null);
 
@@ -191,7 +219,6 @@ export function RewardsPage() {
     !isGuestAccount &&
     (state.mode === 'off' || (state.mode === 'admin_only' && !isAdmin));
   const isClaimBlocked = Boolean(loading || hasLoadError || isComingSoon || isGuestAccount);
-  const isMilestoneAdminExcluded = Boolean(isAdmin && state.mode !== 'admin_only');
   const liveBalance = user && !isGuestAccount ? Math.max(walletBalance, state.balance) : 0;
 
   // Animated balance state for 900ms ease-out count-up + bump
@@ -404,69 +431,115 @@ export function RewardsPage() {
     }
   };
 
-  const handleClaimMilestone = async (milestoneId: string) => {
+  const loadWingmates = useCallback(async (silent = false) => {
+    if (!user?.uid || isGuestAccount) {
+      setWingmates([]);
+      setWingmatesCounters({
+        practicingNow: 0,
+        streakAtRisk: 0,
+        inactive2PlusDays: 0,
+      });
+      setWingmatesError(null);
+      setWingmatesLoading(false);
+      return;
+    }
+    if (!silent) {
+      setWingmatesLoading(true);
+    }
+    setWingmatesError(null);
+    try {
+      const res = await fetchWingmatesFeed();
+      if (res.ok) {
+        setWingmates(res.wingmates || []);
+        setWingmatesCounters(
+          res.counters || {
+            practicingNow: 0,
+            streakAtRisk: 0,
+            inactive2PlusDays: 0,
+          }
+        );
+      } else {
+        setWingmatesError(res.error || 'Could not load Wingmates live feed.');
+      }
+    } catch (err: any) {
+      setWingmatesError(err?.message || 'Could not load Wingmates live feed.');
+    } finally {
+      if (!silent) {
+        setWingmatesLoading(false);
+      }
+    }
+  }, [user?.uid, isGuestAccount]);
+
+  useEffect(() => {
+    void loadWingmates(false);
+  }, [loadWingmates]);
+
+  // Live "time ago" ticker every 15 seconds
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setLiveClockMs(Date.now());
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const handleWingmateAction = async (item: WingmateFeedItem) => {
     if (!user) {
       navigate('/signup');
       return;
     }
-    const targetMilestone = state.milestones.find((m) => m.id === milestoneId);
-    if (
-      isClaimBlocked ||
-      isMilestoneAdminExcluded ||
-      claimingMilestoneId ||
-      claimingMilestoneLockRef.current ||
-      targetMilestone?.claimed ||
-      (targetMilestone && !targetMilestone.eligible)
-    ) {
-      return;
-    }
+    if (actionInFlightUid) return;
+    if (item.actionType === 'nudge' && !item.canNudge) return;
 
-    claimingMilestoneLockRef.current = milestoneId;
-    const startBalance = liveBalance;
-    const sourceBtn = milestoneBtnRefs.current[milestoneId] || null;
-
-    setClaimingMilestoneId(milestoneId);
+    setActionInFlightUid(item.uid);
     setBannerNotice(null);
     try {
-      const res = await claimMilestoneReward(milestoneId);
+      const res = await triggerWingmateAction(item.uid, item.actionType);
       if (res.ok) {
-        const [refreshedState] = await Promise.all([loadState(true), refreshWallet()]);
-        const rewardDelta = res.rewardAmount || targetMilestone?.reward || 0;
-        const confirmedServerBalance =
-          typeof res.newBalance === 'number'
-            ? res.newBalance
-            : typeof refreshedState?.balance === 'number' &&
-              refreshedState.balance > startBalance
-            ? refreshedState.balance
-            : startBalance + rewardDelta;
-
-        spawnClaimCoinBurst(sourceBtn, balanceNumberRef.current);
-        prevLiveBalanceRef.current = confirmedServerBalance;
-        runBalanceCountUp(startBalance, confirmedServerBalance);
-
+        const now = Date.now();
+        setWingmates((prev) =>
+          prev.map((w) =>
+            w.uid === item.uid
+              ? {
+                  ...w,
+                  canNudge: item.actionType === 'nudge' ? false : w.canNudge,
+                  lastNudgedAtMs: item.actionType === 'nudge' ? now : w.lastNudgedAtMs,
+                }
+              : w
+          )
+        );
         setBannerNotice({
           type: 'success',
-          text: `Milestone unlocked! +${rewardDelta.toLocaleString()} Kobans credited to your wallet.`,
+          text:
+            res.message ||
+            (item.actionType === 'nudge'
+              ? `Nudge sent to ${item.displayName}!`
+              : `Cheer sent to ${item.displayName}!`),
         });
       } else {
-        console.error('[RewardsPage] Milestone claim failed:', {
-          milestoneId,
-          response: res,
-        });
+        if (item.actionType === 'nudge' && res.nextNudgeAtMs) {
+          setWingmates((prev) =>
+            prev.map((w) =>
+              w.uid === item.uid
+                ? {
+                    ...w,
+                    canNudge: false,
+                  }
+                : w
+            )
+          );
+        }
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Milestone claim failed.',
+          text: res.error || `Failed to ${item.actionType} ${item.displayName}.`,
         });
       }
     } catch (err: any) {
-      console.error('[RewardsPage] Unexpected error during milestone claim:', err);
       setBannerNotice({
         type: 'error',
-        text: err?.message || 'Unexpected error during milestone claim.',
+        text: err?.message || `Failed to ${item.actionType} ${item.displayName}.`,
       });
     } finally {
-      claimingMilestoneLockRef.current = null;
-      setClaimingMilestoneId(null);
+      setActionInFlightUid(null);
     }
   };
 
@@ -704,7 +777,7 @@ export function RewardsPage() {
               <div className="text-xs sm:text-sm">
                 <p className="font-bold">Create a free account to claim rewards</p>
                 <p className="mt-0.5 text-xs" style={{ color: 'var(--rw-muted)' }}>
-                  Upgrade in place to keep your username, progress, and test attempts while unlocking daily Kobans and milestones.
+                  Upgrade in place to keep your username, progress, and test attempts while unlocking daily Kobans and Wingmates.
                 </p>
               </div>
             </div>
@@ -1203,248 +1276,367 @@ export function RewardsPage() {
           </section>
         )}
 
-        {/* ─── 4. MILESTONES TAB (#milestones) ────────────────────────────── */}
-        {activeTab === 'milestones' && (
+        {/* ─── 4. WINGMATES TAB (#wingmates) ──────────────────────────────── */}
+        {activeTab === 'wingmates' && (
           <section
-            key="milestones"
-            aria-labelledby="milestones-heading"
+            key="wingmates"
+            aria-labelledby="wingmates-heading"
+            data-testid="wingmates-section"
             className="rw-tab-panel space-y-4"
           >
-            <div className="px-1">
-              <span
-                className="block text-[11px] font-bold uppercase tracking-widest"
-                style={{ color: 'var(--rw-muted)' }}
-              >
-                Verified Practice Progression
-              </span>
-              <h2
-                id="milestones-heading"
-                className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
-                style={{ color: 'var(--rw-text)' }}
-              >
-                MCQ Practice Milestones
-              </h2>
-            </div>
-
-            {/* Verified MCQs answered row */}
-            <PillRow
-              label="Verified MCQs answered"
-              value={
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div>
                 <span
-                  data-testid="mcqs-answered-count"
-                  className="font-dot text-base sm:text-lg font-extrabold tabular-nums"
+                  className="block font-mono text-[11px] font-bold uppercase tracking-widest"
+                  style={{ color: 'var(--rw-muted)' }}
+                >
+                  Study Squad · Live Status
+                </span>
+                <h2
+                  id="wingmates-heading"
+                  className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
                   style={{ color: 'var(--rw-text)' }}
                 >
-                  {state.mcqsAnswered.toLocaleString()}
-                </span>
-              }
-            />
+                  Wingmates
+                </h2>
+              </div>
 
-            {isAdmin && (
-              <div
-                data-testid="super-admin-milestone-note"
-                className="flex items-start gap-3 rounded-[24px] border p-4 text-xs"
+              <button
+                type="button"
+                onClick={() => void loadWingmates(false)}
+                disabled={wingmatesLoading}
+                className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50"
                 style={{
-                  backgroundColor: 'var(--rw-card)',
-                  borderColor: 'var(--rw-gold)',
-                  color: 'var(--rw-gold)',
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--pill-card-border)',
+                  color: 'var(--text)',
                 }}
               >
-                <ShieldCheck size={16} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold">Super Admin Account Exclusion Notice</p>
-                  <p className="mt-0.5" style={{ color: 'var(--rw-muted)' }}>
-                    Admin accounts have all Boardly Store items and companions unlocked by default and are excluded from claiming student MCQ milestone rewards.
-                  </p>
-                </div>
+                <RefreshCw size={12} className={wingmatesLoading ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* 3 Counter Pills: Practicing now, Streak at risk, Inactive 2+ days */}
+            <div
+              className="grid grid-cols-3 gap-2.5"
+              data-testid="wingmates-counters"
+            >
+              <div
+                className="rounded-[22px] border px-3.5 py-3 flex flex-col justify-between"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--pill-card-border)',
+                }}
+              >
+                <span
+                  className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Practicing now
+                </span>
+                <span
+                  data-testid="wingmates-counter-practicing"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  style={{ color: 'var(--rw-green)' }}
+                >
+                  {wingmatesCounters.practicingNow}
+                </span>
+              </div>
+
+              <div
+                className="rounded-[22px] border px-3.5 py-3 flex flex-col justify-between"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--pill-card-border)',
+                }}
+              >
+                <span
+                  className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Streak at risk
+                </span>
+                <span
+                  data-testid="wingmates-counter-at-risk"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  style={{ color: 'var(--rw-gold)' }}
+                >
+                  {wingmatesCounters.streakAtRisk}
+                </span>
+              </div>
+
+              <div
+                className="rounded-[22px] border px-3.5 py-3 flex flex-col justify-between"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--pill-card-border)',
+                }}
+              >
+                <span
+                  className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Inactive 2+ days
+                </span>
+                <span
+                  data-testid="wingmates-counter-inactive"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  style={{ color: 'var(--rw-red)' }}
+                >
+                  {wingmatesCounters.inactive2PlusDays}
+                </span>
+              </div>
+            </div>
+
+            {/* Loading State */}
+            {wingmatesLoading && (
+              <div
+                data-testid="wingmates-loading"
+                className="space-y-2.5"
+              >
+                {[0, 1, 2].map((idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-[999px] border px-4 py-3.5 flex items-center justify-between gap-3 animate-pulse"
+                    style={{
+                      backgroundColor: 'var(--pill-card-bg)',
+                      borderColor: 'var(--pill-card-border)',
+                    }}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div
+                        className="h-11 w-11 rounded-full shrink-0"
+                        style={{ backgroundColor: 'var(--pill-chip-bg)' }}
+                      />
+                      <div className="space-y-2 flex-1 min-w-0">
+                        <div
+                          className="h-3.5 w-32 rounded-full"
+                          style={{ backgroundColor: 'var(--pill-chip-bg)' }}
+                        />
+                        <div
+                          className="h-2.5 w-44 rounded-full"
+                          style={{ backgroundColor: 'var(--pill-chip-bg)' }}
+                        />
+                      </div>
+                    </div>
+                    <div
+                      className="h-9 w-24 rounded-full shrink-0"
+                      style={{ backgroundColor: 'var(--pill-chip-bg)' }}
+                    />
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Progress Cards (50, 100, 250, 500 MCQs) */}
-            <div className="space-y-3.5">
-              {state.milestones.map((m) => {
-                const pct = Math.min(100, Math.round((m.progress / m.threshold) * 100));
-                const isClaimingThis = claimingMilestoneId === m.id;
-                const btnDisabled = Boolean(
-                  isClaimBlocked ||
-                    isMilestoneAdminExcluded ||
-                    m.claimed ||
-                    !m.eligible ||
-                    isClaimingThis
-                );
+            {/* Error State */}
+            {!wingmatesLoading && wingmatesError && (
+              <div
+                data-testid="wingmates-error"
+                className="rounded-[28px] border p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--rw-red)',
+                  color: 'var(--text)',
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <AlertCircle size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--rw-red)' }} />
+                  <div>
+                    <p className="text-sm font-bold">Could not load Wingmates feed</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      {wingmatesError}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadWingmates(false)}
+                  className="rounded-full px-4 py-2 text-xs font-bold shrink-0 cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--rw-red)',
+                    color: 'var(--rw-on-red)',
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
-                return (
-                  <GlassCard
-                    key={m.id}
-                    data-testid={`milestone-card-${m.threshold}`}
-                    className="p-5 sm:p-6 space-y-4"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <span
-                          className="block text-[10px] font-bold uppercase tracking-widest"
-                          style={{ color: 'var(--rw-muted)' }}
-                        >
-                          {m.threshold.toLocaleString()} MCQs Milestone
-                        </span>
-                        <h3
-                          className="font-dot text-base sm:text-lg font-extrabold mt-0.5 truncate"
-                          style={{ color: 'var(--rw-text)' }}
-                        >
-                          {m.title}
-                        </h3>
-                        <p
-                          className="text-xs mt-0.5"
-                          style={{ color: 'var(--rw-muted)' }}
-                        >
-                          {m.subtitle}
-                        </p>
-                      </div>
+            {/* Empty State */}
+            {!wingmatesLoading && !wingmatesError && wingmates.length === 0 && (
+              <div
+                data-testid="wingmates-empty"
+                className="rounded-[28px] border p-6 text-center flex flex-col items-center gap-3"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  borderColor: 'var(--pill-card-border)',
+                  color: 'var(--text)',
+                }}
+              >
+                <div
+                  className="h-12 w-12 rounded-full border flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--pill-chip-bg)',
+                    borderColor: 'var(--pill-chip-border)',
+                    color: 'var(--rw-red)',
+                  }}
+                >
+                  <Users size={20} />
+                </div>
+                <div className="max-w-md space-y-1">
+                  <h3 className="font-dot text-base sm:text-lg font-black">
+                    No Wingmates linked yet
+                  </h3>
+                  <p className="text-xs sm:text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Invite your classmates with your referral code to see when they are practicing live, cheer their test scores, or nudge them when their streak is at risk.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTabChange('invite')}
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-xs font-bold cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--rw-red)',
+                    color: 'var(--rw-on-red)',
+                  }}
+                >
+                  <span>Invite Wingmates</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            )}
 
-                      <KobanBadge amount={m.reward} />
-                    </div>
+            {/* Live Feed Rows */}
+            {!wingmatesLoading && !wingmatesError && wingmates.length > 0 && (
+              <div
+                data-testid="wingmates-feed-list"
+                className="space-y-2.5"
+              >
+                {wingmates.map((w) => {
+                  const isBusy = actionInFlightUid === w.uid;
+                  const isNudge = w.actionType === 'nudge';
+                  const isDisabled = isBusy || (isNudge && !w.canNudge);
+                  const statusDotColor =
+                    w.statusType === 'practicing_now'
+                      ? 'var(--rw-green)'
+                      : w.statusType === 'finished_test' || w.statusType === 'back_after_days'
+                      ? 'var(--rw-gold)'
+                      : 'var(--rw-red)';
 
-                    <div className="flex items-center justify-between gap-4 pt-1">
-                      <div className="flex-1 min-w-0 space-y-1.5">
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                          <span style={{ color: 'var(--rw-muted)' }}>Progress</span>
-                          <span
-                            className="font-mono tabular-nums"
-                            style={{ color: 'var(--rw-text)' }}
-                          >
-                            {m.progress.toLocaleString()} / {m.threshold.toLocaleString()}
-                          </span>
-                        </div>
+                  return (
+                    <div
+                      key={w.uid}
+                      data-testid={`wingmate-row-${w.uid}`}
+                      className="rounded-[999px] border px-3.5 sm:px-4 py-3 flex items-center justify-between gap-3 transition-transform duration-150"
+                      style={{
+                        backgroundColor: 'var(--pill-card-bg)',
+                        borderColor: 'var(--pill-card-border)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {/* Left: Avatar/Initials + Name + Status + Live Time Ago */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div
-                          className="h-2.5 w-full overflow-hidden rounded-full border"
+                          className="relative h-11 w-11 rounded-full border flex items-center justify-center shrink-0 overflow-hidden font-dot text-sm font-black"
                           style={{
-                            backgroundColor: 'var(--rw-bg)',
-                            borderColor: 'var(--rw-border)',
+                            backgroundColor: 'var(--pill-chip-bg)',
+                            borderColor: 'var(--pill-chip-border)',
+                            color: 'var(--text)',
                           }}
                         >
-                          <div
-                            className="h-full rounded-full transition-all duration-300"
+                          {w.avatarUrl ? (
+                            <img
+                              src={w.avatarUrl}
+                              alt={w.displayName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span>{w.initials}</span>
+                          )}
+                          <span
+                            className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border"
                             style={{
-                              width: `${pct}%`,
-                              backgroundColor: m.claimed
-                                ? 'var(--rw-green)'
-                                : 'var(--rw-red)',
+                              backgroundColor: statusDotColor,
+                              borderColor: 'var(--pill-card-bg)',
                             }}
                           />
                         </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="text-sm font-bold truncate"
+                              style={{ color: 'var(--text)' }}
+                            >
+                              {w.displayName}
+                            </span>
+                            <span
+                              className="font-mono text-[10px] font-bold uppercase tracking-wider shrink-0"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              · {formatLiveTimeAgo(w.lastEventAtMs, liveClockMs)}
+                            </span>
+                          </div>
+                          <p
+                            className="text-xs font-medium truncate mt-0.5"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {w.statusText}
+                          </p>
+                        </div>
                       </div>
 
+                      {/* Right: Nudge or Cheer Pill Button */}
                       <button
-                        ref={(el) => {
-                          milestoneBtnRefs.current[m.id] = el;
-                        }}
                         type="button"
-                        data-testid={`milestone-claim-btn-${m.threshold}`}
-                        disabled={btnDisabled}
-                        {...getJellyHandlers(btnDisabled, () => handleClaimMilestone(m.id))}
-                        className="rw-jelly-btn rw-btn-red-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
+                        data-testid={`wingmate-action-btn-${w.uid}`}
+                        disabled={isDisabled}
+                        onClick={() => void handleWingmateAction(w)}
+                        className="h-9 px-3.5 rounded-full inline-flex items-center justify-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed transition-opacity duration-150"
+                        style={
+                          isNudge
+                            ? {
+                                backgroundColor: w.canNudge
+                                  ? 'var(--rw-red)'
+                                  : 'var(--pill-chip-bg)',
+                                color: w.canNudge
+                                  ? 'var(--rw-on-red)'
+                                  : 'var(--text-muted)',
+                                border: w.canNudge
+                                  ? '1px solid var(--rw-red)'
+                                  : '1px solid var(--pill-chip-border)',
+                              }
+                            : {
+                                backgroundColor: 'var(--pill-chip-bg)',
+                                color: 'var(--text)',
+                                border: '1px solid var(--pill-chip-border)',
+                              }
+                        }
                       >
-                        {hasLoadError ? (
-                          <span>Error</span>
-                        ) : loading ? (
-                          <span>Loading...</span>
-                        ) : isGuestAccount ? (
+                        {isNudge ? (
                           <>
-                            <Lock size={13} />
-                            <span>Create a free account to claim rewards</span>
+                            <BellRing size={12} />
+                            <span>
+                              {isBusy
+                                ? 'Sending...'
+                                : w.canNudge
+                                ? 'Nudge'
+                                : 'Nudged 24h'}
+                            </span>
                           </>
-                        ) : isComingSoon ? (
-                          <span>Coming soon</span>
-                        ) : m.claimed ? (
-                          <>
-                            <CheckCircle2 size={13} />
-                            <span>Claimed</span>
-                          </>
-                        ) : isMilestoneAdminExcluded ? (
-                          <span>Admin Excluded</span>
-                        ) : isClaimingThis ? (
-                          <span>Claiming...</span>
                         ) : (
-                          <span>Claim</span>
+                          <>
+                            <Sparkles size={12} style={{ color: 'var(--rw-gold)' }} />
+                            <span>{isBusy ? 'Cheering...' : 'Cheer'}</span>
+                          </>
                         )}
                       </button>
                     </div>
-                  </GlassCard>
-                );
-              })}
-            </div>
-
-            {/* 1,000 MCQ Zenryu Companion Card */}
-            <GlassCard
-              variant="zenryu"
-              data-testid="dragon-readonly-card"
-              className="p-5 sm:p-6 space-y-4"
-            >
-              <div className="flex items-start gap-3.5">
-                <DragonCrestSvg size={42} />
-                <div className="min-w-0 flex-1">
-                  <span
-                    className="block text-[10px] font-bold uppercase tracking-widest"
-                    style={{ color: 'var(--rw-red)' }}
-                  >
-                    1,000 MCQs Companion Unlock
-                  </span>
-                  <h3
-                    className="font-dot text-base sm:text-lg font-extrabold mt-0.5"
-                    style={{ color: 'var(--rw-text)' }}
-                  >
-                    Zenryu — The Guardian Dragon
-                  </h3>
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: 'var(--rw-muted)' }}
-                  >
-                    Answer 1,000 practice MCQs to awaken Zenryu on your student dashboard.
-                  </p>
-                </div>
+                  );
+                })}
               </div>
-
-              <div className="flex items-center justify-between gap-4 pt-1">
-                <div className="flex-1 min-w-0 space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span style={{ color: 'var(--rw-muted)' }}>Progress</span>
-                    <span
-                      className="font-mono tabular-nums"
-                      style={{ color: 'var(--rw-text)' }}
-                    >
-                      {state.dragonMilestone.progress.toLocaleString()} / 1,000
-                    </span>
-                  </div>
-                  <div
-                    className="h-2.5 w-full overflow-hidden rounded-full border"
-                    style={{
-                      backgroundColor: 'var(--rw-bg)',
-                      borderColor: 'var(--rw-border)',
-                    }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${Math.min(
-                          100,
-                          Math.round((state.dragonMilestone.progress / 1000) * 100)
-                        )}%`,
-                        backgroundColor: 'var(--rw-red)',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <Link
-                  to={user ? '/dashboard' : '/signup'}
-                  {...getJellyHandlers()}
-                  className="rw-jelly-btn rw-btn-clear-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
-                >
-                  <span>View on Dashboard</span>
-                  <ExternalLink size={13} />
-                </Link>
-              </div>
-            </GlassCard>
+            )}
           </section>
         )}
 

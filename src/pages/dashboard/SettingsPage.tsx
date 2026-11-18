@@ -44,7 +44,6 @@ import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { useSmoothMode } from '@/utils/smoothMode';
 import { useBoardlyUIMode, type BoardlyUIMode } from '@/utils/uiMode';
-import { useDragonHiddenPreference } from '@/components/dashboard/DragonCompanion';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -186,8 +185,6 @@ function mapHashToSubPage(rawHash: string): {
       return { subPage: 'appearance', targetId: 'settings-theme' };
     case 'appearance-reduce-effects':
       return { subPage: 'appearance', targetId: 'appearance-reduce-effects' };
-    case 'settings-dragon':
-      return { subPage: 'appearance', targetId: 'settings-dragon' };
     case 'appearance-pro-badge':
     case 'pro-badge':
       return { subPage: 'pro-badge', targetId: null };
@@ -244,7 +241,6 @@ export function SettingsPage() {
   const { themeSetting: themePreference, setTheme: setThemePreference } = useTheme();
   const { smoothMode, toggleSmoothMode } = useSmoothMode();
   const { uiMode, setUIMode, toggleUIMode, uiLite, toggleUILite } = useBoardlyUIMode();
-  const { hideDragon, setHideDragon } = useDragonHiddenPreference();
   const { openProfile } = useProfileModal();
   const {
     settings: proBadgeSettings,
@@ -1070,7 +1066,7 @@ export function SettingsPage() {
             label: 'Appearance',
             value: appearanceValueLabel,
             icon: themePreference === 'light' ? Sun : themePreference === 'dark' ? Moon : Monitor,
-            keywords: ['appearance', 'theme', 'light', 'dark', 'system', 'reduce effects', 'smooth mode', 'dragon', 'hide dragon'],
+            keywords: ['appearance', 'theme', 'light', 'dark', 'system', 'reduce effects', 'smooth mode'],
           },
           {
             id: 'pro-badge' as SettingsSubPageId,
@@ -1185,14 +1181,6 @@ export function SettingsPage() {
         keywords: ['reduce effects', 'smooth mode', 'blur', 'animations', 'battery', 'performance', 'low end'],
       },
       {
-        id: 'deep-dragon',
-        label: 'Hide dragon',
-        subtitle: `Appearance · ${hideDragon ? 'Hidden' : 'Visible'}`,
-        subPage: 'appearance',
-        targetId: 'settings-dragon',
-        keywords: ['hide dragon', 'dragon', 'mascot', 'companion', 'pet'],
-      },
-      {
         id: 'deep-pro-badge',
         label: 'Pro Badge (31 Designs & Visibility)',
         subtitle: `Personalize · ${proBadgeRowValue}`,
@@ -1284,7 +1272,6 @@ export function SettingsPage() {
       effectiveDisplayName,
       appearanceValueLabel,
       smoothMode,
-      hideDragon,
       proBadgeRowValue,
       kobanRowValue,
       emailKobanReceipts,
@@ -1774,40 +1761,6 @@ export function SettingsPage() {
                 </div>
                 <p className="stg-footnote">
                   Disables slide animations, heavy glass blurs, and ambient background motion for a faster, battery-friendly experience.
-                </p>
-              </div>
-
-              {/* Hide Dragon Group */}
-              <div id="settings-dragon" className="stg-group">
-                <div className="stg-group-label">Companion</div>
-                <div className="stg-card">
-                  <div
-                    className="stg-row"
-                    onClick={() => setHideDragon(!hideDragon)}
-                  >
-                    <div className="stg-row-left">
-                      <span className="stg-row-icon">
-                        <Palette size={17} />
-                      </span>
-                      <span className="stg-row-label">Hide dragon</span>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={hideDragon}
-                      aria-label="Hide dragon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setHideDragon(!hideDragon);
-                      }}
-                      className="stg-switch"
-                    >
-                      <span className="stg-switch-thumb" />
-                    </button>
-                  </div>
-                </div>
-                <p className="stg-footnote">
-                  Hides the interactive companion dragon across your dashboard while keeping all your XP and evolution progress intact.
                 </p>
               </div>
             </div>
@@ -2410,7 +2363,7 @@ export function SettingsPage() {
                   No settings found for &ldquo;{searchQuery}&rdquo;
                 </p>
                 <p className="text-xs text-[var(--menu-subtext)] mt-1">
-                  Try searching for theme, password, authenticator, dragon, koban, or badge.
+                  Try searching for theme, password, authenticator, koban, or badge.
                 </p>
               </div>
             </div>

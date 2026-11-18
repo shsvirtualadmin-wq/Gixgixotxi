@@ -215,11 +215,6 @@ export interface RewardsStateResponse {
   dailyLadder: number[];
   mcqsAnswered: number;
   milestones: MilestoneItemState[];
-  dragonMilestone: {
-    threshold: 1000;
-    unlocked: boolean;
-    progress: number;
-  };
   referral: {
     myCode: string;
     shareUrl: string;

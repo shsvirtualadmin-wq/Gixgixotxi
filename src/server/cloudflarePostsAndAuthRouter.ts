@@ -12553,6 +12553,70 @@ ${postSitemaps}
   app.post('/api/auth/username-register', delegateToAuthWorker);
   app.get('/api/auth/username-check', delegateToAuthWorker);
   app.get('/api/auth/username-suggest', delegateToAuthWorker);
+
+  const delegateToRewardsWorker = async (req: Request, res: Response) => {
+    try {
+      const { handleRewardsApiRequest } = await import('../../functions/api/rewards/[[path]]');
+      const authHeader = String(req.headers.authorization || '').trim();
+      const targetPath = req.originalUrl || req.url || req.path || '/api/rewards/state';
+      const fullUrl = targetPath.startsWith('http')
+        ? targetPath
+        : `http://localhost:3000${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
+      const method = String(req.method || 'GET').toUpperCase();
+      const webReq = new Request(fullUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+          ...(req.headers['x-guest-session']
+            ? { 'X-Guest-Session': String(req.headers['x-guest-session']) }
+            : {}),
+          ...(req.headers['x-device-id']
+            ? { 'X-Device-Id': String(req.headers['x-device-id']) }
+            : {}),
+          ...(req.headers.cookie ? { Cookie: String(req.headers.cookie) } : {}),
+        },
+        body:
+          method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+            ? JSON.stringify(req.body || {})
+            : undefined,
+      });
+      const webRes = await handleRewardsApiRequest({
+        request: webReq,
+        env: {
+          DB: getSharedLocalD1Database(),
+          FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
+          GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+          FIREBASE_PROJECT_ID,
+          FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+        },
+      });
+      const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
+      return res.status(webRes.status).json(payload);
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        error: err?.message || 'Rewards worker error',
+      });
+    }
+  };
+
+  app.get('/api/rewards/state', delegateToRewardsWorker);
+  app.get('/api/rewards/summary', delegateToRewardsWorker);
+  app.get('/api/rewards/health', delegateToRewardsWorker);
+  app.get('/api/rewards/admin/mode', delegateToRewardsWorker);
+  app.post('/api/rewards/admin/mode', delegateToRewardsWorker);
+  app.put('/api/rewards/admin/mode', delegateToRewardsWorker);
+  app.patch('/api/rewards/admin/mode', delegateToRewardsWorker);
+  app.post('/api/rewards/daily/claim', delegateToRewardsWorker);
+  app.post('/api/rewards/milestone/claim', delegateToRewardsWorker);
+  app.post('/api/rewards/referral/attach', delegateToRewardsWorker);
+  app.post('/api/rewards/referral/accept', delegateToRewardsWorker);
+  app.get('/api/rewards/wingmates', delegateToRewardsWorker);
+  app.post('/api/rewards/wingmates/nudge', delegateToRewardsWorker);
+  app.post('/api/rewards/wingmates/cheer', delegateToRewardsWorker);
+  app.get('/api/rewards/wingmates/radar', delegateToRewardsWorker);
+  app.post('/api/rewards/wingmates/remind', delegateToRewardsWorker);
 }
 
 const AUTHENTICATED_APP_ROUTE_PREFIXES = [

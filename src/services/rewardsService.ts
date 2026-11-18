@@ -150,11 +150,6 @@ export function buildFallbackClientState(uid?: string | null): RewardsStateRespo
     dailyLadder: [...DEFAULT_DAILY_LADDER],
     mcqsAnswered: 0,
     milestones,
-    dragonMilestone: {
-      threshold: 1000,
-      unlocked: false,
-      progress: 0,
-    },
     referral: {
       myCode,
       shareUrl: `https://boardly.cfd/join/${myCode}`,

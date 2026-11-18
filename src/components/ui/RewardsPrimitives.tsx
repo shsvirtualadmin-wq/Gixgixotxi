@@ -234,66 +234,27 @@ export function TreasureChestSvg({
   );
 }
 
-export function DragonCrestSvg({
-  size = 36,
-  className = '',
-}: {
-  size?: number;
-  className?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      className={`inline-block shrink-0 ${className}`}
-      aria-hidden="true"
-    >
-      <circle
-        cx="16"
-        cy="16"
-        r="14"
-        style={{
-          fill: 'var(--rw-bg)',
-          stroke: 'var(--rw-red)',
-        }}
-        strokeWidth="1.5"
-      />
-      <path
-        d="M9 21C10.5 16.5 13 14 16.5 13.5C15 11.5 12.5 10.5 10.5 11C12.5 8 16.8 7.5 20.2 9.8C22.8 11.5 24 14.8 22.8 18.2C21.6 21.5 18.2 23.5 14.5 23.2C16.8 21.8 18.2 19.6 18 17.5C15.5 18.5 12.2 19.8 9 21Z"
-        style={{ fill: 'var(--rw-red)' }}
-      />
-      <circle cx="18.5" cy="11.5" r="1.2" style={{ fill: 'var(--rw-gold)' }} />
-    </svg>
-  );
-}
-
 // ─── 1. GlassCard ────────────────────────────────────────────────────────────
 
 export interface GlassCardProps extends React.HTMLAttributes<HTMLElement> {
   as?: 'div' | 'section' | 'article';
   primary?: boolean;
-  variant?: 'default' | 'zenryu';
   children: React.ReactNode;
 }
 
 export function GlassCard({
   as: Component = 'div',
-  variant = 'default',
   className = '',
   style,
   children,
   ...rest
 }: GlassCardProps) {
-  const isZenryu = variant === 'zenryu';
-
   return (
     <Component
       className={`rounded-[26px] sm:rounded-[28px] border transition-colors duration-150 ${className}`}
       style={{
         backgroundColor: 'var(--rw-card)',
-        borderColor: isZenryu ? 'var(--rw-red)' : 'var(--rw-border)',
+        borderColor: 'var(--rw-border)',
         ...style,
       }}
       {...rest}

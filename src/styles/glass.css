@@ -300,8 +300,7 @@ html.ui-glass[data-theme="light"] [role="status"].fixed > div {
 /* Sheet root overlay above page and bottom nav */
 html.ui-glass [data-admin-sheet],
 html.ui-glass [data-fullscreen-modal="true"],
-html.ui-glass .aqb-sheet-backdrop,
-html.ui-glass .zenryu-sheet-backdrop {
+html.ui-glass .aqb-sheet-backdrop {
   z-index: 10010 !important;
 }
 
@@ -310,8 +309,7 @@ html.ui-glass [data-admin-sheet] > .overlay-blur,
 html.ui-glass [data-admin-sheet] > div.fixed.inset-0:first-child,
 html.ui-glass [data-fullscreen-modal="true"] > div.fixed.inset-0:first-child,
 html.ui-glass .more-sheet-backdrop,
-html.ui-glass .aqb-sheet-backdrop,
-html.ui-glass .zenryu-sheet-backdrop {
+html.ui-glass .aqb-sheet-backdrop {
   background: rgba(0, 0, 0, 0.68) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -322,7 +320,6 @@ html.ui-glass .lg-sheet-panel,
 html.ui-glass .ios-bottom-sheet,
 html.ui-glass .more-sheet-panel,
 html.ui-glass .aqb-sheet,
-html.ui-glass .zenryu-sheet-panel,
 html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2),
 html.ui-glass [data-admin-sheet="request-access"] > div,
 html.ui-glass [data-admin-sheet="grand-line-schedule"] > div,
@@ -342,7 +339,6 @@ html.ui-glass[data-theme="light"] .lg-sheet-panel,
 html.ui-glass[data-theme="light"] .ios-bottom-sheet,
 html.ui-glass[data-theme="light"] .more-sheet-panel,
 html.ui-glass[data-theme="light"] .aqb-sheet,
-html.ui-glass[data-theme="light"] .zenryu-sheet-panel,
 html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-child(2),
 html.ui-glass[data-theme="light"] [data-admin-sheet="request-access"] > div,
 html.ui-glass[data-theme="light"] [data-admin-sheet="grand-line-schedule"] > div,
@@ -377,9 +373,7 @@ html.ui-glass [data-admin-sheet="user-override"] > div:nth-child(2) > div.border
 html.ui-glass [data-testid="user-override-sticky-footer"],
 html.ui-glass [data-admin-sheet] .sticky.bottom-0,
 html.ui-glass .aqb-sheet-header,
-html.ui-glass .aqb-sheet-footer,
-html.ui-glass .zenryu-sheet-header,
-html.ui-glass .zenryu-sheet-footer {
+html.ui-glass .aqb-sheet-footer {
   background: rgba(18, 18, 22, 0.98) !important;
   border-color: var(--edge) !important;
   backdrop-filter: none !important;
@@ -390,9 +384,7 @@ html.ui-glass[data-theme="light"] [data-admin-sheet="user-override"] > div:nth-c
 html.ui-glass[data-theme="light"] [data-testid="user-override-sticky-footer"],
 html.ui-glass[data-theme="light"] [data-admin-sheet] .sticky.bottom-0,
 html.ui-glass[data-theme="light"] .aqb-sheet-header,
-html.ui-glass[data-theme="light"] .aqb-sheet-footer,
-html.ui-glass[data-theme="light"] .zenryu-sheet-header,
-html.ui-glass[data-theme="light"] .zenryu-sheet-footer {
+html.ui-glass[data-theme="light"] .aqb-sheet-footer {
   background: rgba(244, 243, 248, 0.98) !important;
   border-color: var(--edge) !important;
 }
@@ -438,7 +430,6 @@ html.ui-glass .bubble-touch[data-bubble-release="true"] {
 }
 
 html.ui-glass .ios-bottom-sheet,
-html.ui-glass .zenryu-sheet-panel,
 html.ui-glass .ios-seg-thumb {
   will-change: auto !important;
 }

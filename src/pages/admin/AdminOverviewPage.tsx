@@ -14,6 +14,7 @@ import {
   Megaphone,
   Gift,
   ShieldCheck,
+  BellRing,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
@@ -37,14 +38,32 @@ import {
 } from '@/services/adminService';
 import { getCachedAdminOverview } from '@/services/adminTabCache';
 import {
+  fetchAdminWingmatesRadar,
   fetchRewardsHealth,
   fetchRewardsState,
+  sendAdminWingmateReminder,
   setRewardsAdminMode,
   type RewardsHealthResponse,
+  type WingmateFeedItem,
+  type WingmatesCounters,
 } from '@/services/rewardsService';
 import { showApiToast } from '@/lib/api';
 import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog, UserProfile } from '@/types';
+
+type RadarFilterId = 'all' | 'active' | 'at_risk' | 'inactive';
+
+function formatLiveTimeAgo(timestampMs: number, nowMs: number): string {
+  if (!timestampMs || timestampMs <= 0) return 'Inactive';
+  const diffSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
+}
 
 const SUBJECT_TARGET_PILLS = [
   '125 Mathematics',
@@ -182,11 +201,29 @@ export function AdminOverviewPage() {
   );
   const [checkingRewardsHealth, setCheckingRewardsHealth] = useState(false);
 
+  // Wingmates Radar live feed state
+  const [radarItems, setRadarItems] = useState<WingmateFeedItem[]>([]);
+  const [radarCounters, setRadarCounters] = useState<WingmatesCounters>({
+    practicingNow: 0,
+    streakAtRisk: 0,
+    inactive2PlusDays: 0,
+  });
+  const [radarLoading, setRadarLoading] = useState<boolean>(true);
+  const [radarError, setRadarError] = useState<string | null>(null);
+  const [radarFilter, setRadarFilter] = useState<RadarFilterId>('all');
+  const [remindingUid, setRemindingUid] = useState<string | null>(null);
+  const [remindedUids, setRemindedUids] = useState<Record<string, number>>({});
+  const [liveClockMs, setLiveClockMs] = useState<number>(() => Date.now());
+
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
+    const id = window.setInterval(() => {
+      setLiveClockMs(Date.now());
+    }, 15_000);
     return () => {
       isMountedRef.current = false;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -336,6 +373,53 @@ export function AdminOverviewPage() {
     }
   }, [reportCardFailure]);
 
+  const loadWingmatesRadar = useCallback(async () => {
+    setRadarLoading(true);
+    setRadarError(null);
+    try {
+      const res = await fetchAdminWingmatesRadar();
+      if (!isMountedRef.current) return;
+      if (res.ok) {
+        setRadarItems(res.items || []);
+        setRadarCounters(
+          res.counters || {
+            practicingNow: 0,
+            streakAtRisk: 0,
+            inactive2PlusDays: 0,
+          }
+        );
+      } else {
+        setRadarError(res.error || 'Unable to load Wingmates Radar.');
+      }
+    } catch (err: any) {
+      if (!isMountedRef.current) return;
+      setRadarError(err?.message || 'Unable to load Wingmates Radar.');
+    } finally {
+      if (isMountedRef.current) {
+        setRadarLoading(false);
+      }
+    }
+  }, []);
+
+  const handleSendRadarReminder = async (item: WingmateFeedItem) => {
+    if (remindingUid) return;
+    setRemindingUid(item.uid);
+    try {
+      const res = await sendAdminWingmateReminder(item.uid);
+      if (res.ok) {
+        const now = res.remindedAtMs || Date.now();
+        setRemindedUids((prev) => ({ ...prev, [item.uid]: now }));
+        showApiToast(`Reminder sent to ${item.displayName}`, 'info');
+      } else {
+        showApiToast(res.error || 'Failed to send reminder', 'error');
+      }
+    } catch (err: any) {
+      showApiToast(err?.message || 'Failed to send reminder', 'error');
+    } finally {
+      setRemindingUid(null);
+    }
+  };
+
   const loadData = useCallback(
     async (options?: { force?: boolean }) => {
       if (!user || !isAdmin) return;
@@ -353,6 +437,7 @@ export function AdminOverviewPage() {
         loadPaymentsCard(force),
         loadReviewsCard(force),
         loadSubjectsCard(force),
+        loadWingmatesRadar(),
       ];
 
       if (isSuperAdmin) {
@@ -406,6 +491,7 @@ export function AdminOverviewPage() {
       loadPaymentsCard,
       loadReviewsCard,
       loadSubjectsCard,
+      loadWingmatesRadar,
       reportCardFailure,
     ]
   );
@@ -747,6 +833,353 @@ export function AdminOverviewPage() {
           </Link>
         </div>
       </div>
+
+      {/* ─── WINGMATES RADAR (ALL USERS LIVE FEED + FILTERS + SEND REMINDER) ─── */}
+      <section
+        data-testid="wingmates-radar-section"
+        aria-labelledby="wingmates-radar-heading"
+        className="p-5 rounded-[28px] border flex flex-col gap-4"
+        style={{
+          backgroundColor: 'var(--pill-card-bg)',
+          borderColor: 'var(--pill-card-border)',
+          color: 'var(--text)',
+        }}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <span
+              className="block font-mono text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Cockpit Live Feed · All Students
+            </span>
+            <h2
+              id="wingmates-radar-heading"
+              className="font-dot text-[18px] sm:text-[20px] font-black mt-0.5"
+              style={{ color: 'var(--text)' }}
+            >
+              Wingmates Radar
+            </h2>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-1.5" role="group" aria-label="Wingmates Radar filters">
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'active', label: 'Active' },
+                { id: 'at_risk', label: 'At risk' },
+                { id: 'inactive', label: 'Inactive' },
+              ] as const
+            ).map((f) => {
+              const isSelected = radarFilter === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  data-testid={`wingmates-radar-filter-${f.id}`}
+                  onClick={() => setRadarFilter(f.id)}
+                  className="px-3.5 py-1.5 rounded-full font-mono text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-opacity duration-150"
+                  style={
+                    isSelected
+                      ? {
+                          backgroundColor: 'var(--accent)',
+                          color: 'var(--rw-on-red)',
+                          border: '1px solid var(--accent)',
+                        }
+                      : {
+                          backgroundColor: 'var(--pill-chip-bg)',
+                          color: 'var(--text-muted)',
+                          border: '1px solid var(--pill-chip-border)',
+                        }
+                  }
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => void loadWingmatesRadar()}
+              disabled={radarLoading}
+              className="p-2 rounded-full border cursor-pointer disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--pill-chip-bg)',
+                borderColor: 'var(--pill-chip-border)',
+                color: 'var(--text)',
+              }}
+              title="Refresh Wingmates Radar"
+            >
+              <RefreshCw size={13} className={radarLoading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Counters Strip */}
+        <div
+          className="grid grid-cols-3 gap-2.5"
+          data-testid="wingmates-radar-counters"
+        >
+          <div
+            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
+            style={{
+              backgroundColor: 'var(--pill-chip-bg)',
+              borderColor: 'var(--pill-chip-border)',
+            }}
+          >
+            <span
+              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Practicing now
+            </span>
+            <span
+              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
+              style={{ color: 'var(--rw-green)' }}
+            >
+              {radarCounters.practicingNow}
+            </span>
+          </div>
+
+          <div
+            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
+            style={{
+              backgroundColor: 'var(--pill-chip-bg)',
+              borderColor: 'var(--pill-chip-border)',
+            }}
+          >
+            <span
+              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Streak at risk
+            </span>
+            <span
+              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
+              style={{ color: 'var(--rw-gold)' }}
+            >
+              {radarCounters.streakAtRisk}
+            </span>
+          </div>
+
+          <div
+            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
+            style={{
+              backgroundColor: 'var(--pill-chip-bg)',
+              borderColor: 'var(--pill-chip-border)',
+            }}
+          >
+            <span
+              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Inactive 2+ days
+            </span>
+            <span
+              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
+              style={{ color: 'var(--rw-red)' }}
+            >
+              {radarCounters.inactive2PlusDays}
+            </span>
+          </div>
+        </div>
+
+        {/* Feed States */}
+        {radarLoading ? (
+          <div className="space-y-2" data-testid="wingmates-radar-loading">
+            {[0, 1, 2].map((idx) => (
+              <div
+                key={idx}
+                className="rounded-[999px] border px-4 py-3 flex items-center justify-between gap-3 animate-pulse"
+                style={{
+                  backgroundColor: 'var(--pill-chip-bg)',
+                  borderColor: 'var(--pill-chip-border)',
+                }}
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div
+                    className="h-10 w-10 rounded-full shrink-0"
+                    style={{ backgroundColor: 'var(--pill-card-bg)' }}
+                  />
+                  <div className="space-y-1.5 flex-1">
+                    <div
+                      className="h-3 w-28 rounded-full"
+                      style={{ backgroundColor: 'var(--pill-card-bg)' }}
+                    />
+                    <div
+                      className="h-2.5 w-40 rounded-full"
+                      style={{ backgroundColor: 'var(--pill-card-bg)' }}
+                    />
+                  </div>
+                </div>
+                <div
+                  className="h-8 w-28 rounded-full shrink-0"
+                  style={{ backgroundColor: 'var(--pill-card-bg)' }}
+                />
+              </div>
+            ))}
+          </div>
+        ) : radarError ? (
+          <div
+            data-testid="wingmates-radar-error"
+            className="rounded-[20px] border p-4 flex items-center justify-between gap-3 text-xs"
+            style={{
+              backgroundColor: 'var(--pill-chip-bg)',
+              borderColor: 'var(--rw-red)',
+              color: 'var(--rw-red)',
+            }}
+          >
+            <span>{radarError}</span>
+            <button
+              type="button"
+              onClick={() => void loadWingmatesRadar()}
+              className="font-mono font-bold underline cursor-pointer shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          (() => {
+            const filteredRadar = radarItems.filter((item) => {
+              if (radarFilter === 'all') return true;
+              return item.filterCategory === radarFilter;
+            });
+
+            if (filteredRadar.length === 0) {
+              return (
+                <div
+                  data-testid="wingmates-radar-empty"
+                  className="rounded-[20px] border p-5 text-center text-xs font-mono"
+                  style={{
+                    backgroundColor: 'var(--pill-chip-bg)',
+                    borderColor: 'var(--pill-chip-border)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  No users match the selected Wingmates Radar filter.
+                </div>
+              );
+            }
+
+            return (
+              <div
+                data-testid="wingmates-radar-list"
+                className="space-y-2 max-h-[380px] overflow-y-auto pr-1"
+              >
+                {filteredRadar.map((item) => {
+                  const isSending = remindingUid === item.uid;
+                  const alreadyReminded = Boolean(
+                    remindedUids[item.uid] ||
+                      (item.lastRemindedAtMs &&
+                        liveClockMs - item.lastRemindedAtMs < 24 * 60 * 60 * 1000)
+                  );
+                  const dotColor =
+                    item.statusType === 'practicing_now'
+                      ? 'var(--rw-green)'
+                      : item.statusType === 'finished_test' ||
+                        item.statusType === 'back_after_days'
+                      ? 'var(--rw-gold)'
+                      : 'var(--rw-red)';
+
+                  return (
+                    <div
+                      key={item.uid}
+                      data-testid={`wingmates-radar-row-${item.uid}`}
+                      className="rounded-[999px] border px-3.5 sm:px-4 py-2.5 flex items-center justify-between gap-3"
+                      style={{
+                        backgroundColor: 'var(--pill-chip-bg)',
+                        borderColor: 'var(--pill-chip-border)',
+                        color: 'var(--text)',
+                      }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className="relative h-10 w-10 rounded-full border flex items-center justify-center shrink-0 overflow-hidden font-dot text-xs font-black"
+                          style={{
+                            backgroundColor: 'var(--pill-card-bg)',
+                            borderColor: 'var(--pill-card-border)',
+                            color: 'var(--text)',
+                          }}
+                        >
+                          {item.avatarUrl ? (
+                            <img
+                              src={item.avatarUrl}
+                              alt={item.displayName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span>{item.initials}</span>
+                          )}
+                          <span
+                            className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border"
+                            style={{
+                              backgroundColor: dotColor,
+                              borderColor: 'var(--pill-chip-bg)',
+                            }}
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="text-xs sm:text-sm font-bold truncate"
+                              style={{ color: 'var(--text)' }}
+                            >
+                              {item.displayName}
+                            </span>
+                            <span
+                              className="font-mono text-[10px] font-bold uppercase tracking-wider shrink-0"
+                              style={{ color: 'var(--text-muted)' }}
+                            >
+                              · {formatLiveTimeAgo(item.lastEventAtMs, liveClockMs)}
+                            </span>
+                          </div>
+                          <p
+                            className="text-[11px] sm:text-xs truncate mt-0.5"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {item.statusText}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        data-testid={`wingmates-radar-remind-btn-${item.uid}`}
+                        disabled={isSending || alreadyReminded}
+                        onClick={() => void handleSendRadarReminder(item)}
+                        className="h-8 px-3.5 rounded-full inline-flex items-center justify-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed transition-opacity duration-150"
+                        style={
+                          alreadyReminded
+                            ? {
+                                backgroundColor: 'var(--pill-card-bg)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--pill-card-border)',
+                              }
+                            : {
+                                backgroundColor: 'var(--accent)',
+                                color: 'var(--rw-on-red)',
+                                border: '1px solid var(--accent)',
+                              }
+                        }
+                      >
+                        <BellRing size={11} />
+                        <span>
+                          {isSending
+                            ? 'Sending...'
+                            : alreadyReminded
+                            ? 'Reminded'
+                            : 'Send reminder'}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
+        )}
+      </section>
 
       {/* ─── REGISTERED USERS PREVIEW (SUPER ADMIN ONLY) ───────────────────── */}
       {isSuperAdmin && (

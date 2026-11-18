@@ -973,11 +973,6 @@ async function handleRewardsApiRequestInner(
       dailyLadder: config.dailyLadder,
       mcqsAnswered: 0,
       milestones,
-      dragonMilestone: {
-        threshold: 1000,
-        unlocked: false,
-        progress: 0,
-      },
       referral: {
         myCode: 'BLD-7K9M2P',
         shareUrl: 'https://boardly.cfd/join/BLD-7K9M2P',
@@ -1597,15 +1592,6 @@ async function handleRewardsApiRequestInner(
       dailyLadder: config.dailyLadder,
       mcqsAnswered,
       milestones,
-      dragonMilestone: {
-        threshold: 1000,
-        unlocked: Boolean(
-          walletDoc?.owned?.includes('zenryu') ||
-            userDoc?.dragonUnlocked === true ||
-            mcqsAnswered >= 1000
-        ),
-        progress: Math.min(mcqsAnswered, 1000),
-      },
       referral: {
         myCode,
         shareUrl: `https://boardly.cfd/join/${myCode}`,
