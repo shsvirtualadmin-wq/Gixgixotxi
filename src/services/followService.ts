@@ -51,6 +51,7 @@ const followCountsMemoryCache = new Map<
   { followersCount: number; followingCount: number; ts: number }
 >();
 const isFollowingMemoryCache = new Map<string, { following: boolean; ts: number }>();
+// Synchronous memory + localStorage cache for user's following list
 const followingIdsMemoryCache = new Map<string, { ids: string[]; ts: number }>();
 const FOLLOW_CACHE_TTL_MS = 60_000;
 const FOLLOWING_IDS_STORAGE_PREFIX = 'boardly_following_ids_v1_';

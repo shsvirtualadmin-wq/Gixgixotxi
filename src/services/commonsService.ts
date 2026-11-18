@@ -743,6 +743,7 @@ export async function fetchCommonsPosts(options: {
   const pageSize = options.pageSize || 15;
   const cursor = options.lastDoc ?? options.lastVisibleDoc;
   const offset = typeof cursor === 'number' ? cursor : 0;
+  // Support both feedTab='trending' and sortBy='trending'
   const isTrending = options.feedTab === 'trending' || options.sortBy === 'trending';
 
   if (

@@ -563,7 +563,7 @@ export const PublicPostDetailPage: React.FC = () => {
         />
 
         <article className="boardly-post-card glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
-          {/* Author Header */}
+          {/* Author Header (theme-aware contrast for light & dark themes) */}
           <div className="flex items-center justify-between gap-3 mb-5 min-w-0">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               {post.isAnonymous ? (

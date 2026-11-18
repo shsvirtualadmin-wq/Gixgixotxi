@@ -39,6 +39,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { buildEntitySlug } from '@/utils/privacy';
 
+// Per-tab feed keys for isolated All / Trending / Following state
 type FeedTabKey = 'all' | 'trending' | 'following';
 
 function rankTrendingPosts(list: CommonsPost[]): CommonsPost[] {

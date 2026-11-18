@@ -2216,6 +2216,7 @@ ${postSitemaps}
         });
       }
 
+      // Rank trending/top by likes, comments, and recency, falling back to newest
       const nowMs = Date.now();
       rows.sort((a, b) => {
         if (a.is_pinned !== b.is_pinned) return b.is_pinned - a.is_pinned;

@@ -80,6 +80,7 @@ export const CommonsSubjectPage: React.FC = () => {
           ]}
         />
 
+        {/* Subject Community Header (theme-aware contrast) */}
         <div className="glass-panel p-6 sm:p-9 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full max-w-full min-w-0 box-border overflow-x-hidden">
           <div className="min-w-0">
             <div className="section-chip-red mb-3">

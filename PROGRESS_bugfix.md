@@ -44,3 +44,13 @@
 1. **Verified Root Cause & Fix**:
    - `/src/hooks/useUserProfile.ts` declared `streak: number` in `UserProfileHookResult` (line 43) but omitted `streak` from its return object (lines 359–378), causing `const { user, profile, streak } = useUserProfile()` in `/src/pages/dashboard/OverviewPage.tsx` to receive `streak === undefined` and render `" Days"` with no number.
    - Fixed `/src/hooks/useUserProfile.ts` to compute and return `streak: Math.max(0, Math.floor(Number(profile?.streak ?? 0) || 0))`, and hardened `/src/pages/dashboard/OverviewPage.tsx` (`safeStreak`) so the card always renders `"0 Days"` for a new user with no streak and `"N Day(s)"` when `streak > 0`.
+
+### Part D — Commons Feed (`All` / `Trending` / `Following`), Light-Theme Tab Contrast & Post Title Font
+1. **Following Tab Isolation & Fast Resolution**:
+   - Isolated state per tab (`postsByTab.all`, `postsByTab.trending`, `postsByTab.following`) in `/src/pages/commons/CommonsFeedPage.tsx`, switching synchronously on tab tap and checking `getCachedFollowingIds` / `getFollowingIds` before running any feed query.
+2. **Trending Ranking & Seed Fallback**:
+   - Ranked public posts by likes (`upvotes`), comments (`commentCount`), and recency (`createdAt`) with fallback to newest posts in `/src/services/commonsService.ts` and `/src/server/cloudflarePostsAndAuthRouter.ts`.
+3. **Light-Theme Tab Contrast & Post Detail Tokens**:
+   - Set `--tab-inactive-text: #111111` in light theme for `.ios-seg-btn` in `/src/index.css` and replaced hardcoded white text/borders in `/src/pages/commons/PublicPostDetailPage.tsx` and `/src/pages/commons/CommonsSubjectPage.tsx` with semantic theme tokens.
+4. **Post Title Unified Font**:
+   - Removed `DotoSafeDigits` digit hijack from `--font-dot` in `/src/index.css` so post titles render in a single consistent `'Doto'` font across letters, digits (`0–9`), and punctuation.
