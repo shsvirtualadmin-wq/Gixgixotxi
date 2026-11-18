@@ -11,11 +11,13 @@ import {
 import { SYLLABUS_MAP } from '@/constants/syllabusMap';
 import { slugify } from '@/constants/taxonomy';
 import { maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import type { CommonsPost } from '@/types/commons';
 
 export const SearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialQ = searchParams.get('q') || '';
+  const nowMs = useSharedNow();
 
   const [queryText, setQueryText] = useState(initialQ);
   const [typeFilter, setTypeFilter] = useState<'all' | 'mcqs' | 'material' | 'posts'>('all');
@@ -326,7 +328,7 @@ export const SearchPage: React.FC = () => {
                         {post.subject || 'General'} · {hasFile ? 'Study Material' : 'Commons Post'}
                       </span>
                       <span className="text-[11px] text-[var(--muted)] shrink-0">
-                        👍 {getPostLikeSnapshot(post.id, post.upvotes || 0).count}
+                        {formatRelativeTimePkt(post, nowMs)} · 👍 {getPostLikeSnapshot(post.id, post.upvotes || 0).count}
                       </span>
                     </div>
                     <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mb-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">{post.title}</h3>

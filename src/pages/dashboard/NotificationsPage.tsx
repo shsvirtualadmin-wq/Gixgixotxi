@@ -48,6 +48,12 @@ import {
   type AppNotification,
 } from '@/services/notificationService';
 import { resolveNotificationDestination } from '@/utils/routes';
+import {
+  formatRelativeTimePkt,
+  getPktDateGroupLabel,
+  resolveCreatedAtMs,
+  getNowMs,
+} from '@/utils/dateFormat';
 import type { DocumentSnapshot } from 'firebase/firestore';
 
 type FilterType = 'all' | 'following' | 'announcements' | 'rewards';
@@ -58,37 +64,12 @@ const INITIAL_VISIBLE_COUNT = 20;
 const BATCH_INCREMENT = 20;
 
 /**
- * Formats timestamps consistently:
+ * Formats timestamps consistently in PKT (Asia/Karachi) using the shared helper:
  * - Recent items (< 7 days): relative time ("Just now", "31m ago", "12h ago", "5d ago")
  * - Older items (>= 7 days): short date ("Oct 20")
  */
 function formatNotificationTime(val: unknown): string {
-  const ms = toMillis(val as Parameters<typeof toMillis>[0]);
-  if (!ms || ms <= 0) return 'Recently';
-
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return 'Recently';
-
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.floor((now - ms) / 1000));
-
-  if (diffSec < 60) return 'Just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d ago`;
-
-  const currentYear = new Date().getFullYear();
-  if (date.getFullYear() !== currentYear) {
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return formatRelativeTimePkt(val);
 }
 
 function isPinnedNotification(notif: AppNotification): boolean {
@@ -100,21 +81,21 @@ function isPinnedNotification(notif: AppNotification): boolean {
 }
 
 /**
- * Groups notifications strictly by their real createdAt timestamp in the user's local time:
+ * Groups notifications strictly by their real createdAt timestamp in Pakistan Standard Time (Asia/Karachi):
  * Today, Yesterday, This week, and Earlier.
  */
 function resolveDateGroup(notif: AppNotification): DateGroupKey {
-  const ms = toMillis(notif.createdAt);
+  const { ms } = resolveCreatedAtMs(notif);
   if (!ms || ms <= 0) return 'Earlier';
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-  const startOfThisWeek = startOfToday - 6 * 24 * 60 * 60 * 1000;
-
-  if (ms >= startOfToday) return 'Today';
-  if (ms >= startOfYesterday) return 'Yesterday';
-  if (ms >= startOfThisWeek) return 'This week';
+  const nowMs = getNowMs();
+  const baseGroup = getPktDateGroupLabel(ms, nowMs);
+  if (baseGroup === 'Today' || baseGroup === 'Yesterday') {
+    return baseGroup;
+  }
+  if (nowMs - ms <= 7 * 86_400_000) {
+    return 'This week';
+  }
   return 'Earlier';
 }
 

@@ -581,18 +581,7 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
     // Old Admin Bank questions are no longer auto-seeded; the D1 university bank starts empty.
 
 
-    // BUG 1 FIX: Normalize any second-based timestamps (< 1e10) to ms, and clamp any
-    // seeded/future timestamps (> Date.now() or commons_anon_topic_*) so newly created posts
-    // ALWAYS have the highest created_at and appear at the top of the Newest feed.
-    const nowMs = Date.now();
     await db.batch([
-      db
-        .prepare('UPDATE posts SET created_at = created_at * 1000, updated_at = updated_at * 1000 WHERE created_at > 0 AND created_at < 10000000000'),
-      db
-        .prepare('UPDATE posts SET created_at = 1743465600000, updated_at = 1743465600000 WHERE id LIKE "commons_anon_topic_%" AND created_at > 1745000000000'),
-      db
-        .prepare('UPDATE posts SET created_at = ?, updated_at = ? WHERE created_at > ?')
-        .bind(nowMs - 60000, nowMs - 60000, nowMs + 5000),
       db.prepare(`CREATE TABLE IF NOT EXISTS user_usernames (
         username_lower TEXT PRIMARY KEY,
         username_display TEXT NOT NULL,
@@ -2041,10 +2030,7 @@ async function executeD1BotRun(
           }
 
           const p = genResult.post;
-          const maxRow = await db
-            .prepare('SELECT MAX(created_at) as max_ts FROM posts')
-            .first<{ max_ts: number | null }>();
-          const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
+          const now = Date.now();
           const postId = `post_bot_${now}_${crypto.randomUUID().slice(0, 8)}`;
           const slug = buildSlug(postId, p.title);
 
@@ -7086,11 +7072,7 @@ ${urls
         ).trim();
         const slug = buildSlug(id, title);
         const isAnon = Boolean(body.isAnonymous);
-        // Ensure created_at is strictly in milliseconds and >= any existing non-pinned post
-        const maxRow = await env.DB.prepare(
-          'SELECT MAX(created_at) as max_ts FROM posts WHERE is_pinned = 0'
-        ).first<{ max_ts: number | null }>();
-        const now = Math.max(Date.now(), Number(maxRow?.max_ts || 0) + 1);
+        const now = Date.now();
         const files = rawFiles.map(normalizeStoredFileEntry);
         const tags = Array.isArray(body.tags) ? body.tags : [];
 

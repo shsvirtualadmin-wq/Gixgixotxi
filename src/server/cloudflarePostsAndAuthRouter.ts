@@ -385,23 +385,7 @@ function ensureStoreDefaults(store: D1StoreData): boolean {
     mutated = true;
   }
 
-  for (let i = 0; i < store.posts.length; i++) {
-    const p = store.posts[i];
-    if (p.created_at > 0 && p.created_at < 10000000000) {
-      p.created_at = p.created_at * 1000;
-      p.updated_at = p.created_at;
-      mutated = true;
-    }
-    if (
-      p.id !== baqaiPostId &&
-      (p.created_at > now ||
-        (String(p.id || '').startsWith('commons_anon_topic_') && p.created_at > basePastMs))
-    ) {
-      p.created_at = basePastMs - i * 3600000;
-      p.updated_at = p.created_at;
-      mutated = true;
-    }
-  }
+  // Do not mutate or rewrite existing post timestamps in the store.
 
   if (!Array.isArray(store.userRoles)) store.userRoles = [];
   if (!Array.isArray(store.botAccounts)) store.botAccounts = [];
@@ -2254,6 +2238,7 @@ ${postSitemaps}
       const payload = {
         success: true,
         backendMode: d1Connected && r2Connected ? 'cloudflare-d1-r2' : 'preview-demo',
+        serverTimeMs: Date.now(),
         posts,
         total: rows.length,
         hasMore,
@@ -2648,11 +2633,7 @@ ${postSitemaps}
       };
 
       const store = loadD1Store();
-      const maxExistingCreated = store.posts.reduce(
-        (max, p) => Math.max(max, Number(p.created_at || 0)),
-        0
-      );
-      const safeCreatedAt = Math.max(now, maxExistingCreated + 1);
+      const safeCreatedAt = now;
       newRow.created_at = safeCreatedAt;
       newRow.updated_at = safeCreatedAt;
 
@@ -2749,6 +2730,7 @@ ${postSitemaps}
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({
       success: true,
+      serverTimeMs: Date.now(),
       post: rowToCommonsPost(row, user?.uid, liveAuthorsMap),
     });
   });
@@ -12769,7 +12751,15 @@ export function resolveServerRouteMeta(pathname: string) {
     const updatedMs = Number(d1Row.updated_at || createdMs);
     const publishedIso = new Date(createdMs).toISOString();
     const modifiedIso = new Date(updatedMs).toISOString();
-    const formattedDate = new Date(createdMs).toUTCString();
+    const formattedDate = `${new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Karachi',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date(createdMs))} PKT`;
 
     const topComments = (store.comments || [])
       .filter((c) => c.post_id === d1Row.id)

@@ -7859,13 +7859,13 @@ html:not(.dark) .zenryu-stage--active {
    ========================================================================== */
 
 :root {
-  /* 64px nav + 12px bottom offset + 8px lens extension + 24px clearance = 108px */
-  --sdn-page-pb: calc(108px + env(safe-area-inset-bottom, 0px));
+  /* 64px nav + 12px bottom offset + 8px lens extension + 36px clearance = 120px */
+  --sdn-page-pb: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 768px) {
   :root {
-    --sdn-page-pb: calc(116px + env(safe-area-inset-bottom, 0px));
+    --sdn-page-pb: calc(128px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -7902,6 +7902,7 @@ html:not(.dark) .zenryu-stage--active {
 
   user-select: none;
   -webkit-user-select: none;
+  pointer-events: auto;
   touch-action: manipulation;
   transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -8047,10 +8048,12 @@ body.modal-open .sdn-dock {
   position: relative;
   z-index: 3;
   flex: 1 1 0%;
-  min-width: 0;
+  min-width: 44px;
+  min-height: 44px;
   height: 100%;
   padding: 0;
   border-radius: 9999px;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8170,11 +8173,27 @@ body.modal-open .sdn-dock {
 
 .fsm-page--open {
   transform: translate3d(0, 0, 0);
+  pointer-events: auto;
 }
 
 .fsm-page--closed {
   transform: translate3d(100%, 0, 0);
   pointer-events: none;
+}
+
+/* While the full-screen menu or any modal/sheet overlay is open, prevent underlying feed/cards from receiving taps */
+body[data-hamburger-sheet-open="true"] main {
+  pointer-events: none !important;
+  visibility: hidden !important;
+  user-select: none !important;
+}
+
+body[data-hamburger-sheet-open="true"] .boardly-post-card,
+body[data-modal-open="true"] .boardly-post-card,
+body[data-drawer-open="true"] .boardly-post-card,
+body[data-chat-open="true"] .boardly-post-card,
+body.modal-open .boardly-post-card {
+  pointer-events: none !important;
 }
 
 .fsm-scroll-area {

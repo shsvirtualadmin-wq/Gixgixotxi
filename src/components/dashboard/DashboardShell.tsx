@@ -12,6 +12,7 @@ import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
 import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
+import { useNavStore } from '@/lib/navStore';
 import { UserPlus, X } from 'lucide-react';
 
 const GuestUpgradeModal = React.lazy(() =>
@@ -38,6 +39,7 @@ export function DashboardShell() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading);
   const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const { isMenuOpen } = useNavStore();
 
   // Safety cleanup on dashboard mount & route change to clear any leftover scroll lock
   useEffect(() => {
@@ -167,7 +169,11 @@ export function DashboardShell() {
 
       {/* Main Content Container */}
       <main
+        inert={isMenuOpen ? true : undefined}
+        aria-hidden={isMenuOpen ? 'true' : undefined}
         className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
+          isMenuOpen ? 'pointer-events-none invisible select-none' : ''
+        } ${
           isSettingsRoute
             ? 'max-w-none p-0'
             : isProfileRoute

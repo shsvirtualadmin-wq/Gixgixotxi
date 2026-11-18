@@ -16,6 +16,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { normalizeProBadgeDesign } from '@/lib/proBadgeDesigns';
 import { auth } from '@/lib/firebase';
+import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
 
 export interface CommonsCommentItem {
   id: string;
@@ -80,7 +81,7 @@ async function fetchCommonsComments(postId: string): Promise<CommonsCommentItem[
       text: String(c.text || c.content || ''),
       likesCount: Number(c.likesCount ?? c.likes_count ?? 0),
       likedByMe: Boolean(c.likedByMe ?? c.liked_by_me ?? false),
-      createdAt: Number(c.createdAt ?? c.created_at ?? Date.now()),
+      createdAt: resolveCreatedAtMs(c).ms ?? 0,
     }));
   } catch {
     return [];
@@ -230,31 +231,11 @@ export interface ProfilePostsSectionProps {
 }
 
 function formatRelativeDate(timestamp: number): string {
-  if (!timestamp || !Number.isFinite(timestamp)) return 'Just now';
-  const diffSec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (diffSec < 60) return 'Just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDays = Math.floor(diffHr / 24);
-  if (diffDays < 30) return `${diffDays}d ago`;
-  return new Date(timestamp).toLocaleDateString('en-PK', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatRelativeTimePkt(timestamp);
 }
 
 function normalizeServerPost(raw: any): ProfilePostItem {
-  const createdMs =
-    typeof raw.createdAt === 'number'
-      ? raw.createdAt
-      : typeof raw.created_at === 'number'
-      ? raw.created_at
-      : typeof raw.createdAt?.seconds === 'number'
-      ? raw.createdAt.seconds * 1000
-      : Date.now();
+  const createdMs = resolveCreatedAtMs(raw).ms ?? 0;
 
   let parsedFiles: any[] = [];
   if (Array.isArray(raw.files)) {

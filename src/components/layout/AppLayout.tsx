@@ -7,6 +7,7 @@ import { LegalUpdateNoticeBanner } from '../auth/LegalUpdateNoticeBanner';
 import { DashboardTopBar } from '../dashboard/DashboardTopBar';
 import { DashboardBottomNav } from '../dashboard/DashboardBottomNav';
 import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
+import { useNavStore } from '@/lib/navStore';
 
 interface AppLayoutProps {
   children?: React.ReactNode;
@@ -23,6 +24,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { isGuest } = useAuth();
   const location = useLocation();
   const pathname = location.pathname;
+  const { isMenuOpen } = useNavStore();
 
   const isProfileRoute =
     pathname.startsWith('/dashboard/profile') || pathname === '/profile/edit';
@@ -65,7 +67,11 @@ export function AppLayout({ children }: AppLayoutProps) {
       {!isGuest && <LegalUpdateNoticeBanner />}
 
       <main
+        inert={isMenuOpen ? true : undefined}
+        aria-hidden={isMenuOpen ? 'true' : undefined}
         className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
+          isMenuOpen ? 'pointer-events-none invisible select-none' : ''
+        } ${
           isFullBleedMain
             ? 'max-w-none p-0 pb-[var(--sdn-page-pb)]'
             : isProfileRoute

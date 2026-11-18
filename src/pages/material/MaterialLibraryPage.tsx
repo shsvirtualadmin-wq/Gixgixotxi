@@ -30,6 +30,7 @@ import {
 import { createCommonsPost, fetchCommonsPosts } from '@/services/commonsService';
 import { uploadCommonsAttachment, extractR2KeyFromUrl } from '@/services/commonsUploadService';
 import { buildEntitySlug } from '@/utils/privacy';
+import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
 import type { CommonsFileAttachment, CommonsPostType } from '@/types/commons';
 
 interface SubjectSiloItem {
@@ -166,12 +167,7 @@ function formatFileSize(bytes?: number): string {
 }
 
 function formatDateShort(ts?: number): string {
-  if (!ts || !Number.isFinite(ts)) return 'Recent';
-  return new Date(ts).toLocaleDateString('en-PK', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatRelativeTimePkt(ts);
 }
 
 function getTypeBadgeAndIcon(type: string) {
@@ -252,14 +248,7 @@ export const MaterialLibraryPage: React.FC = () => {
           };
         });
 
-        const createdMs =
-          typeof p.createdAt?.toMillis === 'function'
-            ? p.createdAt.toMillis()
-            : typeof p.createdAt === 'number'
-            ? p.createdAt
-            : typeof p.created_at === 'number'
-            ? p.created_at
-            : Date.now();
+        const createdMs = resolveCreatedAtMs(p).ms ?? 0;
 
         return {
           id: String(p.id || ''),

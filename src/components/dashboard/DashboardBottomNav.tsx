@@ -469,7 +469,9 @@ function DashboardBottomNavComponent() {
     [user?.uid, location.pathname, navigate, triggerBubbleStretch]
   );
 
-  // Respond immediately on pointerdown: move bubble + set active tab + navigate right away!
+  const lastDragCommitTimeRef = useRef<number>(0);
+
+  // On pointerdown: only update visual highlight + prefetch (NEVER switch routes or open menu on pointerdown, which causes ghost clicks!)
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -506,22 +508,14 @@ function DashboardBottomNavComponent() {
       maxTx,
       moved: false,
       pressedTabId: pressedItem.id,
-      navigatedOnPress: true,
+      navigatedOnPress: false,
     };
-
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-      dragRef.current.captured = true;
-    } catch {
-      // ignore pointer capture errors
-    }
 
     setIsPressed(true);
     setIsInstant(prefersReducedMotion());
     setDragHighlightId(pressedItem.id);
-
-    // Optimistic UI + immediate navigation on pointerdown
-    executeTabAction(pressedItem);
+    setTranslateX(targetTx);
+    prefetchTabRouteAndData(pressedItem.id, user?.uid);
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
@@ -529,9 +523,15 @@ function DashboardBottomNavComponent() {
     if (!ds.active || ds.pointerId !== e.pointerId) return;
 
     const dx = e.clientX - ds.startClientX;
-    if (!ds.moved && Math.abs(dx) > 6) {
+    if (!ds.moved && Math.abs(dx) > 8) {
       ds.moved = true;
       setIsDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        ds.captured = true;
+      } catch {
+        // ignore pointer capture errors
+      }
     }
 
     if (ds.moved) {
@@ -556,7 +556,6 @@ function DashboardBottomNavComponent() {
 
     const wasMoved = ds.moved;
     const wasCaptured = ds.captured;
-    const pressedTabId = ds.pressedTabId;
     ds.active = false;
     ds.pointerId = null;
     ds.captured = false;
@@ -587,9 +586,8 @@ function DashboardBottomNavComponent() {
     if (wasMoved) {
       const { item: targetItem, index: targetIdx } = getTabByClientX(e.clientX);
       setTranslateX(m.slotOffsets[targetIdx] ?? m.pad);
-      if (targetItem.id !== pressedTabId) {
-        executeTabAction(targetItem);
-      }
+      lastDragCommitTimeRef.current = Date.now();
+      executeTabAction(targetItem);
     }
   };
 
@@ -620,6 +618,19 @@ function DashboardBottomNavComponent() {
     e.stopPropagation();
   };
 
+  const handleDockClick = (e: React.MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (Date.now() - lastDragCommitTimeRef.current < 100) {
+      return;
+    }
+    const targetBtn = (e.target as HTMLElement | null)?.closest?.('[data-nav-tab]');
+    if (!targetBtn && e.clientX > 0) {
+      const resolved = getTabByClientX(e.clientX);
+      executeTabAction(resolved.item);
+    }
+  };
+
   // Dock wrapper (position: fixed, no filter) contains THREE SIBLINGS, never nested:
   // (a) .plate (static blur layer)  (b) .g > .gi (GPU translate3d bubble, zero blur)  (c) .tabs
   const navBarElement = (
@@ -628,6 +639,7 @@ function DashboardBottomNavComponent() {
       data-bottom-nav-container="true"
       role="tablist"
       aria-label="Student Dashboard Navigation"
+      inert={shouldHideBottomNav || undefined}
       aria-hidden={shouldHideBottomNav}
       hidden={shouldHideBottomNav}
       style={
@@ -635,8 +647,10 @@ function DashboardBottomNavComponent() {
           ? { display: 'none' }
           : ({ '--slot-w': `${slotWidth}px` } as React.CSSProperties)
       }
-      onClick={stopNavPropagation}
+      onClick={handleDockClick}
       onMouseDown={stopNavPropagation}
+      onTouchStart={stopNavPropagation}
+      onTouchEnd={stopNavPropagation}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishPointerInteraction}
@@ -689,7 +703,8 @@ function DashboardBottomNavComponent() {
               aria-label={item.label}
               title={item.label}
               onKeyDown={(e) => handleKeyDown(e, index, item)}
-              onTouchStart={() => {
+              onTouchStart={(e) => {
+                e.stopPropagation();
                 prefetchTabRouteAndData(item.id, user?.uid);
               }}
               onMouseEnter={() => {
@@ -698,12 +713,12 @@ function DashboardBottomNavComponent() {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Keyboard activation (detail === 0) triggers navigation; pointer taps already fired on pointerdown
-                if (e.detail === 0) {
-                  executeTabAction(item);
+                if (Date.now() - lastDragCommitTimeRef.current < 100) {
+                  return;
                 }
+                executeTabAction(item);
               }}
-              className={`sdn-tab-btn pointer-events-auto ${isHighlighted ? 'is-active' : ''} ${
+              className={`sdn-tab-btn min-w-[44px] min-h-[44px] pointer-events-auto ${isHighlighted ? 'is-active' : ''} ${
                 item.hidden ? 'is-hidden' : ''
               }`}
             >

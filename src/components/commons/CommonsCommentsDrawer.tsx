@@ -11,6 +11,7 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { getPublicProfiles } from '@/services/publicProfileService';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -34,6 +35,7 @@ export function CommonsCommentsDrawer({
 }: CommonsCommentsDrawerProps) {
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
+  const nowMs = useSharedNow();
   const [comments, setComments] = useState<CommonsComment[]>([]);
   const [newText, setNewText] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -150,23 +152,7 @@ export function CommonsCommentsDrawer({
     inputRef.current?.focus();
   };
 
-  const formatCommentTime = (ts: any) => {
-    if (!ts) return 'Just now';
-    try {
-      const date = ts?.toDate ? ts.toDate() : new Date(ts);
-      const diffMs = Date.now() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
-      const diffDays = Math.floor(diffHours / 24);
-      if (diffDays < 7) return `${diffDays}d ago`;
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch {
-      return '';
-    }
-  };
+  const formatCommentTime = (ts: any) => formatRelativeTimePkt(ts, nowMs);
 
   return (
     <div

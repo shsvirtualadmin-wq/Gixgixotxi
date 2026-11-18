@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -44,7 +44,7 @@ import { useSecurityStatus, clearSecurityStatusCache } from '@/hooks/useSecurity
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { clearCachedRewardsState, prefetchRewardsSummary } from '@/services/rewardsService';
 import { markRewardsTapStart } from '@/lib/navStore';
-import { useBodyScrollLock } from '@/utils/scrollLock';
+import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -1406,7 +1406,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   // Lock body scroll while full-screen menu is open
   useBodyScrollLock(isOpen, 'hamburger-menu');
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
     if (isOpen) {
       document.body.setAttribute('data-hamburger-sheet-open', 'true');
@@ -1415,6 +1415,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
       };
     } else {
       document.body.removeAttribute('data-hamburger-sheet-open');
+      safetyCleanupScrollLocks();
     }
   }, [isOpen]);
 
@@ -1633,21 +1634,35 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
   };
 
   const pageContent = (
-    <div
-      ref={pageRef}
-      data-hamburger-sheet="true"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Menu"
-      onClick={stopAllPropagation}
-      onMouseDown={stopAllPropagation}
-      onPointerDown={stopAllPropagation}
-      onPointerUp={stopAllPropagation}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      className={`fsm-page ${isVisible ? 'fsm-page--open' : 'fsm-page--closed'}`}
-    >
+    <>
+      {isOpen && (
+        <div
+          aria-hidden="true"
+          data-hamburger-backdrop-shield="true"
+          onClick={stopAllPropagation}
+          onMouseDown={stopAllPropagation}
+          onPointerDown={stopAllPropagation}
+          onPointerUp={stopAllPropagation}
+          onTouchStart={stopAllPropagation}
+          onTouchEnd={stopAllPropagation}
+          className="fixed inset-0 z-[9998] pointer-events-auto bg-transparent"
+        />
+      )}
+      <div
+        ref={pageRef}
+        data-hamburger-sheet="true"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        onClick={stopAllPropagation}
+        onMouseDown={stopAllPropagation}
+        onPointerDown={stopAllPropagation}
+        onPointerUp={stopAllPropagation}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className={`fsm-page ${isVisible ? 'fsm-page--open' : 'fsm-page--closed'}`}
+      >
       {/* Scrollable full-screen content area */}
       <div className="fsm-scroll-area">
         <div className="fsm-container">
@@ -1708,7 +1723,8 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 
   return typeof document !== 'undefined'

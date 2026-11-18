@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
+import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import { useTheme } from '@/hooks/useTheme';
 import { LineLoader } from '@/components/ui/LineLoader';
 
@@ -49,6 +50,7 @@ export function CommonsSearchModal({
 }: CommonsSearchModalProps) {
   const { openProfile } = useProfileModal();
   const { isDark } = useTheme();
+  const nowMs = useSharedNow();
   const [activeTab, setActiveTab] = useState<'posts' | 'people'>('posts');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -190,21 +192,7 @@ export function CommonsSearchModal({
 
   const hasQuery = debouncedQuery.length >= 2;
 
-  const formatTime = (ts: any) => {
-    if (!ts) return 'Just now';
-    try {
-      const date = ts?.toDate ? ts.toDate() : new Date(ts);
-      const diffMs = Date.now() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return '';
-    }
-  };
+  const formatTime = (ts: any) => formatRelativeTimePkt(ts, nowMs);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {

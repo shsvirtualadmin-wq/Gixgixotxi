@@ -33,6 +33,12 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { MathText } from '@/components/ui/MathText';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import {
+  formatRelativeTimePkt,
+  formatAbsoluteDateTimePkt,
+  useSharedNow,
+} from '@/utils/dateFormat';
+import { getNavStoreSnapshot } from '@/lib/navStore';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useTheme } from '@/hooks/useTheme';
@@ -43,6 +49,48 @@ import {
 } from '@/services/publicProfileService';
 import { CommonsImageAttachment } from './CommonsImageAttachment';
 import { CommonsImageViewerModal } from './CommonsImageViewerModal';
+
+function shouldBlockCardNavigation(e: React.MouseEvent): boolean {
+  if (typeof document !== 'undefined') {
+    if (
+      getNavStoreSnapshot().isMenuOpen ||
+      document.body.getAttribute('data-hamburger-sheet-open') === 'true' ||
+      document.body.getAttribute('data-modal-open') === 'true' ||
+      document.body.getAttribute('data-drawer-open') === 'true'
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    }
+    const targetEl = e.target as HTMLElement | null;
+    if (
+      targetEl?.closest?.(
+        '[data-bottom-nav-container="true"], .sdn-dock, .fsm-page, button'
+      )
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      return true;
+    }
+    const navDock = document.querySelector('[data-bottom-nav-container="true"]');
+    if (navDock && (e.clientX !== 0 || e.clientY !== 0)) {
+      const rect = navDock.getBoundingClientRect();
+      if (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        e.clientY >= rect.top - 6 &&
+        e.clientY <= rect.bottom + 6 &&
+        e.clientX >= rect.left - 6 &&
+        e.clientX <= rect.right + 6
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 interface CommonsPostCardProps {
   post: CommonsPost;
@@ -68,6 +116,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const { openProfile } = useProfileModal();
   const { requireAuth } = useAuthGate();
   const { isDark } = useTheme();
+  const nowMs = useSharedNow();
   const initialSnap = getPostLikeSnapshot(post.id, post.upvotes || 0, currentUserId);
   const [upvotes, setUpvotes] = useState(initialSnap.count);
   const [hasVoted, setHasVoted] = useState(initialSnap.voted);
@@ -194,7 +243,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
   const postPermalink = `/commons/post/${buildEntitySlug(post.id, post.title)}`;
 
-  const handleVote = async () => {
+  const handleVote = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!currentUserId) {
       requireAuth('like this post');
       return;
@@ -222,7 +272,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!currentUserId) {
       requireAuth('save this post to your library');
       return;
@@ -240,7 +291,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     }
   };
 
-  const handleShare = () => {
+  const handleShare = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const url = `${window.location.origin}${postPermalink}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url);
@@ -250,23 +302,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     }
   };
 
-  const formatTime = (ts: any) => {
-    if (!ts) return 'Just now';
-    try {
-      const date = ts?.toDate ? ts.toDate() : new Date(ts);
-      const diffMs = Date.now() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
-      const diffDays = Math.floor(diffHours / 24);
-      if (diffDays < 7) return `${diffDays}d ago`;
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch {
-      return 'Recently';
-    }
-  };
+  const relativeTimeLabel = formatRelativeTimePkt(post, nowMs);
+  const fullPktDateTimeTitle = `${formatAbsoluteDateTimePkt(post)} PKT`;
 
   const isAuthor = currentUserId && post.authorUid === currentUserId;
   const canDelete = isAuthor || isAdmin;
@@ -343,7 +380,8 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     statsParts.push(`${localShares} ${localShares === 1 ? 'share' : 'shares'}`);
   }
 
-  const handleAuthorClick = () => {
+  const handleAuthorClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!post.isAnonymous && post.authorUid) {
       if (onAuthorClick) {
         onAuthorClick(post.authorUid);
@@ -409,8 +447,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               <div className="min-w-0">
                 <span className="text-[15px] font-bold text-primary">Anonymous</span>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
-                  <Link to={postPermalink} className="hover:underline hover:text-primary transition-colors">
-                    {formatTime(post.createdAt)}
+                  <Link
+                    to={postPermalink}
+                    onClick={shouldBlockCardNavigation}
+                    title={fullPktDateTimeTitle}
+                    className="hover:underline hover:text-primary transition-colors"
+                  >
+                    {relativeTimeLabel}
                   </Link>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
@@ -461,8 +504,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   />
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
-                  <Link to={postPermalink} className="hover:underline hover:text-primary transition-colors">
-                    {formatTime(post.createdAt)}
+                  <Link
+                    to={postPermalink}
+                    onClick={shouldBlockCardNavigation}
+                    title={fullPktDateTimeTitle}
+                    className="hover:underline hover:text-primary transition-colors"
+                  >
+                    {relativeTimeLabel}
                   </Link>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
@@ -487,9 +535,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         </div>
 
         {/* Three-Dot Options Menu */}
-        <div className="relative shrink-0">
+        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={() => setMenuOpen(!menuOpen)}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(!menuOpen);
+            }}
             className="p-2 rounded-xl text-muted hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
             aria-label="Post options"
           >
@@ -500,11 +552,14 @@ export const CommonsPostCard = memo(function CommonsPostCard({
             <div
               className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-border-strong floating-blur backdrop-blur-lg py-1.5 shadow-xl animate-in fade-in zoom-in-95"
               onMouseLeave={() => setMenuOpen(false)}
+              onClick={(e) => e.stopPropagation()}
             >
               <button
-                onClick={() => {
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
                   setMenuOpen(false);
-                  handleSave();
+                  void handleSave(e);
                 }}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-primary text-left transition-colors cursor-pointer"
               >
@@ -513,7 +568,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               </button>
 
               <button
-                onClick={() => {
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
                   setMenuOpen(false);
                   setIsHidden(true);
                 }}
@@ -524,7 +581,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               </button>
 
               <button
-                onClick={() => {
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
                   setMenuOpen(false);
                   requireAuth('report this post', () => onOpenReport(post));
                 }}
@@ -536,7 +595,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
               {canDelete && onDeletePost && (
                 <button
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setMenuOpen(false);
                     onDeletePost(post.id);
                   }}
@@ -558,6 +619,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       >
         <Link
           to={postPermalink}
+          onClick={shouldBlockCardNavigation}
           className="hover:text-accent transition-colors [overflow-wrap:anywhere] [word-break:break-word]"
         >
           <MathText text={post.title} />
@@ -569,13 +631,18 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         <div className="boardly-post-content text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
           <Link
             to={postPermalink}
+            onClick={shouldBlockCardNavigation}
             className={`block min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word] hover:text-primary transition-colors ${expanded ? '' : 'line-clamp-4'}`}
           >
             <MathText text={maskPublicUserText(post.description)} block />
           </Link>
           {!expanded && isLongDescription && (
             <button
-              onClick={() => setExpanded(true)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded(true);
+              }}
               className="text-xs font-semibold text-accent hover:underline mt-1.5 cursor-pointer block font-sans"
             >
               See more
@@ -643,9 +710,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       )}
 
       {/* ── Action Bar: Divider + Like, Comment, Share, Save ── */}
-      <div className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-border w-full max-w-full min-w-0">
+      <div
+        className="flex flex-wrap items-center justify-between gap-1 pt-1 border-t border-border w-full max-w-full min-w-0"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Like */}
         <button
+          type="button"
           onClick={handleVote}
           className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
             hasVoted
@@ -664,6 +735,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         {/* Comment (Opens Permalink Post Detail Page) */}
         <Link
           to={`${postPermalink}#comments`}
+          onClick={shouldBlockCardNavigation}
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
         >
           <MessageSquare size={15} className="shrink-0" />
@@ -672,6 +744,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
         {/* Share */}
         <button
+          type="button"
           onClick={handleShare}
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
           title="Copy post permalink"
@@ -686,6 +759,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
         {/* Save Bookmark */}
         <button
+          type="button"
           onClick={handleSave}
           className={`shrink-0 p-2 sm:p-2.5 rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
             isSaved

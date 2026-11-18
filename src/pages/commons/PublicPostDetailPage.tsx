@@ -60,6 +60,13 @@ import {
   extractIdFromSlug,
   buildEntitySlug,
 } from '@/utils/privacy';
+import {
+  formatPostDetailTimestampPkt,
+  formatRelativeTimePkt,
+  formatAbsoluteDateTimePkt,
+  parseTimestampMs,
+  useSharedNow,
+} from '@/utils/dateFormat';
 
 export const PublicPostDetailPage: React.FC = () => {
   const { idSlug, slug, postId: rawPostIdParam } = useParams<{
@@ -72,6 +79,7 @@ export const PublicPostDetailPage: React.FC = () => {
   const { user } = useAuth();
   const { profile } = useUserProfile();
   const { requireAuth } = useAuthGate();
+  const nowMs = useSharedNow();
 
   const [post, setPost] = useState<CommonsPost | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'gone'>('loading');
@@ -343,29 +351,12 @@ export const PublicPostDetailPage: React.FC = () => {
       !/\.(png|jpe?g|webp|gif|svg)(\?|$)/i.test(f.url || '')
   );
 
-  const createdDateObj = post.createdAt?.toDate
-    ? post.createdAt.toDate()
-    : typeof post.createdAt === 'string' || typeof post.createdAt === 'number'
-    ? new Date(post.createdAt)
-    : new Date();
-  const createdDateIso = !isNaN(createdDateObj.getTime())
-    ? createdDateObj.toISOString()
-    : new Date().toISOString();
-  const updatedDateObj = (post as any).updatedAt?.toDate
-    ? (post as any).updatedAt.toDate()
-    : (post as any).updatedAt
-    ? new Date((post as any).updatedAt)
-    : createdDateObj;
-  const modifiedDateIso = !isNaN(updatedDateObj.getTime())
-    ? updatedDateObj.toISOString()
-    : createdDateIso;
-  const formattedPostDate = !isNaN(createdDateObj.getTime())
-    ? createdDateObj.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : 'Recently';
+  const postTimestamp = formatPostDetailTimestampPkt(post, nowMs);
+  const createdDateIso = postTimestamp.isoString || undefined;
+  const updatedParsed = parseTimestampMs((post as any).updatedAt ?? (post as any).updated_at);
+  const modifiedDateIso =
+    updatedParsed.ms !== null ? new Date(updatedParsed.ms).toISOString() : createdDateIso;
+  const formattedPostDate = postTimestamp.fullLabel;
 
   const totalCommentsCount = Math.max(post.commentCount || 0, comments.length);
   const postOgImage = imageFiles[0]?.url || '/assets/og-image.png';
@@ -632,7 +623,12 @@ export const PublicPostDetailPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-white/55 mt-0.5 flex-wrap">
-                  <time dateTime={createdDateIso}>{formattedPostDate}</time>
+                  <time
+                    dateTime={createdDateIso}
+                    title={`${postTimestamp.absoluteDateTimeLabel} PKT`}
+                  >
+                    {formattedPostDate}
+                  </time>
                   <span>·</span>
                   <span className="inline-flex items-center gap-1">
                     {post.isAnonymous ? <EyeOff size={12} /> : <Globe size={12} />}
@@ -907,18 +903,8 @@ export const PublicPostDetailPage: React.FC = () => {
                 const cProfileId = liveCAuthor?.username || c.authorUsername || c.authorUid;
                 const isHighlighted = highlightedCommentId === c.id;
                 const isCommentCopied = copiedCommentId === c.id;
-                const commentTime = c.createdAt
-                  ? new Date(
-                      typeof c.createdAt === 'string'
-                        ? c.createdAt
-                        : c.createdAt?.toDate
-                        ? c.createdAt.toDate()
-                        : Date.now()
-                    ).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })
-                  : 'Recently';
+                const commentTime = formatRelativeTimePkt(c, nowMs);
+                const commentTitle = `${formatAbsoluteDateTimePkt(c)} PKT`;
 
                 return (
                   <div
@@ -964,7 +950,7 @@ export const PublicPostDetailPage: React.FC = () => {
                             handleCopyCommentLink(c.id);
                           }}
                           className="text-[11px] text-white/50 hover:text-white hover:underline"
-                          title="Permalink to this comment"
+                          title={commentTitle}
                         >
                           {commentTime}
                         </a>
@@ -1054,7 +1040,7 @@ export const PublicPostDetailPage: React.FC = () => {
                       {rp.subject || 'Commons'}
                     </span>
                     <span className="text-[11px] text-white/45">
-                      👍 {getPostLikeSnapshot(rp.id, rp.upvotes || 0).count} · 💬 {rp.commentCount || 0}
+                      {formatRelativeTimePkt(rp, nowMs)} · 👍 {getPostLikeSnapshot(rp.id, rp.upvotes || 0).count} · 💬 {rp.commentCount || 0}
                     </span>
                   </div>
                   <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">

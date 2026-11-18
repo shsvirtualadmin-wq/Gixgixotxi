@@ -12,7 +12,12 @@ import type {
   CommonsComment,
   CommonsUserPreview,
 } from '@/types/commons';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { sanitizeStudentDisplayName, extractIdFromSlug, buildEntitySlug } from '@/utils/privacy';
+import {
+  resolveCreatedAtMs,
+  recordServerDateHeader,
+  recordServerTime,
+} from '@/utils/dateFormat';
 import { getFollowerIds, getFollowingIds } from '@/services/followService';
 import { notifyFollowersOfPost } from '@/services/notificationService';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
@@ -319,30 +324,18 @@ export function applyLiveAuthorToPost(
  * both `.toDate()` (for legacy UI components) and ISO string / Date parsing.
  */
 export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
-  const rawCreatedNum =
-    typeof raw.createdAtMs === 'number'
-      ? raw.createdAtMs
-      : typeof raw.created_at === 'number'
-      ? raw.created_at
-      : typeof raw.createdAt === 'number'
-      ? raw.createdAt
-      : null;
-  const createdMs =
-    rawCreatedNum !== null
-      ? rawCreatedNum > 0 && rawCreatedNum < 10_000_000_000
-        ? rawCreatedNum * 1000
-        : rawCreatedNum
-      : raw.createdAt
-      ? Date.parse(String(raw.createdAt)) || Date.now()
-      : Date.now();
+  const parsedCreated = resolveCreatedAtMs(raw);
+  const createdMs = parsedCreated.ms;
 
-  const dateObj = new Date(createdMs);
-  const timestampCompat = {
-    seconds: Math.floor(createdMs / 1000),
-    nanoseconds: 0,
-    toDate: () => dateObj,
-    toMillis: () => createdMs,
-  };
+  const timestampCompat =
+    createdMs !== null
+      ? {
+          seconds: Math.floor(createdMs / 1000),
+          nanoseconds: 0,
+          toDate: () => new Date(createdMs),
+          toMillis: () => createdMs,
+        }
+      : null;
 
   const id = String(raw.id || '');
   const rawLikes = Math.max(0, Number(raw.upvotes ?? raw.likesCount ?? raw.likes_count ?? 0));
@@ -464,6 +457,7 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     isPinned: Boolean(raw.isPinned ?? raw.is_pinned),
     isFeatured: Boolean(raw.isFeatured ?? raw.is_featured),
     createdAt: timestampCompat as any,
+    ...(createdMs !== null ? { createdAtMs: createdMs } : {}),
   };
   return applyLiveAuthorToPost(basePost, cachedAuthor);
 }
@@ -830,7 +824,11 @@ export async function fetchCommonsPosts(options: {
         const resp = await fetch(`/api/posts?${params.toString()}`, {
           headers,
         });
+        recordServerDateHeader(resp);
         const fetchedData = await resp.json().catch(() => ({}));
+        if (fetchedData?.serverTimeMs) {
+          recordServerTime(fetchedData.serverTimeMs);
+        }
         if (resp.ok && Array.isArray(fetchedData?.posts)) {
           data = fetchedData;
         } else if (!data) {
@@ -903,11 +901,16 @@ export async function fetchCommonsPosts(options: {
     }
 
     for (const p of posts) {
+      const entry = {
+        post: p,
+        expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
+      };
       if (p.id) {
-        commonsPostDetailCache.set(p.id, {
-          post: p,
-          expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
-        });
+        commonsPostDetailCache.set(p.id, entry);
+        commonsPostDetailCache.set(buildEntitySlug(p.id, p.title), entry);
+      }
+      if ((p as any).slug) {
+        commonsPostDetailCache.set(String((p as any).slug), entry);
       }
     }
     const nextOffset =
@@ -953,7 +956,10 @@ export async function fetchCommonsPosts(options: {
 
 export async function fetchCommonsPostById(postIdOrSlug: string): Promise<CommonsPost | null> {
   if (!postIdOrSlug) return null;
-  const cached = commonsPostDetailCache.get(postIdOrSlug);
+  const extractedId = extractIdFromSlug(postIdOrSlug);
+  const cached =
+    commonsPostDetailCache.get(postIdOrSlug) ||
+    (extractedId ? commonsPostDetailCache.get(extractedId) : undefined);
   if (cached && Date.now() < cached.expiresAt) {
     return applyLiveAuthorToPost(cached.post);
   }
@@ -970,8 +976,12 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
         const resp = await fetch(`/api/posts/${encodeURIComponent(postIdOrSlug)}?view=1`, {
           headers,
         });
+        recordServerDateHeader(resp);
         if (resp.ok) {
           const data = await resp.json().catch(() => null);
+          if (data?.serverTimeMs) {
+            recordServerTime(data.serverTimeMs);
+          }
           if (data?.post) {
             rawPost = data.post;
           }
@@ -985,6 +995,7 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
         const seedMatch = ((seedPostsDataset as any).posts as Record<string, any>[]).find(
           (sp) =>
             sp.id === cleanTarget ||
+            sp.id === extractedId ||
             sp.slug === cleanTarget ||
             cleanTarget.startsWith(`${sp.id}-`)
         );
@@ -1001,15 +1012,17 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
         liveAuthor = map?.get(rawNormalized.authorUid) || null;
       }
       const normalized = applyLiveAuthorToPost(rawNormalized, liveAuthor);
-      commonsPostDetailCache.set(postIdOrSlug, {
+      const entry = {
         post: normalized,
         expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
-      });
+      };
+      commonsPostDetailCache.set(postIdOrSlug, entry);
       if (normalized.id) {
-        commonsPostDetailCache.set(normalized.id, {
-          post: normalized,
-          expiresAt: Date.now() + COMMONS_POSTS_CACHE_TTL_MS,
-        });
+        commonsPostDetailCache.set(normalized.id, entry);
+        commonsPostDetailCache.set(buildEntitySlug(normalized.id, normalized.title), entry);
+      }
+      if ((normalized as any).slug) {
+        commonsPostDetailCache.set(String((normalized as any).slug), entry);
       }
       return normalized;
     } catch {
