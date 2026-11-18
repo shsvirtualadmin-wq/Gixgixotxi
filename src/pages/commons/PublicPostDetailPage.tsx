@@ -567,7 +567,7 @@ export const PublicPostDetailPage: React.FC = () => {
           <div className="flex items-center justify-between gap-3 mb-5 min-w-0">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               {post.isAnonymous ? (
-                <div className="w-11 h-11 rounded-full bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/60 shrink-0">
+                <div className="w-11 h-11 rounded-full bg-surface-muted border border-border flex items-center justify-center text-muted shrink-0">
                   <EyeOff size={18} />
                 </div>
               ) : post.authorUid ? (
@@ -599,13 +599,13 @@ export const PublicPostDetailPage: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                   {post.isAnonymous || !post.authorUid ? (
-                    <span className="font-bold text-white text-sm sm:text-base truncate max-w-full">
+                    <span className="font-bold text-primary text-sm sm:text-base truncate max-w-full">
                       {authorDisplay}
                     </span>
                   ) : (
                     <Link
                       to={`/u/${encodeURIComponent(authorProfileIdentifier || '')}`}
-                      className="font-bold text-white hover:text-[#D71921] transition-colors text-sm sm:text-base truncate max-w-full"
+                      className="font-bold text-primary hover:text-[#D71921] transition-colors text-sm sm:text-base truncate max-w-full"
                     >
                       {authorDisplay}
                     </Link>
@@ -622,7 +622,7 @@ export const PublicPostDetailPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-white/55 mt-0.5 flex-wrap">
+                <div className="flex items-center gap-2 text-xs text-muted mt-0.5 flex-wrap">
                   <time
                     dateTime={createdDateIso}
                     title={`${postTimestamp.absoluteDateTimeLabel} PKT`}
@@ -641,7 +641,7 @@ export const PublicPostDetailPage: React.FC = () => {
                       <span>·</span>
                       <Link
                         to={commonsSubjectHref}
-                        className="hover:text-white underline underline-offset-2"
+                        className="hover:text-primary underline underline-offset-2"
                       >
                         {resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject}
                       </Link>
@@ -654,7 +654,7 @@ export const PublicPostDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={() => requireAuth('report this post', () => setReportOpen(true))}
-              className="p-2 rounded-xl bg-white/[0.04] border border-white/10 text-white/60 hover:text-[#D71921] transition-colors cursor-pointer shrink-0"
+              className="p-2 rounded-xl bg-surface-muted border border-border text-muted hover:text-[#D71921] transition-colors cursor-pointer shrink-0"
               title="Report post"
               aria-label="Report post"
             >
@@ -663,13 +663,13 @@ export const PublicPostDetailPage: React.FC = () => {
           </div>
 
           {/* Post H1 Title */}
-          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-white mb-4 leading-snug min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+          <h1 className="boardly-post-title font-dot text-2xl sm:text-3xl font-bold text-primary mb-4 leading-snug min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
             <MathText text={post.title} />
           </h1>
 
           {/* Post Body */}
           {post.description && (
-            <div className="boardly-post-content text-sm sm:text-base text-white/80 leading-relaxed whitespace-pre-wrap mb-6 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+            <div className="boardly-post-content text-sm sm:text-base text-secondary leading-relaxed whitespace-pre-wrap mb-6 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
               <MathText text={maskPublicUserText(post.description)} block />
             </div>
           )}
@@ -681,7 +681,7 @@ export const PublicPostDetailPage: React.FC = () => {
                 <Link
                   key={idx}
                   to={`/search?q=${encodeURIComponent(tag)}`}
-                  className="glass-pill px-3 py-1 text-xs text-white/70 hover:text-white max-w-full [overflow-wrap:anywhere] [word-break:break-all]"
+                  className="glass-pill px-3 py-1 text-xs text-secondary hover:text-primary max-w-full [overflow-wrap:anywhere] [word-break:break-all]"
                 >
                   #{tag}
                 </Link>
@@ -706,7 +706,7 @@ export const PublicPostDetailPage: React.FC = () => {
           {/* Document Attachments */}
           {docFiles.length > 0 && (
             <div className="space-y-2.5 mb-6 w-full max-w-full min-w-0">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
                 Attached Study Material
               </h2>
               {docFiles.map((file, idx) => {
@@ -722,10 +722,10 @@ export const PublicPostDetailPage: React.FC = () => {
                         {isPdf ? <FileText size={18} /> : <File size={18} />}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs sm:text-sm font-semibold text-white truncate">
+                        <p className="text-xs sm:text-sm font-semibold text-primary truncate">
                           {file.name}
                         </p>
-                        <p className="text-[11px] text-white/50">
+                        <p className="text-[11px] text-muted">
                           {file.size ? `${(file.size / 1024).toFixed(1)} KB` : 'Study Resource'}
                         </p>
                       </div>
@@ -760,15 +760,15 @@ export const PublicPostDetailPage: React.FC = () => {
           )}
 
           {/* Action Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-white/10 w-full max-w-full min-w-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-border w-full max-w-full min-w-0">
             <div className="flex flex-wrap items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={handleLike}
                 className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
                   hasVoted
-                    ? 'bg-[#D71921]/20 border-[#D71921] text-white'
-                    : 'bg-white/[0.04] border-white/10 text-white/75 hover:text-white'
+                    ? 'bg-[#D71921]/20 border-[#D71921] text-[#D71921] dark:text-white'
+                    : 'bg-surface-muted border-border text-secondary hover:text-primary'
                 }`}
               >
                 <ThumbsUp size={15} />
@@ -780,8 +780,8 @@ export const PublicPostDetailPage: React.FC = () => {
                 onClick={handleBookmark}
                 className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 border transition-colors cursor-pointer ${
                   isSaved
-                    ? 'bg-[#D71921]/20 border-[#D71921] text-white'
-                    : 'bg-white/[0.04] border-white/10 text-white/75 hover:text-white'
+                    ? 'bg-[#D71921]/20 border-[#D71921] text-[#D71921] dark:text-white'
+                    : 'bg-surface-muted border-border text-secondary hover:text-primary'
                 }`}
               >
                 <Bookmark size={15} />
@@ -792,9 +792,9 @@ export const PublicPostDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={handleShare}
-              className="px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 bg-white/[0.04] border border-white/10 text-white/75 hover:text-white transition-colors cursor-pointer"
+              className="px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-2 bg-surface-muted border border-border text-secondary hover:text-primary transition-colors cursor-pointer"
             >
-              {copied ? <Check size={15} className="text-emerald-400" /> : <Share2 size={15} />}
+              {copied ? <Check size={15} className="text-emerald-500" /> : <Share2 size={15} />}
               <span>{copied ? 'Link Copied!' : 'Share Permalink'}</span>
             </button>
           </div>
@@ -806,7 +806,7 @@ export const PublicPostDetailPage: React.FC = () => {
           className="glass-panel p-5 sm:p-8 mb-8 w-full max-w-full min-w-0 box-border overflow-x-hidden scroll-mt-24"
         >
           <div className="flex items-center justify-between mb-6 min-w-0">
-            <h2 className="font-dot text-xl font-bold text-white flex items-center gap-2">
+            <h2 className="font-dot text-xl font-bold text-primary flex items-center gap-2">
               <MessageSquare size={18} className="text-[#D71921]" />
               <span>Discussion ({comments.length})</span>
             </h2>
@@ -815,14 +815,14 @@ export const PublicPostDetailPage: React.FC = () => {
           {/* Comment Composer (Requires Login on Submit/Focus) */}
           <form onSubmit={handleCommentSubmit} className="mb-6 space-y-3 min-w-0">
             {replyingTo && (
-              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-xs text-white/85">
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#D71921]/15 border border-[#D71921]/30 text-xs text-primary">
                 <span>
                   Replying to <strong>{replyingTo.authorName}</strong>
                 </span>
                 <button
                   type="button"
                   onClick={() => setReplyingTo(null)}
-                  className="text-white/60 hover:text-white font-semibold cursor-pointer"
+                  className="text-muted hover:text-primary font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -841,10 +841,10 @@ export const PublicPostDetailPage: React.FC = () => {
                   : 'Sign in to post a comment or answer...'
               }
               rows={3}
-              className="w-full max-w-full rounded-xl bg-white/[0.04] border border-white/10 p-3.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#D71921]"
+              className="w-full max-w-full rounded-xl bg-surface-muted border border-border p-3.5 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-[#D71921]"
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <label className="inline-flex items-center gap-2 text-xs text-white/65 cursor-pointer">
+              <label className="inline-flex items-center gap-2 text-xs text-secondary cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isAnonComment}
@@ -875,7 +875,7 @@ export const PublicPostDetailPage: React.FC = () => {
           </form>
 
           {comments.length === 0 ? (
-            <p className="text-xs text-white/50 text-center py-6">
+            <p className="text-xs text-muted text-center py-6">
               No comments yet. Be the first to contribute to this discussion.
             </p>
           ) : (
@@ -921,7 +921,7 @@ export const PublicPostDetailPage: React.FC = () => {
                         {!c.isAnonymous && c.authorUid ? (
                           <Link
                             to={`/u/${encodeURIComponent(cProfileId || '')}`}
-                            className="inline-flex items-center gap-2 text-xs font-bold text-white hover:text-[#D71921] transition-colors min-w-0"
+                            className="inline-flex items-center gap-2 text-xs font-bold text-primary hover:text-[#D71921] transition-colors min-w-0"
                           >
                             <BoardlyAvatar
                               uid={c.authorUid}
@@ -933,7 +933,7 @@ export const PublicPostDetailPage: React.FC = () => {
                             <span className="truncate">{cAuthor}</span>
                           </Link>
                         ) : (
-                          <span className="text-xs font-bold text-white truncate">{cAuthor}</span>
+                          <span className="text-xs font-bold text-primary truncate">{cAuthor}</span>
                         )}
                         {!c.isAnonymous && cProBadge && (
                           <ProBadge
@@ -942,20 +942,20 @@ export const PublicPostDetailPage: React.FC = () => {
                             listMode
                           />
                         )}
-                        <span className="text-white/35">·</span>
+                        <span className="text-muted">·</span>
                         <a
                           href={`${canonicalPath}#comment-${c.id}`}
                           onClick={(e) => {
                             e.preventDefault();
                             handleCopyCommentLink(c.id);
                           }}
-                          className="text-[11px] text-white/50 hover:text-white hover:underline"
+                          className="text-[11px] text-muted hover:text-primary hover:underline"
                           title={commentTitle}
                         >
                           {commentTime}
                         </a>
                         {isHighlighted && (
-                          <span className="px-2 py-0.5 rounded-full bg-[#D71921]/20 border border-[#D71921]/40 text-[10px] font-semibold text-[#FCA5A5]">
+                          <span className="px-2 py-0.5 rounded-full bg-[#D71921]/20 border border-[#D71921]/40 text-[10px] font-semibold text-[#D71921] dark:text-[#FCA5A5]">
                             Linked Comment
                           </span>
                         )}
@@ -965,7 +965,7 @@ export const PublicPostDetailPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleReplyToComment(c.id, cAuthor)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-[11px] text-white/70 hover:text-white transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-muted hover:bg-surface-raised border border-border text-[11px] text-secondary hover:text-primary transition-colors cursor-pointer"
                           title="Reply to this comment"
                         >
                           <Reply size={12} />
@@ -974,13 +974,13 @@ export const PublicPostDetailPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleCopyCommentLink(c.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 text-[11px] text-white/70 hover:text-white transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-surface-muted hover:bg-surface-raised border border-border text-[11px] text-secondary hover:text-primary transition-colors cursor-pointer"
                           title="Copy permalink to this comment"
                         >
                           {isCommentCopied ? (
                             <>
-                              <Check size={12} className="text-emerald-400" />
-                              <span className="text-emerald-400 font-semibold">Link Copied</span>
+                              <Check size={12} className="text-emerald-500" />
+                              <span className="text-emerald-500 font-semibold">Link Copied</span>
                             </>
                           ) : (
                             <>
@@ -992,7 +992,7 @@ export const PublicPostDetailPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="boardly-post-content text-xs sm:text-sm text-white/80 whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+                    <div className="boardly-post-content text-xs sm:text-sm text-secondary whitespace-pre-wrap leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
                       <MathText text={maskPublicUserText((c as any).body || c.text)} block />
                     </div>
                   </div>
@@ -1004,7 +1004,7 @@ export const PublicPostDetailPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setVisibleCommentsLimit((prev) => prev + 15)}
-                    className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs font-semibold text-white/80 hover:text-white transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-surface-muted hover:bg-surface-raised border border-border text-xs font-semibold text-secondary hover:text-primary transition-colors cursor-pointer"
                   >
                     Load more comments ({comments.length - visibleCommentsLimit} remaining)
                   </button>
@@ -1018,7 +1018,7 @@ export const PublicPostDetailPage: React.FC = () => {
         {relatedPosts.length > 0 && (
           <section className="glass-panel p-5 sm:p-8 w-full max-w-full min-w-0 box-border overflow-x-hidden">
             <div className="flex items-center justify-between gap-2 mb-4">
-              <h2 className="font-dot text-xl font-bold text-white">
+              <h2 className="font-dot text-xl font-bold text-primary">
                 Related Posts in {resolvedPractice.subjectSlug ? resolvedPractice.label : post.subject || 'Boardly Commons'}
               </h2>
               <Link
@@ -1039,14 +1039,14 @@ export const PublicPostDetailPage: React.FC = () => {
                     <span className="text-[11px] text-[#D71921] font-semibold uppercase">
                       {rp.subject || 'Commons'}
                     </span>
-                    <span className="text-[11px] text-white/45">
+                    <span className="text-[11px] text-muted">
                       {formatRelativeTimePkt(rp, nowMs)} · 👍 {getPostLikeSnapshot(rp.id, rp.upvotes || 0).count} · 💬 {rp.commentCount || 0}
                     </span>
                   </div>
-                  <h3 className="boardly-post-title text-sm font-bold text-white mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
+                  <h3 className="boardly-post-title text-sm font-bold text-primary mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     <MathText text={rp.title} />
                   </h3>
-                  <div className="boardly-post-content text-xs text-white/60 mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
+                  <div className="boardly-post-content text-xs text-secondary mt-1 line-clamp-2 [overflow-wrap:anywhere] [word-break:break-word]">
                     <MathText text={maskPublicUserText(rp.description)} />
                   </div>
                 </Link>

@@ -81,15 +81,6 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: 'DotoSafeDigits';
-  src: local('Space Grotesk'), local('Inter'), local('Segoe UI'), local('Roboto'), local('Helvetica Neue'), local('Arial'), local('sans-serif');
-  unicode-range: U+0030-0039;
-  font-weight: 400 900;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ===== SEMANTIC DESIGN TOKENS (SINGLE SOURCE OF TRUTH) ===== */
 :root {
   /* LIGHT THEME (Default) */
@@ -215,9 +206,10 @@
   --space-96: 96px;
 
   /* Fonts */
-  --font-dot: 'DotoSafeDigits', 'Doto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-dot: 'Doto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --tab-inactive-text: #111111;
 
   /* Transitions */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -345,6 +337,7 @@
   --nav-bg: rgba(18, 18, 22, 0.72);
   --nav-active-bg: #D71921;
   --nav-active-text: #ffffff;
+  --tab-inactive-text: rgba(255, 255, 255, 0.78);
 
   /* Liquid Glass Nav & Full-Screen Menu Tokens (Dark) */
   --nav-glass-bg: rgba(255, 255, 255, 0.08);
@@ -12056,12 +12049,19 @@ button.section-chip:active:not(:disabled),
   align-items: center;
   padding: 4px;
   border-radius: 9999px;
+  background: var(--glass-pill-bg, rgba(255, 255, 255, 0.78));
+  border: 1px solid var(--border, rgba(17, 17, 20, 0.12));
+  box-shadow: var(--shadow-row, 0 8px 24px rgba(15, 23, 42, 0.08));
+  overflow: hidden;
+}
+
+.dark .ios-seg-track,
+[data-theme="dark"] .ios-seg-track {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 8px 24px rgba(0, 0, 0, 0.38);
-  overflow: hidden;
 }
 
 .ios-seg-thumb {
@@ -12118,7 +12118,7 @@ button.section-chip:active:not(:disabled),
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--tab-inactive-text, #111111);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -12128,8 +12128,18 @@ button.section-chip:active:not(:disabled),
     transform 450ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+.light .ios-seg-btn:not(.is-active),
+[data-theme="light"] .ios-seg-btn:not(.is-active) {
+  color: #111111;
+}
+
+.dark .ios-seg-btn:not(.is-active),
+[data-theme="dark"] .ios-seg-btn:not(.is-active) {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .ios-seg-btn.is-active {
-  color: #ffffff;
+  color: #ffffff !important;
 }
 
 .ios-seg-btn:active {

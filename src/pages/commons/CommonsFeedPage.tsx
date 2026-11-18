@@ -31,12 +31,50 @@ import {
   sortCommonsPosts,
   fetchCommonsPostById,
 } from '@/services/commonsService';
+import { getCachedFollowingIds, getFollowingIds } from '@/services/followService';
 import type { CommonsPost, CommonsPostType } from '@/types/commons';
 import { Link, useSearchParams, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { buildEntitySlug } from '@/utils/privacy';
+
+type FeedTabKey = 'all' | 'trending' | 'following';
+
+function rankTrendingPosts(list: CommonsPost[]): CommonsPost[] {
+  if (list.length <= 1) return [...list];
+  const now = Date.now();
+  return [...list].sort((a, b) => {
+    if (a.isPinned && !b.isPinned) return -1;
+    if (!a.isPinned && b.isPinned) return 1;
+    const rawACreated = (a as any).createdAt;
+    const rawBCreated = (b as any).createdAt;
+    const aCreated =
+      typeof rawACreated === 'number'
+        ? rawACreated
+        : typeof rawACreated?.toMillis === 'function'
+        ? rawACreated.toMillis()
+        : typeof rawACreated === 'string'
+        ? Date.parse(rawACreated) || 0
+        : 0;
+    const bCreated =
+      typeof rawBCreated === 'number'
+        ? rawBCreated
+        : typeof rawBCreated?.toMillis === 'function'
+        ? rawBCreated.toMillis()
+        : typeof rawBCreated === 'string'
+        ? Date.parse(rawBCreated) || 0
+        : 0;
+    const aAgeDays = Math.max(0, (now - aCreated) / (24 * 60 * 60 * 1000));
+    const bAgeDays = Math.max(0, (now - bCreated) / (24 * 60 * 60 * 1000));
+    const aScore =
+      (a.upvotes || 0) * 3 + (a.commentCount || 0) * 2 + Math.max(0, 14 - aAgeDays) * 0.25;
+    const bScore =
+      (b.upvotes || 0) * 3 + (b.commentCount || 0) * 2 + Math.max(0, 14 - bAgeDays) * 0.25;
+    if (Math.abs(bScore - aScore) > 0.01) return bScore - aScore;
+    return bCreated - aCreated;
+  });
+}
 
 const SUBJECT_FILTERS = [
   { slug: 'all', label: 'All Subjects' },
@@ -50,7 +88,7 @@ const SUBJECT_FILTERS = [
 
 export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: boolean }) {
   const { user, profile } = useUserProfile();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isGuest } = useAuth();
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const location = useLocation();
@@ -62,13 +100,20 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     ? '/dashboard/commons'
     : '/commons';
 
-  // Derive Feed Tab ("all" | "trending" | "following") and filters directly from URL
-  const feedTab: 'all' | 'trending' | 'following' =
+  const isGuestOrAnon = Boolean(!user || isGuest || user.uid.startsWith('guest_'));
+
+  // Derive URL Feed Tab ("all" | "trending" | "following") and keep synchronous state so tab switches happen in the same render
+  const urlFeedTab: FeedTabKey =
     location.pathname.endsWith('/trending') || searchParams.get('tab') === 'trending'
       ? 'trending'
       : location.pathname.endsWith('/following') || searchParams.get('tab') === 'following'
       ? 'following'
       : 'all';
+
+  const [feedTab, setFeedTabState] = useState<FeedTabKey>(urlFeedTab);
+  useEffect(() => {
+    setFeedTabState(urlFeedTab);
+  }, [urlFeedTab]);
 
   const normalizedRouteSubj = (routeSubject || '').toLowerCase();
   const subjectFilter =
@@ -78,7 +123,9 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const classFilter = searchParams.get('class') || 'all';
 
   const setFeedTab = useCallback(
-    (nextTab: 'all' | 'trending' | 'following') => {
+    (nextTab: FeedTabKey) => {
+      // Switch to the new tab's own list in the same render before router navigation completes
+      setFeedTabState(nextTab);
       const nextParams = new URLSearchParams(searchParams);
       if (nextTab === 'all') {
         nextParams.delete('tab');
@@ -135,25 +182,105 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   }, []);
   const feedTabIndex = feedTab === 'all' ? 0 : feedTab === 'trending' ? 1 : 2;
 
-  // Posts State — initialize synchronously from memory/SWR cache so tab revisits & warm starts render in 0ms
-  const initialCached = useMemo(
-    () => getInitialCachedCommonsFeed(feedTab === 'following' ? 'following' : 'all', user?.uid),
+  // Synchronous cache for user's following list so Following tab can decide immediately before any query
+  const [followingIds, setFollowingIds] = useState<string[] | null>(() => {
+    if (isGuestOrAnon || !user?.uid) return [];
+    return getCachedFollowingIds(user.uid);
+  });
+
+  useEffect(() => {
+    if (isGuestOrAnon || !user?.uid) {
+      setFollowingIds([]);
+      return;
+    }
+    const cached = getCachedFollowingIds(user.uid);
+    if (cached !== null) {
+      setFollowingIds(cached);
+    } else {
+      setFollowingIds(null);
+    }
+    let cancelled = false;
+    void getFollowingIds(user.uid)
+      .then((ids) => {
+        if (!cancelled) {
+          setFollowingIds(ids);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFollowingIds((prev) => prev ?? []);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGuestOrAnon, user?.uid]);
+
+  // Separate posts state, loading flag, loaded flag, pagination, and error per tab: all, trending, following
+  const initialAllCached = useMemo(
+    () => getInitialCachedCommonsFeed('all', user?.uid),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  const [posts, setPosts] = useState<CommonsPost[]>(() =>
-    initialCached?.posts ? sortCommonsPosts(initialCached.posts) : []
-  );
-  const [loading, setLoading] = useState<boolean>(() => !initialCached || initialCached.posts.length === 0);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState<boolean>(() => Boolean(initialCached?.hasMore));
-  const [lastDoc, setLastDoc] = useState<any>(() => initialCached?.lastDoc ?? null);
-  const [loadingMore, setLoadingMore] = useState(false);
+
+  const [postsByTab, setPostsByTab] = useState<Record<FeedTabKey, CommonsPost[]>>(() => {
+    const allSeed = initialAllCached?.posts ? sortCommonsPosts(initialAllCached.posts) : [];
+    const trendingSeed = allSeed.length > 0 ? rankTrendingPosts(allSeed) : [];
+    return {
+      all: allSeed,
+      trending: trendingSeed,
+      following: [],
+    };
+  });
+
+  const [loadingByTab, setLoadingByTab] = useState<Record<FeedTabKey, boolean>>(() => ({
+    all: !initialAllCached || initialAllCached.posts.length === 0,
+    trending: !initialAllCached || initialAllCached.posts.length === 0,
+    following: !isGuestOrAnon && followingIds === null,
+  }));
+
+  const [loadedByTab, setLoadedByTab] = useState<Record<FeedTabKey, boolean>>(() => ({
+    all: Boolean(initialAllCached && initialAllCached.posts.length > 0),
+    trending: Boolean(initialAllCached && initialAllCached.posts.length > 0),
+    following: isGuestOrAnon || (followingIds !== null && followingIds.length === 0),
+  }));
+
+  const [loadErrorByTab, setLoadErrorByTab] = useState<Record<FeedTabKey, string | null>>({
+    all: null,
+    trending: null,
+    following: null,
+  });
+
+  const [hasMoreByTab, setHasMoreByTab] = useState<Record<FeedTabKey, boolean>>(() => ({
+    all: Boolean(initialAllCached?.hasMore),
+    trending: Boolean(initialAllCached?.hasMore),
+    following: false,
+  }));
+
+  const [lastDocByTab, setLastDocByTab] = useState<Record<FeedTabKey, any>>(() => ({
+    all: initialAllCached?.lastDoc ?? null,
+    trending: initialAllCached?.lastDoc ?? null,
+    following: null,
+  }));
+
+  const [loadingMoreByTab, setLoadingMoreByTab] = useState<Record<FeedTabKey, boolean>>({
+    all: false,
+    trending: false,
+    following: false,
+  });
+
   const [backendMode, setBackendMode] = useState<'cloudflare-d1-r2' | 'preview-demo' | null>(
-    () => initialCached?.backendMode || null
+    () => initialAllCached?.backendMode || null
   );
   const unreadNotifCount = useUnreadNotificationsCount();
   const recentCreatedPostRef = useRef<CommonsPost | null>(null);
+
+  // Per-tab request IDs to prevent race conditions when switching tabs rapidly
+  const requestIdByTabRef = useRef<Record<FeedTabKey, number>>({
+    all: 0,
+    trending: 0,
+    following: 0,
+  });
 
   // Modals & Composer Config
   const [wizardConfig, setWizardConfig] = useState<{
@@ -191,97 +318,276 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   const targetPostId = searchParams.get('post') || searchParams.get('id');
 
-  const loadPosts = useCallback(async (forceLoadingState = false) => {
-    const cachedNow = getInitialCachedCommonsFeed(
-      feedTab === 'following' ? 'following' : 'all',
-      user?.uid
-    );
-    if (cachedNow && cachedNow.posts.length > 0 && !forceLoadingState) {
-      setPosts((prev) => (prev.length > 0 ? prev : sortCommonsPosts(cachedNow.posts)));
-      setLastDoc((prev: any) => (prev !== null ? prev : cachedNow.lastDoc));
-      setHasMore((prev) => (prev ? prev : cachedNow.hasMore));
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-    setLoadError(null);
-    try {
-      const isFiltered = subjectFilter !== 'all' || classFilter !== 'all';
-      const [targetPost, res] = await Promise.all([
-        targetPostId ? fetchCommonsPostById(targetPostId) : Promise.resolve(null),
-        fetchCommonsPosts({
-          feedTab: feedTab === 'following' ? 'following' : 'all',
-          subject: subjectFilter !== 'all' ? subjectFilter : undefined,
-          pageSize: isFiltered ? 60 : 15,
-          currentUid: user?.uid,
-        }),
-      ]);
+  const loadPosts = useCallback(
+    async (forceLoadingState = false, tabToLoad: FeedTabKey = feedTab) => {
+      const reqId = ++requestIdByTabRef.current[tabToLoad];
 
-      let combined = res.posts;
-      if (targetPost && !combined.some((p) => p.id === targetPost!.id)) {
-        combined = [targetPost, ...combined];
-      }
-      if (
-        recentCreatedPostRef.current &&
-        feedTab !== 'following' &&
-        !combined.some((p) => p.id === recentCreatedPostRef.current!.id)
-      ) {
-        combined = [recentCreatedPostRef.current, ...combined];
-      }
-
-      setPosts(sortCommonsPosts(combined));
-      setLastDoc(res.lastDoc);
-      setHasMore(res.hasMore);
-      setBackendMode(res.backendMode || 'cloudflare-d1-r2');
-    } catch (err: unknown) {
-      console.warn('[CommonsFeedPage] fetch error:', err);
-      const msg =
-        err instanceof Error ? err.message : 'Could not load community posts';
-      // Only show error state if we have no cached posts on screen
-      setPosts((prev) => {
-        if (prev.length === 0) {
-          setLoadError(msg);
-          setLastDoc(null);
-          setHasMore(false);
+      // 1. FOLLOWING TAB: Decide from the user's following list BEFORE running any feed query
+      if (tabToLoad === 'following') {
+        if (isGuestOrAnon || !user?.uid) {
+          setPostsByTab((prev) => ({ ...prev, following: [] }));
+          setLoadingByTab((prev) => ({ ...prev, following: false }));
+          setLoadedByTab((prev) => ({ ...prev, following: true }));
+          setHasMoreByTab((prev) => ({ ...prev, following: false }));
+          setLastDocByTab((prev) => ({ ...prev, following: null }));
+          setLoadErrorByTab((prev) => ({ ...prev, following: null }));
+          return;
         }
-        return prev;
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [feedTab, user?.uid, targetPostId, subjectFilter, classFilter]);
+
+        const syncFollowing = getCachedFollowingIds(user.uid);
+        if (syncFollowing !== null && syncFollowing.length === 0 && !forceLoadingState) {
+          setFollowingIds([]);
+          setPostsByTab((prev) => ({ ...prev, following: [] }));
+          setLoadingByTab((prev) => ({ ...prev, following: false }));
+          setLoadedByTab((prev) => ({ ...prev, following: true }));
+          setHasMoreByTab((prev) => ({ ...prev, following: false }));
+          setLastDocByTab((prev) => ({ ...prev, following: null }));
+          setLoadErrorByTab((prev) => ({ ...prev, following: null }));
+          // Refresh following list in background in case user recently followed someone
+          void getFollowingIds(user.uid, 200, { forceRefresh: true }).then((freshIds) => {
+            if (requestIdByTabRef.current.following !== reqId) return;
+            if (freshIds.length > 0) {
+              setFollowingIds(freshIds);
+            }
+          });
+          return;
+        }
+
+        if (syncFollowing === null || forceLoadingState) {
+          setLoadingByTab((prev) => ({ ...prev, following: true }));
+        }
+        setLoadErrorByTab((prev) => ({ ...prev, following: null }));
+
+        try {
+          const resolvedFollowingIds =
+            syncFollowing !== null && !forceLoadingState
+              ? syncFollowing
+              : await getFollowingIds(user.uid, 200, { forceRefresh: forceLoadingState });
+
+          if (requestIdByTabRef.current.following !== reqId) return;
+          setFollowingIds(resolvedFollowingIds);
+
+          if (resolvedFollowingIds.length === 0) {
+            setPostsByTab((prev) => ({ ...prev, following: [] }));
+            setLoadingByTab((prev) => ({ ...prev, following: false }));
+            setLoadedByTab((prev) => ({ ...prev, following: true }));
+            setHasMoreByTab((prev) => ({ ...prev, following: false }));
+            setLastDocByTab((prev) => ({ ...prev, following: null }));
+            return;
+          }
+
+          const followingSet = new Set(resolvedFollowingIds.map((id) => String(id).trim()));
+          const res = await fetchCommonsPosts({
+            feedTab: 'following',
+            followingUids: resolvedFollowingIds,
+            subject: subjectFilter !== 'all' ? subjectFilter : undefined,
+            pageSize: 20,
+            currentUid: user.uid,
+          });
+
+          if (requestIdByTabRef.current.following !== reqId) return;
+
+          // Client-side filter again: Following shows ONLY posts whose authorUid is in followingSet
+          const strictlyFiltered = res.posts.filter(
+            (p) => !p.isAnonymous && Boolean(p.authorUid) && followingSet.has(String(p.authorUid))
+          );
+
+          setPostsByTab((prev) => ({
+            ...prev,
+            following: sortCommonsPosts(strictlyFiltered),
+          }));
+          setLastDocByTab((prev) => ({ ...prev, following: res.lastDoc }));
+          setHasMoreByTab((prev) => ({ ...prev, following: res.hasMore }));
+          setLoadedByTab((prev) => ({ ...prev, following: true }));
+          setBackendMode(res.backendMode || 'cloudflare-d1-r2');
+        } catch (err: unknown) {
+          if (requestIdByTabRef.current.following !== reqId) return;
+          console.warn('[CommonsFeedPage] following fetch error:', err);
+          const msg = err instanceof Error ? err.message : 'Could not load posts';
+          setPostsByTab((prev) => {
+            if (prev.following.length === 0) {
+              setLoadErrorByTab((ePrev) => ({ ...ePrev, following: msg }));
+              setLastDocByTab((dPrev) => ({ ...dPrev, following: null }));
+              setHasMoreByTab((hPrev) => ({ ...hPrev, following: false }));
+            }
+            return prev;
+          });
+        } finally {
+          if (requestIdByTabRef.current.following === reqId) {
+            setLoadingByTab((prev) => ({ ...prev, following: false }));
+            setLoadedByTab((prev) => ({ ...prev, following: true }));
+          }
+        }
+        return;
+      }
+
+      // 2. ALL or TRENDING TAB
+      const cachedNow = getInitialCachedCommonsFeed('all', user?.uid);
+      if (cachedNow && cachedNow.posts.length > 0 && !forceLoadingState) {
+        setPostsByTab((prev) => {
+          if (prev[tabToLoad].length > 0) return prev;
+          const nextList =
+            tabToLoad === 'trending'
+              ? rankTrendingPosts(cachedNow.posts)
+              : sortCommonsPosts(cachedNow.posts);
+          return { ...prev, [tabToLoad]: nextList };
+        });
+        setLastDocByTab((prev) => ({
+          ...prev,
+          [tabToLoad]: prev[tabToLoad] !== null ? prev[tabToLoad] : cachedNow.lastDoc,
+        }));
+        setHasMoreByTab((prev) => ({
+          ...prev,
+          [tabToLoad]: prev[tabToLoad] ? prev[tabToLoad] : cachedNow.hasMore,
+        }));
+        setLoadingByTab((prev) => ({ ...prev, [tabToLoad]: false }));
+        setLoadedByTab((prev) => ({ ...prev, [tabToLoad]: true }));
+      } else {
+        setLoadingByTab((prev) => ({ ...prev, [tabToLoad]: true }));
+      }
+      setLoadErrorByTab((prev) => ({ ...prev, [tabToLoad]: null }));
+
+      try {
+        const isFiltered = subjectFilter !== 'all' || classFilter !== 'all';
+        const [targetPost, res] = await Promise.all([
+          targetPostId && tabToLoad === 'all'
+            ? fetchCommonsPostById(targetPostId)
+            : Promise.resolve(null),
+          fetchCommonsPosts({
+            feedTab: tabToLoad,
+            sortBy: tabToLoad === 'trending' ? 'trending' : 'newest',
+            subject: subjectFilter !== 'all' ? subjectFilter : undefined,
+            pageSize: isFiltered || tabToLoad === 'trending' ? 40 : 15,
+            currentUid: user?.uid,
+          }),
+        ]);
+
+        if (requestIdByTabRef.current[tabToLoad] !== reqId) return;
+
+        let combined = res.posts;
+        if (
+          tabToLoad === 'all' &&
+          targetPost &&
+          !combined.some((p) => p.id === targetPost.id)
+        ) {
+          combined = [targetPost, ...combined];
+        }
+        if (
+          recentCreatedPostRef.current &&
+          !combined.some((p) => p.id === recentCreatedPostRef.current!.id)
+        ) {
+          combined = [recentCreatedPostRef.current, ...combined];
+        }
+
+        const ordered =
+          tabToLoad === 'trending' ? rankTrendingPosts(combined) : sortCommonsPosts(combined);
+
+        setPostsByTab((prev) => ({
+          ...prev,
+          [tabToLoad]: ordered,
+        }));
+        setLastDocByTab((prev) => ({ ...prev, [tabToLoad]: res.lastDoc }));
+        setHasMoreByTab((prev) => ({ ...prev, [tabToLoad]: res.hasMore }));
+        setLoadedByTab((prev) => ({ ...prev, [tabToLoad]: true }));
+        setBackendMode(res.backendMode || 'cloudflare-d1-r2');
+      } catch (err: unknown) {
+        if (requestIdByTabRef.current[tabToLoad] !== reqId) return;
+        console.warn('[CommonsFeedPage] fetch error:', err);
+        const msg = err instanceof Error ? err.message : 'Could not load community posts';
+        setPostsByTab((prev) => {
+          if (prev[tabToLoad].length === 0) {
+            setLoadErrorByTab((ePrev) => ({ ...ePrev, [tabToLoad]: msg }));
+            setLastDocByTab((dPrev) => ({ ...dPrev, [tabToLoad]: null }));
+            setHasMoreByTab((hPrev) => ({ ...hPrev, [tabToLoad]: false }));
+          }
+          return prev;
+        });
+      } finally {
+        if (requestIdByTabRef.current[tabToLoad] === reqId) {
+          setLoadingByTab((prev) => ({ ...prev, [tabToLoad]: false }));
+          setLoadedByTab((prev) => ({ ...prev, [tabToLoad]: true }));
+        }
+      }
+    },
+    [feedTab, isGuestOrAnon, user?.uid, targetPostId, subjectFilter, classFilter]
+  );
 
   useEffect(() => {
-    loadPosts();
-  }, [loadPosts]);
+    void loadPosts(false, feedTab);
+  }, [loadPosts, feedTab, followingIds?.length]);
+
+  const activePosts = postsByTab[feedTab];
+  const loading = loadingByTab[feedTab] || !loadedByTab[feedTab];
+  const loadError = loadErrorByTab[feedTab];
+  const hasMore = hasMoreByTab[feedTab];
+  const lastDoc = lastDocByTab[feedTab];
+  const loadingMore = loadingMoreByTab[feedTab];
 
   const handleLoadMore = useCallback(async () => {
-    if (lastDoc === null || lastDoc === undefined || loadingMore) return;
-    setLoadingMore(true);
+    const activeTab = feedTab;
+    const currentLastDoc = lastDocByTab[activeTab];
+    if (currentLastDoc === null || currentLastDoc === undefined || loadingMoreByTab[activeTab]) {
+      return;
+    }
+    if (activeTab === 'following' && (!followingIds || followingIds.length === 0)) {
+      return;
+    }
+    const reqId = requestIdByTabRef.current[activeTab];
+    setLoadingMoreByTab((prev) => ({ ...prev, [activeTab]: true }));
     try {
       const res = await fetchCommonsPosts({
-        feedTab: feedTab === 'following' ? 'following' : 'all',
+        feedTab: activeTab,
+        sortBy: activeTab === 'trending' ? 'trending' : 'newest',
+        followingUids: activeTab === 'following' ? followingIds || [] : undefined,
         subject: subjectFilter !== 'all' ? subjectFilter : undefined,
-        lastDoc,
-        pageSize: 15,
+        lastDoc: currentLastDoc,
+        pageSize: activeTab === 'following' ? 20 : 15,
         currentUid: user?.uid,
       });
-      setPosts((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const newPosts = res.posts.filter((p) => !existingIds.has(p.id));
-        return sortCommonsPosts([...prev, ...newPosts]);
+      if (requestIdByTabRef.current[activeTab] !== reqId) return;
+
+      const followingSet =
+        activeTab === 'following' ? new Set((followingIds || []).map((id) => String(id).trim())) : null;
+
+      setPostsByTab((prev) => {
+        const currentList = prev[activeTab];
+        const existingIds = new Set(currentList.map((p) => p.id));
+        let newPosts = res.posts.filter((p) => !existingIds.has(p.id));
+        if (followingSet) {
+          newPosts = newPosts.filter(
+            (p) => !p.isAnonymous && Boolean(p.authorUid) && followingSet.has(String(p.authorUid))
+          );
+        }
+        const merged = [...currentList, ...newPosts];
+        return {
+          ...prev,
+          [activeTab]:
+            activeTab === 'trending' ? rankTrendingPosts(merged) : sortCommonsPosts(merged),
+        };
       });
-      setLastDoc(res.lastDoc);
-      setHasMore(res.hasMore);
+      setLastDocByTab((prev) => ({ ...prev, [activeTab]: res.lastDoc }));
+      setHasMoreByTab((prev) => ({ ...prev, [activeTab]: res.hasMore }));
     } catch (err: unknown) {
       console.warn('[CommonsFeedPage] load more notice:', err);
     } finally {
-      setLoadingMore(false);
+      setLoadingMoreByTab((prev) => ({ ...prev, [activeTab]: false }));
     }
-  }, [lastDoc, loadingMore, feedTab, user?.uid, subjectFilter]);
+  }, [feedTab, lastDocByTab, loadingMoreByTab, followingIds, user?.uid, subjectFilter]);
 
   const displayedPosts = useMemo(() => {
-    let list = [...posts];
+    // Strictly read only the active tab's own list; never show another tab's posts
+    if (feedTab === 'following') {
+      if (isGuestOrAnon || !followingIds || followingIds.length === 0) {
+        return [];
+      }
+    }
+    let list = [...activePosts];
+    if (feedTab === 'following') {
+      const followingSet = new Set((followingIds || []).map((id) => String(id).trim()));
+      list = list.filter(
+        (p) => !p.isAnonymous && Boolean(p.authorUid) && followingSet.has(String(p.authorUid))
+      );
+    }
     if (subjectFilter !== 'all') {
       const sf = subjectFilter.toLowerCase();
       list = list.filter((p) => {
@@ -323,10 +629,10 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       });
     }
     if (feedTab === 'trending') {
-      list.sort((a, b) => (b.upvotes || 0) + (b.commentCount || 0) - ((a.upvotes || 0) + (a.commentCount || 0)));
+      list = rankTrendingPosts(list);
     }
     return list;
-  }, [posts, subjectFilter, classFilter, feedTab]);
+  }, [activePosts, feedTab, isGuestOrAnon, followingIds, subjectFilter, classFilter]);
 
   // Infinite scroll trigger via IntersectionObserver sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -369,7 +675,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const handleTouchEnd = () => {
     if (isPulling) {
       if (pullDistance > 55) {
-        loadPosts();
+        void loadPosts(true, feedTab);
       }
       setIsPulling(false);
       setPullDistance(0);
@@ -383,15 +689,20 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       setClassFilter('all');
       if (optimisticPost) {
         recentCreatedPostRef.current = optimisticPost;
-        setPosts((prev) =>
-          sortCommonsPosts([
+        setPostsByTab((prev) => ({
+          ...prev,
+          all: sortCommonsPosts([
             optimisticPost,
-            ...prev.filter((p) => p.id !== optimisticPost.id),
-          ])
-        );
+            ...prev.all.filter((p) => p.id !== optimisticPost.id),
+          ]),
+          trending: rankTrendingPosts([
+            optimisticPost,
+            ...prev.trending.filter((p) => p.id !== optimisticPost.id),
+          ]),
+        }));
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      void loadPosts();
+      void loadPosts(false, 'all');
     },
     [loadPosts, setClassFilter, setFeedTab, setSubjectFilter]
   );
@@ -401,7 +712,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       if (!user) return;
       try {
         await deleteCommonsPost(postId, user.uid, isAdmin);
-        setPosts((prev) => prev.filter((p) => p.id !== postId));
+        setPostsByTab((prev) => ({
+          all: prev.all.filter((p) => p.id !== postId),
+          trending: prev.trending.filter((p) => p.id !== postId),
+          following: prev.following.filter((p) => p.id !== postId),
+        }));
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : 'Could not delete post.';
@@ -736,10 +1051,6 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             role="tab"
             aria-selected={feedTab === 'following'}
             onClick={() => {
-              if (!user) {
-                requireAuth('view posts from students you follow');
-                return;
-              }
               if (feedTab !== 'following') triggerSegStretch();
               setFeedTab('following');
             }}
@@ -772,7 +1083,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
               We encountered an issue fetching the latest community resources.
             </p>
             <button
-              onClick={() => loadPosts()}
+              onClick={() => void loadPosts(true, feedTab)}
               className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-surface border border-border text-primary hover:bg-surface-muted transition-colors cursor-pointer shadow-xs"
             >
               <RefreshCw size={14} />
@@ -785,19 +1096,71 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             <BookOpen size={32} className="mx-auto text-muted" />
             <h3 className="text-sm font-bold text-primary">
               {feedTab === 'following'
-                ? "You aren't following anyone yet."
-                : 'No posts matching your filter'}
+                ? isGuestOrAnon
+                  ? 'Sign in to follow people'
+                  : !followingIds || followingIds.length === 0
+                  ? "You're not following anyone yet"
+                  : 'No posts from people you follow yet'
+                : subjectFilter !== 'all' || classFilter !== 'all'
+                ? 'No posts matching your filter'
+                : 'No posts yet'}
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               {feedTab === 'following'
-                ? 'Follow people to see their posts here.'
+                ? isGuestOrAnon
+                  ? 'Sign in to follow students and educators and see their posts here.'
+                  : !followingIds || followingIds.length === 0
+                  ? 'Follow people to see their posts here.'
+                  : subjectFilter !== 'all' || classFilter !== 'all'
+                  ? 'No posts from people you follow match your current filter.'
+                  : 'When people you follow share notes, papers, or questions, their posts will appear here.'
                 : 'Be the first to share notes, papers, or ask a doubt to learn together!'}
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
-              {feedTab === 'following' || subjectFilter !== 'all' || classFilter !== 'all' ? (
+              {feedTab === 'following' ? (
+                isGuestOrAnon ? (
+                  <button
+                    type="button"
+                    onClick={() => requireAuth('view posts from students you follow')}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <span>Sign in</span>
+                  </button>
+                ) : !followingIds || followingIds.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setFeedTab('all')}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Compass size={14} />
+                    <span>Find people to follow</span>
+                  </button>
+                ) : subjectFilter !== 'all' || classFilter !== 'all' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubjectFilter('all');
+                      setClassFilter('all');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Compass size={14} />
+                    <span>Reset Filters</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setFeedTab('all')}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Compass size={14} />
+                    <span>Explore All Posts</span>
+                  </button>
+                )
+              ) : subjectFilter !== 'all' || classFilter !== 'all' ? (
                 <button
+                  type="button"
                   onClick={() => {
-                    setFeedTab('all');
                     setSubjectFilter('all');
                     setClassFilter('all');
                   }}
@@ -808,6 +1171,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => openComposerWithGate({ initialStep: 1 })}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >

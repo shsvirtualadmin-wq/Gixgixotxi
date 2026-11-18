@@ -727,7 +727,7 @@ export async function fetchCommonsPosts(options: {
   target?: string;
   type?: CommonsPostType | 'all';
   sortBy?: 'trending' | 'newest' | 'top';
-  feedTab?: 'all' | 'following';
+  feedTab?: 'all' | 'trending' | 'following';
   followingUids?: string[];
   currentUid?: string | null;
   searchQuery?: string;
@@ -743,20 +743,29 @@ export async function fetchCommonsPosts(options: {
   const pageSize = options.pageSize || 15;
   const cursor = options.lastDoc ?? options.lastVisibleDoc;
   const offset = typeof cursor === 'number' ? cursor : 0;
+  const isTrending = options.feedTab === 'trending' || options.sortBy === 'trending';
+
+  if (
+    options.feedTab === 'following' &&
+    (!options.currentUid || options.currentUid.startsWith('guest_'))
+  ) {
+    return { posts: [], lastDoc: null, hasMore: false };
+  }
 
   let effectiveFollowingUids = options.followingUids;
   if (
     options.feedTab === 'following' &&
-    (!effectiveFollowingUids || effectiveFollowingUids.length === 0) &&
+    effectiveFollowingUids === undefined &&
     options.currentUid
   ) {
     effectiveFollowingUids = await getFollowingIds(options.currentUid);
   }
 
-  if (
-    options.feedTab === 'following' &&
-    (!effectiveFollowingUids || effectiveFollowingUids.length === 0)
-  ) {
+  const followingSet = new Set(
+    (effectiveFollowingUids || []).map((id) => String(id || '').trim()).filter(Boolean)
+  );
+
+  if (options.feedTab === 'following' && followingSet.size === 0) {
     return { posts: [], lastDoc: null, hasMore: false };
   }
 
@@ -773,19 +782,21 @@ export async function fetchCommonsPosts(options: {
   if (options.type && options.type !== 'all') {
     params.set('type', options.type);
   }
-  if (options.sortBy) {
+  if (isTrending) {
+    params.set('sort', 'trending');
+  } else if (options.sortBy) {
     params.set('sort', options.sortBy);
   }
   if (options.searchQuery?.trim()) {
     params.set('q', options.searchQuery.trim());
   }
-  if (options.feedTab === 'following' && effectiveFollowingUids?.length) {
-    params.set('followingUids', effectiveFollowingUids.join(','));
+  if (options.feedTab === 'following' && followingSet.size > 0) {
+    params.set('followingUids', Array.from(followingSet).join(','));
   }
 
   const isDefaultFirstPage =
     offset === 0 &&
-    pageSize === 15 &&
+    pageSize <= 20 &&
     (!options.feedTab || options.feedTab === 'all') &&
     (!options.subject || options.subject === 'all') &&
     (!options.target || options.target === 'all') &&
@@ -793,7 +804,7 @@ export async function fetchCommonsPosts(options: {
     (!options.sortBy || options.sortBy === 'newest') &&
     !options.searchQuery?.trim();
 
-  const cacheKey = `${options.currentUid || 'anon'}:${params.toString()}`;
+  const cacheKey = `${options.currentUid || 'anon'}:${options.feedTab || 'all'}:${params.toString()}`;
   const cached = commonsListCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt && cached.data.posts.length > 0) {
     return cached.data;
@@ -842,9 +853,9 @@ export async function fetchCommonsPosts(options: {
     }
 
     // 3. Fallback to bundled canonical D1 seed posts if the remote endpoint returned 0 posts
-    // on a public feed request (e.g. unseeded edge D1 instance or preview mode)
+    // on a public feed request ('all' or 'trending')
     const canFallbackToSeed =
-      (!options.feedTab || options.feedTab === 'all') &&
+      (!options.feedTab || options.feedTab === 'all' || options.feedTab === 'trending') &&
       !options.searchQuery?.trim() &&
       Array.isArray((seedPostsDataset as any)?.posts) &&
       (seedPostsDataset as any).posts.length > 0;
@@ -866,6 +877,25 @@ export async function fetchCommonsPosts(options: {
       if (options.target && options.target !== 'all') {
         const tLow = options.target.toLowerCase();
         seedRows = seedRows.filter((p) => String(p.target || '').toLowerCase().includes(tLow));
+      }
+      if (isTrending) {
+        const now = Date.now();
+        seedRows = [...seedRows].sort((a, b) => {
+          const aCreated = Number(a.created_at || 0);
+          const bCreated = Number(b.created_at || 0);
+          const aAgeDays = Math.max(0, (now - aCreated) / (24 * 60 * 60 * 1000));
+          const bAgeDays = Math.max(0, (now - bCreated) / (24 * 60 * 60 * 1000));
+          const aScore =
+            Number(a.upvotes || 0) * 3 +
+            Number(a.comment_count || 0) * 2 +
+            Math.max(0, 14 - aAgeDays) * 0.25;
+          const bScore =
+            Number(b.upvotes || 0) * 3 +
+            Number(b.comment_count || 0) * 2 +
+            Math.max(0, 14 - bAgeDays) * 0.25;
+          if (Math.abs(bScore - aScore) > 0.01) return bScore - aScore;
+          return bCreated - aCreated;
+        });
       }
       const pagedSeed = seedRows.slice(offset, offset + pageSize);
       const seedHasMore = offset + pageSize < seedRows.length;
@@ -893,9 +923,34 @@ export async function fetchCommonsPosts(options: {
 
     // Apply any already-cached profiles synchronously and trigger background profile enrichment
     // without blocking the first post paint on Firestore WebChannel handshakes!
-    const posts: CommonsPost[] = rawPosts.map((p) =>
+    let posts: CommonsPost[] = rawPosts.map((p) =>
       applyLiveAuthorToPost(p, p.authorUid ? getCachedPublicProfile(p.authorUid) : null)
     );
+
+    if (options.feedTab === 'following') {
+      posts = posts.filter(
+        (p) => !p.isAnonymous && Boolean(p.authorUid) && followingSet.has(String(p.authorUid))
+      );
+    } else if (isTrending && posts.length > 1) {
+      const now = Date.now();
+      posts = [...posts].sort((a, b) => {
+        const aCreated = getPostCreatedAtMs(a.createdAt);
+        const bCreated = getPostCreatedAtMs(b.createdAt);
+        const aAgeDays = Math.max(0, (now - aCreated) / (24 * 60 * 60 * 1000));
+        const bAgeDays = Math.max(0, (now - bCreated) / (24 * 60 * 60 * 1000));
+        const aScore =
+          (a.upvotes || 0) * 3 +
+          (a.commentCount || 0) * 2 +
+          Math.max(0, 14 - aAgeDays) * 0.25;
+        const bScore =
+          (b.upvotes || 0) * 3 +
+          (b.commentCount || 0) * 2 +
+          Math.max(0, 14 - bAgeDays) * 0.25;
+        if (Math.abs(bScore - aScore) > 0.01) return bScore - aScore;
+        return bCreated - aCreated;
+      });
+    }
+
     if (authorUids.length > 0) {
       void getPublicProfiles(authorUids).catch(() => {});
     }

@@ -2216,10 +2216,21 @@ ${postSitemaps}
         });
       }
 
+      const nowMs = Date.now();
       rows.sort((a, b) => {
         if (a.is_pinned !== b.is_pinned) return b.is_pinned - a.is_pinned;
         if (sort === 'trending' || sort === 'top') {
-          if (b.upvotes !== a.upvotes) return b.upvotes - a.upvotes;
+          const aAgeDays = Math.max(0, (nowMs - Number(a.created_at || 0)) / (24 * 60 * 60 * 1000));
+          const bAgeDays = Math.max(0, (nowMs - Number(b.created_at || 0)) / (24 * 60 * 60 * 1000));
+          const aScore =
+            Number(a.upvotes || 0) * 3 +
+            Number(a.comment_count || 0) * 2 +
+            Math.max(0, 14 - aAgeDays) * 0.25;
+          const bScore =
+            Number(b.upvotes || 0) * 3 +
+            Number(b.comment_count || 0) * 2 +
+            Math.max(0, 14 - bAgeDays) * 0.25;
+          if (Math.abs(bScore - aScore) > 0.01) return bScore - aScore;
         }
         return b.created_at - a.created_at;
       });
@@ -13029,17 +13040,19 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
 
   const routes: RouteDef[] = [];
 
-  const compilePattern = (pattern: string): { regex: RegExp; paramNames: string[] } => {
+  const compilePattern = (pattern: string | RegExp): { regex: RegExp; paramNames: string[] } => {
     const paramNames: string[] = [];
-    if (pattern === '/api/r2/*') {
+    if (pattern instanceof RegExp) {
       paramNames.push('0');
-      return { regex: /^\/api\/r2\/(.*)$/, paramNames };
+      return { regex: pattern, paramNames };
     }
-    if (pattern === '/api/signatures/*') {
+    const patternStr = String(pattern || '');
+    if (patternStr.endsWith('/*')) {
+      const prefix = patternStr.slice(0, -2).replace(/\./g, '\\.');
       paramNames.push('0');
-      return { regex: /^\/api\/signatures\/(.*)$/, paramNames };
+      return { regex: new RegExp(`^${prefix}/(.*)$`), paramNames };
     }
-    const escaped = pattern
+    const escaped = patternStr
       .replace(/\/+$/, '')
       .replace(/\./g, '\\.')
       .replace(/:([a-zA-Z0-9_]+)/g, (_m, name) => {
@@ -13049,17 +13062,33 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     return { regex: new RegExp(`^${escaped || '/'}/?$`), paramNames };
   };
 
-  const addRoute = (method: string, pattern: string, handler: (req: any, res: any) => any) => {
+  const addRoute = (
+    method: string,
+    pattern: string | RegExp | Array<string | RegExp>,
+    handler: (req: any, res: any) => any
+  ) => {
+    if (Array.isArray(pattern)) {
+      for (const p of pattern) {
+        addRoute(method, p, handler);
+      }
+      return;
+    }
     const { regex, paramNames } = compilePattern(pattern);
-    routes.push({ method: method.toUpperCase(), pattern, regex, paramNames, handler });
+    routes.push({
+      method: method.toUpperCase(),
+      pattern: pattern instanceof RegExp ? pattern.source : String(pattern),
+      regex,
+      paramNames,
+      handler,
+    });
   };
 
   const fakeApp = {
-    get: (p: string, h: any) => addRoute('GET', p, h),
-    post: (p: string, h: any) => addRoute('POST', p, h),
-    put: (p: string, h: any) => addRoute('PUT', p, h),
-    patch: (p: string, h: any) => addRoute('PATCH', p, h),
-    delete: (p: string, h: any) => addRoute('DELETE', p, h),
+    get: (p: any, h: any) => addRoute('GET', p, h),
+    post: (p: any, h: any) => addRoute('POST', p, h),
+    put: (p: any, h: any) => addRoute('PUT', p, h),
+    patch: (p: any, h: any) => addRoute('PATCH', p, h),
+    delete: (p: any, h: any) => addRoute('DELETE', p, h),
   } as unknown as Express;
 
   registerCloudflarePostsAndAuthRoutes(fakeApp, options || {});

@@ -86,10 +86,10 @@ export const CommonsSubjectPage: React.FC = () => {
               <BookOpen size={13} />
               <span>Subject Community</span>
             </div>
-            <h1 className="font-dot text-2xl sm:text-4xl font-bold text-white mb-2 [overflow-wrap:anywhere] [word-break:break-word]">
+            <h1 className="font-dot text-2xl sm:text-4xl font-bold text-primary mb-2 [overflow-wrap:anywhere] [word-break:break-word]">
               {subjectTitle} in Boardly Commons
             </h1>
-            <p className="text-sm text-white/70 [overflow-wrap:anywhere] [word-break:break-word]">
+            <p className="text-sm text-secondary [overflow-wrap:anywhere] [word-break:break-word]">
               Peer-shared notes, solved board papers, and question discussions for {subjectTitle}.
             </p>
           </div>
@@ -107,10 +107,10 @@ export const CommonsSubjectPage: React.FC = () => {
         ) : loadError ? (
           <div className="glass-panel p-10 text-center">
             <AlertTriangle size={28} className="text-[#D71921] mx-auto mb-3" />
-            <h2 className="font-dot text-xl font-bold text-white mb-2">
+            <h2 className="font-dot text-xl font-bold text-primary mb-2">
               Could not load {subjectTitle} posts
             </h2>
-            <p className="text-xs text-white/60 mb-6">
+            <p className="text-xs text-muted mb-6">
               Please check your connection and try again.
             </p>
             <button
@@ -124,11 +124,11 @@ export const CommonsSubjectPage: React.FC = () => {
           </div>
         ) : posts.length === 0 ? (
           <div className="glass-panel p-10 text-center">
-            <BookOpen size={28} className="text-white/40 mx-auto mb-3" />
-            <h2 className="font-dot text-xl font-bold text-white mb-2">
+            <BookOpen size={28} className="text-muted mx-auto mb-3" />
+            <h2 className="font-dot text-xl font-bold text-primary mb-2">
               No {subjectTitle} posts yet
             </h2>
-            <p className="text-xs text-white/60 mb-6">
+            <p className="text-xs text-muted mb-6">
               Be the first student to share {subjectTitle} notes, formula sheets, or ask a question in Boardly Commons.
             </p>
             <Link to="/commons" className="btn-primary px-5 py-2.5 text-xs font-semibold">

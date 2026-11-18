@@ -51,15 +51,89 @@ const followCountsMemoryCache = new Map<
   { followersCount: number; followingCount: number; ts: number }
 >();
 const isFollowingMemoryCache = new Map<string, { following: boolean; ts: number }>();
+const followingIdsMemoryCache = new Map<string, { ids: string[]; ts: number }>();
 const FOLLOW_CACHE_TTL_MS = 60_000;
+const FOLLOWING_IDS_STORAGE_PREFIX = 'boardly_following_ids_v1_';
+
+function withQueryTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve(fallback);
+      });
+  });
+}
+
+export function getCachedFollowingIds(userId?: string | null): string[] | null {
+  if (!userId || userId.startsWith('guest_')) return [];
+  const mem = followingIdsMemoryCache.get(userId);
+  if (mem) {
+    return [...mem.ids];
+  }
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(`${FOLLOWING_IDS_STORAGE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.ids)) {
+      const clean = Array.from(
+        new Set(
+          parsed.ids
+            .map((id: unknown) => String(id || '').trim())
+            .filter((id: string) => Boolean(id) && id !== userId)
+        )
+      );
+      followingIdsMemoryCache.set(userId, {
+        ids: clean,
+        ts: typeof parsed.ts === 'number' ? parsed.ts : 0,
+      });
+      return [...clean];
+    }
+  } catch {
+    // Ignore storage read failure
+  }
+  return null;
+}
+
+export function setCachedFollowingIds(userId: string, ids: Iterable<string>): string[] {
+  if (!userId || userId.startsWith('guest_')) return [];
+  const clean = Array.from(
+    new Set(
+      Array.from(ids)
+        .map((id) => String(id || '').trim())
+        .filter((id) => Boolean(id) && id !== userId)
+    )
+  );
+  const ts = Date.now();
+  followingIdsMemoryCache.set(userId, { ids: clean, ts });
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(
+        `${FOLLOWING_IDS_STORAGE_PREFIX}${userId}`,
+        JSON.stringify({ ids: clean, ts })
+      );
+    } catch {
+      // Ignore storage quota failure
+    }
+  }
+  return clean;
+}
 
 export function invalidateFollowCache(uid?: string): void {
   if (!uid) {
     followCountsMemoryCache.clear();
     isFollowingMemoryCache.clear();
+    followingIdsMemoryCache.clear();
     return;
   }
   followCountsMemoryCache.delete(uid);
+  followingIdsMemoryCache.delete(uid);
   for (const key of isFollowingMemoryCache.keys()) {
     if (key.startsWith(`${uid}_`) || key.endsWith(`_${uid}`)) {
       isFollowingMemoryCache.delete(key);
@@ -377,6 +451,7 @@ async function performFollowStateChange(
   invalidatePublicProfileCache(currentUserId);
 
   // Immediately refresh the Following tab & notification store cache
+  setCachedFollowingIds(currentUserId, nextCurrentFollowingSet);
   updateNotificationStoreFollowingIds(
     currentUserId,
     nextCurrentFollowingSet,
@@ -437,23 +512,67 @@ export async function toggleFollowUser(
   );
 }
 
-export async function getFollowingIds(userId: string, maxCount = 200): Promise<string[]> {
-  if (!userId) return [];
+export async function getFollowingIds(
+  userId: string,
+  maxCount = 200,
+  options?: { forceRefresh?: boolean }
+): Promise<string[]> {
+  if (!userId || userId.startsWith('guest_')) return [];
+
+  if (!options?.forceRefresh) {
+    const mem = followingIdsMemoryCache.get(userId);
+    if (mem && Date.now() - mem.ts < 30_000) {
+      return mem.ids.slice(0, maxCount);
+    }
+  }
+
   const ids = new Set<string>();
 
   try {
-    const [userSnap, pubSnap, followsSnap] = await Promise.all([
-      getDocs(query(collection(db, 'users', userId, 'following'), limit(maxCount))).catch(
-        () => null
+    const apiPromise =
+      typeof fetch === 'function'
+        ? withQueryTimeout(
+            fetch(`/api/follows?followerUid=${encodeURIComponent(userId)}`, {
+              headers: { Accept: 'application/json' },
+            })
+              .then((res) => (res.ok ? res.json() : null))
+              .catch(() => null),
+            1800,
+            null
+          )
+        : Promise.resolve(null);
+
+    const [apiRes, userSnap, pubSnap, followsSnap] = await Promise.all([
+      apiPromise,
+      withQueryTimeout(
+        getDocs(query(collection(db, 'users', userId, 'following'), limit(maxCount))).catch(
+          () => null
+        ),
+        2200,
+        null
       ),
-      getDocs(query(collection(db, 'publicProfiles', userId, 'following'), limit(maxCount))).catch(
-        () => null
+      withQueryTimeout(
+        getDocs(
+          query(collection(db, 'publicProfiles', userId, 'following'), limit(maxCount))
+        ).catch(() => null),
+        2200,
+        null
       ),
-      getDocs(
-        query(collection(db, 'follows'), where('followerId', '==', userId), limit(maxCount))
-      ).catch(() => null),
+      withQueryTimeout(
+        getDocs(
+          query(collection(db, 'follows'), where('followerId', '==', userId), limit(maxCount))
+        ).catch(() => null),
+        2200,
+        null
+      ),
     ]);
 
+    if (apiRes && Array.isArray(apiRes.followingIds)) {
+      apiRes.followingIds.forEach((fid: unknown) => {
+        const clean = String(fid || '').trim();
+        if (clean && clean !== userId) ids.add(clean);
+      });
+    }
     if (userSnap) {
       userSnap.docs.forEach((d) => {
         if (d.id && d.id !== userId) ids.add(d.id);
@@ -474,7 +593,8 @@ export async function getFollowingIds(userId: string, maxCount = 200): Promise<s
     console.warn('[followService] getFollowingIds error:', err);
   }
 
-  return Array.from(ids).slice(0, maxCount);
+  const finalIds = setCachedFollowingIds(userId, ids);
+  return finalIds.slice(0, maxCount);
 }
 
 export async function getFollowerIds(userId: string, maxCount = 200): Promise<string[]> {
@@ -680,6 +800,7 @@ export async function getFollowCounts(
     }
 
     if (subcollectionReadSucceeded) {
+      setCachedFollowingIds(userId, followingIds);
       updateNotificationStoreFollowingIds(userId, followingIds);
     }
 
