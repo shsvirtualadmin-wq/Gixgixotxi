@@ -87,6 +87,67 @@ function formatFormulaCountBadge(count: number): string {
   return `${n} formula${n === 1 ? '' : 's'}`;
 }
 
+/**
+ * Measures rendered KaTeX math width inside its formula box:
+ * - If wider than the container, scales down smoothly (minimum scale 0.7).
+ * - If it still overflows at 0.7 scale, allows horizontal scroll with a right-edge fade.
+ */
+const FitFormulaMath: React.FC<{ latex: string; className?: string }> = ({ latex, className }) => {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [needsScroll, setNeedsScroll] = useState(false);
+
+  const measureAndFit = useCallback(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    const availableWidth = Math.max(0, outer.clientWidth - 8);
+    const naturalWidth = inner.scrollWidth;
+    if (!availableWidth || !naturalWidth || naturalWidth <= availableWidth) {
+      setScale(1);
+      setNeedsScroll(false);
+      return;
+    }
+
+    const ratio = availableWidth / naturalWidth;
+    const clampedScale = Math.max(0.7, Math.min(1, Number(ratio.toFixed(3))));
+    setScale(clampedScale);
+    setNeedsScroll(naturalWidth * clampedScale > availableWidth + 2);
+  }, []);
+
+  useEffect(() => {
+    measureAndFit();
+    const outer = outerRef.current;
+    if (!outer || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => measureAndFit());
+    ro.observe(outer);
+    return () => ro.disconnect();
+  }, [latex, measureAndFit]);
+
+  return (
+    <div
+      ref={outerRef}
+      className={`formula-math-scroll relative w-full ${
+        needsScroll ? 'formula-math-scroll--overflow justify-start' : 'justify-center'
+      } ${className || ''}`}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          fontSize: scale < 1 ? `${Math.round(scale * 100)}%` : undefined,
+          width: 'max-content',
+          maxWidth: needsScroll ? 'none' : '100%',
+        }}
+        className="mx-auto transition-[font-size] duration-150"
+      >
+        <MathText text={`$$${latex}$$`} />
+      </div>
+    </div>
+  );
+};
+
 type EnrichedFormulaItem = D1FormulaItemRow & {
   chapter_title?: string;
   chapter_no?: number;
@@ -168,6 +229,7 @@ export const FormulaVaultPage: React.FC = () => {
   const chapterCardRefs = useRef<Record<string, HTMLElement | null>>({});
   const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
   const desktopSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const enlargeModalBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Lock body scroll when enlarge sheet/modal is open and guarantee cleanup
   useBodyScrollLock(Boolean(enlargedFormula), 'formula-enlarge-modal');
@@ -175,6 +237,8 @@ export const FormulaVaultPage: React.FC = () => {
   useEffect(() => {
     if (!enlargedFormula) {
       safetyCleanupScrollLocks();
+    } else if (enlargeModalBodyRef.current) {
+      enlargeModalBodyRef.current.scrollTop = 0;
     }
   }, [enlargedFormula]);
 
@@ -207,7 +271,11 @@ export const FormulaVaultPage: React.FC = () => {
         setSelectedCategoryId((prev) => prev || firstCatId);
         const firstCh = data.chapters
           .filter((c) => c.category_id === firstCatId)
-          .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no)[0];
+          .sort(
+            (a, b) =>
+              Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+              Number(a.sort_order || 0) - Number(b.sort_order || 0)
+          )[0];
         if (firstCh) {
           setOpenChapterId((prev) => prev || firstCh.id);
         }
@@ -328,13 +396,20 @@ export const FormulaVaultPage: React.FC = () => {
         const catA = categoryMap.get(a.category_id)?.sort_order ?? 999;
         const catB = categoryMap.get(b.category_id)?.sort_order ?? 999;
         if (catA !== catB) return catA - catB;
-        return a.sort_order - b.sort_order || a.chapter_no - b.chapter_no;
+        return (
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        );
       });
     }
     const targetCatId = activeCategory?.id || '';
     return chapters
       .filter((ch) => ch.category_id === targetCatId)
-      .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no);
+      .sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
   }, [chapters, selectedCategoryId, activeCategory, categoryMap]);
 
   // Combine search results with Saved filter if Saved is active, and group by Subject and Chapter
@@ -397,7 +472,9 @@ export const FormulaVaultPage: React.FC = () => {
           ? chapters
           : chapters.filter((c) => c.category_id === subjectId);
       const firstCh = [...targetChapters].sort(
-        (a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
       )[0];
       setOpenChapterId(firstCh ? firstCh.id : null);
     },
@@ -411,7 +488,7 @@ export const FormulaVaultPage: React.FC = () => {
         window.setTimeout(() => {
           const el = chapterCardRefs.current[next];
           if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }, 80);
       }
@@ -606,7 +683,7 @@ export const FormulaVaultPage: React.FC = () => {
    * - Round numbered badge (dot-matrix number in red)
    * - Title wrapping up to 2 lines (never cut off to 1 line)
    * - 44px bookmark button (stops propagation)
-   * - Centered formula box with internal horizontal scroll (never clipped)
+   * - Centered formula box with dynamic shrink-to-fit (min 0.7) and right-edge fade scroll fallback
    * - Note
    */
   const renderFormulaCard = (
@@ -673,12 +750,11 @@ export const FormulaVaultPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Centered Horizontally-Scrollable Formula Container (never clipped) */}
-          <div className="formula-math-scroll my-3 flex min-h-[64px] items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-center text-sm sm:text-base text-[var(--text)]">
-            <div className="mx-auto max-w-full">
-              <MathText text={`$$${formula.formula_latex}$$`} />
-            </div>
-          </div>
+          {/* Centered Shrink-to-Fit (min 0.7) / Horizontally-Scrollable Formula Container */}
+          <FitFormulaMath
+            latex={formula.formula_latex}
+            className="my-3 flex min-h-[64px] items-center rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-center text-sm sm:text-base text-[var(--text)]"
+          />
         </div>
 
         {/* Formula Note */}
@@ -1038,9 +1114,10 @@ export const FormulaVaultPage: React.FC = () => {
                 )}
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3.5">
-                  <div className="formula-math-scroll text-sm sm:text-base font-medium text-[var(--text)]">
-                    <MathText text={`$$${formulaOfTheDay.formula_latex}$$`} />
-                  </div>
+                  <FitFormulaMath
+                    latex={formulaOfTheDay.formula_latex}
+                    className="flex items-center text-sm sm:text-base font-medium text-[var(--text)]"
+                  />
                   {formulaOfTheDay.note && (
                     <p className="text-xs leading-relaxed text-[var(--text-secondary)] sm:max-w-xs sm:text-right">
                       {formulaOfTheDay.note}
@@ -1258,6 +1335,10 @@ export const FormulaVaultPage: React.FC = () => {
                     const isLoadingThisChapter = loadingChapterId === chapter.id;
                     const chapterSubject = categoryMap.get(chapter.category_id);
                     const pdfError = pdfErrorByChapterId[chapter.id];
+                    const liveFormulaCount =
+                      isOpen && !isLoadingThisChapter
+                        ? openChapterFormulas.length
+                        : Number(chapter.formula_count || 0);
 
                     return (
                       <section
@@ -1265,7 +1346,7 @@ export const FormulaVaultPage: React.FC = () => {
                         ref={(el) => {
                           chapterCardRefs.current[chapter.id] = el;
                         }}
-                        className={`rounded-[26px] border transition-colors overflow-hidden ${
+                        className={`scroll-mt-24 rounded-[26px] border transition-colors overflow-hidden ${
                           isOpen
                             ? 'border-[var(--accent)] bg-[var(--surface)]'
                             : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/60'
@@ -1305,7 +1386,7 @@ export const FormulaVaultPage: React.FC = () => {
 
                           <div className="flex items-center gap-2.5 shrink-0">
                             <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 font-[var(--font-dot)] text-xs font-bold text-[var(--text-secondary)]">
-                              {formatFormulaCountBadge(chapter.formula_count)}
+                              {formatFormulaCountBadge(liveFormulaCount)}
                             </span>
                             <span
                               className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
@@ -1424,8 +1505,9 @@ export const FormulaVaultPage: React.FC = () => {
             onClick={handleCloseEnlarged}
           >
             <div
+              ref={enlargeModalBodyRef}
               onClick={(e) => e.stopPropagation()}
-              className="w-full sm:max-w-[560px] lg:max-w-[640px] rounded-t-[28px] sm:rounded-[28px] border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
+              className="w-full sm:max-w-[560px] lg:max-w-[640px] rounded-t-[28px] sm:rounded-[28px] border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] p-5 sm:p-6 max-h-[100dvh] sm:max-h-[92dvh] overflow-y-auto overscroll-contain"
             >
               {/* Modal Top Bar */}
               <div className="flex items-start justify-between gap-3 mb-4">
@@ -1456,8 +1538,8 @@ export const FormulaVaultPage: React.FC = () => {
                 </button>
               </div>
 
-              {/* Large KaTeX Formula Box in Tinted Panel */}
-              <div className="formula-math-scroll flex min-h-[112px] items-center justify-center rounded-[24px] border border-[var(--border)] bg-[var(--surface-2)] px-5 py-7 text-center">
+              {/* Large KaTeX Formula Box in Tinted Panel — shows full formula */}
+              <div className="formula-math-scroll flex min-h-[112px] items-center justify-center rounded-[24px] border border-[var(--border)] bg-[var(--surface-2)] px-5 py-7 text-center overflow-x-auto">
                 <div className="mx-auto max-w-full text-lg sm:text-2xl font-semibold text-[var(--text)]">
                   <MathText text={`$$${enlargedFormula.formula.formula_latex}$$`} />
                 </div>
@@ -1523,9 +1605,7 @@ export const FormulaVaultPage: React.FC = () => {
                     className="h-4 w-4"
                     fill={bookmarkedIds.has(enlargedFormula.formula.id) ? 'currentColor' : 'none'}
                   />
-                  <span>
-                    {bookmarkedIds.has(enlargedFormula.formula.id) ? 'Bookmark' : 'Bookmark'}
-                  </span>
+                  <span>Bookmark</span>
                 </button>
 
                 <button

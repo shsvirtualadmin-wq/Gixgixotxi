@@ -169,13 +169,13 @@ export function OverviewPage() {
   );
   const [universitiesError, setUniversitiesError] = useState<string | null>(null);
 
-  const loadUniversitiesFromD1 = useCallback(async (background = false) => {
+  const loadUniversitiesFromD1 = useCallback(async (background = false, forceRefresh = false) => {
     if (!background) {
       setLoadingUniversities(true);
     }
     setUniversitiesError(null);
     try {
-      const rows = await fetchUniversities();
+      const rows = await fetchUniversities(forceRefresh);
       if (Array.isArray(rows)) {
         const sorted = [...rows].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
         setUniversities(sorted);
@@ -198,6 +198,14 @@ export function OverviewPage() {
   useEffect(() => {
     void loadUniversitiesFromD1(Boolean(initialCachedUnis && initialCachedUnis.length > 0));
   }, [loadUniversitiesFromD1, initialCachedUnis]);
+
+  useEffect(() => {
+    const handleUnisUpdated = () => {
+      void loadUniversitiesFromD1(true, true);
+    };
+    window.addEventListener('boardly-universities-updated', handleUnisUpdated);
+    return () => window.removeEventListener('boardly-universities-updated', handleUnisUpdated);
+  }, [loadUniversitiesFromD1]);
 
   // ── Cockpit Stats (Questions Solved, Weak Chapters, Recent Attempts) ──
   const [statsVersion, setStatsVersion] = useState(0);

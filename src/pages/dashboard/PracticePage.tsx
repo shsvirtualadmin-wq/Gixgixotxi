@@ -223,15 +223,21 @@ export function PracticePage() {
 
   useEffect(() => {
     let mounted = true;
-    fetchUniversities()
-      .then((list) => {
-        if (mounted && Array.isArray(list) && list.length > 0) {
-          setD1Universities(list);
-        }
-      })
-      .catch(() => {});
+    const loadList = (force = false) => {
+      fetchUniversities(force)
+        .then((list) => {
+          if (mounted && Array.isArray(list) && list.length > 0) {
+            setD1Universities(list);
+          }
+        })
+        .catch(() => {});
+    };
+    loadList(false);
+    const handleUnisUpdated = () => loadList(true);
+    window.addEventListener('boardly-universities-updated', handleUnisUpdated);
     return () => {
       mounted = false;
+      window.removeEventListener('boardly-universities-updated', handleUnisUpdated);
     };
   }, []);
 

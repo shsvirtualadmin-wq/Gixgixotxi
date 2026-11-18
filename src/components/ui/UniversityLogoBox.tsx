@@ -4,6 +4,90 @@ import { PRE_SEEDED_UNIVERSITIES } from '../../constants/d1Universities';
 const loadedLogoUrlCache = new Set<string>();
 const failedLogoUrlCache = new Set<string>();
 
+export function normalizeUniversityLogoUrl(
+  rawUrl?: string | null,
+  updatedAt?: number | string | null
+): string {
+  const clean = String(rawUrl || '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('data:image/') || clean.startsWith('blob:')) return clean;
+
+  let existingVersion = '';
+  let pathPart = clean;
+  const qIdx = clean.indexOf('?');
+  if (qIdx >= 0 && !clean.includes('/api/posts/file')) {
+    pathPart = clean.slice(0, qIdx);
+    try {
+      const qs = new URLSearchParams(clean.slice(qIdx + 1));
+      existingVersion = qs.get('v') || '';
+    } catch {
+      existingVersion = '';
+    }
+  }
+
+  const versionTag = String(updatedAt || existingVersion || '').trim();
+  const appendVersion = (targetUrl: string): string => {
+    if (!versionTag) return targetUrl;
+    if (/[?&]v=/.test(targetUrl)) return targetUrl;
+    return `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(versionTag)}`;
+  };
+
+  if (pathPart.startsWith('http://') || pathPart.startsWith('https://')) {
+    let normalized = clean
+      .replace('/api/r2/', '/api/media/')
+      .replace('/api/commons/r2/', '/api/media/');
+    if (
+      typeof window !== 'undefined' &&
+      window.location?.protocol === 'https:' &&
+      normalized.startsWith('http://') &&
+      !normalized.includes('localhost') &&
+      !normalized.includes('127.0.0.1')
+    ) {
+      normalized = 'https://' + normalized.slice('http://'.length);
+    }
+    return appendVersion(normalized);
+  }
+
+  if (clean.includes('/api/posts/file')) {
+    try {
+      const u = new URL(clean, 'http://localhost');
+      const k = String(u.searchParams.get('key') || '')
+        .replace(/\.\./g, '')
+        .replace(/^\/+/, '');
+      if (k) return appendVersion(`/api/media/${k}`);
+    } catch {
+      // Fall through
+    }
+  }
+
+  if (pathPart.startsWith('/api/r2/')) {
+    const k = pathPart.slice('/api/r2/'.length).replace(/^\/+/, '');
+    return k ? appendVersion(`/api/media/${k}`) : '';
+  }
+  if (pathPart.startsWith('/api/commons/r2/')) {
+    const k = pathPart.slice('/api/commons/r2/'.length).replace(/^\/+/, '');
+    return k ? appendVersion(`/api/media/${k}`) : '';
+  }
+  if (pathPart.startsWith('/api/media/')) {
+    const k = pathPart.slice('/api/media/'.length).replace(/^\/+/, '');
+    return k ? appendVersion(`/api/media/${k}`) : '';
+  }
+  if (pathPart.startsWith('/')) {
+    return appendVersion(clean);
+  }
+  return appendVersion(`/api/media/${pathPart.replace(/^\/+/, '')}`);
+}
+
+export function clearFailedUniversityLogoCache(logoUrl?: string | null): void {
+  if (!logoUrl) {
+    failedLogoUrlCache.clear();
+    return;
+  }
+  const clean = normalizeUniversityLogoUrl(logoUrl);
+  failedLogoUrlCache.delete(clean);
+  failedLogoUrlCache.delete(String(logoUrl).trim());
+}
+
 export function getUniversityInitials(name: string): string {
   const trimmed = String(name || '').trim();
   const preset = PRE_SEEDED_UNIVERSITIES.find(
@@ -24,7 +108,7 @@ export function getUniversityInitials(name: string): string {
 }
 
 export function primeUniversityLogoCache(logoUrl?: string | null): void {
-  const clean = String(logoUrl || '').trim();
+  const clean = normalizeUniversityLogoUrl(logoUrl);
   if (!clean || failedLogoUrlCache.has(clean) || loadedLogoUrlCache.has(clean)) return;
   if (typeof Image !== 'undefined') {
     const img = new Image();
@@ -38,7 +122,7 @@ export function primeUniversityLogoCache(logoUrl?: string | null): void {
 }
 
 export function markUniversityLogoCached(logoUrl?: string | null): void {
-  const clean = String(logoUrl || '').trim();
+  const clean = normalizeUniversityLogoUrl(logoUrl);
   if (!clean) return;
   loadedLogoUrlCache.add(clean);
   failedLogoUrlCache.delete(clean);
@@ -87,90 +171,56 @@ export const UniversityLogoBox = memo(function UniversityLogoBox({
   eager = false,
   className = '',
 }: UniversityLogoBoxProps) {
-  const cleanUrl = String(logoUrl || '').trim();
-  const [isLoaded, setIsLoaded] = useState<boolean>(() =>
-    cleanUrl ? loadedLogoUrlCache.has(cleanUrl) : false
-  );
+  const cleanUrl = normalizeUniversityLogoUrl(logoUrl);
   const [hasError, setHasError] = useState<boolean>(() =>
     cleanUrl ? failedLogoUrlCache.has(cleanUrl) : false
   );
 
   useEffect(() => {
     if (!cleanUrl) {
-      setIsLoaded(false);
       setHasError(false);
       return;
     }
-    if (loadedLogoUrlCache.has(cleanUrl)) {
-      setIsLoaded(true);
-      setHasError(false);
-      return;
-    }
-    if (failedLogoUrlCache.has(cleanUrl)) {
-      setIsLoaded(false);
-      setHasError(true);
-      return;
-    }
-    setIsLoaded(false);
-    setHasError(false);
+    setHasError(failedLogoUrlCache.has(cleanUrl));
   }, [cleanUrl]);
 
   const initials = getUniversityInitials(name);
   const sizeSpec = SIZE_CLASSES[size] || SIZE_CLASSES.md;
   const showLogo = Boolean(cleanUrl && !hasError);
 
-  if (!showLogo) {
-    return (
-      <div
-        className={`${sizeSpec.box} font-extrabold ${sizeSpec.text} flex items-center justify-center shrink-0 shadow-sm select-none overflow-hidden ${className}`}
-        style={{
-          backgroundColor: 'var(--accent)',
-          color: 'var(--text-on-accent)',
-          fontFamily: 'var(--font-dot)',
-          border: '1px solid var(--accent-red-border, var(--accent))',
-        }}
-        title={name}
-      >
-        <span className="tracking-tight leading-none truncate px-0.5">{initials}</span>
-      </div>
-    );
-  }
-
   return (
     <div
-      className={`relative ${sizeSpec.box} ${sizeSpec.pad} flex items-center justify-center shrink-0 shadow-sm overflow-hidden select-none ${className}`}
+      className={`relative ${sizeSpec.box} ${
+        showLogo ? sizeSpec.pad : `font-extrabold ${sizeSpec.text}`
+      } flex items-center justify-center shrink-0 shadow-sm select-none overflow-hidden ${className}`}
       style={{
-        backgroundColor: 'var(--uni-logo-box-bg)',
-        border: '1.5px solid var(--uni-logo-box-border, var(--accent-red-border, var(--accent)))',
-        boxShadow: 'var(--uni-logo-box-shadow, 0 2px 8px rgba(215, 25, 33, 0.14))',
+        backgroundColor: 'var(--accent)',
+        color: 'var(--text-on-accent)',
+        fontFamily: 'var(--font-dot)',
+        border: '1px solid var(--accent-red-border, var(--accent))',
       }}
       title={name}
     >
-      {!isLoaded && (
-        <div
-          aria-hidden="true"
-          className="absolute inset-1 rounded-lg skeleton-shimmer"
+      {showLogo ? (
+        <img
+          src={cleanUrl}
+          alt={name}
+          loading={eager ? 'eager' : 'lazy'}
+          decoding="async"
+          onLoad={() => {
+            loadedLogoUrlCache.add(cleanUrl);
+            failedLogoUrlCache.delete(cleanUrl);
+          }}
+          onError={() => {
+            failedLogoUrlCache.add(cleanUrl);
+            setHasError(true);
+          }}
+          className="w-full h-full object-contain"
+          style={{ objectFit: 'contain' }}
         />
+      ) : (
+        <span className="tracking-tight leading-none truncate px-0.5">{initials}</span>
       )}
-      <img
-        src={cleanUrl}
-        alt={`${name} logo`}
-        loading={eager ? 'eager' : 'lazy'}
-        decoding="async"
-        onLoad={() => {
-          loadedLogoUrlCache.add(cleanUrl);
-          failedLogoUrlCache.delete(cleanUrl);
-          setIsLoaded(true);
-        }}
-        onError={() => {
-          failedLogoUrlCache.add(cleanUrl);
-          setHasError(true);
-        }}
-        className={`w-full h-full transition-opacity duration-150 ${
-          isLoaded ? 'opacity-100' : 'opacity-0'
-        }`}
-        style={{ objectFit: 'contain' }}
-      />
     </div>
   );
 });

@@ -426,12 +426,6 @@ export function AdminUsersPage() {
     setSelectedUserSection(section);
     setSelectedUser(u);
   }, []);
-  const [selectedUserSection, setSelectedUserSection] = useState<UserOverrideSection>('top');
-
-  const handleSelectUser = useCallback((u: UserProfile, section: UserOverrideSection = 'top') => {
-    setSelectedUserSection(section);
-    setSelectedUser(u);
-  }, []);
 
   // Backfill names state
   const [backfilling, setBackfilling] = useState(false);

@@ -15,6 +15,8 @@ import {
 import {
   primeUniversityLogoCache,
   markUniversityLogoCached,
+  normalizeUniversityLogoUrl,
+  clearFailedUniversityLogoCache,
 } from '../components/ui/UniversityLogoBox';
 
 export interface ParsedImportMcqRow {
@@ -119,20 +121,34 @@ function loadLocalD1Mirror(): LocalD1Mirror {
   }
 }
 
+function normalizeUniversityRow(u: D1UniversityRow): D1UniversityRow {
+  const anyU = u as any;
+  const rawLogo = u.logo_url || anyU.logoUrl || anyU.icon_url || anyU.image_key || '';
+  const updatedAt = anyU.updated_at || anyU.logo_updated_at || '';
+  const normalizedLogo = normalizeUniversityLogoUrl(rawLogo, updatedAt);
+  return {
+    ...u,
+    logo_url: normalizedLogo,
+  };
+}
+
 function saveLocalD1Mirror(mirror: LocalD1Mirror): void {
   if (typeof window === 'undefined' || !window.localStorage) return;
   try {
-    // Recalculate university mcq_count & is_live automatically
     const counts = new Map<string, number>();
     for (const m of mirror.mcqs) {
       counts.set(m.university_id, (counts.get(m.university_id) || 0) + 1);
     }
+    const hasLocalMcqs = mirror.mcqs.length > 0;
     mirror.universities = mirror.universities.map((u) => {
-      const c = counts.get(u.id) || 0;
+      const normalized = normalizeUniversityRow(u);
+      const localCount = counts.get(u.id) || 0;
+      const serverCount = Number(u.mcq_count || 0);
+      const c = hasLocalMcqs ? Math.max(serverCount, localCount) : serverCount;
       return {
-        ...u,
+        ...normalized,
         mcq_count: c,
-        is_live: c > 0 ? 1 : 0,
+        is_live: c > 0 || Number(u.is_live) === 1 ? 1 : 0,
       };
     });
     window.localStorage.setItem(LOCAL_D1_STORAGE_KEY, JSON.stringify(mirror));
@@ -208,6 +224,13 @@ const UNIVERSITIES_CACHE_TTL_MS = 60_000;
 const UNIVERSITIES_SWR_KEY = 'universities:list:v2';
 let universitiesMemoryCache: { data: D1UniversityRow[]; expiresAt: number } | null = null;
 let universitiesInFlightPromise: Promise<D1UniversityRow[]> | null = null;
+let universitiesCacheBustVersion = 0;
+
+function notifyUniversitiesUpdated(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('boardly-universities-updated'));
+  }
+}
 
 type UniversityTopicsResult = {
   subjects: Array<{
@@ -222,7 +245,7 @@ const universityTopicsInFlight = new Map<string, Promise<UniversityTopicsResult>
 
 export function getInitialCachedUniversities(): D1UniversityRow[] | null {
   if (universitiesMemoryCache && universitiesMemoryCache.data.length > 0) {
-    return universitiesMemoryCache.data;
+    return universitiesMemoryCache.data.map(normalizeUniversityRow);
   }
   if (typeof window !== 'undefined' && window.localStorage) {
     try {
@@ -230,7 +253,7 @@ export function getInitialCachedUniversities(): D1UniversityRow[] | null {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed?.universities) && parsed.universities.length > 0) {
-          return parsed.universities;
+          return parsed.universities.map(normalizeUniversityRow);
         }
       }
     } catch {
@@ -242,7 +265,13 @@ export function getInitialCachedUniversities(): D1UniversityRow[] | null {
 
 export function invalidateUniversitiesCache(): void {
   universitiesMemoryCache = null;
+  universitiesInFlightPromise = null;
+  universitiesCacheBustVersion = Date.now();
   universityTopicsCache.clear();
+  clearFailedUniversityLogoCache();
+  if (typeof window !== 'undefined') {
+    delete (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
+  }
 }
 
 export async function fetchUniversities(forceRefresh = false): Promise<D1UniversityRow[]> {
@@ -256,7 +285,12 @@ export async function fetchUniversities(forceRefresh = false): Promise<D1Univers
   const p = (async () => {
     try {
       let res: { ok?: boolean; success?: boolean; universities?: D1UniversityRow[] } | null = null;
-      if (!forceRefresh && typeof window !== 'undefined' && (window as any).__BOARDLY_EARLY_UNIVERSITIES__) {
+      if (
+        !forceRefresh &&
+        universitiesCacheBustVersion === 0 &&
+        typeof window !== 'undefined' &&
+        (window as any).__BOARDLY_EARLY_UNIVERSITIES__
+      ) {
         const earlyPromise = (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
         delete (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
         try {
@@ -269,27 +303,49 @@ export async function fetchUniversities(forceRefresh = false): Promise<D1Univers
         }
       }
       if (!res) {
+        const endpoint =
+          forceRefresh || universitiesCacheBustVersion > 0
+            ? `/api/universities?v=${universitiesCacheBustVersion || Date.now()}`
+            : '/api/universities';
         res = await apiRequest<{ ok?: boolean; success?: boolean; universities?: D1UniversityRow[] }>(
-          '/api/universities'
+          endpoint
         );
       }
       if (Array.isArray(res.universities) && res.universities.length > 0) {
+        const normalizedRows = res.universities.map(normalizeUniversityRow);
+        const satRow = normalizedRows.find(
+          (u) =>
+            u.slug?.toLowerCase() === 'sat' ||
+            u.id?.toLowerCase() === 'uni_sat' ||
+            u.name?.trim().toUpperCase() === 'SAT'
+        );
+        if (satRow) {
+          console.info('[Universities D1] SAT logo_url value:', {
+            id: satRow.id,
+            name: satRow.name,
+            slug: satRow.slug,
+            logo_url: satRow.logo_url,
+          });
+        }
         const mirror = loadLocalD1Mirror();
-        mirror.universities = res.universities;
+        mirror.universities = normalizedRows;
         saveLocalD1Mirror(mirror);
-        for (const u of res.universities) {
-          if (u.logo_url) primeUniversityLogoCache(u.logo_url);
+        for (const u of normalizedRows) {
+          if (u.logo_url) {
+            clearFailedUniversityLogoCache(u.logo_url);
+            primeUniversityLogoCache(u.logo_url);
+          }
         }
         universitiesMemoryCache = {
-          data: res.universities,
+          data: normalizedRows,
           expiresAt: Date.now() + UNIVERSITIES_CACHE_TTL_MS,
         };
-        return res.universities;
+        return normalizedRows;
       }
     } catch {
       // Fallback to local mirror seeded with DEFAULT_D1_UNIVERSITIES
     }
-    const fallback = loadLocalD1Mirror().universities;
+    const fallback = loadLocalD1Mirror().universities.map(normalizeUniversityRow);
     universitiesMemoryCache = {
       data: fallback,
       expiresAt: Date.now() + 15_000,
@@ -560,36 +616,44 @@ export async function uploadUniversityLogo(
   prepared: PreparedUniversityLogo
 ): Promise<D1UniversityRow> {
   invalidateUniversitiesCache();
-  const res = await apiRequest<{ ok?: boolean; success?: boolean; university?: D1UniversityRow }>(
-    `/api/universities/${encodeURIComponent(universityId)}/logo`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        fileName: prepared.fileName,
-        mimeType: prepared.mimeType,
-        dataBase64: prepared.dataBase64,
-        fileSize: prepared.fileSize,
-      }),
-    }
-  );
+  const res = await apiRequest<{
+    ok?: boolean;
+    success?: boolean;
+    logo_url?: string;
+    university?: D1UniversityRow;
+  }>(`/api/universities/${encodeURIComponent(universityId)}/logo`, {
+    method: 'POST',
+    body: JSON.stringify({
+      fileName: prepared.fileName,
+      mimeType: prepared.mimeType,
+      dataBase64: prepared.dataBase64,
+      fileSize: prepared.fileSize,
+    }),
+  });
   if (!res.university) {
     throw new Error('Server did not return updated university record.');
   }
+  const updatedUni = normalizeUniversityRow({
+    ...res.university,
+    logo_url: res.logo_url || res.university.logo_url,
+  });
   const mirror = loadLocalD1Mirror();
   const idx = mirror.universities.findIndex(
-    (u) => u.id === res.university!.id || u.id === universityId || u.slug === universityId
+    (u) => u.id === updatedUni.id || u.id === universityId || u.slug === universityId
   );
   if (idx >= 0) {
-    mirror.universities[idx] = res.university;
+    mirror.universities[idx] = { ...mirror.universities[idx], ...updatedUni };
   } else {
-    mirror.universities.push(res.university);
+    mirror.universities.push(updatedUni);
   }
   saveLocalD1Mirror(mirror);
-  if (res.university.logo_url) {
-    markUniversityLogoCached(res.university.logo_url);
-    primeUniversityLogoCache(res.university.logo_url);
+  if (updatedUni.logo_url) {
+    clearFailedUniversityLogoCache(updatedUni.logo_url);
+    markUniversityLogoCached(updatedUni.logo_url);
+    primeUniversityLogoCache(updatedUni.logo_url);
   }
-  return res.university;
+  notifyUniversitiesUpdated();
+  return updatedUni;
 }
 
 export async function removeUniversityLogo(universityId: string): Promise<D1UniversityRow> {
@@ -603,15 +667,21 @@ export async function removeUniversityLogo(universityId: string): Promise<D1Univ
   if (!res.university) {
     throw new Error('Server did not return updated university record.');
   }
+  const updatedUni = normalizeUniversityRow({
+    ...res.university,
+    logo_url: '',
+  });
   const mirror = loadLocalD1Mirror();
   const idx = mirror.universities.findIndex(
-    (u) => u.id === res.university!.id || u.id === universityId || u.slug === universityId
+    (u) => u.id === updatedUni.id || u.id === universityId || u.slug === universityId
   );
   if (idx >= 0) {
-    mirror.universities[idx] = res.university;
+    mirror.universities[idx] = { ...mirror.universities[idx], ...updatedUni };
   }
   saveLocalD1Mirror(mirror);
-  return res.university;
+  clearFailedUniversityLogoCache();
+  notifyUniversitiesUpdated();
+  return updatedUni;
 }
 
 // ============================================================================

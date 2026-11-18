@@ -29,40 +29,97 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  // Serve R2 objects from R2_BUCKET (e.g. university logos) or static R2 mirror files from Pages static assets
-  if (path.startsWith('/api/r2/') || path.startsWith('/api/commons/r2/')) {
-    const normalizedPath = path.startsWith('/api/commons/r2/')
-      ? `/api/r2/${path.slice('/api/commons/r2/'.length)}`
-      : path;
-    const rawKey = decodeURIComponent(normalizedPath.slice('/api/r2/'.length))
+  // Serve R2 objects from R2_BUCKET (e.g. university logos) or D1 university_logo_assets fallback
+  if (
+    path.startsWith('/api/media/') ||
+    path.startsWith('/api/r2/') ||
+    path.startsWith('/api/commons/r2/')
+  ) {
+    const prefix = path.startsWith('/api/commons/r2/')
+      ? '/api/commons/r2/'
+      : path.startsWith('/api/media/')
+      ? '/api/media/'
+      : '/api/r2/';
+    const rawKey = decodeURIComponent(path.slice(prefix.length))
       .replace(/\.\./g, '')
       .replace(/^\/+/, '');
-    if (env.R2_BUCKET && rawKey && !rawKey.startsWith('signatures/') && !rawKey.startsWith('certificates/')) {
-      const obj = await env.R2_BUCKET.get(rawKey);
-      if (obj) {
-        const lower = rawKey.toLowerCase();
-        const contentType =
-          obj.httpMetadata?.contentType ||
-          (lower.endsWith('.svg')
-            ? 'image/svg+xml'
-            : lower.endsWith('.png')
-            ? 'image/png'
-            : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
-            ? 'image/jpeg'
-            : lower.endsWith('.webp')
-            ? 'image/webp'
-            : lower.endsWith('.pdf')
-            ? 'application/pdf'
-            : 'application/octet-stream');
-        return new Response(obj.body, {
-          status: 200,
-          headers: {
-            'Content-Type': contentType,
-            'Cache-Control': 'public, max-age=31536000, immutable',
-          },
+    if (rawKey && !rawKey.startsWith('signatures/') && !rawKey.startsWith('certificates/')) {
+      const lower = rawKey.toLowerCase();
+      const inferredType = lower.endsWith('.svg')
+        ? 'image/svg+xml'
+        : lower.endsWith('.png')
+        ? 'image/png'
+        : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+        ? 'image/jpeg'
+        : lower.endsWith('.webp')
+        ? 'image/webp'
+        : lower.endsWith('.gif')
+        ? 'image/gif'
+        : lower.endsWith('.pdf')
+        ? 'application/pdf'
+        : 'application/octet-stream';
+
+      if (env.R2_BUCKET) {
+        const obj = await env.R2_BUCKET.get(rawKey).catch(() => null);
+        if (obj) {
+          const contentType = obj.httpMetadata?.contentType || inferredType;
+          return new Response(obj.body, {
+            status: 200,
+            headers: {
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'Access-Control-Allow-Origin': '*',
+              'Cross-Origin-Resource-Policy': 'cross-origin',
+            },
+          });
+        }
+      }
+
+      if (env.DB && rawKey.startsWith('universities/logos/')) {
+        try {
+          const segs = rawKey.split('/');
+          const uniKeyHint = segs.length >= 3 ? segs[2] : '';
+          const row = await env.DB.prepare(
+            `SELECT mime_type, data_base64
+             FROM university_logo_assets
+             WHERE r2_key = ? OR (university_id = ? AND data_base64 != '')
+             ORDER BY CASE WHEN r2_key = ? THEN 0 ELSE 1 END
+             LIMIT 1`
+          )
+            .bind(rawKey, uniKeyHint, rawKey)
+            .first<{ mime_type?: string; data_base64?: string }>();
+          if (row?.data_base64) {
+            const cleanB64 = row.data_base64.includes(',')
+              ? row.data_base64.slice(row.data_base64.indexOf(',') + 1)
+              : row.data_base64;
+            const bin = atob(cleanB64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) {
+              bytes[i] = bin.charCodeAt(i);
+            }
+            return new Response(bytes, {
+              status: 200,
+              headers: {
+                'Content-Type': row.mime_type || inferredType,
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Access-Control-Allow-Origin': '*',
+                'Cross-Origin-Resource-Policy': 'cross-origin',
+              },
+            });
+          }
+        } catch {
+          // Table or column may not exist yet
+        }
+      }
+
+      if (rawKey.startsWith('universities/logos/')) {
+        return new Response(JSON.stringify({ success: false, error: 'Logo not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
         });
       }
     }
+    const normalizedPath = `/api/r2/${rawKey}`;
     const assetUrl = new URL(normalizedPath, url.origin);
     if (typeof (context as any).next === 'function' && normalizedPath === path) {
       return (context as any).next();
@@ -109,6 +166,8 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   // 3. Route to cloudflare/worker.ts for routes owned by worker.ts, otherwise cloudflare/worker.js
   const isTsWorkerRoute =
     path.startsWith('/api/universities') ||
+    path.startsWith('/api/media/') ||
+    path.startsWith('/api/r2/') ||
     path.startsWith('/api/mcqs') ||
     path.startsWith('/api/formulas') ||
     path.startsWith('/api/admin/legacy-bank') ||

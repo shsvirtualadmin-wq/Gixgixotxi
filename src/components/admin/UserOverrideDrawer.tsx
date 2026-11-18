@@ -257,9 +257,11 @@ export function UserOverrideDrawer({
   const [admin2faModalError, setAdmin2faModalError] = useState<string | null>(null);
   const [submitting2faAction, setSubmitting2faAction] = useState<boolean>(false);
 
+  const activeUserUid = user?.uid || '';
+
   // Hide floating bottom nav while sheet is open and scroll to initial section (or top)
   useEffect(() => {
-    if (!user) return;
+    if (!activeUserUid) return;
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     if (scrollContainerRef.current) {
@@ -277,7 +279,7 @@ export function UserOverrideDrawer({
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     };
-  }, [user?.uid, initialSection, scrollToSection]);
+  }, [activeUserUid, initialSection, scrollToSection]);
 
   // Initialize form state ONLY when opening a different user (prevents background refetches from snapping plan back to Free)
   useEffect(() => {

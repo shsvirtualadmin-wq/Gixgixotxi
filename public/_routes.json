@@ -1,35 +1,12 @@
 {
   "version": 1,
   "include": [
-    "/*"
+    "/api/*",
+    "/sitemap.xml",
+    "/commons/post/*",
+    "/material/*"
   ],
   "exclude": [
-    "/assets/*",
-    "/api/r2/*",
-    "/sw.js",
-    "/manifest.json",
-    "/site.webmanifest",
-    "/*.webmanifest",
-    "/*.png",
-    "/*.jpg",
-    "/*.jpeg",
-    "/*.webp",
-    "/*.gif",
-    "/*.svg",
-    "/*.ico",
-    "/*.css",
-    "/*.js",
-    "/*.mjs",
-    "/*.woff",
-    "/*.woff2",
-    "/*.ttf",
-    "/*.otf",
-    "/*.mp4",
-    "/*.webm",
-    "/*.pdf",
-    "/*.json",
-    "/*.txt",
-    "/*.map"
+    "/api/r2/commons/*"
   ]
 }
-

@@ -2061,7 +2061,7 @@ ${postSitemaps}
   });
 
   // 2. Serve R2 files from local R2 mirror or public/api/r2 static directory
-  app.get(['/api/r2/*', '/api/commons/r2/*'], async (req, res) => {
+  app.get(['/api/media/*', '/api/r2/*', '/api/commons/r2/*'], async (req, res) => {
     const rawKey = (req.params as any)[0] || '';
     const safeKey = String(rawKey).replace(/\.\./g, '').replace(/^\/+/, '');
     if (!safeKey) {
@@ -2099,6 +2099,8 @@ ${postSitemaps}
 
       res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.setHeader('Content-Disposition', `inline; filename="${path.basename(localPath)}"`);
       return res.sendFile(localPath);
     }
@@ -6685,14 +6687,102 @@ ${postSitemaps}
     }
   };
 
+  const getExpressSafePublicOrigin = (req: Request): string => {
+    const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+    const host = forwardedHost || String(req.get('host') || 'localhost:3000').trim();
+    const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const proto = !isLocal ? 'https' : forwardedProto || req.protocol || 'http';
+    return `${proto}://${host}`;
+  };
+
+  const resolveExpressUniversityLogoUrl = (uni: any, req: Request): string => {
+    const raw = String(uni?.logo_url || uni?.logoUrl || uni?.icon_url || uni?.image_key || '').trim();
+    if (!raw) return '';
+    if (raw.startsWith('data:image/')) return raw;
+
+    let existingVersion = '';
+    let pathPart = raw;
+    const qIdx = raw.indexOf('?');
+    if (qIdx >= 0 && !raw.includes('/api/posts/file')) {
+      pathPart = raw.slice(0, qIdx);
+      const qs = new URLSearchParams(raw.slice(qIdx + 1));
+      existingVersion = qs.get('v') || '';
+    }
+
+    const versionTag = String(uni?.logo_updated_at || uni?.updated_at || existingVersion || '').trim();
+    const origin = getExpressSafePublicOrigin(req);
+
+    const appendVersion = (targetUrl: string): string => {
+      if (!versionTag) return targetUrl;
+      if (/[?&]v=/.test(targetUrl)) return targetUrl;
+      return `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(versionTag)}`;
+    };
+
+    if (pathPart.startsWith('http://') || pathPart.startsWith('https://')) {
+      let normalizedFull = raw.replace('/api/r2/', '/api/media/').replace('/api/commons/r2/', '/api/media/');
+      if (normalizedFull.startsWith('http://') && !normalizedFull.includes('localhost') && !normalizedFull.includes('127.0.0.1')) {
+        normalizedFull = 'https://' + normalizedFull.slice('http://'.length);
+      }
+      return appendVersion(normalizedFull);
+    }
+
+    if (raw.includes('/api/posts/file')) {
+      try {
+        const u = new URL(raw, origin);
+        const k = String(u.searchParams.get('key') || '').replace(/\.\./g, '').replace(/^\/+/, '');
+        if (k) return appendVersion(`${origin}/api/media/${k}`);
+      } catch {
+        // Fall through
+      }
+    }
+
+    if (pathPart.startsWith('/api/r2/')) {
+      const k = pathPart.slice('/api/r2/'.length).replace(/^\/+/, '');
+      return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+    }
+    if (pathPart.startsWith('/api/commons/r2/')) {
+      const k = pathPart.slice('/api/commons/r2/'.length).replace(/^\/+/, '');
+      return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+    }
+    if (pathPart.startsWith('/api/media/')) {
+      const k = pathPart.slice('/api/media/'.length).replace(/^\/+/, '');
+      return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+    }
+    if (pathPart.startsWith('/')) {
+      return appendVersion(`${origin}${pathPart}`);
+    }
+    return appendVersion(`${origin}/api/media/${pathPart.replace(/^\/+/, '')}`);
+  };
+
   // GET /api/universities — Public list of universities ordered by sort_order ASC, name ASC
-  app.get('/api/universities', (_req: Request, res: Response) => {
+  app.get('/api/universities', (req: Request, res: Response) => {
     const store = loadD1Store();
     recalculateUniversityMcqCount(store);
-    const universities = [...(store.universities || [])].sort(
-      (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.name.localeCompare(b.name)
-    );
-    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
+    const universities = [...(store.universities || [])]
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || a.name.localeCompare(b.name))
+      .map((u) => {
+        const resolvedLogo = resolveExpressUniversityLogoUrl(u, req);
+        if (
+          u.slug?.toLowerCase() === 'sat' ||
+          u.id?.toLowerCase() === 'uni_sat' ||
+          u.name?.trim().toUpperCase() === 'SAT'
+        ) {
+          console.info('[D1 Universities] SAT logo_url column value:', {
+            id: u.id,
+            name: u.name,
+            slug: u.slug,
+            d1_logo_url: u.logo_url,
+            resolved_logo_url: resolvedLogo,
+          });
+        }
+        return {
+          ...u,
+          logo_url: resolvedLogo,
+          logoUrl: resolvedLogo,
+        };
+      });
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     return res.status(200).json({
       success: true,
       universities,
@@ -6844,8 +6934,23 @@ ${postSitemaps}
   const extractR2KeyFromLogoUrl = (rawUrl?: string | null): string | null => {
     const clean = String(rawUrl || '').trim();
     if (!clean) return null;
-    if (clean.startsWith('/api/r2/')) {
-      const key = decodeURIComponent(clean.slice('/api/r2/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
+    const noQuery = clean.split('?')[0];
+    if (noQuery.startsWith('/api/r2/')) {
+      const key = decodeURIComponent(noQuery.slice('/api/r2/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
+      return key || null;
+    }
+    if (noQuery.startsWith('/api/media/')) {
+      const key = decodeURIComponent(noQuery.slice('/api/media/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
+      return key || null;
+    }
+    if (noQuery.includes('/api/media/')) {
+      const idx = noQuery.indexOf('/api/media/');
+      const key = decodeURIComponent(noQuery.slice(idx + '/api/media/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
+      return key || null;
+    }
+    if (noQuery.includes('/api/r2/')) {
+      const idx = noQuery.indexOf('/api/r2/');
+      const key = decodeURIComponent(noQuery.slice(idx + '/api/r2/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
       return key || null;
     }
     if (clean.includes('/api/posts/file')) {
@@ -6856,6 +6961,9 @@ ${postSitemaps}
       } catch {
         return null;
       }
+    }
+    if (noQuery.startsWith('universities/logos/')) {
+      return noQuery;
     }
     return null;
   };
@@ -7012,15 +7120,22 @@ ${postSitemaps}
         }
       }
 
-      const logoUrl = `/api/r2/${r2Key}`;
-      uni.logo_url = logoUrl;
+      const updatedAt = Date.now();
+      const storedPath = `/api/media/${r2Key}?v=${updatedAt}`;
+      (uni as any).logo_updated_at = updatedAt;
+      uni.logo_url = storedPath;
       recalculateUniversityMcqCount(store, uni.id);
       saveD1Store(store);
 
+      const resolvedLogoUrl = resolveExpressUniversityLogoUrl(uni, req);
       return res.status(200).json({
         success: true,
-        logo_url: logoUrl,
-        university: uni,
+        logo_url: resolvedLogoUrl,
+        university: {
+          ...uni,
+          logo_url: resolvedLogoUrl,
+          logoUrl: resolvedLogoUrl,
+        },
       });
     } catch (err: any) {
       return res.status(500).json({

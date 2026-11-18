@@ -614,7 +614,7 @@ export const AdminQuestionsPage: React.FC = () => {
       });
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [anyQuestionBankSheetOpen, mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, bulkWizardStep]);
+  }, [anyQuestionBankSheetOpen, mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, bulkRawInput, importingChunked, importProgress]);
 
   useEffect(() => {
     const anySheetOpen = mcqModalOpen || bulkModalOpen || uniSheetOpen || filterSheetOpen;
@@ -767,7 +767,9 @@ export const AdminQuestionsPage: React.FC = () => {
       setUniFormModalOpen(false);
       await loadInitialData(true);
     } catch (err: any) {
-      showBanner('error', err?.message || 'Failed to save university');
+      const errMsg = err?.message || 'Failed to save university logo.';
+      setLogoValidationError(errMsg);
+      showBanner('error', errMsg);
     } finally {
       setSavingUni(false);
     }

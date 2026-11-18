@@ -441,7 +441,24 @@ async function ensureD1Schema(db: D1Database): Promise<void> {
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcq_reports_status ON mcq_reports(status, created_at DESC)`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_mcq_reports_mcq_id ON mcq_reports(mcq_id)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS university_logo_assets (
+        id TEXT PRIMARY KEY,
+        university_id TEXT NOT NULL UNIQUE,
+        r2_key TEXT NOT NULL,
+        logo_url TEXT NOT NULL,
+        mime_type TEXT NOT NULL DEFAULT 'image/webp',
+        file_size INTEGER NOT NULL DEFAULT 0,
+        uploaded_by_uid TEXT NOT NULL DEFAULT '',
+        data_base64 TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at INTEGER NOT NULL DEFAULT 0
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_university_logo_assets_uni_id ON university_logo_assets(university_id)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_university_logo_assets_r2_key ON university_logo_assets(r2_key)`),
     ]);
+
+    await db.prepare(`ALTER TABLE universities ADD COLUMN logo_url TEXT NOT NULL DEFAULT ''`).run().catch(() => {});
+    await db.prepare(`ALTER TABLE university_logo_assets ADD COLUMN data_base64 TEXT NOT NULL DEFAULT ''`).run().catch(() => {});
 
     try {
       const uniSeedStmts = PRE_SEEDED_UNIVERSITIES.map((u) =>
@@ -4456,9 +4473,19 @@ ${urls
       return jsonResponse({ error: 'Bot endpoint not found' }, 404, cors);
     }
 
-    // 2b-r2. Public R2 object streaming at /api/r2/* (e.g. university logos & study materials)
-    if (url.pathname.startsWith('/api/r2/') && req.method === 'GET') {
-      const rawKey = decodeURIComponent(url.pathname.slice('/api/r2/'.length))
+    // 2b-r2. Public R2 & D1 object streaming at /api/media/* and /api/r2/* (e.g. university logos & study materials)
+    if (
+      (url.pathname.startsWith('/api/media/') ||
+        url.pathname.startsWith('/api/r2/') ||
+        url.pathname.startsWith('/api/commons/r2/')) &&
+      req.method === 'GET'
+    ) {
+      const prefix = url.pathname.startsWith('/api/commons/r2/')
+        ? '/api/commons/r2/'
+        : url.pathname.startsWith('/api/media/')
+        ? '/api/media/'
+        : '/api/r2/';
+      const rawKey = decodeURIComponent(url.pathname.slice(prefix.length))
         .replace(/\.\./g, '')
         .replace(/^\/+/, '');
       if (!rawKey) {
@@ -4468,7 +4495,7 @@ ${urls
         return jsonResponse({ success: false, error: 'Forbidden private prefix.' }, 403, cors);
       }
       if (env.R2_BUCKET) {
-        const obj = await env.R2_BUCKET.get(rawKey);
+        const obj = await env.R2_BUCKET.get(rawKey).catch(() => null);
         if (obj) {
           const contentType = obj.httpMetadata?.contentType || inferMimeTypeFromKey(rawKey);
           return new Response(obj.body, {
@@ -4477,9 +4504,43 @@ ${urls
               ...cors,
               'Content-Type': contentType,
               'Cache-Control': 'public, max-age=31536000, immutable',
+              'Cross-Origin-Resource-Policy': 'cross-origin',
             },
           });
         }
+      }
+      if (env.DB && rawKey.startsWith('universities/logos/')) {
+        try {
+          const segs = rawKey.split('/');
+          const uniKeyHint = segs.length >= 3 ? segs[2] : '';
+          const row = await env.DB.prepare(
+            `SELECT mime_type, data_base64
+             FROM university_logo_assets
+             WHERE r2_key = ? OR (university_id = ? AND data_base64 != '')
+             ORDER BY CASE WHEN r2_key = ? THEN 0 ELSE 1 END
+             LIMIT 1`
+          )
+            .bind(rawKey, uniKeyHint, rawKey)
+            .first<{ mime_type?: string; data_base64?: string }>();
+          if (row?.data_base64) {
+            const cleanB64 = row.data_base64.includes(',')
+              ? row.data_base64.slice(row.data_base64.indexOf(',') + 1)
+              : row.data_base64;
+            const decoded = base64ToUint8Array(cleanB64);
+            return new Response(decoded, {
+              status: 200,
+              headers: {
+                ...cors,
+                'Content-Type': row.mime_type || inferMimeTypeFromKey(rawKey),
+                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Cross-Origin-Resource-Policy': 'cross-origin',
+              },
+            });
+          }
+        } catch {
+          // Table or column may not exist yet
+        }
+        return jsonResponse({ success: false, error: 'Logo file not found.' }, 404, cors);
       }
     }
 
@@ -4529,6 +4590,163 @@ ${urls
         ).run();
       };
 
+      const getSafePublicOrigin = (): string => {
+        const host = url.host || '';
+        const isLocal = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+        return isLocal ? url.origin : `https://${host}`;
+      };
+
+      const resolveWorkerUniversityLogoUrl = (
+        rawLogoUrl?: string | null,
+        assetR2Key?: string | null,
+        updatedAt?: number | string | null
+      ): string => {
+        let clean = String(rawLogoUrl || '').trim();
+        const r2KeyClean = String(assetR2Key || '').trim().replace(/^\/+/, '');
+        if (!clean && r2KeyClean) {
+          clean = `/api/media/${r2KeyClean}`;
+        }
+        if (!clean) return '';
+        if (clean.startsWith('data:image/')) return clean;
+
+        // Extract query param version if already attached
+        let existingVersion = '';
+        let pathPart = clean;
+        const qIdx = clean.indexOf('?');
+        if (qIdx >= 0 && !clean.includes('/api/posts/file')) {
+          pathPart = clean.slice(0, qIdx);
+          const qs = new URLSearchParams(clean.slice(qIdx + 1));
+          existingVersion = qs.get('v') || '';
+        }
+
+        const versionTag = String(updatedAt || existingVersion || '').trim();
+        const origin = getSafePublicOrigin();
+
+        const appendVersion = (targetUrl: string): string => {
+          if (!versionTag) return targetUrl;
+          if (/[?&]v=/.test(targetUrl)) return targetUrl;
+          return `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(versionTag)}`;
+        };
+
+        if (pathPart.startsWith('http://') || pathPart.startsWith('https://')) {
+          let normalizedFull = clean.replace('/api/r2/', '/api/media/').replace('/api/commons/r2/', '/api/media/');
+          if (normalizedFull.startsWith('http://') && !normalizedFull.includes('localhost') && !normalizedFull.includes('127.0.0.1')) {
+            normalizedFull = 'https://' + normalizedFull.slice('http://'.length);
+          }
+          return appendVersion(normalizedFull);
+        }
+
+        if (clean.includes('/api/posts/file')) {
+          try {
+            const u = new URL(clean, origin);
+            const k = String(u.searchParams.get('key') || '').replace(/\.\./g, '').replace(/^\/+/, '');
+            if (k) {
+              return appendVersion(`${origin}/api/media/${k}`);
+            }
+          } catch {
+            // Fall through
+          }
+        }
+
+        if (pathPart.startsWith('/api/r2/')) {
+          const k = pathPart.slice('/api/r2/'.length).replace(/^\/+/, '');
+          return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+        }
+        if (pathPart.startsWith('/api/commons/r2/')) {
+          const k = pathPart.slice('/api/commons/r2/'.length).replace(/^\/+/, '');
+          return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+        }
+        if (pathPart.startsWith('/api/media/')) {
+          const k = pathPart.slice('/api/media/'.length).replace(/^\/+/, '');
+          return k ? appendVersion(`${origin}/api/media/${k}`) : '';
+        }
+        if (pathPart.startsWith('/')) {
+          return appendVersion(`${origin}${pathPart}`);
+        }
+        // Raw R2 key like "universities/logos/uni_sat/..."
+        return appendVersion(`${origin}/api/media/${pathPart.replace(/^\/+/, '')}`);
+      };
+
+      const purgeWorkerUniversitiesCache = async () => {
+        try {
+          const cacheStorage = (globalThis as any).caches?.default;
+          if (cacheStorage && typeof cacheStorage.delete === 'function') {
+            const targetUrl = new URL('/api/universities', url.origin).toString();
+            await cacheStorage.delete(targetUrl).catch(() => {});
+            await cacheStorage.delete(new Request(targetUrl, { method: 'GET' })).catch(() => {});
+          }
+        } catch {
+          // Non-fatal
+        }
+      };
+
+      const fetchNormalizedD1Universities = async (): Promise<D1UniversityRow[]> => {
+        let rows: Array<D1UniversityRow & { asset_r2_key?: string; asset_logo_url?: string; logo_updated_at?: number }> = [];
+        try {
+          const res = await env.DB!.prepare(
+            `SELECT
+               u.id,
+               u.name,
+               u.slug,
+               u.logo_url,
+               u.sort_order,
+               u.mcq_count,
+               u.is_live,
+               u.created_at,
+               ula.r2_key AS asset_r2_key,
+               ula.logo_url AS asset_logo_url,
+               ula.updated_at AS logo_updated_at
+             FROM universities u
+             LEFT JOIN university_logo_assets ula ON ula.university_id = u.id
+             ORDER BY u.sort_order ASC, u.name ASC`
+          ).all<D1UniversityRow & { asset_r2_key?: string; asset_logo_url?: string; logo_updated_at?: number }>();
+          rows = res.results || [];
+        } catch {
+          const res = await env.DB!.prepare(
+            'SELECT id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at FROM universities ORDER BY sort_order ASC, name ASC'
+          ).all<D1UniversityRow>();
+          rows = res.results || [];
+        }
+
+        const normalized = rows.map((row) => {
+          const rawLogo = String(row.logo_url || row.asset_logo_url || '').trim();
+          const resolvedLogo = resolveWorkerUniversityLogoUrl(
+            rawLogo,
+            row.asset_r2_key,
+            row.logo_updated_at
+          );
+          if (
+            row.slug?.toLowerCase() === 'sat' ||
+            row.id?.toLowerCase() === 'uni_sat' ||
+            row.name?.trim().toUpperCase() === 'SAT'
+          ) {
+            console.info('[D1 Universities] SAT logo_url column value:', {
+              id: row.id,
+              name: row.name,
+              slug: row.slug,
+              d1_logo_url: row.logo_url,
+              asset_r2_key: row.asset_r2_key || null,
+              logo_updated_at: row.logo_updated_at || null,
+              resolved_logo_url: resolvedLogo,
+            });
+          }
+          return {
+            id: row.id,
+            name: row.name,
+            slug: row.slug,
+            logo_url: resolvedLogo,
+            logoUrl: resolvedLogo,
+            sort_order: Number(row.sort_order || 0),
+            mcq_count: Number(row.mcq_count || 0),
+            is_live: Number(row.is_live || 0),
+            created_at: row.created_at,
+            updated_at: row.logo_updated_at || undefined,
+          } as D1UniversityRow;
+        });
+
+        return normalized;
+      };
+
       // ── /api/universities ─────────────────────────────────────────────────
       if (url.pathname.startsWith('/api/universities')) {
         const uniSub = url.pathname.slice('/api/universities'.length).replace(/\/+$/, '') || '/';
@@ -4536,13 +4754,11 @@ ${urls
         // GET /api/universities
         if (uniSub === '/' && req.method === 'GET') {
           await recalculateAllD1UniCounts();
-          const { results } = await env.DB.prepare(
-            'SELECT * FROM universities ORDER BY sort_order ASC, name ASC'
-          ).all<D1UniversityRow>();
+          const universities = await fetchNormalizedD1Universities();
           return jsonResponse(
-            { success: true, universities: results || [] },
+            { success: true, universities },
             200,
-            { ...cors, 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' }
+            { ...cors, 'Cache-Control': 'no-cache, must-revalidate' }
           );
         }
 
@@ -4589,9 +4805,9 @@ ${urls
             .bind(id, name, slug, logoUrl, sortOrder, nowIso)
             .run();
 
-          const created = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
-            .bind(id)
-            .first<D1UniversityRow>();
+          await purgeWorkerUniversitiesCache();
+          const allUnis = await fetchNormalizedD1Universities();
+          const created = allUnis.find((u) => u.id === id) || null;
           return jsonResponse({ success: true, university: created }, 201, cors);
         }
 
@@ -4610,17 +4826,37 @@ ${urls
             )
           );
           await env.DB.batch(stmts);
-          const { results } = await env.DB.prepare(
-            'SELECT * FROM universities ORDER BY sort_order ASC, name ASC'
-          ).all<D1UniversityRow>();
-          return jsonResponse({ success: true, universities: results || [] }, 200, cors);
+          await purgeWorkerUniversitiesCache();
+          const universities = await fetchNormalizedD1Universities();
+          return jsonResponse({ success: true, universities }, 200, cors);
         }
 
         const extractWorkerLogoR2Key = (rawUrl?: string | null): string | null => {
           const clean = String(rawUrl || '').trim();
           if (!clean) return null;
-          if (clean.startsWith('/api/r2/')) {
-            const key = decodeURIComponent(clean.slice('/api/r2/'.length))
+          const noQuery = clean.split('?')[0];
+          if (noQuery.startsWith('/api/r2/')) {
+            const key = decodeURIComponent(noQuery.slice('/api/r2/'.length))
+              .replace(/\.\./g, '')
+              .replace(/^\/+/, '');
+            return key || null;
+          }
+          if (noQuery.startsWith('/api/media/')) {
+            const key = decodeURIComponent(noQuery.slice('/api/media/'.length))
+              .replace(/\.\./g, '')
+              .replace(/^\/+/, '');
+            return key || null;
+          }
+          if (noQuery.includes('/api/media/')) {
+            const idx = noQuery.indexOf('/api/media/');
+            const key = decodeURIComponent(noQuery.slice(idx + '/api/media/'.length))
+              .replace(/\.\./g, '')
+              .replace(/^\/+/, '');
+            return key || null;
+          }
+          if (noQuery.includes('/api/r2/')) {
+            const idx = noQuery.indexOf('/api/r2/');
+            const key = decodeURIComponent(noQuery.slice(idx + '/api/r2/'.length))
               .replace(/\.\./g, '')
               .replace(/^\/+/, '');
             return key || null;
@@ -4635,6 +4871,9 @@ ${urls
             } catch {
               return null;
             }
+          }
+          if (noQuery.startsWith('universities/logos/')) {
+            return noQuery;
           }
           return null;
         };
@@ -4714,7 +4953,10 @@ ${urls
               );
             }
 
-            const decoded = base64ToUint8Array(dataBase64);
+            const cleanBase64 = dataBase64.includes(',')
+              ? dataBase64.slice(dataBase64.indexOf(',') + 1)
+              : dataBase64;
+            const decoded = base64ToUint8Array(cleanBase64);
             const fileSize = decoded.byteLength;
             if (fileSize === 0) {
               return jsonResponse(
@@ -4742,6 +4984,7 @@ ${urls
             const safeUniKey = existingUni.id.replace(/[^a-zA-Z0-9_-]/g, '_');
             const randId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
             const r2Key = `universities/logos/${safeUniKey}/${randId}-logo.${ext}`;
+            const updatedAt = Date.now();
 
             // Delete old file before uploading replacement
             await deleteOldWorkerUniversityLogo(existingUni.id, existingUni.logo_url);
@@ -4759,37 +5002,81 @@ ${urls
               });
             }
 
-            const logoUrl = `/api/r2/${r2Key}`;
+            const storedPath = `/api/media/${r2Key}?v=${updatedAt}`;
+            const fullLogoUrl = resolveWorkerUniversityLogoUrl(storedPath, r2Key, updatedAt);
             await env.DB.prepare('UPDATE universities SET logo_url = ? WHERE id = ?')
-              .bind(logoUrl, existingUni.id)
+              .bind(fullLogoUrl, existingUni.id)
               .run();
 
             try {
               await env.DB.prepare(
+                `CREATE TABLE IF NOT EXISTS university_logo_assets (
+                  id TEXT PRIMARY KEY,
+                  university_id TEXT NOT NULL UNIQUE,
+                  r2_key TEXT NOT NULL,
+                  logo_url TEXT NOT NULL,
+                  mime_type TEXT NOT NULL DEFAULT 'image/webp',
+                  file_size INTEGER NOT NULL DEFAULT 0,
+                  uploaded_by_uid TEXT NOT NULL DEFAULT '',
+                  data_base64 TEXT NOT NULL DEFAULT '',
+                  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                  updated_at INTEGER NOT NULL DEFAULT 0
+                )`
+              ).run();
+              await env.DB.prepare(
+                `ALTER TABLE university_logo_assets ADD COLUMN data_base64 TEXT NOT NULL DEFAULT ''`
+              )
+                .run()
+                .catch(() => {});
+              await env.DB.prepare(
                 `INSERT OR REPLACE INTO university_logo_assets (
-                  id, university_id, r2_key, logo_url, mime_type, file_size, uploaded_by_uid, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                  id, university_id, r2_key, logo_url, mime_type, file_size, uploaded_by_uid, data_base64, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
               )
                 .bind(
                   `ulogo_${existingUni.id}`,
                   existingUni.id,
                   r2Key,
-                  logoUrl,
+                  fullLogoUrl,
                   mimeType,
                   fileSize,
                   adminUser.uid,
-                  Date.now()
+                  cleanBase64,
+                  updatedAt
                 )
                 .run();
             } catch {
-              // Optional metadata table may not be migrated yet
+              // Fallback if data_base64 column wasn't available
+              try {
+                await env.DB.prepare(
+                  `INSERT OR REPLACE INTO university_logo_assets (
+                    id, university_id, r2_key, logo_url, mime_type, file_size, uploaded_by_uid, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                )
+                  .bind(
+                    `ulogo_${existingUni.id}`,
+                    existingUni.id,
+                    r2Key,
+                    fullLogoUrl,
+                    mimeType,
+                    fileSize,
+                    adminUser.uid,
+                    updatedAt
+                  )
+                  .run();
+              } catch {
+                // Non-fatal
+              }
             }
 
             await recalculateD1UniCount(existingUni.id);
-            const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
-              .bind(existingUni.id)
-              .first<D1UniversityRow>();
-            return jsonResponse({ success: true, logo_url: logoUrl, university: updated }, 200, cors);
+            await purgeWorkerUniversitiesCache();
+            const allUnis = await fetchNormalizedD1Universities();
+            const updated = allUnis.find((u) => u.id === existingUni.id) || {
+              ...existingUni,
+              logo_url: fullLogoUrl,
+            };
+            return jsonResponse({ success: true, logo_url: fullLogoUrl, university: updated }, 200, cors);
           }
 
           // DELETE /api/universities/:id/logo — Remove logo and delete old file
@@ -4799,9 +5086,12 @@ ${urls
               .bind(existingUni.id)
               .run();
             await recalculateD1UniCount(existingUni.id);
-            const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
-              .bind(existingUni.id)
-              .first<D1UniversityRow>();
+            await purgeWorkerUniversitiesCache();
+            const allUnis = await fetchNormalizedD1Universities();
+            const updated = allUnis.find((u) => u.id === existingUni.id) || {
+              ...existingUni,
+              logo_url: '',
+            };
             return jsonResponse({ success: true, university: updated }, 200, cors);
           }
         }
@@ -4842,10 +5132,10 @@ ${urls
             .bind(nextName, nextSlug, nextLogo, nextSort, existing.id)
             .run();
           await recalculateD1UniCount(existing.id);
+          await purgeWorkerUniversitiesCache();
 
-          const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
-            .bind(existing.id)
-            .first<D1UniversityRow>();
+          const allUnis = await fetchNormalizedD1Universities();
+          const updated = allUnis.find((u) => u.id === existing.id) || null;
           return jsonResponse({ success: true, university: updated }, 200, cors);
         }
 
