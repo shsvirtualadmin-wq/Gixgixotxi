@@ -3,10 +3,12 @@ export interface D1FormulaCategoryRow {
   name: string;
   slug: string;
   description: string;
+  icon?: string;
   sort_order: number;
   chapter_count: number;
   formula_count: number;
   status: 'live' | 'draft';
+  is_active?: number;
   guest_access: number;
   search_text: string;
   created_at: string;
@@ -25,6 +27,7 @@ export interface D1FormulaChapterRow {
   status: 'live' | 'draft';
   pdf_r2_key: string;
   pdf_updated_at: string;
+  pdf_generated_at?: string;
   search_text: string;
   created_at: string;
   updated_at: string;
@@ -38,15 +41,19 @@ export interface D1FormulaRow {
   title: string;
   formula_latex: string;
   plain_text: string;
+  formula_plain?: string;
   note: string;
   status: 'live' | 'draft';
   sort_order: number;
+  is_featured?: number;
   is_render_valid: number;
   render_error: string;
   search_text: string;
   created_at: string;
   updated_at: string;
 }
+
+export type D1FormulaItemRow = D1FormulaRow;
 
 export interface D1FormulaBookmarkRow {
   id: number;
@@ -66,6 +73,7 @@ export interface D1FormulaReportRow {
   reason: string;
   details: string;
   formula_latex_snapshot: string;
+  formula_latex?: string;
   status: 'open' | 'resolved' | 'ignored';
   resolved_by: string;
   created_at: string;
@@ -78,6 +86,7 @@ export interface D1FormulaReportRow {
 export interface D1FormulaImportLogRow {
   id: string;
   category_id: string;
+  category_name?: string;
   chapter_id: string;
   admin_uid: string;
   source_type: 'csv' | 'gsheet' | 'paste';
@@ -89,6 +98,10 @@ export interface D1FormulaImportLogRow {
   updated_rows: number;
   skipped_rows: number;
   failed_rows: number;
+  imported_count?: number;
+  updated_count?: number;
+  skipped_count?: number;
+  failed_count?: number;
   status: string;
   created_at: string;
 }
@@ -1645,6 +1658,27 @@ const RAW_SEED_CHAPTERS: SeedChapterSpec[] = [
   },
 ];
 
+export function buildFormulaSlug(raw: string): string {
+  return (
+    String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 72) || 'formula-item'
+  );
+}
+
+export function buildFormulaSearchText(parts: Array<string | number | undefined | null>): string {
+  return parts
+    .filter((p) => p !== undefined && p !== null && String(p).trim().length > 0)
+    .map((p) => String(p).trim().toLowerCase())
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function buildInitialFormulaVaultSeed(): {
   categories: D1FormulaCategoryRow[];
   chapters: D1FormulaChapterRow[];
@@ -1668,9 +1702,11 @@ export function buildInitialFormulaVaultSeed(): {
         title: f.title,
         formula_latex: f.formula_latex,
         plain_text: f.plain_text,
+        formula_plain: f.plain_text,
         note: f.note,
         status: 'live',
         sort_order: idx + 1,
+        is_featured: f.formula_no <= 2 ? 1 : 0,
         is_render_valid: 1,
         render_error: '',
         search_text: searchText,
@@ -1693,6 +1729,7 @@ export function buildInitialFormulaVaultSeed(): {
       status: 'live',
       pdf_r2_key: '',
       pdf_updated_at: '',
+      pdf_generated_at: '',
       search_text: `${ch.chapter_no} ${ch.title} ${ch.subtopics}`.toLowerCase(),
       created_at: NOW_ISO,
       updated_at: NOW_ISO,
@@ -1704,6 +1741,8 @@ export function buildInitialFormulaVaultSeed(): {
     const catFormulas = formulas.filter((f) => f.category_id === cat.id);
     return {
       ...cat,
+      icon: 'Sigma',
+      is_active: 1,
       chapter_count: catChapters.length,
       formula_count: catFormulas.length,
     };
@@ -1711,3 +1750,13 @@ export function buildInitialFormulaVaultSeed(): {
 
   return { categories, chapters, formulas };
 }
+
+const INITIAL_FORMULA_VAULT_SEED = buildInitialFormulaVaultSeed();
+
+export const FORMULA_VAULT_CATEGORIES_SEED: D1FormulaCategoryRow[] =
+  INITIAL_FORMULA_VAULT_SEED.categories;
+export const FORMULA_VAULT_CHAPTERS_SEED: D1FormulaChapterRow[] =
+  INITIAL_FORMULA_VAULT_SEED.chapters;
+export const FORMULA_VAULT_ITEMS_SEED: D1FormulaItemRow[] =
+  INITIAL_FORMULA_VAULT_SEED.formulas;
+

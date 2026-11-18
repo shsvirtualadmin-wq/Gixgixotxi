@@ -13,6 +13,7 @@ const ALL_NAV_LINKS = [
   { to: '/grand-line', label: GRAND_LINE_NAME },
   { to: '/mcqs', label: 'Subject MCQs', shortLabel: 'MCQs' },
   { to: '/commons', label: 'Boardly Commons', shortLabel: 'Commons' },
+  { to: '/formulas', label: 'Formula Vault', shortLabel: 'Formulas' },
   { to: '/material', label: 'Study Material', shortLabel: 'Material' },
   { to: '/features', label: 'Features' },
   { to: '/crew', label: 'Crew' },

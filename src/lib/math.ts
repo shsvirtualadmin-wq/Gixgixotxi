@@ -656,3 +656,100 @@ export function convertAsciiMathToLatex(text: string): string {
 export function normalizeMath(text: string): string {
   return convertAsciiMathToLatex(text);
 }
+
+/**
+ * Validates raw LaTeX or $...$ math expressions for balanced braces, environments,
+ * and valid TeX command syntax. Used by Formula Vault, Bulk Import Formulas, and Edge Worker.
+ */
+export function validateMath(rawLatex: string): {
+  ok: boolean;
+  valid: boolean;
+  errors: string[];
+  error?: string;
+} {
+  const s = String(rawLatex ?? '').trim();
+  if (!s) {
+    return {
+      ok: false,
+      valid: false,
+      errors: ['Formula LaTeX is empty'],
+      error: 'Formula LaTeX is empty',
+    };
+  }
+
+  let depth = 0;
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === '\\') {
+      i += 2;
+      continue;
+    }
+    if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth < 0) {
+        return {
+          ok: false,
+          valid: false,
+          errors: ['Unmatched closing brace "}" in LaTeX'],
+          error: 'Unmatched closing brace "}" in LaTeX',
+        };
+      }
+    }
+    i++;
+  }
+
+  if (depth !== 0) {
+    return {
+      ok: false,
+      valid: false,
+      errors: [`Unclosed brace "{" in LaTeX (depth ${depth})`],
+      error: `Unclosed brace "{" in LaTeX (depth ${depth})`,
+    };
+  }
+
+  if (/\\$/.test(s) && !/\\\\$/.test(s)) {
+    return {
+      ok: false,
+      valid: false,
+      errors: ['Trailing incomplete backslash "\\" at end of LaTeX'],
+      error: 'Trailing incomplete backslash "\\" at end of LaTeX',
+    };
+  }
+
+  if (/\\frac\s*(?:\{[^{}]*\})?\s*$/.test(s)) {
+    return {
+      ok: false,
+      valid: false,
+      errors: ['Incomplete \\frac command (requires {numerator}{denominator})'],
+      error: 'Incomplete \\frac command (requires {numerator}{denominator})',
+    };
+  }
+
+  const begins = (s.match(/\\begin\{[^}]+\}/g) || []).length;
+  const ends = (s.match(/\\end\{[^}]+\}/g) || []).length;
+  if (begins !== ends) {
+    return {
+      ok: false,
+      valid: false,
+      errors: [`Mismatched \\begin (${begins}) and \\end (${ends}) environments`],
+      error: `Mismatched \\begin (${begins}) and \\end (${ends}) environments`,
+    };
+  }
+
+  const lefts = (s.match(/\\left\b/g) || []).length;
+  const rights = (s.match(/\\right\b/g) || []).length;
+  if (lefts !== rights) {
+    return {
+      ok: false,
+      valid: false,
+      errors: [`Mismatched \\left (${lefts}) and \\right (${rights}) delimiters`],
+      error: `Mismatched \\left (${lefts}) and \\right (${rights}) delimiters`,
+    };
+  }
+
+  return { ok: true, valid: true, errors: [] };
+}
+

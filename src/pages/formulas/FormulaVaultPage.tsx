@@ -35,7 +35,7 @@ import {
   FormulaOfTheDayItem,
 } from '../../services/formulaVaultService';
 import { MathText } from '../../components/ui/MathText';
-import { showToast } from '../../utils/toast';
+import { useEffectivePlan } from '../../hooks/useEffectivePlan';
 
 function HighlightMatch({ text, query }: { text: string; query: string }) {
   const q = String(query || '').trim();
@@ -68,15 +68,29 @@ function formatFormulaCountBadge(count: number): string {
 
 export const FormulaVaultPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, userProfile } = useAuth();
+  const { user, isGuest, isAdmin, isSuperAdmin } = useAuth();
+  const { isUnlimited } = useEffectivePlan();
 
-  const isSignedIn = Boolean(user && !userProfile?.isGuest);
-  const isProOrAdmin = Boolean(
-    userProfile?.isPro ||
-      userProfile?.role === 'admin' ||
-      userProfile?.role === 'superadmin' ||
-      (userProfile as any)?.plan === 'pro'
+  const isSignedIn = Boolean(user && !isGuest);
+  const isProOrAdmin = Boolean(isUnlimited || isAdmin || isSuperAdmin);
+
+  const [toastBanner, setToastBanner] = useState<{
+    message: string;
+    type: 'success' | 'error' | 'info';
+  } | null>(null);
+
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+      setToastBanner({ message, type });
+    },
+    []
   );
+
+  useEffect(() => {
+    if (!toastBanner) return;
+    const t = window.setTimeout(() => setToastBanner(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [toastBanner]);
 
   // Overview state
   const [loadingOverview, setLoadingOverview] = useState(true);
@@ -513,6 +527,24 @@ export const FormulaVaultPage: React.FC = () => {
 
       {/* Main Content Container */}
       <div className="mx-auto max-w-7xl px-4 pt-4">
+        {/* Toast feedback banner */}
+        {toastBanner && (
+          <div
+            role="status"
+            className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-[var(--accent)]/40 bg-[var(--surface)] px-4 py-2.5 text-xs font-semibold text-[var(--text)] shadow-sm"
+          >
+            <span>{toastBanner.message}</span>
+            <button
+              type="button"
+              onClick={() => setToastBanner(null)}
+              aria-label="Dismiss notification"
+              className="rounded-full p-1 text-[var(--muted)] hover:text-[var(--text)]"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Guest Mode Banner */}
         {!isSignedIn && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs text-[var(--muted)]">
@@ -1182,7 +1214,8 @@ export const FormulaVaultPage: React.FC = () => {
                 type="button"
                 onClick={() =>
                   handleCopyText(
-                    enlargedFormula.formula.formula_plain ||
+                    enlargedFormula.formula.plain_text ||
+                      enlargedFormula.formula.formula_plain ||
                       enlargedFormula.formula.formula_latex,
                     'plain'
                   )

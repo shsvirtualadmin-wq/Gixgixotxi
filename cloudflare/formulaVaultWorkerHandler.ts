@@ -27,37 +27,16 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
   try {
     await db
       .prepare(
-        `CREATE TABLE IF NOT EXISTS formula_categories (
+        `CREATE TABLE IF NOT EXISTS categories (
           id TEXT PRIMARY KEY,
-          slug TEXT NOT NULL UNIQUE,
           name TEXT NOT NULL,
+          slug TEXT NOT NULL UNIQUE,
           description TEXT NOT NULL DEFAULT '',
-          icon TEXT NOT NULL DEFAULT 'Sigma',
           sort_order INTEGER NOT NULL DEFAULT 0,
           chapter_count INTEGER NOT NULL DEFAULT 0,
           formula_count INTEGER NOT NULL DEFAULT 0,
-          guest_access INTEGER NOT NULL DEFAULT 1,
-          is_active INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )`
-      )
-      .run();
-
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS formula_chapters (
-          id TEXT PRIMARY KEY,
-          category_id TEXT NOT NULL,
-          chapter_no INTEGER NOT NULL DEFAULT 1,
-          slug TEXT NOT NULL,
-          title TEXT NOT NULL,
-          subtopics TEXT NOT NULL DEFAULT '',
-          formula_count INTEGER NOT NULL DEFAULT 0,
-          sort_order INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'live',
-          pdf_r2_key TEXT,
-          pdf_generated_at TEXT,
+          guest_access INTEGER NOT NULL DEFAULT 1,
           search_text TEXT NOT NULL DEFAULT '',
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
@@ -67,18 +46,40 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
 
     await db
       .prepare(
-        `CREATE TABLE IF NOT EXISTS formula_items (
+        `CREATE TABLE IF NOT EXISTS chapters (
+          id TEXT PRIMARY KEY,
+          category_id TEXT NOT NULL,
+          chapter_no INTEGER NOT NULL DEFAULT 1,
+          title TEXT NOT NULL,
+          slug TEXT NOT NULL,
+          subtopics TEXT NOT NULL DEFAULT '',
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          formula_count INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'live',
+          pdf_r2_key TEXT NOT NULL DEFAULT '',
+          pdf_updated_at TEXT DEFAULT '',
+          search_text TEXT NOT NULL DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now'))
+        )`
+      )
+      .run();
+
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS formulas (
           id TEXT PRIMARY KEY,
           category_id TEXT NOT NULL,
           chapter_id TEXT NOT NULL,
           formula_no INTEGER NOT NULL DEFAULT 1,
           title TEXT NOT NULL DEFAULT '',
           formula_latex TEXT NOT NULL,
-          formula_plain TEXT NOT NULL DEFAULT '',
+          plain_text TEXT NOT NULL DEFAULT '',
           note TEXT NOT NULL DEFAULT '',
           status TEXT NOT NULL DEFAULT 'live',
           sort_order INTEGER NOT NULL DEFAULT 0,
-          is_featured INTEGER NOT NULL DEFAULT 0,
+          is_render_valid INTEGER NOT NULL DEFAULT 1,
+          render_error TEXT NOT NULL DEFAULT '',
           search_text TEXT NOT NULL DEFAULT '',
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
@@ -88,14 +89,14 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
 
     await db
       .prepare(
-        `CREATE TABLE IF NOT EXISTS formula_bookmarks (
+        `CREATE TABLE IF NOT EXISTS bookmarks (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_uid TEXT NOT NULL,
+          user_id TEXT NOT NULL,
           formula_id TEXT NOT NULL,
-          category_id TEXT NOT NULL,
-          chapter_id TEXT NOT NULL,
+          category_id TEXT NOT NULL DEFAULT '',
+          chapter_id TEXT NOT NULL DEFAULT '',
           created_at TEXT DEFAULT (datetime('now')),
-          UNIQUE(user_uid, formula_id)
+          UNIQUE(user_id, formula_id)
         )`
       )
       .run();
@@ -105,15 +106,14 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
         `CREATE TABLE IF NOT EXISTS formula_reports (
           id TEXT PRIMARY KEY,
           formula_id TEXT NOT NULL,
-          category_id TEXT NOT NULL,
-          chapter_id TEXT NOT NULL,
-          reporter_uid TEXT NOT NULL DEFAULT 'guest',
-          reporter_email TEXT NOT NULL DEFAULT '',
-          reason TEXT NOT NULL DEFAULT 'incorrect_formula',
+          category_id TEXT NOT NULL DEFAULT '',
+          chapter_id TEXT NOT NULL DEFAULT '',
+          user_id TEXT NOT NULL DEFAULT 'guest',
+          reason TEXT NOT NULL DEFAULT '',
           details TEXT NOT NULL DEFAULT '',
+          formula_latex_snapshot TEXT NOT NULL DEFAULT '',
           status TEXT NOT NULL DEFAULT 'open',
-          resolved_by TEXT,
-          resolved_at TEXT,
+          resolved_by TEXT NOT NULL DEFAULT '',
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )`
@@ -122,29 +122,28 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
 
     await db
       .prepare(
-        `CREATE TABLE IF NOT EXISTS formula_import_logs (
+        `CREATE TABLE IF NOT EXISTS import_logs (
           id TEXT PRIMARY KEY,
           category_id TEXT NOT NULL,
-          category_name TEXT NOT NULL DEFAULT '',
-          admin_uid TEXT NOT NULL,
-          admin_email TEXT NOT NULL DEFAULT '',
+          chapter_id TEXT NOT NULL DEFAULT '',
+          admin_uid TEXT NOT NULL DEFAULT '',
           source_type TEXT NOT NULL DEFAULT 'csv',
           file_name TEXT NOT NULL DEFAULT '',
-          csv_r2_key TEXT,
+          csv_r2_key TEXT NOT NULL DEFAULT '',
           duplicate_strategy TEXT NOT NULL DEFAULT 'skip',
           total_rows INTEGER NOT NULL DEFAULT 0,
-          imported_count INTEGER NOT NULL DEFAULT 0,
-          updated_count INTEGER NOT NULL DEFAULT 0,
-          skipped_count INTEGER NOT NULL DEFAULT 0,
-          failed_count INTEGER NOT NULL DEFAULT 0,
-          errors_json TEXT NOT NULL DEFAULT '[]',
+          imported_rows INTEGER NOT NULL DEFAULT 0,
+          updated_rows INTEGER NOT NULL DEFAULT 0,
+          skipped_rows INTEGER NOT NULL DEFAULT 0,
+          failed_rows INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'completed',
           created_at TEXT DEFAULT (datetime('now'))
         )`
       )
       .run();
 
     const existingCat = await db
-      .prepare('SELECT COUNT(*) AS cnt FROM formula_categories')
+      .prepare('SELECT COUNT(*) AS cnt FROM categories')
       .first<{ cnt: number }>()
       .catch(() => ({ cnt: 0 }));
 
@@ -154,21 +153,21 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
         stmts.push(
           db
             .prepare(
-              `INSERT OR IGNORE INTO formula_categories (
-                id, slug, name, description, icon, sort_order, chapter_count, formula_count, guest_access, is_active, created_at, updated_at
+              `INSERT OR IGNORE INTO categories (
+                id, name, slug, description, sort_order, chapter_count, formula_count, status, guest_access, search_text, created_at, updated_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
               c.id,
-              c.slug,
               c.name,
+              c.slug,
               c.description,
-              c.icon,
               c.sort_order,
               c.chapter_count,
               c.formula_count,
+              c.status,
               c.guest_access,
-              c.is_active,
+              c.search_text,
               c.created_at,
               c.updated_at
             )
@@ -178,22 +177,22 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
         stmts.push(
           db
             .prepare(
-              `INSERT OR IGNORE INTO formula_chapters (
-                id, category_id, chapter_no, slug, title, subtopics, formula_count, sort_order, status, pdf_r2_key, pdf_generated_at, search_text, created_at, updated_at
+              `INSERT OR IGNORE INTO chapters (
+                id, category_id, chapter_no, title, slug, subtopics, sort_order, formula_count, status, pdf_r2_key, pdf_updated_at, search_text, created_at, updated_at
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
               ch.id,
               ch.category_id,
               ch.chapter_no,
-              ch.slug,
               ch.title,
+              ch.slug,
               ch.subtopics,
-              ch.formula_count,
               ch.sort_order,
+              ch.formula_count,
               ch.status,
               ch.pdf_r2_key,
-              ch.pdf_generated_at,
+              ch.pdf_updated_at,
               ch.search_text,
               ch.created_at,
               ch.updated_at
@@ -204,9 +203,9 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
         stmts.push(
           db
             .prepare(
-              `INSERT OR IGNORE INTO formula_items (
-                id, category_id, chapter_id, formula_no, title, formula_latex, formula_plain, note, status, sort_order, is_featured, search_text, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              `INSERT OR IGNORE INTO formulas (
+                id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
               f.id,
@@ -215,11 +214,12 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
               f.formula_no,
               f.title,
               f.formula_latex,
-              f.formula_plain,
+              f.plain_text,
               f.note,
               f.status,
               f.sort_order,
-              f.is_featured,
+              f.is_render_valid,
+              f.render_error,
               f.search_text,
               f.created_at,
               f.updated_at
@@ -276,16 +276,16 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const includeDrafts = url.searchParams.get('include_drafts') === '1' && isAdmin;
     const catRes = await env.DB.prepare(
       includeDrafts
-        ? 'SELECT * FROM formula_categories ORDER BY sort_order ASC, name ASC'
-        : 'SELECT * FROM formula_categories WHERE is_active = 1 ORDER BY sort_order ASC, name ASC'
+        ? 'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
+        : "SELECT * FROM categories WHERE status = 'live' ORDER BY sort_order ASC, name ASC"
     ).all();
     const chRes = await env.DB.prepare(
       includeDrafts
-        ? 'SELECT * FROM formula_chapters ORDER BY sort_order ASC, chapter_no ASC'
-        : "SELECT * FROM formula_chapters WHERE status = 'live' ORDER BY sort_order ASC, chapter_no ASC"
+        ? 'SELECT * FROM chapters ORDER BY sort_order ASC, chapter_no ASC'
+        : "SELECT * FROM chapters WHERE status = 'live' ORDER BY sort_order ASC, chapter_no ASC"
     ).all();
     const featuredRes = await env.DB.prepare(
-      "SELECT * FROM formula_items WHERE status = 'live' ORDER BY is_featured DESC, sort_order ASC LIMIT 25"
+      "SELECT * FROM formulas WHERE status = 'live' ORDER BY sort_order ASC LIMIT 40"
     ).all();
 
     const featuredPool = featuredRes.results || [];
@@ -300,7 +300,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
     let bookmarkedIds: string[] = [];
     if (user?.uid) {
       const bmRes = await env.DB.prepare(
-        'SELECT formula_id FROM formula_bookmarks WHERE user_uid = ? ORDER BY created_at DESC'
+        'SELECT formula_id FROM bookmarks WHERE user_id = ? ORDER BY created_at DESC'
       )
         .bind(user.uid)
         .all()
@@ -342,7 +342,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get('page_size') || 100)));
     const offset = (page - 1) * pageSize;
 
-    const chapter = await env.DB.prepare('SELECT * FROM formula_chapters WHERE id = ? OR slug = ?')
+    const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ? OR slug = ?')
       .bind(chapterId, chapterId.toLowerCase())
       .first();
 
@@ -350,14 +350,14 @@ export async function handleFormulaVaultWorkerRequest(params: {
       return jsonResponse({ success: false, error: 'Chapter not found.' }, 404, cors);
     }
 
-    const category = await env.DB.prepare('SELECT * FROM formula_categories WHERE id = ?')
+    const category = await env.DB.prepare('SELECT * FROM categories WHERE id = ?')
       .bind(chapter.category_id)
       .first();
 
     const itemsRes = await env.DB.prepare(
       includeDrafts
-        ? 'SELECT * FROM formula_items WHERE chapter_id = ? ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?'
-        : "SELECT * FROM formula_items WHERE chapter_id = ? AND status = 'live' ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?"
+        ? 'SELECT * FROM formulas WHERE chapter_id = ? ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?'
+        : "SELECT * FROM formulas WHERE chapter_id = ? AND status = 'live' ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?"
     )
       .bind(chapter.id, pageSize, offset)
       .all();
@@ -393,16 +393,16 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const likePattern = `%${q}%`;
     const chRes = await env.DB.prepare(
       categoryId
-        ? "SELECT * FROM formula_chapters WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
-        : "SELECT * FROM formula_chapters WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
+        ? "SELECT * FROM chapters WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
+        : "SELECT * FROM chapters WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
     )
       .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
       .all();
 
     const fRes = await env.DB.prepare(
       categoryId
-        ? "SELECT * FROM formula_items WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
-        : "SELECT * FROM formula_items WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
+        ? "SELECT * FROM formulas WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
+        : "SELECT * FROM formulas WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
     )
       .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
       .all();
@@ -419,6 +419,34 @@ export async function handleFormulaVaultWorkerRequest(params: {
     );
   }
 
+  // GET /api/formulas/bookmarks
+  if (sub === '/bookmarks' && method === 'GET') {
+    if (!user?.uid) {
+      return jsonResponse({ success: false, error: 'Sign in required.' }, 401, cors);
+    }
+    const bmRes = await env.DB.prepare(
+      `SELECT f.*, ch.title AS chapter_title, ch.chapter_no AS chapter_no, c.name AS category_name
+       FROM bookmarks b
+       JOIN formulas f ON f.id = b.formula_id
+       LEFT JOIN chapters ch ON ch.id = f.chapter_id
+       LEFT JOIN categories c ON c.id = f.category_id
+       WHERE b.user_id = ?
+       ORDER BY b.created_at DESC`
+    )
+      .bind(user.uid)
+      .all();
+    const bookmarks = bmRes.results || [];
+    return jsonResponse(
+      {
+        success: true,
+        bookmarks,
+        bookmarkedIds: bookmarks.map((r: any) => String(r.id)),
+      },
+      200,
+      cors
+    );
+  }
+
   // POST /api/formulas/bookmarks/toggle
   if (sub === '/bookmarks/toggle' && method === 'POST') {
     if (!user?.uid) {
@@ -426,28 +454,28 @@ export async function handleFormulaVaultWorkerRequest(params: {
     }
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
     const formulaId = String(body.formula_id || body.formulaId || '').trim();
-    const formula = await env.DB.prepare('SELECT * FROM formula_items WHERE id = ?').bind(formulaId).first();
+    const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(formulaId).first();
     if (!formula) {
       return jsonResponse({ success: false, error: 'Formula not found.' }, 404, cors);
     }
     const existing = await env.DB.prepare(
-      'SELECT id FROM formula_bookmarks WHERE user_uid = ? AND formula_id = ?'
+      'SELECT id FROM bookmarks WHERE user_id = ? AND formula_id = ?'
     )
       .bind(user.uid, formulaId)
       .first();
 
     if (existing) {
-      await env.DB.prepare('DELETE FROM formula_bookmarks WHERE user_uid = ? AND formula_id = ?')
+      await env.DB.prepare('DELETE FROM bookmarks WHERE user_id = ? AND formula_id = ?')
         .bind(user.uid, formulaId)
         .run();
     } else {
       await env.DB.prepare(
-        'INSERT OR IGNORE INTO formula_bookmarks (user_uid, formula_id, category_id, chapter_id) VALUES (?, ?, ?, ?)'
+        'INSERT OR IGNORE INTO bookmarks (user_id, formula_id, category_id, chapter_id) VALUES (?, ?, ?, ?)'
       )
         .bind(user.uid, formulaId, formula.category_id, formula.chapter_id)
         .run();
     }
-    const allBm = await env.DB.prepare('SELECT formula_id FROM formula_bookmarks WHERE user_uid = ?')
+    const allBm = await env.DB.prepare('SELECT formula_id FROM bookmarks WHERE user_id = ?')
       .bind(user.uid)
       .all();
     return jsonResponse(
@@ -468,14 +496,14 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const formulaId = String(body.formula_id || body.formulaId || '').trim();
     const reason = String(body.reason || 'incorrect_formula').trim();
     const details = String(body.details || '').trim();
-    const formula = await env.DB.prepare('SELECT * FROM formula_items WHERE id = ?').bind(formulaId).first();
+    const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(formulaId).first();
     if (!formula) {
       return jsonResponse({ success: false, error: 'Formula not found.' }, 404, cors);
     }
     const id = `frep_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
     await env.DB.prepare(
       `INSERT INTO formula_reports (
-        id, formula_id, category_id, chapter_id, reporter_uid, reporter_email, reason, details, status
+        id, formula_id, category_id, chapter_id, user_id, reason, details, formula_latex_snapshot, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')`
     )
       .bind(
@@ -484,9 +512,9 @@ export async function handleFormulaVaultWorkerRequest(params: {
         formula.category_id,
         formula.chapter_id,
         user?.uid || 'guest',
-        user?.email || '',
         reason,
-        details
+        details,
+        formula.formula_latex
       )
       .run();
     return jsonResponse({ success: true, reportId: id }, 201, cors);
@@ -506,12 +534,23 @@ export async function handleFormulaVaultWorkerRequest(params: {
         : 'skip';
     const chunkOffset = Math.max(0, Number(body.chunk_offset ?? body.chunkOffset ?? 0));
     const rows = Array.isArray(body.rows) ? body.rows : [];
+    const rawCsvText = typeof body.raw_csv_text === 'string' ? body.raw_csv_text : '';
+    const fileName = String(body.file_name || 'bulk_import.csv').trim();
+    const sourceType = String(body.source_type || 'csv').trim();
 
-    const cat = await env.DB.prepare('SELECT * FROM formula_categories WHERE id = ? OR slug = ?')
+    const cat = await env.DB.prepare('SELECT * FROM categories WHERE id = ? OR slug = ?')
       .bind(categoryId, categoryId.toLowerCase())
       .first();
     if (!cat) {
       return jsonResponse({ success: false, error: 'Target category not found.' }, 404, cors);
+    }
+
+    let csvR2Key = '';
+    if (chunkOffset === 0 && rawCsvText && env.R2_BUCKET) {
+      csvR2Key = `formulas/imports/${cat.slug}_${Date.now()}_${buildFormulaSlug(fileName)}.csv`;
+      await env.R2_BUCKET.put(csvR2Key, rawCsvText, {
+        httpMetadata: { contentType: 'text/csv; charset=utf-8' },
+      }).catch(() => {});
     }
 
     let importedCount = 0;
@@ -543,17 +582,17 @@ export async function handleFormulaVaultWorkerRequest(params: {
       let chapter: any = null;
       if (rawChapterTitle) {
         chapter = await env.DB.prepare(
-          'SELECT * FROM formula_chapters WHERE category_id = ? AND LOWER(title) = ?'
+          'SELECT * FROM chapters WHERE category_id = ? AND LOWER(title) = ?'
         )
           .bind(cat.id, rawChapterTitle.toLowerCase())
           .first();
         if (!chapter) {
-          const newChId = `fch_${cat.slug}_${Date.now()}_${i}`;
+          const newChId = `chap_${cat.slug}_${Date.now()}_${i}`;
           const newChNo = rawChapterNo > 0 ? rawChapterNo : 1;
           const slug = buildFormulaSlug(rawChapterTitle);
           const searchText = buildFormulaSearchText([cat.name, rawChapterTitle, rawSubtopics]);
           await env.DB.prepare(
-            `INSERT INTO formula_chapters (
+            `INSERT INTO chapters (
               id, category_id, chapter_no, slug, title, subtopics, formula_count, sort_order, status, search_text
             ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'live', ?)`
           )
@@ -562,7 +601,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
           chapter = { id: newChId, title: rawChapterTitle, subtopics: rawSubtopics, chapter_no: newChNo };
         }
       } else if (defaultChapterId) {
-        chapter = await env.DB.prepare('SELECT * FROM formula_chapters WHERE id = ? AND category_id = ?')
+        chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ? AND category_id = ?')
           .bind(defaultChapterId, cat.id)
           .first();
       }
@@ -574,7 +613,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
 
       const formulaNo = rawFormulaNo > 0 ? rawFormulaNo : i + 1;
       const existingDup = await env.DB.prepare(
-        'SELECT id FROM formula_items WHERE chapter_id = ? AND (formula_no = ? OR LOWER(formula_latex) = ?)'
+        'SELECT id FROM formulas WHERE chapter_id = ? AND (formula_no = ? OR LOWER(formula_latex) = ?)'
       )
         .bind(chapter.id, formulaNo, rawLatex.toLowerCase())
         .first();
@@ -594,25 +633,47 @@ export async function handleFormulaVaultWorkerRequest(params: {
           continue;
         }
         await env.DB.prepare(
-          `UPDATE formula_items
-           SET formula_no = ?, title = ?, formula_latex = ?, note = ?, search_text = ?, updated_at = datetime('now')
+          `UPDATE formulas
+           SET formula_no = ?, title = ?, formula_latex = ?, plain_text = ?, note = ?, search_text = ?, updated_at = datetime('now')
            WHERE id = ?`
         )
-          .bind(formulaNo, rawTitle, rawLatex, rawNote, searchText, existingDup.id)
+          .bind(formulaNo, rawTitle, rawLatex, rawLatex, rawNote, searchText, existingDup.id)
           .run();
         updatedCount += 1;
       } else {
-        const newId = `f_${chapter.id}_${Date.now()}_${i}`;
+        const newId = `form_${chapter.id}_${Date.now()}_${i}`;
         await env.DB.prepare(
-          `INSERT INTO formula_items (
-            id, category_id, chapter_id, formula_no, title, formula_latex, formula_plain, note, status, sort_order, is_featured, search_text
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, 0, ?)`
+          `INSERT INTO formulas (
+            id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, 1, '', ?)`
         )
           .bind(newId, cat.id, chapter.id, formulaNo, rawTitle, rawLatex, rawLatex, rawNote, formulaNo, searchText)
           .run();
         importedCount += 1;
       }
     }
+
+    await env.DB.prepare(
+      `INSERT INTO import_logs (
+        id, category_id, chapter_id, admin_uid, source_type, file_name, csv_r2_key, duplicate_strategy, total_rows, imported_rows, updated_rows, skipped_rows, failed_rows, status
+      ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`
+    )
+      .bind(
+        `fimp_${Date.now()}_${crypto.randomUUID().slice(0, 5)}`,
+        cat.id,
+        user?.uid || 'admin',
+        sourceType,
+        fileName,
+        csvR2Key,
+        duplicateStrategy,
+        rows.length,
+        importedCount,
+        updatedCount,
+        skippedCount,
+        rowErrors.length
+      )
+      .run()
+      .catch(() => {});
 
     return jsonResponse(
       {
@@ -622,6 +683,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
         skippedCount,
         failedCount: rowErrors.length,
         errors: rowErrors,
+        csvR2Key,
       },
       200,
       cors

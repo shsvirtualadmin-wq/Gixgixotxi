@@ -361,12 +361,12 @@ export async function requestChapterPdfSignedUrl(chapterId: string): Promise<{
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.success) {
     const err: any = new Error(data.error || 'Unable to generate chapter PDF.');
-    err.requiresPro = Boolean(data.requiresPro);
-    err.requiresAuth = Boolean(data.requiresAuth);
+    err.requiresPro = Boolean(data.requiresPro || data.code === 'PRO_REQUIRED');
+    err.requiresAuth = Boolean(data.requiresAuth || data.code === 'AUTH_REQUIRED');
     throw err;
   }
   return {
-    downloadUrl: String(data.downloadUrl),
+    downloadUrl: String(data.downloadUrl || data.signedUrl || ''),
     r2Key: String(data.r2Key || ''),
     expiresAt: Number(data.expiresAt || 0),
   };
@@ -664,7 +664,29 @@ export async function fetchFormulaBankHealth(): Promise<FormulaBankHealthData> {
   if (!res.ok || !data.success) {
     throw new Error(data.error || 'Failed to load Formula Bank health.');
   }
-  return data as FormulaBankHealthData;
+  const h = data.health || data;
+  return {
+    ok: Boolean(h.ok ?? true),
+    totalCategories: Number(h.totalCategories || 0),
+    totalChapters: Number(h.totalChapters || 0),
+    totalFormulas: Number(h.totalFormulas || 0),
+    liveFormulas: Number(h.liveFormulas || 0),
+    draftFormulas: Number(h.draftFormulas || 0),
+    brokenFormulasCount: Number(
+      h.brokenFormulasCount ?? (Array.isArray(h.brokenFormulas) ? h.brokenFormulas.length : 0)
+    ),
+    emptyChaptersCount: Number(
+      h.emptyChaptersCount ?? (Array.isArray(h.emptyChapters) ? h.emptyChapters.length : 0)
+    ),
+    duplicateFormulasCount: Number(
+      h.duplicateFormulasCount ??
+        (Array.isArray(h.duplicateFormulas) ? h.duplicateFormulas.length : 0)
+    ),
+    openReportsCount: Number(h.openReportsCount || 0),
+    brokenFormulas: Array.isArray(h.brokenFormulas) ? h.brokenFormulas : [],
+    emptyChapters: Array.isArray(h.emptyChapters) ? h.emptyChapters : [],
+    duplicateFormulas: Array.isArray(h.duplicateFormulas) ? h.duplicateFormulas : [],
+  };
 }
 
 export async function fixFormulaBankHealth(action: string): Promise<{ fixedCount: number }> {

@@ -218,6 +218,12 @@ const AdminUsersPage = lazyWithRetry(() =>
 const AdminQuestionsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminQuestionsPage').then(m => ({ default: m.AdminQuestionsPage }))
 );
+const AdminFormulasPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminFormulasPage').then(m => ({ default: m.AdminFormulasPage }))
+);
+const FormulaVaultPage = lazyWithRetry(() =>
+  import('./pages/formulas/FormulaVaultPage').then(m => ({ default: m.FormulaVaultPage }))
+);
 const AdminApplicationsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminApplicationsPage').then(m => ({ default: m.AdminApplicationsPage }))
 );
@@ -325,6 +331,8 @@ function AppInner() {
         >
           <Route index element={<AdminOverviewPage />} />
           <Route path="questions" element={<AdminQuestionsPage />} />
+          <Route path="formulas" element={<AdminFormulasPage />} />
+          <Route path="formula-bank" element={<AdminFormulasPage />} />
           <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
@@ -359,6 +367,9 @@ function AppInner() {
           }
         >
           <Route index element={<AdminUsersPage />} />
+          <Route path="questions" element={<AdminQuestionsPage />} />
+          <Route path="formulas" element={<AdminFormulasPage />} />
+          <Route path="formula-bank" element={<AdminFormulasPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
@@ -377,6 +388,8 @@ function AppInner() {
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="commons" element={<CommonsFeedPage />} />
+          <Route path="formulas" element={<FormulaVaultPage />} />
+          <Route path="formula-vault" element={<FormulaVaultPage />} />
           <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="messages" element={<MessagesPage />} />
@@ -539,6 +552,8 @@ function AppInner() {
 
           {/* Public Boardly Commons Feed, Post Permalinks, Subject Feeds & Info */}
           <Route path="/commons" element={<CommonsFeedPage />} />
+          <Route path="/formulas" element={<FormulaVaultPage />} />
+          <Route path="/formula-vault" element={<FormulaVaultPage />} />
           <Route path="/commons/trending" element={<CommonsFeedPage />} />
           <Route path="/commons/following" element={<CommonsFeedPage />} />
           <Route path="/commons/about" element={<CommonsAboutPage />} />

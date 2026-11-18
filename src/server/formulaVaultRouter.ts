@@ -956,6 +956,7 @@ export function registerFormulaVaultRoutes(
       return res.status(200).json({
         success: true,
         signedUrl,
+        downloadUrl: signedUrl,
         r2Key,
         expiresAt: expiresAtMs,
         fileName: `Boardly_Ch${String(chapter.chapter_no).padStart(2, '0')}_${chapter.slug}_Formulas.pdf`,
@@ -1352,7 +1353,11 @@ export function registerFormulaVaultRoutes(
       : maxNo + 1;
     const title = String(req.body?.title || '').trim().slice(0, 160);
     const note = String(req.body?.note || '').trim().slice(0, 600);
-    const plainText = String(req.body?.plain_text || '').trim() || latexToPlainText(formulaLatex);
+    const plainText =
+      String(req.body?.plain_text || req.body?.formula_plain || '').trim() ||
+      latexToPlainText(formulaLatex);
+    const isFeatured =
+      req.body?.is_featured === true || Number(req.body?.is_featured) === 1 ? 1 : 0;
     const nowIso = new Date().toISOString();
 
     const newFormula: D1FormulaRow = {
@@ -1363,9 +1368,11 @@ export function registerFormulaVaultRoutes(
       title,
       formula_latex: formulaLatex,
       plain_text: plainText,
+      formula_plain: plainText,
       note,
       status: req.body?.status === 'draft' ? 'draft' : 'live',
       sort_order: maxSort + 1,
+      is_featured: isFeatured,
       is_render_valid: validation.valid ? 1 : 0,
       render_error: validation.error,
       search_text: `${ch.title} ${ch.subtopics} ${title} ${plainText} ${note} ${formulaLatex}`
@@ -1401,12 +1408,20 @@ export function registerFormulaVaultRoutes(
       const validation = validateServerLatex(formula.formula_latex);
       formula.is_render_valid = validation.valid ? 1 : 0;
       formula.render_error = validation.error;
-      if (!req.body?.plain_text) {
+      if (!req.body?.plain_text && !req.body?.formula_plain) {
         formula.plain_text = latexToPlainText(formula.formula_latex);
+        formula.formula_plain = formula.plain_text;
       }
     }
-    if (typeof req.body?.plain_text === 'string' && req.body.plain_text.trim()) {
-      formula.plain_text = req.body.plain_text.trim();
+    const nextPlain =
+      typeof req.body?.plain_text === 'string'
+        ? req.body.plain_text.trim()
+        : typeof req.body?.formula_plain === 'string'
+        ? req.body.formula_plain.trim()
+        : '';
+    if (nextPlain) {
+      formula.plain_text = nextPlain;
+      formula.formula_plain = nextPlain;
     }
     if (typeof req.body?.title === 'string') {
       formula.title = req.body.title.trim().slice(0, 160);
@@ -1419,6 +1434,10 @@ export function registerFormulaVaultRoutes(
     }
     if (req.body?.status === 'live' || req.body?.status === 'draft') {
       formula.status = req.body.status;
+    }
+    if (req.body?.is_featured !== undefined) {
+      formula.is_featured =
+        req.body.is_featured === true || Number(req.body.is_featured) === 1 ? 1 : 0;
     }
     if (typeof req.body?.chapter_id === 'string' && req.body.chapter_id.trim()) {
       const targetCh = store.chapters.find((c) => c.id === req.body.chapter_id.trim());
@@ -1514,12 +1533,19 @@ export function registerFormulaVaultRoutes(
 
     const body = req.body || {};
     const categoryId = String(body.category_id || '').trim();
-    const defaultChapterTitle = String(body.default_chapter || 'General Formulas').trim();
+    const defaultChapterId = String(body.default_chapter_id || '').trim();
+    const defaultChapterTitleInput = String(body.default_chapter || '').trim();
     const duplicateStrategy: 'skip' | 'update' =
       body.duplicate_strategy === 'update' ? 'update' : 'skip';
     const rows = Array.isArray(body.rows) ? body.rows : [];
-    const chunkIndex = Number(body.chunk_index || 0);
-    const rawCsvContent = typeof body.raw_csv === 'string' ? body.raw_csv : '';
+    const chunkOffset = Number(body.chunk_offset ?? Number(body.chunk_index || 0) * 100);
+    const chunkIndex = Number(body.chunk_index ?? Math.floor(chunkOffset / 100));
+    const rawCsvContent =
+      typeof body.raw_csv_text === 'string'
+        ? body.raw_csv_text
+        : typeof body.raw_csv === 'string'
+        ? body.raw_csv
+        : '';
     const fileName = String(body.file_name || 'bulk_import.csv').trim();
     const sourceType: 'csv' | 'gsheet' | 'paste' =
       body.source_type === 'gsheet' || body.source_type === 'paste' ? body.source_type : 'csv';
@@ -1542,6 +1568,11 @@ export function registerFormulaVaultRoutes(
       });
     }
 
+    const defaultChapterObj = defaultChapterId
+      ? store.chapters.find((c) => c.id === defaultChapterId && c.category_id === category.id)
+      : null;
+    const defaultChapterTitle = defaultChapterObj?.title || defaultChapterTitleInput || '';
+
     let csvR2Key = '';
     if (chunkIndex === 0 && rawCsvContent.length > 0) {
       try {
@@ -1558,13 +1589,13 @@ export function registerFormulaVaultRoutes(
     let updatedCount = 0;
     let skippedCount = 0;
     let failedCount = 0;
-    const errors: Array<{ row: number; message: string }> = [];
+    const errors: Array<{ rowNumber: number; reason: string; row?: number; message?: string }> = [];
     const touchedChapterIds = new Set<string>();
     const nowIso = new Date().toISOString();
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i] || {};
-      const rowNum = Number(r.rowIndex || chunkIndex * 100 + i + 1);
+      const rowNum = Number(r.rowNumber || r.rowIndex || chunkOffset + i + 1);
       const chapterTitle = String(r.chapter || defaultChapterTitle || '').trim();
       const chapterNoInput = Number(r.chapter_no);
       const subtopicsInput = String(r.subtopics || '').trim();
@@ -1575,20 +1606,23 @@ export function registerFormulaVaultRoutes(
 
       if (!chapterTitle) {
         failedCount++;
-        errors.push({ row: rowNum, message: 'Missing chapter name and no default chapter set.' });
+        const msg = 'Missing chapter name and no default chapter set.';
+        errors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
 
       if (!formulaLatex) {
         failedCount++;
-        errors.push({ row: rowNum, message: 'Missing formula_latex.' });
+        const msg = 'Missing formula_latex.';
+        errors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
 
       const latexCheck = validateServerLatex(formulaLatex);
       if (!latexCheck.valid) {
         failedCount++;
-        errors.push({ row: rowNum, message: `Broken LaTeX: ${latexCheck.error}` });
+        const msg = `Broken LaTeX: ${latexCheck.error}`;
+        errors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
         continue;
       }
 
@@ -1700,6 +1734,7 @@ export function registerFormulaVaultRoutes(
     const logEntry: D1FormulaImportLogRow = {
       id: `fimp_${Date.now()}_${crypto.randomUUID().slice(0, 5)}`,
       category_id: category.id,
+      category_name: category.name,
       chapter_id: Array.from(touchedChapterIds)[0] || '',
       admin_uid: user!.uid,
       source_type: sourceType,
@@ -1711,6 +1746,10 @@ export function registerFormulaVaultRoutes(
       updated_rows: updatedCount,
       skipped_rows: skippedCount,
       failed_rows: failedCount,
+      imported_count: importedCount,
+      updated_count: updatedCount,
+      skipped_count: skippedCount,
+      failed_count: failedCount,
       status: 'completed',
       created_at: nowIso,
     };
@@ -1749,7 +1788,7 @@ export function registerFormulaVaultRoutes(
     const chapMap = new Map(store.chapters.map((c) => [c.id, c]));
 
     const brokenFormulas: Array<
-      D1FormulaRow & { category_name: string; chapter_title: string }
+      D1FormulaRow & { error: string; category_name: string; chapter_title: string }
     > = [];
     for (const f of store.formulas) {
       const check = validateServerLatex(f.formula_latex);
@@ -1758,6 +1797,7 @@ export function registerFormulaVaultRoutes(
       if (!check.valid) {
         brokenFormulas.push({
           ...f,
+          error: check.error || 'LaTeX syntax error',
           category_name: catMap.get(f.category_id)?.name || '',
           chapter_title: chapMap.get(f.chapter_id)?.title || '',
         });
@@ -1772,11 +1812,13 @@ export function registerFormulaVaultRoutes(
       }));
 
     const duplicateFormulas: Array<{
+      formula: D1FormulaRow;
+      duplicateOfId: string;
+      reason: string;
       chapter_id: string;
       chapter_title: string;
       category_name: string;
-      reason: string;
-      formulas: D1FormulaRow[];
+      formulas?: D1FormulaRow[];
     }> = [];
 
     for (const ch of store.chapters) {
@@ -1797,42 +1839,65 @@ export function registerFormulaVaultRoutes(
 
       for (const [no, group] of byNo.entries()) {
         if (group.length > 1) {
-          duplicateFormulas.push({
-            chapter_id: ch.id,
-            chapter_title: ch.title,
-            category_name: catMap.get(ch.category_id)?.name || '',
-            reason: `Duplicate formula_no #${no} (${group.length} formulas)`,
-            formulas: group,
-          });
+          for (let i = 1; i < group.length; i++) {
+            duplicateFormulas.push({
+              formula: group[i],
+              duplicateOfId: group[0].id,
+              chapter_id: ch.id,
+              chapter_title: ch.title,
+              category_name: catMap.get(ch.category_id)?.name || '',
+              reason: `Duplicate formula_no #${no} (${group.length} formulas)`,
+              formulas: group,
+            });
+          }
         }
       }
 
       for (const [, group] of byLatex.entries()) {
         if (group.length > 1) {
-          duplicateFormulas.push({
-            chapter_id: ch.id,
-            chapter_title: ch.title,
-            category_name: catMap.get(ch.category_id)?.name || '',
-            reason: `Identical LaTeX expression (${group.length} copies)`,
-            formulas: group,
-          });
+          for (let i = 1; i < group.length; i++) {
+            if (!duplicateFormulas.some((d) => d.formula.id === group[i].id)) {
+              duplicateFormulas.push({
+                formula: group[i],
+                duplicateOfId: group[0].id,
+                chapter_id: ch.id,
+                chapter_title: ch.title,
+                category_name: catMap.get(ch.category_id)?.name || '',
+                reason: `Identical LaTeX expression (${group.length} copies)`,
+                formulas: group,
+              });
+            }
+          }
         }
       }
     }
 
+    const openReportsCount = store.formula_reports.filter((r) => r.status === 'open').length;
+
+    const healthPayload = {
+      ok:
+        brokenFormulas.length === 0 &&
+        emptyChapters.length === 0 &&
+        duplicateFormulas.length === 0,
+      totalCategories: store.categories.length,
+      totalChapters: store.chapters.length,
+      totalFormulas: store.formulas.length,
+      liveFormulas: store.formulas.filter((f) => f.status === 'live').length,
+      draftFormulas: store.formulas.filter((f) => f.status === 'draft').length,
+      brokenFormulasCount: brokenFormulas.length,
+      emptyChaptersCount: emptyChapters.length,
+      duplicateFormulasCount: duplicateFormulas.length,
+      openReportsCount,
+      brokenFormulas,
+      emptyChapters,
+      duplicateFormulas,
+      recentImports: store.import_logs.slice(0, 10),
+    };
+
     return res.status(200).json({
       success: true,
-      health: {
-        totalCategories: store.categories.length,
-        totalChapters: store.chapters.length,
-        totalFormulas: store.formulas.length,
-        liveFormulas: store.formulas.filter((f) => f.status === 'live').length,
-        draftFormulas: store.formulas.filter((f) => f.status === 'draft').length,
-        brokenFormulas,
-        emptyChapters,
-        duplicateFormulas,
-        recentImports: store.import_logs.slice(0, 10),
-      },
+      ...healthPayload,
+      health: healthPayload,
     });
   });
 
@@ -1877,7 +1942,11 @@ export function registerFormulaVaultRoutes(
       }
     }
 
-    if (action === 'all' || action === 'remove_empty_chapters') {
+    if (
+      action === 'all' ||
+      action === 'remove_empty_chapters' ||
+      action === 'delete_empty_chapters'
+    ) {
       const before = store.chapters.length;
       store.chapters = store.chapters.filter((ch) =>
         store.formulas.some((f) => f.chapter_id === ch.id)
@@ -1900,23 +1969,38 @@ export function registerFormulaVaultRoutes(
       return res.status(user ? 403 : 401).json({ success: false, error: 'Forbidden' });
     }
 
+    const statusFilter = String(req.query.status || 'all')
+      .trim()
+      .toLowerCase();
     const store = loadFormulaVaultStore();
     const catMap = new Map(store.categories.map((c) => [c.id, c]));
     const chapMap = new Map(store.chapters.map((c) => [c.id, c]));
     const formMap = new Map(store.formulas.map((f) => [f.id, f]));
 
-    const reports = store.formula_reports.map((rep) => {
-      const f = formMap.get(rep.formula_id);
-      return {
-        ...rep,
-        category_name: catMap.get(rep.category_id)?.name || '',
-        chapter_title: chapMap.get(rep.chapter_id)?.title || '',
-        formula_no: f?.formula_no || 1,
-        formula_latex_snapshot: f?.formula_latex || rep.formula_latex_snapshot,
-      };
-    });
+    const reports = store.formula_reports
+      .filter((rep) => statusFilter === 'all' || rep.status === statusFilter)
+      .map((rep) => {
+        const f = formMap.get(rep.formula_id);
+        return {
+          ...rep,
+          category_name: catMap.get(rep.category_id)?.name || '',
+          chapter_title: chapMap.get(rep.chapter_id)?.title || '',
+          formula_no: f?.formula_no || 1,
+          formula_latex: f?.formula_latex || rep.formula_latex_snapshot,
+          formula_latex_snapshot: f?.formula_latex || rep.formula_latex_snapshot,
+        };
+      });
 
-    return res.status(200).json({ success: true, reports });
+    const importLogs = store.import_logs.map((log) => ({
+      ...log,
+      category_name: log.category_name || catMap.get(log.category_id)?.name || 'Category',
+      imported_count: log.imported_count ?? log.imported_rows ?? 0,
+      updated_count: log.updated_count ?? log.updated_rows ?? 0,
+      skipped_count: log.skipped_count ?? log.skipped_rows ?? 0,
+      failed_count: log.failed_count ?? log.failed_rows ?? 0,
+    }));
+
+    return res.status(200).json({ success: true, reports, importLogs });
   });
 
   app.post('/api/formulas/reports', async (req: Request, res: Response) => {
@@ -1947,6 +2031,7 @@ export function registerFormulaVaultRoutes(
       reason,
       details,
       formula_latex_snapshot: formula.formula_latex,
+      formula_latex: formula.formula_latex,
       status: 'open',
       resolved_by: '',
       created_at: nowIso,
@@ -1956,7 +2041,11 @@ export function registerFormulaVaultRoutes(
     store.formula_reports.unshift(newReport);
     saveFormulaVaultStore(store);
 
-    return res.status(201).json({ success: true, report: newReport });
+    return res.status(201).json({
+      success: true,
+      reportId: newReport.id,
+      report: newReport,
+    });
   });
 
   app.patch('/api/formulas/reports/:id', async (req: Request, res: Response) => {
