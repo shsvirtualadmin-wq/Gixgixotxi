@@ -1277,7 +1277,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       <CommonsSearchModal
         isOpen={searchModalOpen}
         onClose={() => setSearchModalOpen(false)}
-        posts={posts}
+        posts={postsByTab.all}
         currentUserId={user?.uid}
         onSelectPost={(post: CommonsPost) => {
           setSearchModalOpen(false);
