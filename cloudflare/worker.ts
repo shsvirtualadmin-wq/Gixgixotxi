@@ -55,6 +55,7 @@ import {
 } from '../functions/_utils/adminRoleGate';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 import { handleKobanStyleRequest } from '../functions/api/koban-style';
+import { handleFormulaVaultWorkerRequest } from './formulaVaultWorkerHandler';
 import jsWorker from './worker.js';
 
 export interface Env {
@@ -3133,6 +3134,18 @@ ${urls
       }
 
       return jsonResponse({ error: 'Notifications endpoint not found' }, 404, cors);
+    }
+
+    // 2b-formulas. API Routes under /api/formulas (Formula Vault & Formula Bank D1 + R2)
+    if (url.pathname.startsWith('/api/formulas')) {
+      return handleFormulaVaultWorkerRequest({
+        req,
+        env,
+        url,
+        cors,
+        verifyFirebaseIdToken,
+        jsonResponse,
+      });
     }
 
     // 2b-questions. API Routes under /api/questions (D1 Question Bank for Legacy, Bank1, Bank2)

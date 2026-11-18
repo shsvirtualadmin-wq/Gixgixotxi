@@ -27,6 +27,7 @@ import {
   Users,
   Flame,
   FileText,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -288,11 +289,17 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
   const pathname = location.pathname;
   const commonsTarget = user ? '/dashboard/commons' : '/commons';
+  const formulasTarget = user ? '/dashboard/formulas' : '/formulas';
   const messagesTarget = user ? '/dashboard/messages' : '/messages';
   const notificationsTarget = user ? '/dashboard/notifications' : '/notifications';
   const crewTarget = user ? '/dashboard/crew' : '/crew';
   const isCommonsActive =
     pathname.startsWith('/commons') || pathname.startsWith('/dashboard/commons');
+  const isFormulasActive =
+    pathname.startsWith('/formulas') ||
+    pathname.startsWith('/formula-vault') ||
+    pathname.startsWith('/dashboard/formulas') ||
+    pathname.startsWith('/dashboard/formula-vault');
   const isGrandLineActive = pathname.startsWith('/grand-line');
   const isStoreActive =
     pathname.startsWith('/store') || pathname.startsWith('/dashboard/store');
@@ -314,7 +321,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 
   const q = searchQuery.trim().toLowerCase();
 
-  // Group 1 ("Boardly Store" group): Boardly Commons, Grand Line Mock Tests, Boardly Store (with coin count badge), Notifications (with unread badge), Leaderboard, Rewards
+  // Group 1 ("Boardly Store" group): Boardly Commons, Formula Vault, Grand Line Mock Tests, Boardly Store (with coin count badge), Notifications (with unread badge), Leaderboard, Rewards
   const group1Rows = useMemo<MenuRowDefinition[]>(() => [
     {
       id: 'commons',
@@ -323,6 +330,15 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       icon: <Compass size={18} strokeWidth={1.9} />,
       active: isCommonsActive,
       onClick: () => onNavigate(commonsTarget),
+    },
+    {
+      id: 'formulas',
+      label: 'Formula Vault',
+      subtitle: 'Category & Chapter Formula Library',
+      keywords: 'formula vault formulas equations math physics chemistry computer science sheets katex pdf',
+      icon: <BookOpen size={18} strokeWidth={1.9} />,
+      active: isFormulasActive,
+      onClick: () => onNavigate(formulasTarget),
     },
     {
       id: 'grand-line',
@@ -386,6 +402,8 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   ], [
     isCommonsActive,
     commonsTarget,
+    isFormulasActive,
+    formulasTarget,
     isGrandLineActive,
     isStoreActive,
     kobanBalance,
@@ -474,6 +492,15 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         section: 'Menu items',
         route: commonsTarget,
         icon: <Compass size={18} strokeWidth={1.9} />,
+      },
+      {
+        id: 'menu-formulas',
+        label: 'Formula Vault',
+        subtitle: 'Category & chapter formula sheets',
+        keywords: ['formula vault', 'formulas', 'equations', 'maths', 'physics', 'chemistry', 'sheets', 'katex'],
+        section: 'Menu items',
+        route: formulasTarget,
+        icon: <BookOpen size={18} strokeWidth={1.9} />,
       },
       {
         id: 'menu-grand-line',

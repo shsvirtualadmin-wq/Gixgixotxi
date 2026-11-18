@@ -58,6 +58,7 @@ import {
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
 } from '../lib/proBadgeDesigns';
+import { registerFormulaVaultRoutes } from './formulaVaultRouter';
 import { setCachedUserProStatusAndBadge } from '../../functions/api/pro-badge';
 import {
   computeGrandLineTestStatus,
@@ -8110,6 +8111,25 @@ ${postSitemaps}
     });
   });
 
+  // ── Formula Vault & Formula Bank Routes (/api/formulas/*) ──────────────────
+  registerFormulaVaultRoutes(app, {
+    verifyUser: (req) => verifyFirebaseJwtZeroFirestore(req),
+    isAdminOrSuperadmin: (user) => isAdminOrSuperadmin(user, loadD1Store()),
+    isProOrAdminUser: (user) => {
+      if (!user) return false;
+      const store = loadD1Store();
+      if (isAdminOrSuperadmin(user, store)) return true;
+      const proRec = (store as any).proUsers?.[user.uid] || (store as any).userRoles?.[user.uid];
+      if (proRec && (proRec.isPro || proRec.plan === 'pro' || proRec.tier === 'pro')) return true;
+      return Boolean(
+        user.role === 'pro' ||
+          user.role === 'admin' ||
+          user.role === 'superadmin' ||
+          String(user.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com'
+      );
+    },
+  });
+
   // ── D1 Health Check ────────────────────────────────────────────────────────
   app.get('/api/health', (_req: Request, res: Response) => {
     return res.status(200).json({
@@ -13560,6 +13580,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/questions') ||
         pathname.startsWith('/api/universities') ||
         pathname.startsWith('/api/mcqs') ||
+        pathname.startsWith('/api/formulas') ||
         pathname.startsWith('/api/admin') ||
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||

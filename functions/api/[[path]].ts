@@ -110,6 +110,7 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const isTsWorkerRoute =
     path.startsWith('/api/universities') ||
     path.startsWith('/api/mcqs') ||
+    path.startsWith('/api/formulas') ||
     path.startsWith('/api/admin/legacy-bank') ||
     path.startsWith('/api/admin/users/search') ||
     path.startsWith('/api/announcements') ||

@@ -24,6 +24,7 @@ import {
   Lock,
   KeyRound,
   MessageSquare,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
@@ -57,6 +58,7 @@ interface AdminNavItem {
 const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/questions', label: 'Questions', icon: Database, permission: 'mcq.manage' },
+  { to: '/admin/formulas', label: 'Formula Bank', icon: BookOpen, permission: 'mcq.manage' },
   { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete' },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
