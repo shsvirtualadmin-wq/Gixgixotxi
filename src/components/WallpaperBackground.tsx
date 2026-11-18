@@ -306,23 +306,17 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
             }}
           />
 
-          {/* Part 2 Ambient Blurred Glows: Red #D71921 top-left, Blue #3a4cff right, 70px blur, low opacity */}
+          {/* Ambient Glows: Red #D71921 top-left, Blue #3a4cff right, soft radial gradient without filter:blur */}
           <div
-            className="boardly-ambient-glow absolute -top-24 -left-24 w-[360px] h-[360px] rounded-full pointer-events-none"
+            className="boardly-ambient-glow absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full pointer-events-none"
             style={{
-              backgroundColor: '#D71921',
-              opacity: 0.16,
-              filter: 'blur(70px)',
-              WebkitFilter: 'blur(70px)',
+              background: 'radial-gradient(circle, rgba(215, 25, 33, 0.18) 0%, rgba(215, 25, 33, 0) 70%)',
             }}
           />
           <div
-            className="boardly-ambient-glow absolute top-[22%] -right-28 w-[380px] h-[380px] rounded-full pointer-events-none"
+            className="boardly-ambient-glow absolute top-[22%] -right-28 w-[440px] h-[440px] rounded-full pointer-events-none"
             style={{
-              backgroundColor: '#3a4cff',
-              opacity: 0.14,
-              filter: 'blur(70px)',
-              WebkitFilter: 'blur(70px)',
+              background: 'radial-gradient(circle, rgba(58, 76, 255, 0.15) 0%, rgba(58, 76, 255, 0) 70%)',
             }}
           />
         </>

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 
 interface AdminGuardProps {
   children: ReactNode;
@@ -27,7 +27,7 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
   const location = useLocation();
 
   if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
-    return <LineLoader context="admin" variant="section" />;
+    return <RoutePageSkeleton />;
   }
 
   if (!user || isGuest) {

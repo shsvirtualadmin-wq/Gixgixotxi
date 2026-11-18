@@ -15,7 +15,10 @@ function getSystemTheme(): ResolvedTheme {
 function getSavedSetting(): ThemeSetting {
   if (typeof window === 'undefined') return 'system';
   try {
-    const saved = localStorage.getItem('boardly-theme');
+    const saved =
+      localStorage.getItem('boardly-theme') ||
+      localStorage.getItem('boardly_theme') ||
+      localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark' || saved === 'system') {
       return saved;
     }
@@ -117,6 +120,7 @@ export function useTheme() {
     setResolvedTheme(active);
     try {
       localStorage.setItem('boardly-theme', newTheme);
+      localStorage.setItem('boardly_theme', newTheme);
       window.dispatchEvent(new CustomEvent('boardly-theme-changed', { detail: newTheme }));
     } catch {
       // ignore

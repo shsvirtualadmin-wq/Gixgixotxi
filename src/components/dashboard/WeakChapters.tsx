@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { AlertCircle, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import type { D1WeakChapterItem } from '@/services/universityMcqService';
 
 interface Props {
@@ -11,102 +11,138 @@ export const WeakChapters = memo(function WeakChapters({
   chapters,
   onDrillChapter,
 }: Props) {
-  const safeChapters = Array.isArray(chapters) ? chapters : [];
-
-  // Hidden completely until D1 university attempts with weak chapters exist
-  if (safeChapters.length === 0) {
-    return null;
-  }
+  const safeChapters = Array.isArray(chapters) ? chapters.slice(0, 5) : [];
 
   return (
     <section
-      className="rs-card space-y-3.5"
+      className="space-y-3"
       aria-label="Weak Chapters"
+      data-testid="weak-chapters-section"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <AlertCircle size={18} className="shrink-0 text-[var(--rs-red-text)]" />
-          <h2 className="rs-doto text-base sm:text-lg text-[var(--rs-text)] truncate">
-            Weak Chapters
-          </h2>
-        </div>
-        <span className="rs-body text-xs font-medium text-[var(--rs-muted)] shrink-0">
-          From University Tests
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2
+          className="text-base sm:text-lg font-black tracking-tight truncate"
+          style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+        >
+          Weak Chapters
+        </h2>
+        <span
+          className="text-[11px] font-bold uppercase tracking-wider shrink-0"
+          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+        >
+          TOP 05 FOCUS
         </span>
       </div>
 
-      <div className="space-y-2.5">
-        {safeChapters.map((c) => {
-          const pct = Math.max(0, Math.min(100, Math.round(Number(c.accuracy) || 0)));
-          const r = 16;
-          const circ = 2 * Math.PI * r;
-          const dashOffset = circ - (pct / 100) * circ;
-          const ringColor =
-            pct >= 70 ? 'var(--ok)' : pct >= 45 ? 'var(--warn)' : 'var(--red)';
-
-          return (
+      {safeChapters.length === 0 ? (
+        <div
+          className="rounded-[9999px] px-5 py-4 flex items-center justify-between gap-3"
+          style={{
+            backgroundColor: 'var(--pill-card-bg)',
+            border: '1px solid var(--pill-card-border)',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <div className="min-w-0 flex-1">
             <div
-              key={c.id}
-              className="rs-card2-row flex items-center justify-between gap-3"
+              className="text-sm font-bold truncate"
+              style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
             >
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="rs-body text-sm font-bold text-[var(--rs-text)] truncate">
-                  {c.topic}
-                </div>
-                <div className="rs-body text-xs text-[var(--rs-muted)] truncate">
-                  {c.universityName} · {c.subject} · {c.answered} answered
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 shrink-0">
-                <span className="rs-chip rs-chip--red tabular-nums lg-classic-only">
-                  {c.accuracy}% acc
-                </span>
-                <span
-                  className="hidden lg-only-inline relative w-10 h-10 items-center justify-center shrink-0"
-                  aria-label={`${pct}% accuracy`}
-                >
-                  <svg className="w-10 h-10 -rotate-90" viewBox="0 0 40 40">
-                    <circle
-                      cx="20"
-                      cy="20"
-                      r={r}
-                      fill="none"
-                      stroke="var(--edge)"
-                      strokeWidth="3.5"
-                    />
-                    <circle
-                      cx="20"
-                      cy="20"
-                      r={r}
-                      fill="none"
-                      stroke={ringColor}
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      strokeDasharray={circ}
-                      strokeDashoffset={dashOffset}
-                    />
-                  </svg>
-                  <span className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold tabular-nums text-[var(--text)]">
-                    {pct}%
-                  </span>
-                </span>
-                {c.isUniversityLive && onDrillChapter && (
-                  <button
-                    type="button"
-                    data-pressable="true"
-                    onClick={() => onDrillChapter(c)}
-                    className="rs-glass-btn rs-glass-btn--red inline-flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-bold px-4 py-2"
-                  >
-                    <span>Drill</span>
-                    <ArrowRight size={13} />
-                  </button>
-                )}
-              </div>
+              No weak chapters recorded yet
             </div>
-          );
-        })}
-      </div>
+            <div
+              className="text-xs truncate"
+              style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+            >
+              Complete a university test above to unlock your 01–05 chapter accuracy meters.
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {safeChapters.map((c, idx) => {
+            const rankLabel = String(idx + 1).padStart(2, '0');
+            const pct = Math.max(0, Math.min(100, Math.round(Number(c.accuracy) || 0)));
+            const activeSegments = Math.max(0, Math.min(10, Math.round(pct / 10)));
+
+            return (
+              <div
+                key={c.id}
+                data-testid={`weak-chapter-row-${rankLabel}`}
+                className="rounded-[9999px] px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3"
+                style={{
+                  backgroundColor: 'var(--pill-card-bg)',
+                  border: '1px solid var(--pill-card-border)',
+                  boxShadow: 'var(--shadow)',
+                }}
+              >
+                {/* Doto 900 rank 01-05 */}
+                <span
+                  className="text-lg sm:text-xl font-black tabular-nums shrink-0 w-7 text-center"
+                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--accent)' }}
+                >
+                  {rankLabel}
+                </span>
+
+                {/* Chapter name + meta line */}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div
+                    className="text-sm font-bold truncate"
+                    style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
+                  >
+                    {c.topic}
+                  </div>
+                  <div
+                    className="text-[11px] truncate"
+                    style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+                  >
+                    {c.universityName} · {c.subject} · {c.answered} Qs · {pct}%
+                  </div>
+                </div>
+
+                {/* 10-segment accuracy meter */}
+                <div
+                  className="flex items-center gap-[3px] shrink-0"
+                  aria-label={`${pct}% accuracy (${activeSegments} of 10 segments)`}
+                  title={`${pct}% accuracy`}
+                >
+                  {Array.from({ length: 10 }).map((_, segIdx) => {
+                    const isFilled = segIdx < activeSegments;
+                    return (
+                      <span
+                        key={segIdx}
+                        className="w-1.5 h-4 rounded-full"
+                        style={{
+                          backgroundColor: isFilled ? 'var(--accent)' : 'var(--meter-off)',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Round red arrow button */}
+                <button
+                  type="button"
+                  disabled={!c.isUniversityLive || !onDrillChapter}
+                  onClick={() => {
+                    if (c.isUniversityLive && onDrillChapter) {
+                      onDrillChapter(c);
+                    }
+                  }}
+                  aria-label={`Drill ${c.topic}`}
+                  className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full inline-flex items-center justify-center shrink-0 transition-transform duration-150 active:scale-95 cursor-pointer disabled:opacity-45"
+                  style={{
+                    backgroundColor: 'var(--accent)',
+                    color: 'var(--text-on-accent)',
+                  }}
+                >
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 });

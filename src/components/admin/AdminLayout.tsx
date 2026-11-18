@@ -26,7 +26,6 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { LineLoader } from '@/components/ui/LineLoader';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
@@ -197,7 +196,7 @@ export function AdminLayout() {
 
   // Fail-closed route guard before rendering any admin shell or children
   if (profileLoading || otpVerificationState.status === 'checking') {
-    return <LineLoader context="admin" variant="section" />;
+    return <RoutePageSkeleton />;
   }
   if (!user || !isSessionVerified) {
     return <Navigate to="/login?redirect=/admin" replace />;

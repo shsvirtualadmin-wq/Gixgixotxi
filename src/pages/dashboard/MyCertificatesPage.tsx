@@ -139,8 +139,22 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
     void loadCertificates(Boolean(initialCached));
   }, [loadCertificates, initialCached]);
 
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   return (
-    <section className="space-y-3.5" aria-label="My Certificates">
+    <section
+      className="space-y-3.5"
+      aria-label="My Certificates"
+      style={{
+        opacity: revealed ? 1 : 0,
+        transform: revealed ? 'translateY(0px)' : 'translateY(10px)',
+        transition: 'opacity 320ms cubic-bezier(0.22, 1, 0.36, 1), transform 320ms cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
+    >
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Award size={18} className="text-[var(--accent)]" />
@@ -200,7 +214,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
           </div>
           <Link
             to="/grand-line"
-            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 shrink-0"
+            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--text-on-accent)] text-xs font-bold hover:opacity-90 inline-flex items-center gap-2 shrink-0"
           >
             <span>Compete in Grand Line</span>
             <ArrowRight size={13} />

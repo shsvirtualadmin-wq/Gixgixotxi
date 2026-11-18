@@ -1,5 +1,4 @@
-import { memo } from 'react';
-import { History, Clock, CheckCircle2 } from 'lucide-react';
+import { memo, useMemo } from 'react';
 import type { D1UniversityAttemptRecord } from '@/services/universityMcqService';
 
 interface Props {
@@ -15,8 +14,6 @@ function formatAttemptDate(iso: string): string {
     return d.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
     });
   } catch {
     return 'Recently';
@@ -27,32 +24,142 @@ export const RecentAttempts = memo(function RecentAttempts({
   attempts,
   onRetakeUniversity,
 }: Props) {
-  const safeAttempts = Array.isArray(attempts) ? attempts.slice(0, 5) : [];
+  const allAttempts = useMemo(
+    () => (Array.isArray(attempts) ? attempts : []),
+    [attempts]
+  );
+  const safeAttempts = useMemo(() => allAttempts.slice(0, 5), [allAttempts]);
+
+  const summary = useMemo(() => {
+    const count = allAttempts.length;
+    if (count === 0) {
+      return { count: 0, avgAccuracy: 0, bestAccuracy: 0 };
+    }
+    let sum = 0;
+    let best = 0;
+    for (const a of allAttempts) {
+      const acc = Math.max(0, Math.min(100, Math.round(Number(a.accuracy) || 0)));
+      sum += acc;
+      if (acc > best) best = acc;
+    }
+    return {
+      count,
+      avgAccuracy: Math.round(sum / count),
+      bestAccuracy: best,
+    };
+  }, [allAttempts]);
 
   return (
     <section
-      className="rs-card space-y-3.5"
+      className="space-y-3"
       aria-label="Recent Attempts"
+      data-testid="recent-attempts-section"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <History size={18} className="shrink-0 text-[var(--rs-muted)]" />
-          <h2 className="rs-doto text-base sm:text-lg text-[var(--rs-text)] truncate">
-            Recent Attempts
-          </h2>
-        </div>
-        <span className="rs-body text-xs font-medium text-[var(--rs-muted)] shrink-0">
-          Latest 5
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h2
+          className="text-base sm:text-lg font-black tracking-tight truncate"
+          style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+        >
+          Recent Attempts
+        </h2>
+        <span
+          className="text-[11px] font-bold uppercase tracking-wider shrink-0"
+          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+        >
+          LATEST {safeAttempts.length}
         </span>
       </div>
 
+      {/* Top strip of 3 pills: attempts, average accuracy, best */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-2.5" data-testid="recent-attempts-summary-strip">
+        <div
+          className="rounded-full px-3.5 py-2 flex items-center justify-between gap-1.5"
+          style={{
+            backgroundColor: 'var(--pill-card-bg)',
+            border: '1px solid var(--pill-card-border)',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider truncate"
+            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+          >
+            Attempts
+          </span>
+          <span
+            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+          >
+            {summary.count}
+          </span>
+        </div>
+
+        <div
+          className="rounded-full px-3.5 py-2 flex items-center justify-between gap-1.5"
+          style={{
+            backgroundColor: 'var(--pill-card-bg)',
+            border: '1px solid var(--pill-card-border)',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider truncate"
+            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+          >
+            Avg Acc
+          </span>
+          <span
+            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+          >
+            {summary.avgAccuracy}%
+          </span>
+        </div>
+
+        <div
+          className="rounded-full px-3.5 py-2 flex items-center justify-between gap-1.5"
+          style={{
+            backgroundColor: 'var(--pill-card-bg)',
+            border: '1px solid var(--pill-card-border)',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider truncate"
+            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+          >
+            Best
+          </span>
+          <span
+            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            style={{ fontFamily: 'var(--font-dot)', color: 'var(--accent)' }}
+          >
+            {summary.bestAccuracy}%
+          </span>
+        </div>
+      </div>
+
+      {/* Pill cards, ALL strictly 100px tall */}
       {safeAttempts.length === 0 ? (
-        <div className="rs-card2-row py-7 px-4 text-center space-y-1.5">
-          <p className="rs-body text-xs sm:text-sm font-bold text-[var(--rs-text)]">
+        <div
+          className="h-[100px] min-h-[100px] max-h-[100px] rounded-[28px] px-5 flex flex-col justify-center text-center"
+          style={{
+            backgroundColor: 'var(--pill-card-bg)',
+            border: '1px solid var(--pill-card-border)',
+            boxShadow: 'var(--shadow)',
+          }}
+        >
+          <p
+            className="text-xs sm:text-sm font-bold truncate"
+            style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
+          >
             No university attempts yet
           </p>
-          <p className="rs-body text-xs text-[var(--rs-muted)] max-w-md mx-auto">
-            Tap any live university above to start a practice test. Your latest 5 attempts will appear here.
+          <p
+            className="text-xs truncate mt-0.5"
+            style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+          >
+            Tap any live university tile above to start a practice test.
           </p>
         </div>
       ) : (
@@ -60,15 +167,16 @@ export const RecentAttempts = memo(function RecentAttempts({
           {safeAttempts.map((a) => {
             const mins = Math.max(1, Math.round(Number(a.durationSeconds || 60) / 60));
             const pct = Math.max(0, Math.min(100, Math.round(Number(a.accuracy) || 0)));
-            const r = 16;
+            const isRetry = pct < 10;
+            const badgeText = isRetry ? 'RETRY' : 'KEEP GOING';
+            const r = 22;
             const circ = 2 * Math.PI * r;
             const dashOffset = circ - (pct / 100) * circ;
-            const ringColor =
-              pct >= 70 ? 'var(--ok)' : pct >= 45 ? 'var(--warn)' : 'var(--red)';
 
             return (
               <div
                 key={a.id}
+                data-testid="recent-attempt-pill-card"
                 onClick={() =>
                   onRetakeUniversity?.(
                     a.universityId,
@@ -88,71 +196,121 @@ export const RecentAttempts = memo(function RecentAttempts({
                     );
                   }
                 }}
-                className={`rs-card2-row flex items-center justify-between gap-3 ${
-                  onRetakeUniversity ? 'cursor-pointer' : ''
+                className={`h-[100px] min-h-[100px] max-h-[100px] rounded-[28px] px-4 sm:px-5 flex items-center gap-3.5 overflow-hidden transition-transform duration-150 ${
+                  onRetakeUniversity ? 'cursor-pointer active:scale-[0.99]' : ''
                 }`}
+                style={{
+                  height: '100px',
+                  minHeight: '100px',
+                  maxHeight: '100px',
+                  backgroundColor: 'var(--pill-card-bg)',
+                  border: '1px solid var(--pill-card-border)',
+                  boxShadow: 'var(--shadow)',
+                }}
               >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="rs-body text-sm font-bold text-[var(--rs-text)] truncate">
+                {/* Left: Animated accuracy ring */}
+                <div
+                  className="relative w-14 h-14 flex items-center justify-center shrink-0"
+                  aria-label={`${pct}% accuracy`}
+                >
+                  <svg className="w-14 h-14 -rotate-90" viewBox="0 0 52 52">
+                    <circle
+                      cx="26"
+                      cy="26"
+                      r={r}
+                      fill="none"
+                      stroke="var(--ring-track)"
+                      strokeWidth="4"
+                    />
+                    <circle
+                      cx="26"
+                      cy="26"
+                      r={r}
+                      fill="none"
+                      stroke="var(--accent)"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      strokeDasharray={circ}
+                      strokeDashoffset={dashOffset}
+                    />
+                  </svg>
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-xs font-black tabular-nums"
+                    style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                  >
+                    {pct}%
+                  </span>
+                </div>
+
+                {/* Right: Badge (RETRY <10%, else KEEP GOING), title + subject tag on ONE line, 3 one-line chips */}
+                <div className="min-w-0 flex-1 flex flex-col justify-center gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider shrink-0"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: isRetry ? 'var(--tag-danger-bg)' : 'var(--accent-soft)',
+                        color: isRetry ? 'var(--tag-danger-text)' : 'var(--accent)',
+                      }}
+                    >
+                      {badgeText}
+                    </span>
+                  </div>
+
+                  {/* Title + subject tag on ONE line */}
+                  <div className="flex items-center gap-2 min-w-0 whitespace-nowrap overflow-hidden">
+                    <span
+                      className="text-sm font-bold truncate"
+                      style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
+                    >
                       {a.universityName}
                     </span>
-                    <span className="rs-chip">
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: 'var(--pill-chip-bg)',
+                        border: '1px solid var(--pill-chip-border)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       {a.subject || 'Full Pattern'}
                     </span>
                   </div>
-                  <div className="rs-body flex items-center gap-3 text-xs text-[var(--rs-muted)] flex-wrap">
-                    <span className="inline-flex items-center gap-1">
-                      <CheckCircle2 size={12} className="text-[var(--rs-red-text)]" />
+
+                  {/* Three one-line chips: X/Y correct, duration, date */}
+                  <div className="flex items-center gap-1.5 min-w-0 whitespace-nowrap overflow-hidden">
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: 'var(--pill-chip-bg)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
                       {a.correctCount}/{a.totalQuestions} correct
                     </span>
-                    <span className="inline-flex items-center gap-1">
-                      <Clock size={12} />
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: 'var(--pill-chip-bg)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
                       {mins}m
                     </span>
-                    <span>{formatAttemptDate(a.createdAt)}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center shrink-0 gap-2.5">
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="rs-chip rs-chip--red tabular-nums lg-classic-only">
-                      {a.accuracy}%
-                    </span>
-                    <span className="rs-body text-[11px] font-mono font-medium text-[var(--rs-muted)] tabular-nums">
-                      Score: {a.score}/{a.maxScore}
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium truncate"
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        backgroundColor: 'var(--pill-chip-bg)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      {formatAttemptDate(a.createdAt)}
                     </span>
                   </div>
-
-                  <span
-                    className="hidden lg-only-inline relative w-10 h-10 items-center justify-center shrink-0"
-                    aria-label={`${pct}% accuracy`}
-                  >
-                    <svg className="w-10 h-10 -rotate-90" viewBox="0 0 40 40">
-                      <circle
-                        cx="20"
-                        cy="20"
-                        r={r}
-                        fill="none"
-                        stroke="var(--edge)"
-                        strokeWidth="3.5"
-                      />
-                      <circle
-                        cx="20"
-                        cy="20"
-                        r={r}
-                        fill="none"
-                        stroke={ringColor}
-                        strokeWidth="3.5"
-                        strokeLinecap="round"
-                        strokeDasharray={circ}
-                        strokeDashoffset={dashOffset}
-                      />
-                    </svg>
-                    <span className="absolute inset-0 flex items-center justify-center font-mono text-[10px] font-bold tabular-nums text-[var(--text)]">
-                      {pct}%
-                    </span>
-                  </span>
                 </div>
               </div>
             );

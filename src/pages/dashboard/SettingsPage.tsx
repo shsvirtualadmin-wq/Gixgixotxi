@@ -2326,6 +2326,36 @@ export function SettingsPage() {
                   </button>
                 );
               })}
+              {group.id === 'personalize' &&
+                (!normalizedQuery ||
+                  'reduce effects smooth mode motion animations'.includes(normalizedQuery)) && (
+                  <div className="stg-row stg-row--static" data-testid="settings-reduce-effects-row">
+                    <div className="stg-row-left">
+                      <span className="stg-row-icon">
+                        <Sparkles size={17} strokeWidth={2} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="stg-row-label">Reduce effects</div>
+                        <div className="text-xs text-[var(--menu-subtext)]">
+                          Pause ambient motion &amp; heavy transitions
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stg-row-right">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={smoothMode}
+                        aria-label="Reduce effects"
+                        data-testid="reduce-effects-switch"
+                        onClick={toggleSmoothMode}
+                        className="stg-switch"
+                      >
+                        <span className="stg-switch-thumb" />
+                      </button>
+                    </div>
+                  </div>
+                )}
             </div>
           </div>
         ))}

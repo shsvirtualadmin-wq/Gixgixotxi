@@ -208,7 +208,8 @@
   /* Fonts & Segmented Tab Contrast Tokens */
   --font-dot: 'Doto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-heading: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Space Mono', 'JetBrains Mono', monospace;
   --tab-inactive-text: #111111;
 
   /* Transitions */
@@ -235,6 +236,31 @@
   --bubble-outer-glow: 0 6px 22px rgba(220,20,40,0.22);
   --menu-row-pressed: rgba(0,0,0,0.045);
   --menu-icon-bg: rgba(0,0,0,0.045);
+
+  /* Co-Pilot, Carousel Tiles, Pills, Meters & Wingmates (Light Theme) */
+  --copilot-bg: #ffffff;
+  --copilot-border: rgba(15, 23, 42, 0.10);
+  --copilot-screen-bg: #0f1116;
+  --copilot-screen-border: rgba(255, 255, 255, 0.14);
+  --copilot-dot: #f8fafc;
+  --uni-tile-grad: linear-gradient(135deg, #d71921 0%, #9e0c14 100%);
+  --uni-tile-border: rgba(255, 255, 255, 0.24);
+  --uni-tile-text: #ffffff;
+  --uni-tile-subtext: rgba(255, 255, 255, 0.85);
+  --uni-logo-box-bg: #ffffff;
+  --uni-logo-box-text: #111115;
+  --uni-live-badge-bg: rgba(15, 17, 22, 0.28);
+  --uni-live-badge-border: rgba(255, 255, 255, 0.32);
+  --uni-live-badge-dot: #ffffff;
+  --soon-pill-bg: #14151a;
+  --soon-pill-text: #f8fafc;
+  --soon-pill-border: rgba(15, 23, 42, 0.18);
+  --pill-card-bg: #ffffff;
+  --pill-card-border: rgba(15, 23, 42, 0.09);
+  --pill-chip-bg: #f1f2f6;
+  --pill-chip-border: rgba(15, 23, 42, 0.08);
+  --meter-off: rgba(15, 23, 42, 0.11);
+  --ring-track: rgba(15, 23, 42, 0.10);
 }
 
 /* ===== DARK THEME OVERRIDES (PART 2: iOS + Glassmorphism + Nothing OS) ===== */
@@ -352,6 +378,31 @@
   --menu-divider: rgba(255, 255, 255, 0.14);
   --menu-text: #ffffff;
   --menu-subtext: rgba(255, 255, 255, 0.72);
+
+  /* Co-Pilot, Carousel Tiles, Pills, Meters & Wingmates (Dark Theme) */
+  --copilot-bg: #111116;
+  --copilot-border: rgba(255, 255, 255, 0.14);
+  --copilot-screen-bg: #07070a;
+  --copilot-screen-border: rgba(255, 255, 255, 0.18);
+  --copilot-dot: #ffffff;
+  --uni-tile-grad: linear-gradient(135deg, #d71921 0%, #8b0910 100%);
+  --uni-tile-border: rgba(255, 255, 255, 0.22);
+  --uni-tile-text: #ffffff;
+  --uni-tile-subtext: rgba(255, 255, 255, 0.85);
+  --uni-logo-box-bg: #ffffff;
+  --uni-logo-box-text: #0e0e12;
+  --uni-live-badge-bg: rgba(7, 7, 10, 0.36);
+  --uni-live-badge-border: rgba(255, 255, 255, 0.28);
+  --uni-live-badge-dot: #ffffff;
+  --soon-pill-bg: #14141b;
+  --soon-pill-text: #f5f5f7;
+  --soon-pill-border: rgba(255, 255, 255, 0.16);
+  --pill-card-bg: #111116;
+  --pill-card-border: rgba(255, 255, 255, 0.13);
+  --pill-chip-bg: rgba(255, 255, 255, 0.07);
+  --pill-chip-border: rgba(255, 255, 255, 0.12);
+  --meter-off: rgba(255, 255, 255, 0.13);
+  --ring-track: rgba(255, 255, 255, 0.12);
 
   /* Theme-aware derived tokens for Nav & Menu */
   --nav-top-highlight: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
@@ -4250,7 +4301,6 @@ html[data-tab-hidden="true"] *::after {
 .aqb-blob {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(72px);
   pointer-events: none;
 }
 
@@ -4894,7 +4944,6 @@ html[data-tab-hidden="true"] *::after {
 .akb-blob {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(72px);
   pointer-events: none;
 }
 
@@ -10598,33 +10647,36 @@ html[data-theme="light"] .pb-badge--emerald {
 
 @keyframes pb-neon-pulse {
   0%, 100% {
-    box-shadow: 0 0 calc(8px * var(--pb-glow)) rgba(255, 77, 92, calc(0.42 * var(--pb-glow))),
-                0 0 calc(4px * var(--pb-glow)) rgba(255, 214, 102, calc(0.28 * var(--pb-glow)));
+    opacity: 0.82;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 calc(15px * var(--pb-glow)) rgba(255, 77, 92, calc(0.75 * var(--pb-glow))),
-                0 0 calc(9px * var(--pb-glow)) rgba(255, 214, 102, calc(0.55 * var(--pb-glow)));
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
 
 @keyframes pb-bg-slide {
   0% {
-    background-position: 0% 50%;
+    opacity: 0.85;
+    transform: translateZ(0);
   }
   50% {
-    background-position: 100% 50%;
+    opacity: 1;
+    transform: translateZ(0);
   }
   100% {
-    background-position: 0% 50%;
+    opacity: 0.85;
+    transform: translateZ(0);
   }
 }
 
 @keyframes pb-rainbow-border {
-  0% {
-    background-position: 0 0, 0% 50%;
+  0%, 100% {
+    opacity: 0.88;
   }
-  100% {
-    background-position: 0 0, 300% 50%;
+  50% {
+    opacity: 1;
   }
 }
 
@@ -10648,21 +10700,23 @@ html[data-theme="light"] .pb-badge--emerald {
 
 @keyframes pb-seal-ring-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 1.5px rgba(255, 200, 61, 0.25),
-                0 0 calc(9px * var(--pb-glow)) rgba(255, 190, 40, calc(0.42 * var(--pb-glow)));
+    opacity: 0.82;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(255, 200, 61, 0.55),
-                0 0 calc(15px * var(--pb-glow)) rgba(255, 190, 40, calc(0.75 * var(--pb-glow)));
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
 
 @keyframes pb-emerald-pulse {
   0%, 100% {
-    box-shadow: 0 0 calc(7px * var(--pb-glow)) rgba(61, 220, 132, calc(0.32 * var(--pb-glow)));
+    opacity: 0.82;
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 calc(14px * var(--pb-glow)) rgba(61, 220, 132, calc(0.68 * var(--pb-glow)));
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
 
@@ -10690,10 +10744,10 @@ html[data-theme="light"] .pb-badge--emerald {
 
 @keyframes pb-electric-flash {
   0%, 84%, 92%, 100% {
-    box-shadow: 0 0 calc(9px * var(--pb-glow)) rgba(76, 195, 255, calc(0.4 * var(--pb-glow)));
+    opacity: 0.84;
   }
   88%, 95% {
-    box-shadow: 0 0 calc(18px * var(--pb-glow)) rgba(125, 232, 255, calc(0.95 * var(--pb-glow)));
+    opacity: 1;
   }
 }
 
@@ -10762,7 +10816,13 @@ html[data-theme="light"] .pb-badge--emerald {
   }
 }
 
-/* Pause / turn off all badge animations when tab is hidden, Smooth Mode is active, or reduced motion is preferred */
+/* Pause all infinite animations while scrolling (resumes 150ms after scroll stops) or when tab is hidden */
+html.is-scrolling *,
+html.is-scrolling *::before,
+html.is-scrolling *::after,
+html[data-scrolling="true"] *,
+html[data-scrolling="true"] *::before,
+html[data-scrolling="true"] *::after,
 html.tab-hidden .pb-badge,
 html.tab-hidden .pb-badge::before,
 html.tab-hidden .pb-badge::after,
@@ -11004,11 +11064,11 @@ a.stg-row:active {
 }
 
 @keyframes stg-skeleton-shimmer {
-  0% {
-    background-position: 100% 0;
+  0%, 100% {
+    opacity: 0.45;
   }
-  100% {
-    background-position: -100% 0;
+  50% {
+    opacity: 0.9;
   }
 }
 
@@ -11017,26 +11077,14 @@ a.stg-row:active {
   width: 58px;
   height: 14px;
   border-radius: 9999px;
-  background: linear-gradient(
-    90deg,
-    rgba(120, 120, 128, 0.14) 25%,
-    rgba(120, 120, 128, 0.28) 50%,
-    rgba(120, 120, 128, 0.14) 75%
-  );
-  background-size: 200% 100%;
+  background-color: rgba(120, 120, 128, 0.22);
   animation: stg-skeleton-shimmer 1.25s ease-in-out infinite;
   vertical-align: middle;
 }
 
 .dark .stg-row-value-skeleton,
 [data-theme="dark"] .stg-row-value-skeleton {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.08) 25%,
-    rgba(255, 255, 255, 0.2) 50%,
-    rgba(255, 255, 255, 0.08) 75%
-  );
-  background-size: 200% 100%;
+  background-color: rgba(255, 255, 255, 0.16);
 }
 
 /* Short grey explanation under a group */
@@ -11254,10 +11302,12 @@ a.stg-row:active {
 /* Highlight pulse when jumping to a specific setting row */
 @keyframes stg-target-flash {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(215, 25, 33, 0);
+    transform: scale(1);
+    opacity: 1;
   }
   30%, 70% {
-    box-shadow: 0 0 0 2px #D71921;
+    transform: scale(1.012);
+    opacity: 0.92;
   }
 }
 

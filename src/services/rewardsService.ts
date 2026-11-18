@@ -893,3 +893,196 @@ export async function fetchRewardsHealth(): Promise<RewardsHealthResponse> {
   }
 }
 
+export type WingmateStatusType =
+  | 'practicing_now'
+  | 'finished_test'
+  | 'back_after_days'
+  | 'streak_at_risk'
+  | 'inactive';
+
+export interface WingmateFeedItem {
+  uid: string;
+  displayName: string;
+  avatarUrl: string | null;
+  initials: string;
+  statusType: WingmateStatusType;
+  statusText: string;
+  filterCategory: 'active' | 'at_risk' | 'inactive';
+  lastEventAtMs: number;
+  actionType: 'nudge' | 'cheer';
+  lastNudgedAtMs: number | null;
+  canNudge: boolean;
+  lastRemindedAtMs?: number | null;
+}
+
+export interface WingmatesCounters {
+  practicingNow: number;
+  streakAtRisk: number;
+  inactive2PlusDays: number;
+  totalUsers?: number;
+}
+
+export interface WingmatesFeedResponse {
+  ok: boolean;
+  counters: WingmatesCounters;
+  wingmates: WingmateFeedItem[];
+  error?: string;
+}
+
+export async function fetchWingmatesFeed(): Promise<WingmatesFeedResponse> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/wingmates', {
+      method: 'GET',
+      headers,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      return {
+        ok: false,
+        counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0 },
+        wingmates: [],
+        error: data?.error || `HTTP ${res.status}: Unable to load wingmates.`,
+      };
+    }
+    return {
+      ok: true,
+      counters: data.counters || { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0 },
+      wingmates: Array.isArray(data.wingmates) ? data.wingmates : [],
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0 },
+      wingmates: [],
+      error: err?.message || 'Unable to load wingmates right now.',
+    };
+  }
+}
+
+export async function triggerWingmateAction(
+  wingmateUid: string,
+  action: 'nudge' | 'cheer'
+): Promise<{
+  ok: boolean;
+  action?: 'nudge' | 'cheer';
+  wingmateUid?: string;
+  lastNudgedAtMs?: number;
+  canNudge?: boolean;
+  error?: string;
+  code?: string;
+}> {
+  const endpoint = action === 'nudge' ? '/api/rewards/wingmates/nudge' : '/api/rewards/wingmates/cheer';
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ wingmateUid }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      return {
+        ok: false,
+        error: data?.error || `Could not ${action} wingmate.`,
+        code: data?.code,
+      };
+    }
+    return {
+      ok: true,
+      action,
+      wingmateUid,
+      lastNudgedAtMs: data.lastNudgedAtMs,
+      canNudge: data.canNudge,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message || `Network error while trying to ${action} wingmate.`,
+    };
+  }
+}
+
+export interface AdminWingmatesRadarResponse {
+  ok: boolean;
+  counters: WingmatesCounters;
+  items: WingmateFeedItem[];
+  error?: string;
+}
+
+export async function fetchAdminWingmatesRadar(): Promise<AdminWingmatesRadarResponse> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/wingmates/radar', {
+      method: 'GET',
+      headers,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      return {
+        ok: false,
+        counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0, totalUsers: 0 },
+        items: [],
+        error: data?.error || `HTTP ${res.status}: Unable to load Wingmates Radar.`,
+      };
+    }
+    return {
+      ok: true,
+      counters: data.counters || {
+        practicingNow: 0,
+        streakAtRisk: 0,
+        inactive2PlusDays: 0,
+        totalUsers: 0,
+      },
+      items: Array.isArray(data.items) ? data.items : [],
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0, totalUsers: 0 },
+      items: [],
+      error: err?.message || 'Unable to load Wingmates Radar.',
+    };
+  }
+}
+
+export async function sendAdminWingmateReminder(targetUid: string): Promise<{
+  ok: boolean;
+  targetUid?: string;
+  remindedAtMs?: number;
+  error?: string;
+}> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/rewards/wingmates/remind', {
+      method: 'POST',
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ targetUid }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      return {
+        ok: false,
+        error: data?.error || 'Could not send reminder.',
+      };
+    }
+    return {
+      ok: true,
+      targetUid,
+      remindedAtMs: data.remindedAtMs,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message || 'Network error while sending reminder.',
+    };
+  }
+}
+
+

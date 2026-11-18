@@ -995,6 +995,21 @@ async function handleRewardsApiRequestInner(
     });
   }
 
+  if (subPath === 'wingmates' && request.method === 'GET' && !d1User) {
+    return jsonResponse(
+      {
+        ok: true,
+        counters: {
+          practicingNow: 0,
+          streakAtRisk: 0,
+          inactive2PlusDays: 0,
+        },
+        wingmates: [],
+      },
+      200
+    );
+  }
+
   if (!d1User) {
     return jsonResponse(
       { ok: false, error: 'Authentication required. Please sign in.', code: 'UNAUTHENTICATED' },
@@ -1607,6 +1622,509 @@ async function handleRewardsApiRequestInner(
     return jsonResponse(responsePayload, 200, {
       'Cache-Control': 'private, no-store',
     });
+  }
+
+  // ─── WINGMATES & ADMIN WINGMATES RADAR ENDPOINTS ───────────────────────────
+  if (
+    subPath === 'wingmates' ||
+    subPath === 'wingmates/nudge' ||
+    subPath === 'wingmates/cheer' ||
+    subPath === 'wingmates/radar' ||
+    subPath === 'wingmates/remind'
+  ) {
+    const buildWingmateStatusItem = async (
+      targetUid: string,
+      callerUid: string,
+      fallbackName?: string | null
+    ) => {
+      const [uDoc, uNameRows, dailyRows, attemptRows, nudgeRow, remindRow] = await Promise.all([
+        store ? store.getDoc(`users/${targetUid}`).catch(() => null) : Promise.resolve(null),
+        db
+          .prepare('SELECT uid, username, email FROM user_usernames WHERE uid = ?1')
+          .bind(targetUid)
+          .all<{ uid: string; username?: string; email?: string }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare('SELECT pkt_date, created_at FROM reward_daily_claims WHERE uid = ?1')
+          .bind(targetUid)
+          .all<{ pkt_date: string; created_at: number }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare(
+            'SELECT ta.id AS attempt_id, ta.total_questions, ta.created_at FROM test_attempts ta WHERE ta.user_uid = ?1'
+          )
+          .bind(targetUid)
+          .all<{
+            attempt_id: string;
+            total_questions: number;
+            created_at: number;
+            answered_rows?: number;
+          }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare('SELECT value FROM reward_settings WHERE key = ?1')
+          .bind(`wingmate_nudge:${callerUid}:${targetUid}`)
+          .first<{ value: string }>()
+          .catch(() => null),
+        db
+          .prepare('SELECT value FROM reward_settings WHERE key = ?1')
+          .bind(`wingmate_remind:${targetUid}`)
+          .first<{ value: string }>()
+          .catch(() => null),
+      ]);
+
+      const uNameEntry = (uNameRows?.results || [])[0];
+      const displayName = sanitizeDisplayName(
+        uDoc,
+        uNameEntry?.username || fallbackName || `Student ${targetUid.slice(0, 5).toUpperCase()}`
+      );
+      const words = displayName.trim().split(/\s+/).filter(Boolean);
+      const initials =
+        words.length >= 2
+          ? `${words[0][0]}${words[1][0]}`.toUpperCase()
+          : (displayName.slice(0, 2) || 'ST').toUpperCase();
+      const avatarUrl =
+        typeof uDoc?.photoURL === 'string' && uDoc.photoURL.trim()
+          ? uDoc.photoURL.trim()
+          : typeof uDoc?.avatarUrl === 'string' && uDoc.avatarUrl.trim()
+          ? uDoc.avatarUrl.trim()
+          : null;
+
+      const attempts = [...(attemptRows?.results || [])].sort(
+        (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
+      );
+      const claims = [...(dailyRows?.results || [])].sort(
+        (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
+      );
+
+      const latestAttempt = attempts[0];
+      const prevAttempt = attempts[1];
+      const latestClaim = claims[0];
+
+      const docLastActiveMs = Number(
+        uDoc?.lastPracticeAtMs || uDoc?.lastActiveAtMs || uDoc?.updatedAtMs || 0
+      );
+      const latestActivityMs = Math.max(
+        Number(latestAttempt?.created_at || 0),
+        Number(latestClaim?.created_at || 0),
+        docLastActiveMs
+      );
+
+      const pktToday = getPktDateString(nowMs);
+      const practicedToday =
+        (latestActivityMs > 0 && getPktDateString(latestActivityMs) === pktToday) ||
+        claims.some((c) => c.pkt_date === pktToday);
+
+      const streakCount = Math.max(
+        0,
+        Number(uDoc?.streak ?? uDoc?.currentStreak ?? claims.length ?? 0)
+      );
+
+      const msSinceLast =
+        latestActivityMs > 0 ? Math.max(0, nowMs - latestActivityMs) : 3 * 86_400_000;
+      const daysSinceLast = Math.floor(msSinceLast / 86_400_000);
+
+      let statusType:
+        | 'practicing_now'
+        | 'finished_test'
+        | 'back_after_days'
+        | 'streak_at_risk'
+        | 'inactive' = 'inactive';
+      let statusText = `Hasn't practiced in ${Math.max(2, daysSinceLast)} days`;
+      let filterCategory: 'active' | 'at_risk' | 'inactive' = 'inactive';
+      let actionType: 'nudge' | 'cheer' = 'nudge';
+      const eventAtMs = latestActivityMs > 0 ? latestActivityMs : nowMs - 2 * 86_400_000;
+
+      if (latestActivityMs > 0 && nowMs - latestActivityMs <= 20 * 60 * 1000) {
+        statusType = 'practicing_now';
+        statusText = 'Practicing now';
+        filterCategory = 'active';
+        actionType = 'cheer';
+      } else if (
+        latestAttempt &&
+        nowMs - Number(latestAttempt.created_at || 0) <= 24 * 60 * 60 * 1000
+      ) {
+        const totalQ = Math.max(1, Number(latestAttempt.total_questions || 20));
+        const ansQ = Math.max(
+          0,
+          Number(latestAttempt.answered_rows ?? uDoc?.lastTestScore ?? Math.round(totalQ * 0.8))
+        );
+        const pct = Math.max(0, Math.min(100, Math.round((ansQ / totalQ) * 100)));
+        if (
+          prevAttempt &&
+          Number(latestAttempt.created_at || 0) - Number(prevAttempt.created_at || 0) >=
+            2 * 86_400_000
+        ) {
+          const gapDays = Math.max(
+            2,
+            Math.floor(
+              (Number(latestAttempt.created_at || 0) - Number(prevAttempt.created_at || 0)) /
+                86_400_000
+            )
+          );
+          statusType = 'back_after_days';
+          statusText = `Back after ${gapDays} days · ${pct}% score`;
+        } else {
+          statusType = 'finished_test';
+          statusText = `Finished a test · ${pct}% score`;
+        }
+        filterCategory = 'active';
+        actionType = 'cheer';
+      } else if (!practicedToday && streakCount > 0 && daysSinceLast < 2) {
+        statusType = 'streak_at_risk';
+        statusText = `Streak at risk (${streakCount}d streak)`;
+        filterCategory = 'at_risk';
+        actionType = 'nudge';
+      } else if (practicedToday) {
+        statusType = 'practicing_now';
+        statusText = 'Practicing now';
+        filterCategory = 'active';
+        actionType = 'cheer';
+      } else {
+        const inactiveDays = Math.max(2, daysSinceLast);
+        statusType = 'inactive';
+        statusText = `Hasn't practiced in ${inactiveDays} days`;
+        filterCategory = 'inactive';
+        actionType = 'nudge';
+      }
+
+      const lastNudgedAtMs = nudgeRow?.value ? Number(nudgeRow.value) || null : null;
+      const canNudge = !lastNudgedAtMs || nowMs - lastNudgedAtMs >= 24 * 60 * 60 * 1000;
+      const lastRemindedAtMs = remindRow?.value ? Number(remindRow.value) || null : null;
+
+      return {
+        uid: targetUid,
+        displayName,
+        avatarUrl,
+        initials,
+        statusType,
+        statusText,
+        filterCategory,
+        lastEventAtMs: eventAtMs,
+        actionType,
+        lastNudgedAtMs,
+        canNudge,
+        lastRemindedAtMs,
+      };
+    };
+
+    if (subPath === 'wingmates' && request.method === 'GET') {
+      const refRowsRes = await db
+        .prepare('SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1')
+        .bind(uid)
+        .all<Record<string, any>>()
+        .catch(() => ({ results: [] }));
+
+      const peerMap = new Map<string, string | null>();
+      for (const r of refRowsRes.results || []) {
+        const isInviter = String(r.inviter_uid) === uid;
+        const peerUid = isInviter ? String(r.invitee_uid || '') : String(r.inviter_uid || '');
+        const peerCode = isInviter ? String(r.invitee_code || '') : String(r.inviter_code || '');
+        if (peerUid && peerUid !== uid) {
+          peerMap.set(peerUid, peerCode ? `Classmate (${peerCode})` : null);
+        }
+      }
+
+      if (Array.isArray(userDoc?.wingmates)) {
+        for (const w of userDoc.wingmates) {
+          const wUid = typeof w === 'string' ? w : String(w?.uid || '');
+          if (wUid && wUid !== uid && !peerMap.has(wUid)) {
+            peerMap.set(wUid, typeof w?.displayName === 'string' ? w.displayName : null);
+          }
+        }
+      }
+
+      const peerEntries = Array.from(peerMap.entries()).slice(0, 30);
+      const wingmates = await Promise.all(
+        peerEntries.map(([peerUid, fallback]) => buildWingmateStatusItem(peerUid, uid, fallback))
+      );
+
+      const counters = {
+        practicingNow: wingmates.filter((w) => w.statusType === 'practicing_now').length,
+        streakAtRisk: wingmates.filter((w) => w.statusType === 'streak_at_risk').length,
+        inactive2PlusDays: wingmates.filter((w) => w.statusType === 'inactive').length,
+      };
+
+      return jsonResponse(
+        {
+          ok: true,
+          counters,
+          wingmates,
+        },
+        200,
+        { 'Cache-Control': 'private, no-store' }
+      );
+    }
+
+    if ((subPath === 'wingmates/nudge' || subPath === 'wingmates/cheer') && request.method === 'POST') {
+      if (isGuestCaller) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'Create a free account to nudge or cheer wingmates.',
+            code: 'GUEST_FORBIDDEN',
+          },
+          403
+        );
+      }
+
+      let actionBody: Record<string, any> = {};
+      try {
+        const rawText = await request.text();
+        actionBody = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        return jsonResponse(
+          { ok: false, error: 'Invalid JSON request body.', code: 'INVALID_JSON' },
+          400
+        );
+      }
+
+      const wingmateUid = String(actionBody.wingmateUid || actionBody.targetUid || '').trim();
+      if (!wingmateUid || wingmateUid === uid) {
+        return jsonResponse(
+          { ok: false, error: 'Valid wingmateUid is required.', code: 'INVALID_WINGMATE' },
+          400
+        );
+      }
+
+      // Verify target is actually in caller's wingmates
+      const refCheck = await db
+        .prepare('SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1')
+        .bind(uid)
+        .all<Record<string, any>>()
+        .catch(() => ({ results: [] }));
+      const isReferralWingmate = (refCheck.results || []).some(
+        (r) => String(r.inviter_uid) === wingmateUid || String(r.invitee_uid) === wingmateUid
+      );
+      const isDocWingmate =
+        Array.isArray(userDoc?.wingmates) &&
+        userDoc.wingmates.some((w: any) => (typeof w === 'string' ? w : w?.uid) === wingmateUid);
+
+      if (!isReferralWingmate && !isDocWingmate && !d1User.isAdminOrAbove) {
+        return jsonResponse(
+          {
+            ok: false,
+            error: 'You can only nudge or cheer your own wingmates.',
+            code: 'NOT_A_WINGMATE',
+          },
+          403
+        );
+      }
+
+      const isNudge = subPath === 'wingmates/nudge';
+      if (isNudge) {
+        const nudgeKey = `wingmate_nudge:${uid}:${wingmateUid}`;
+        const existingNudge = await db
+          .prepare('SELECT value FROM reward_settings WHERE key = ?1')
+          .bind(nudgeKey)
+          .first<{ value: string }>()
+          .catch(() => null);
+
+        const lastNudgeMs = existingNudge?.value ? Number(existingNudge.value) || 0 : 0;
+        const cooldownMs = 24 * 60 * 60 * 1000;
+        if (lastNudgeMs > 0 && nowMs - lastNudgeMs < cooldownMs) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: 'You can only nudge each wingmate once every 24 hours.',
+              code: 'NUDGE_COOLDOWN',
+              lastNudgedAtMs: lastNudgeMs,
+              nextAvailableAtMs: lastNudgeMs + cooldownMs,
+            },
+            429
+          );
+        }
+
+        await db
+          .prepare('INSERT OR REPLACE INTO reward_settings (key, value) VALUES (?1, ?2)')
+          .bind(nudgeKey, String(nowMs))
+          .run();
+
+        if (store) {
+          const senderName = sanitizeDisplayName(userDoc, d1User.email?.split('@')[0] || 'A wingmate');
+          await store
+            .setDoc(`users/${wingmateUid}/notifications/nudge_${uid}_${nowMs}`, {
+              id: `nudge_${uid}_${nowMs}`,
+              title: `${senderName} nudged you!`,
+              message: `${senderName} sent you a practice nudge on Boardly. Keep your streak alive today!`,
+              type: 'wingmate_nudge',
+              read: false,
+              link: '/dashboard',
+              createdAt: SERVER_TIMESTAMP_SENTINEL,
+            })
+            .catch(() => null);
+        }
+
+        return jsonResponse(
+          {
+            ok: true,
+            action: 'nudge',
+            wingmateUid,
+            lastNudgedAtMs: nowMs,
+            canNudge: false,
+          },
+          200
+        );
+      } else {
+        const cheerKey = `wingmate_cheer:${uid}:${wingmateUid}`;
+        await db
+          .prepare('INSERT OR REPLACE INTO reward_settings (key, value) VALUES (?1, ?2)')
+          .bind(cheerKey, String(nowMs))
+          .run();
+
+        if (store) {
+          const senderName = sanitizeDisplayName(userDoc, d1User.email?.split('@')[0] || 'A wingmate');
+          await store
+            .setDoc(`users/${wingmateUid}/notifications/cheer_${uid}_${nowMs}`, {
+              id: `cheer_${uid}_${nowMs}`,
+              title: `${senderName} cheered your practice!`,
+              message: `${senderName} sent you a cheer for your study progress on Boardly!`,
+              type: 'wingmate_cheer',
+              read: false,
+              link: '/rewards',
+              createdAt: SERVER_TIMESTAMP_SENTINEL,
+            })
+            .catch(() => null);
+        }
+
+        return jsonResponse(
+          {
+            ok: true,
+            action: 'cheer',
+            wingmateUid,
+            cheeredAtMs: nowMs,
+          },
+          200
+        );
+      }
+    }
+
+    if (subPath === 'wingmates/radar' && request.method === 'GET') {
+      if (!d1User.isAdminOrAbove && !d1User.isSuperAdmin) {
+        return jsonResponse(
+          { ok: false, error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' },
+          403
+        );
+      }
+
+      const [usernamesRes, rolesRes, refsRes] = await Promise.all([
+        db
+          .prepare('SELECT uid, username, email FROM user_usernames')
+          .all<{ uid: string; username?: string; email?: string }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare('SELECT uid FROM user_roles')
+          .all<{ uid: string }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare('SELECT * FROM referrals')
+          .all<Record<string, any>>()
+          .catch(() => ({ results: [] })),
+      ]);
+
+      const allUidsMap = new Map<string, string | null>();
+      for (const u of usernamesRes.results || []) {
+        if (u.uid) allUidsMap.set(String(u.uid), u.username || u.email || null);
+      }
+      for (const r of rolesRes.results || []) {
+        if (r.uid && !allUidsMap.has(String(r.uid))) {
+          allUidsMap.set(String(r.uid), null);
+        }
+      }
+      for (const ref of refsRes.results || []) {
+        if (ref.inviter_uid && !allUidsMap.has(String(ref.inviter_uid))) {
+          allUidsMap.set(String(ref.inviter_uid), ref.inviter_code ? `Student (${ref.inviter_code})` : null);
+        }
+        if (ref.invitee_uid && !allUidsMap.has(String(ref.invitee_uid))) {
+          allUidsMap.set(String(ref.invitee_uid), ref.invitee_code ? `Student (${ref.invitee_code})` : null);
+        }
+      }
+      if (!allUidsMap.has(uid)) {
+        allUidsMap.set(uid, d1User.email?.split('@')[0] || 'Admin');
+      }
+
+      const uidEntries = Array.from(allUidsMap.entries()).slice(0, 50);
+      const items = await Promise.all(
+        uidEntries.map(([targetUid, fallback]) =>
+          buildWingmateStatusItem(targetUid, uid, fallback)
+        )
+      );
+
+      const counters = {
+        practicingNow: items.filter((w) => w.statusType === 'practicing_now').length,
+        streakAtRisk: items.filter((w) => w.statusType === 'streak_at_risk').length,
+        inactive2PlusDays: items.filter((w) => w.statusType === 'inactive').length,
+        totalUsers: items.length,
+      };
+
+      return jsonResponse(
+        {
+          ok: true,
+          counters,
+          items,
+        },
+        200,
+        { 'Cache-Control': 'private, no-store' }
+      );
+    }
+
+    if (subPath === 'wingmates/remind' && request.method === 'POST') {
+      if (!d1User.isAdminOrAbove && !d1User.isSuperAdmin) {
+        return jsonResponse(
+          { ok: false, error: 'Forbidden: Admin access required.', code: 'FORBIDDEN' },
+          403
+        );
+      }
+
+      let remindBody: Record<string, any> = {};
+      try {
+        const rawText = await request.text();
+        remindBody = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        return jsonResponse(
+          { ok: false, error: 'Invalid JSON request body.', code: 'INVALID_JSON' },
+          400
+        );
+      }
+
+      const targetUid = String(remindBody.targetUid || remindBody.wingmateUid || '').trim();
+      if (!targetUid) {
+        return jsonResponse(
+          { ok: false, error: 'targetUid is required.', code: 'MISSING_TARGET_UID' },
+          400
+        );
+      }
+
+      const remindKey = `wingmate_remind:${targetUid}`;
+      await db
+        .prepare('INSERT OR REPLACE INTO reward_settings (key, value) VALUES (?1, ?2)')
+        .bind(remindKey, String(nowMs))
+        .run();
+
+      if (store) {
+        await store
+          .setDoc(`users/${targetUid}/notifications/admin_remind_${nowMs}`, {
+            id: `admin_remind_${nowMs}`,
+            title: 'Time for a quick practice session!',
+            message:
+              'Your Boardly mentors sent you a friendly study reminder. Complete 1 university practice test today to keep your momentum strong!',
+            type: 'admin_study_reminder',
+            read: false,
+            link: '/dashboard',
+            createdAt: SERVER_TIMESTAMP_SENTINEL,
+          })
+          .catch(() => null);
+      }
+
+      return jsonResponse(
+        {
+          ok: true,
+          targetUid,
+          remindedAtMs: nowMs,
+        },
+        200
+      );
+    }
   }
 
   // All remaining endpoints are POST claim/referral endpoints

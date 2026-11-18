@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 import { CrewApplyPage } from '@/pages/crew/CrewApplyPage';
 
 interface RoleGuardProps {
@@ -22,7 +22,7 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   const location = useLocation();
 
   if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
-    return <LineLoader context="dashboard" variant="section" />;
+    return <RoutePageSkeleton />;
   }
 
   // Not logged in or guest -> redirect to login with return parameter

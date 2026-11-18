@@ -1,21 +1,40 @@
 <!doctype html>
-<html lang="en" class="dark" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <script>
       (function () {
         try {
-          var saved = localStorage.getItem('boardly_theme') || localStorage.getItem('theme');
-          var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+          var saved =
+            localStorage.getItem('boardly-theme') ||
+            localStorage.getItem('boardly_theme') ||
+            localStorage.getItem('theme');
+          var sysDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var setting = saved === 'light' || saved === 'dark' ? saved : 'system';
+          var theme = setting === 'system' ? (sysDark ? 'dark' : 'light') : setting;
           var root = document.documentElement;
           root.setAttribute('data-theme', theme);
+          root.setAttribute('data-theme-setting', setting);
+          root.style.colorScheme = theme;
           if (theme === 'dark') {
             root.classList.add('dark');
             root.classList.remove('light');
           } else {
             root.classList.add('light');
             root.classList.remove('dark');
+          }
+          var smoothSaved = localStorage.getItem('boardly-smooth-mode');
+          var reducedMotion =
+            window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (
+            smoothSaved === 'true' ||
+            smoothSaved === '1' ||
+            (smoothSaved === null && reducedMotion)
+          ) {
+            root.classList.add('smooth-mode');
+            root.setAttribute('data-smooth-mode', 'true');
           }
           // Kick off first-screen public API fetches in parallel with JS download
           var p = window.location.pathname.toLowerCase();
@@ -104,7 +123,7 @@
 
     <!-- Non-blocking Google Fonts & KaTeX CSS -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"
