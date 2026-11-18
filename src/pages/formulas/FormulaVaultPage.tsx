@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   Search,
@@ -17,6 +18,8 @@ import {
   Lock,
   Maximize2,
   BookOpen,
+  AlertCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -30,22 +33,41 @@ import {
   searchFormulaVault,
   toggleFormulaBookmark,
   fetchBookmarkedFormulas,
-  requestChapterPdfSignedUrl,
   submitFormulaReport,
   FormulaOfTheDayItem,
 } from '../../services/formulaVaultService';
 import { MathText } from '../../components/ui/MathText';
 import { useEffectivePlan } from '../../hooks/useEffectivePlan';
+import { exportFormulaSheetToPdf } from '../../utils/formulaPdfExporter';
+import { useBodyScrollLock, safetyCleanupScrollLocks } from '../../utils/scrollLock';
 
+/**
+ * Highlights all space-separated search tokens inside `text` (case-insensitive).
+ */
 function HighlightMatch({ text, query }: { text: string; query: string }) {
-  const q = String(query || '').trim();
-  if (!q || !text) return <>{text}</>;
-  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const parts = String(text).split(new RegExp(`(${escaped})`, 'gi'));
+  const rawText = String(text || '');
+  const tokens = String(query || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+  if (tokens.length === 0 || !rawText) return <>{rawText}</>;
+
+  const pattern = new RegExp(`(${tokens.join('|')})`, 'gi');
+  const parts = rawText.split(pattern);
+  const lowerTokens = new Set(
+    String(query || '')
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+  );
+
   return (
     <>
       {parts.map((part, idx) =>
-        part.toLowerCase() === q.toLowerCase() ? (
+        lowerTokens.has(part.toLowerCase()) ? (
           <mark
             key={idx}
             className="rounded px-1 font-semibold bg-[var(--accent-soft)] text-[var(--accent)]"
@@ -62,12 +84,18 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
 
 function formatFormulaCountBadge(count: number): string {
   const n = Number(count || 0);
-  if (n >= 35) return '35+ formulas';
   return `${n} formula${n === 1 ? '' : 's'}`;
 }
 
+type EnrichedFormulaItem = D1FormulaItemRow & {
+  chapter_title?: string;
+  chapter_no?: number;
+  category_name?: string;
+};
+
 export const FormulaVaultPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isGuest, isAdmin, isSuperAdmin } = useAuth();
   const { isUnlimited } = useEffectivePlan();
 
@@ -99,27 +127,25 @@ export const FormulaVaultPage: React.FC = () => {
   const [formulaOfTheDay, setFormulaOfTheDay] = useState<FormulaOfTheDayItem | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
 
-  // Active category & open chapter (only ONE chapter open at a time)
+  // Selected subject ('all' or category.id) & open chapter (only ONE chapter open at a time)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [showSavedOnly, setShowSavedOnly] = useState(false);
-  const [savedFormulasList, setSavedFormulasList] = useState<
-    Array<D1FormulaItemRow & { chapter_title?: string; chapter_no?: number; category_name?: string }>
-  >([]);
+  const [savedFormulasList, setSavedFormulasList] = useState<EnrichedFormulaItem[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
 
   const [openChapterId, setOpenChapterId] = useState<string | null>(null);
   const [openChapterFormulas, setOpenChapterFormulas] = useState<D1FormulaItemRow[]>([]);
   const [loadingChapterId, setLoadingChapterId] = useState<string | null>(null);
-  const [downloadingPdfChapterId, setDownloadingPdfChapterId] = useState<string | null>(null);
 
-  // Search state
+  // PDF generation state (Grand Line PDF design)
+  const [downloadingPdfChapterId, setDownloadingPdfChapterId] = useState<string | null>(null);
+  const [pdfErrorByChapterId, setPdfErrorByChapterId] = useState<Record<string, string>>({});
+
+  // Search state (~150ms debounce, searches across ALL subjects)
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [searching, setSearching] = useState(false);
-  const [searchMatchedChapters, setSearchMatchedChapters] = useState<D1FormulaChapterRow[]>([]);
-  const [searchMatchedFormulas, setSearchMatchedFormulas] = useState<
-    Array<D1FormulaItemRow & { chapter_title?: string; chapter_no?: number; category_name?: string }>
-  >([]);
+  const [searchMatchedFormulas, setSearchMatchedFormulas] = useState<EnrichedFormulaItem[]>([]);
 
   // Enlarged formula modal state
   const [enlargedFormula, setEnlargedFormula] = useState<{
@@ -137,6 +163,33 @@ export const FormulaVaultPage: React.FC = () => {
   const [reportDetails, setReportDetails] = useState('');
   const [submittingReport, setSubmittingReport] = useState(false);
 
+  // Refs for smooth auto-scrolling of subject pills and opened chapters
+  const mobilePillRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const chapterCardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const mobileSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const desktopSearchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Lock body scroll when enlarge sheet/modal is open and guarantee cleanup
+  useBodyScrollLock(Boolean(enlargedFormula), 'formula-enlarge-modal');
+
+  useEffect(() => {
+    if (!enlargedFormula) {
+      safetyCleanupScrollLocks();
+    }
+  }, [enlargedFormula]);
+
+  useEffect(() => {
+    return () => {
+      safetyCleanupScrollLocks();
+    };
+  }, [location.pathname]);
+
+  const handleCloseEnlarged = useCallback(() => {
+    setEnlargedFormula(null);
+    setReportModalOpen(false);
+    window.setTimeout(() => safetyCleanupScrollLocks(), 0);
+  }, []);
+
   // Load initial overview
   useEffect(() => {
     let mounted = true;
@@ -151,10 +204,12 @@ export const FormulaVaultPage: React.FC = () => {
 
       if (data.categories.length > 0) {
         const firstCatId = data.categories[0].id;
-        setSelectedCategoryId(firstCatId);
-        const firstCh = data.chapters.find((c) => c.category_id === firstCatId);
+        setSelectedCategoryId((prev) => prev || firstCatId);
+        const firstCh = data.chapters
+          .filter((c) => c.category_id === firstCatId)
+          .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no)[0];
         if (firstCh) {
-          setOpenChapterId(firstCh.id);
+          setOpenChapterId((prev) => prev || firstCh.id);
         }
       }
       setLoadingOverview(false);
@@ -187,18 +242,17 @@ export const FormulaVaultPage: React.FC = () => {
     };
   }, [openChapterId]);
 
-  // Debounce search query
+  // Debounce search query (~150ms)
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedQuery(searchQuery.trim());
-    }, 220);
+      setDebouncedQuery(searchQuery.replace(/\s+/g, ' ').trim());
+    }, 150);
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  // Execute search when debouncedQuery changes
+  // Execute search across ALL subjects when debouncedQuery changes
   useEffect(() => {
     if (!debouncedQuery) {
-      setSearchMatchedChapters([]);
       setSearchMatchedFormulas([]);
       setSearching(false);
       return;
@@ -208,7 +262,6 @@ export const FormulaVaultPage: React.FC = () => {
     searchFormulaVault(debouncedQuery)
       .then((res) => {
         if (!mounted) return;
-        setSearchMatchedChapters(res.chapters);
         setSearchMatchedFormulas(res.formulas);
         setSearching(false);
       })
@@ -241,33 +294,134 @@ export const FormulaVaultPage: React.FC = () => {
     };
   }, [showSavedOnly, isSignedIn, bookmarkedIds]);
 
-  const activeCategory = useMemo(
-    () => categories.find((c) => c.id === selectedCategoryId) || categories[0] || null,
-    [categories, selectedCategoryId]
+  // Total formula count across all subjects for the "All" subject pill
+  const totalFormulasAllSubjects = useMemo(
+    () => categories.reduce((sum, cat) => sum + Number(cat.formula_count || 0), 0),
+    [categories]
   );
 
-  const visibleChapters = useMemo(
-    () =>
-      chapters
-        .filter((ch) => ch.category_id === (activeCategory?.id || ''))
-        .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no),
-    [chapters, activeCategory]
+  // Dynamic subject pills list: "All" + every subject in categories
+  const subjectPills = useMemo(() => {
+    const allPill = {
+      id: 'all',
+      name: 'All',
+      formula_count: totalFormulasAllSubjects,
+      chapter_count: chapters.length,
+      description: 'Complete numbered formula sheets across every subject',
+    };
+    return [allPill, ...categories];
+  }, [categories, chapters.length, totalFormulasAllSubjects]);
+
+  const activeCategory = useMemo(() => {
+    if (selectedCategoryId === 'all') return null;
+    return categories.find((c) => c.id === selectedCategoryId) || categories[0] || null;
+  }, [categories, selectedCategoryId]);
+
+  const categoryMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories]
   );
 
-  const handleSelectCategory = useCallback(
-    (categoryId: string) => {
+  const visibleChapters = useMemo(() => {
+    if (selectedCategoryId === 'all') {
+      return [...chapters].sort((a, b) => {
+        const catA = categoryMap.get(a.category_id)?.sort_order ?? 999;
+        const catB = categoryMap.get(b.category_id)?.sort_order ?? 999;
+        if (catA !== catB) return catA - catB;
+        return a.sort_order - b.sort_order || a.chapter_no - b.chapter_no;
+      });
+    }
+    const targetCatId = activeCategory?.id || '';
+    return chapters
+      .filter((ch) => ch.category_id === targetCatId)
+      .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no);
+  }, [chapters, selectedCategoryId, activeCategory, categoryMap]);
+
+  // Combine search results with Saved filter if Saved is active, and group by Subject and Chapter
+  const filteredSearchFormulas = useMemo(() => {
+    if (!showSavedOnly) return searchMatchedFormulas;
+    return searchMatchedFormulas.filter((item) => bookmarkedIds.has(item.id));
+  }, [searchMatchedFormulas, showSavedOnly, bookmarkedIds]);
+
+  const groupedSearchResults = useMemo(() => {
+    const groups: Array<{
+      key: string;
+      subjectName: string;
+      chapterId: string;
+      chapterNo: number;
+      chapterTitle: string;
+      formulas: EnrichedFormulaItem[];
+    }> = [];
+    const groupMap = new Map<string, (typeof groups)[number]>();
+
+    for (const item of filteredSearchFormulas) {
+      const ch = chapters.find((c) => c.id === item.chapter_id);
+      const cat = categories.find((c) => c.id === item.category_id);
+      const subjectName = item.category_name || cat?.name || 'Formula Sheet';
+      const chapterNo = item.chapter_no ?? ch?.chapter_no ?? 1;
+      const chapterTitle = item.chapter_title || ch?.title || 'Chapter';
+      const key = `${item.category_id}::${item.chapter_id}`;
+
+      let existing = groupMap.get(key);
+      if (!existing) {
+        existing = {
+          key,
+          subjectName,
+          chapterId: item.chapter_id,
+          chapterNo,
+          chapterTitle,
+          formulas: [],
+        };
+        groupMap.set(key, existing);
+        groups.push(existing);
+      }
+      existing.formulas.push(item);
+    }
+
+    return groups;
+  }, [filteredSearchFormulas, chapters, categories]);
+
+  const handleSelectSubject = useCallback(
+    (subjectId: string) => {
       setShowSavedOnly(false);
-      setSelectedCategoryId(categoryId);
-      const firstCh = chapters
-        .filter((c) => c.category_id === categoryId)
-        .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no)[0];
+      setSelectedCategoryId(subjectId);
+
+      // Scroll selected mobile subject pill smoothly into view
+      const pillBtn = mobilePillRefs.current[subjectId];
+      if (pillBtn) {
+        pillBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+
+      const targetChapters =
+        subjectId === 'all'
+          ? chapters
+          : chapters.filter((c) => c.category_id === subjectId);
+      const firstCh = [...targetChapters].sort(
+        (a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no
+      )[0];
       setOpenChapterId(firstCh ? firstCh.id : null);
     },
     [chapters]
   );
 
   const handleToggleChapter = useCallback((chapterId: string) => {
-    setOpenChapterId((prev) => (prev === chapterId ? null : chapterId));
+    setOpenChapterId((prev) => {
+      const next = prev === chapterId ? null : chapterId;
+      if (next) {
+        window.setTimeout(() => {
+          const el = chapterCardRefs.current[next];
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 80);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setDebouncedQuery('');
   }, []);
 
   const handleOpenEnlarged = useCallback(
@@ -282,7 +436,7 @@ export const FormulaVaultPage: React.FC = () => {
         formula,
         chapterTitle: meta?.chapterTitle || ch?.title || 'Chapter',
         chapterNo: meta?.chapterNo || ch?.chapter_no || 1,
-        categoryName: meta?.categoryName || cat?.name || 'Formula Vault',
+        categoryName: meta?.categoryName || cat?.name || 'Formula Library',
         pool: pool.length > 0 ? pool : [formula],
       });
       setCopiedType(null);
@@ -319,7 +473,7 @@ export const FormulaVaultPage: React.FC = () => {
     if (!enlargedFormula) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setEnlargedFormula(null);
+        handleCloseEnlarged();
       } else if (e.key === 'ArrowLeft') {
         handlePrevNextFormula(-1);
       } else if (e.key === 'ArrowRight') {
@@ -328,13 +482,16 @@ export const FormulaVaultPage: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [enlargedFormula, handlePrevNextFormula]);
+  }, [enlargedFormula, handlePrevNextFormula, handleCloseEnlarged]);
 
   const handleCopyText = async (text: string, type: 'latex' | 'plain') => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedType(type);
-      showToast(type === 'latex' ? 'LaTeX copied to clipboard' : 'Plain text copied to clipboard', 'success');
+      showToast(
+        type === 'latex' ? 'LaTeX copied to clipboard' : 'Plain text copied to clipboard',
+        'success'
+      );
       window.setTimeout(() => setCopiedType(null), 1800);
     } catch {
       showToast('Unable to copy to clipboard', 'error');
@@ -351,7 +508,7 @@ export const FormulaVaultPage: React.FC = () => {
       const res = await toggleFormulaBookmark(formulaId);
       setBookmarkedIds(new Set(res.bookmarkedIds));
       showToast(
-        res.bookmarked ? 'Saved to your Formula Vault favourites' : 'Removed from favourites',
+        res.bookmarked ? 'Saved to your favourites' : 'Removed from favourites',
         'success'
       );
     } catch (err: any) {
@@ -359,8 +516,14 @@ export const FormulaVaultPage: React.FC = () => {
     }
   };
 
-  const handleDownloadChapterPdf = async (chapter: D1FormulaChapterRow, e: React.MouseEvent) => {
-    e.stopPropagation();
+  /**
+   * Generates and downloads the Formula Sheet PDF using the exact Grand Line PDF design.
+   * Preserves Premium gating, prevents double taps, and provides an inline retry option on failure.
+   */
+  const handleDownloadChapterPdf = async (chapter: D1FormulaChapterRow, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (downloadingPdfChapterId) return;
+
     if (!isSignedIn) {
       showToast('Sign in and upgrade to Boardly Pro to download chapter PDFs.', 'info');
       return;
@@ -370,23 +533,49 @@ export const FormulaVaultPage: React.FC = () => {
       navigate('/pro');
       return;
     }
+
+    setDownloadingPdfChapterId(chapter.id);
+    setPdfErrorByChapterId((prev) => {
+      const next = { ...prev };
+      delete next[chapter.id];
+      return next;
+    });
+
     try {
-      setDownloadingPdfChapterId(chapter.id);
-      const { downloadUrl } = await requestChapterPdfSignedUrl(chapter.id);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = `Boardly_Chapter_${chapter.chapter_no}_${chapter.slug}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showToast(`Downloading "${chapter.title}" formula sheet PDF`, 'success');
-    } catch (err: any) {
-      if (err?.requiresPro) {
-        showToast('Upgrade to Boardly Pro to download chapter PDFs.', 'info');
-        navigate('/pro');
-      } else {
-        showToast(err?.message || 'Failed to download PDF', 'error');
+      let formulasToExport =
+        openChapterId === chapter.id && openChapterFormulas.length > 0
+          ? openChapterFormulas
+          : [];
+
+      if (formulasToExport.length === 0) {
+        const res = await fetchChapterFormulas(chapter.id);
+        formulasToExport = res.formulas;
       }
+
+      if (!formulasToExport || formulasToExport.length === 0) {
+        throw new Error('No formulas found in this chapter to generate a PDF.');
+      }
+
+      const subjectObj = categories.find((c) => c.id === chapter.category_id);
+      const subjectLabel = subjectObj?.name || activeCategory?.name || 'Formula Library';
+      const studentDisplay =
+        user?.displayName || user?.email?.split('@')[0] || 'Boardly Pro Student';
+
+      await exportFormulaSheetToPdf({
+        chapter,
+        subjectName: subjectLabel,
+        formulas: formulasToExport,
+        studentName: studentDisplay,
+      });
+
+      showToast(`Downloaded "${chapter.chapter_no} ${chapter.title}" PDF`, 'success');
+    } catch (err: any) {
+      const msg = err?.message || 'Could not generate PDF. Please try again.';
+      setPdfErrorByChapterId((prev) => ({
+        ...prev,
+        [chapter.id]: msg,
+      }));
+      showToast(msg, 'error');
     } finally {
       setDownloadingPdfChapterId(null);
     }
@@ -412,14 +601,104 @@ export const FormulaVaultPage: React.FC = () => {
     }
   };
 
+  /**
+   * Reusable Formula Card component matching the Apple x Nothing design language:
+   * - Round numbered badge (dot-matrix number in red)
+   * - Title wrapping up to 2 lines (never cut off to 1 line)
+   * - 44px bookmark button (stops propagation)
+   * - Centered formula box with internal horizontal scroll (never clipped)
+   * - Note
+   */
+  const renderFormulaCard = (
+    formula: EnrichedFormulaItem,
+    pool: D1FormulaItemRow[],
+    meta: { chapterTitle: string; chapterNo: number; categoryName: string },
+    options?: { showSubjectChapterLabel?: boolean; highlightQuery?: string }
+  ) => {
+    const isSaved = bookmarkedIds.has(formula.id);
+    const hlQuery = options?.highlightQuery || '';
+
+    return (
+      <div
+        key={formula.id}
+        onClick={() => handleOpenEnlarged(formula, pool, meta)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleOpenEnlarged(formula, pool, meta);
+          }
+        }}
+        className="group relative flex flex-col justify-between rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-4 transition-all duration-150 hover:border-[var(--accent)] active:scale-[0.98] cursor-pointer"
+      >
+        <div>
+          {options?.showSubjectChapterLabel && (
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-0.5">
+                {meta.categoryName} · {meta.chapterNo} {meta.chapterTitle}
+              </span>
+            </div>
+          )}
+
+          {/* Top Row: Round Dot-Matrix Number Badge + 2-Line Wrapping Title + 44px Bookmark Button */}
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 min-w-0 pt-1">
+              <span className="inline-flex h-8 min-w-[32px] shrink-0 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 font-[var(--font-dot)] text-xs font-bold text-[var(--accent)]">
+                #{formula.formula_no}
+              </span>
+              <h4 className="text-sm font-semibold leading-snug text-[var(--text)] line-clamp-2 break-words">
+                {hlQuery ? (
+                  <HighlightMatch
+                    text={formula.title || `Formula #${formula.formula_no}`}
+                    query={hlQuery}
+                  />
+                ) : (
+                  formula.title || `Formula #${formula.formula_no}`
+                )}
+              </h4>
+            </div>
+
+            <button
+              type="button"
+              onClick={(e) => handleBookmarkClick(formula.id, e)}
+              aria-label={isSaved ? 'Remove bookmark' : 'Bookmark formula'}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all duration-150 active:scale-[0.95] ${
+                isSaved
+                  ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text)]'
+              }`}
+            >
+              <Bookmark className="h-4 w-4" fill={isSaved ? 'currentColor' : 'none'} />
+            </button>
+          </div>
+
+          {/* Centered Horizontally-Scrollable Formula Container (never clipped) */}
+          <div className="formula-math-scroll my-3 flex min-h-[64px] items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-center text-sm sm:text-base text-[var(--text)]">
+            <div className="mx-auto max-w-full">
+              <MathText text={`$$${formula.formula_latex}$$`} />
+            </div>
+          </div>
+        </div>
+
+        {/* Formula Note */}
+        {formula.note && (
+          <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)] line-clamp-2">
+            {hlQuery ? <HighlightMatch text={formula.note} query={hlQuery} /> : formula.note}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-28">
-      {/* Sticky Header with Back Button, Title, Search Bar, and Mobile Category Chips */}
-      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 pt-3.5 pb-3">
-          {/* Top Row: Back button + Title + Saved button */}
+    <div className="formula-library-page min-h-screen text-[var(--text)] pb-36">
+      {/* Main Responsive Container: up to 880px on tablet, up to 1200px on laptop/PC */}
+      <div className="mx-auto w-full max-w-[880px] lg:max-w-[1200px] px-4 pt-4 sm:px-6">
+        {/* Top Header Card */}
+        <header className="mb-4 rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-3.5 min-w-0">
               <button
                 type="button"
                 onClick={() => {
@@ -427,26 +706,27 @@ export const FormulaVaultPage: React.FC = () => {
                   else navigate('/dashboard');
                 }}
                 aria-label="Go back"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] transition-transform active:scale-95 hover:border-[var(--accent)]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] transition-transform duration-150 active:scale-[0.98] hover:border-[var(--accent)]"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
+
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <h1 className="font-display text-xl sm:text-2xl font-black tracking-tight text-[var(--text)] truncate">
-                    Formula Vault
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="font-[var(--font-dot)] text-[clamp(1.25rem,3.4vw,1.75rem)] font-bold leading-tight tracking-tight text-[var(--text)]">
+                    Formula Library
                   </h1>
-                  <span className="rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-[var(--accent)]">
-                    Sheet Library
+                  <span className="inline-flex items-center rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-0.5 font-[var(--font-dot)] text-[10px] font-bold uppercase tracking-widest text-[var(--accent)]">
+                    SHEET LIBRARY
                   </span>
                 </div>
-                <p className="text-xs text-[var(--muted)] truncate">
-                  Complete numbered formula sheets by category &amp; chapter
+                <p className="mt-0.5 text-xs sm:text-sm text-[var(--text-secondary)]">
+                  Complete numbered formula sheets
                 </p>
               </div>
             </div>
 
-            {/* Saved Favourites toggle pill */}
+            {/* Saved Button on Mobile & Tablet (on Laptop/PC it lives in the left sidebar) */}
             <button
               type="button"
               onClick={() => {
@@ -456,99 +736,126 @@ export const FormulaVaultPage: React.FC = () => {
                 }
                 setShowSavedOnly((prev) => !prev);
               }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-xs font-bold transition-colors ${
+              className={`lg:hidden flex min-h-[44px] shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.98] ${
                 showSavedOnly
-                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]'
+                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
                   : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
               }`}
             >
-              <Bookmark className="h-3.5 w-3.5" />
+              <Bookmark className="h-4 w-4" fill={showSavedOnly ? 'currentColor' : 'none'} />
               <span>Saved</span>
               {bookmarkedIds.size > 0 && (
-                <span className="ml-0.5 rounded-full bg-[var(--surface)]/20 px-1.5 py-0.2 font-display text-[11px]">
+                <span
+                  className={`rounded-full px-1.5 py-0.5 font-[var(--font-dot)] text-[11px] ${
+                    showSavedOnly
+                      ? 'bg-[var(--surface)]/20 text-[var(--text-on-accent)]'
+                      : 'bg-[var(--surface)] text-[var(--text)]'
+                  }`}
+                >
                   {bookmarkedIds.size}
                 </span>
               )}
             </button>
           </div>
 
-          {/* Search Bar */}
-          <div className="mt-3 relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search formulas, chapters, or subtopics (e.g. Percentages, Ohm's Law, Master Theorem)..."
-              className="w-full rounded-full border border-[var(--border)] bg-[var(--surface-2)] py-2.5 pl-10 pr-10 text-sm text-[var(--text)] placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+          {/* Mobile & Tablet Search Pill + Horizontal Subject Pill Row (< 1024px) */}
+          <div className="mt-4 space-y-3 lg:hidden">
+            <div className="formula-search-pill">
+              <Search className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+              <input
+                ref={mobileSearchInputRef}
+                type="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search formulas, chapters or subjects"
+                aria-label="Search formulas, chapters or subjects"
+                className="formula-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleClearSearch();
+                    mobileSearchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text)]"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
 
-          {/* Mobile Category Chips (Horizontal Scroll) */}
-          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:hidden">
-            {loadingOverview
-              ? Array.from({ length: 5 }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="h-8 w-32 shrink-0 animate-pulse rounded-full bg-[var(--surface-2)]"
-                  />
-                ))
-              : categories.map((cat) => {
-                  const isActive = !showSavedOnly && activeCategory?.id === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => handleSelectCategory(cat.id)}
-                      className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                        isActive
-                          ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
-                          : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
-                      }`}
-                    >
-                      <span>{cat.name}</span>
-                      <span className="ml-1.5 font-mono opacity-80">· {cat.chapter_count}</span>
-                    </button>
-                  );
-                })}
+            {/* Horizontal Subject Pills Row (Subjects only, showing formula count) */}
+            <div className="formula-subject-pills-row" role="tablist" aria-label="Subjects">
+              {loadingOverview
+                ? Array.from({ length: 6 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="h-11 w-32 shrink-0 animate-pulse rounded-full border border-[var(--border)] bg-[var(--surface-2)]"
+                    />
+                  ))
+                : subjectPills.map((sub) => {
+                    const isSelected = !showSavedOnly && selectedCategoryId === sub.id;
+                    return (
+                      <button
+                        key={sub.id}
+                        ref={(el) => {
+                          mobilePillRefs.current[sub.id] = el;
+                        }}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => handleSelectSubject(sub.id)}
+                        className={`snap-start min-h-[44px] shrink-0 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.98] ${
+                          isSelected
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
+                            : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
+                        }`}
+                      >
+                        <span className="whitespace-nowrap">{sub.name}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-[var(--font-dot)] text-[11px] ${
+                            isSelected
+                              ? 'bg-[var(--surface)]/20 text-[var(--text-on-accent)]'
+                              : 'bg-[var(--surface)] text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          {sub.formula_count}
+                        </span>
+                      </button>
+                    );
+                  })}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Main Content Container */}
-      <div className="mx-auto max-w-7xl px-4 pt-4">
-        {/* Toast feedback banner */}
+        {/* Toast Feedback Banner */}
         {toastBanner && (
           <div
             role="status"
-            className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-[var(--accent)]/40 bg-[var(--surface)] px-4 py-2.5 text-xs font-semibold text-[var(--text)] shadow-sm"
+            className="mb-4 flex items-center justify-between gap-3 rounded-[20px] border border-[var(--accent)] bg-[var(--surface)] px-4 py-3 text-xs font-semibold text-[var(--text)]"
           >
             <span>{toastBanner.message}</span>
             <button
               type="button"
               onClick={() => setToastBanner(null)}
               aria-label="Dismiss notification"
-              className="rounded-full p-1 text-[var(--muted)] hover:text-[var(--text)]"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--text-secondary)] hover:text-[var(--text)]"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         )}
 
         {/* Guest Mode Banner */}
         {!isSignedIn && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 text-xs text-[var(--muted)]">
-            <div className="flex items-center gap-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2.5">
               <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
               <span className="font-medium text-[var(--text)]">
                 Guest mode: sign in to save favourites.
@@ -556,109 +863,123 @@ export const FormulaVaultPage: React.FC = () => {
             </div>
             <Link
               to="/login"
-              className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] transition-colors"
+              className="inline-flex min-h-[36px] items-center rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--text-on-accent)] transition-colors"
             >
               Sign in
             </Link>
           </div>
         )}
 
-        {/* Formula of the Day Card (Compact Extra at Top) */}
-        {formulaOfTheDay && !debouncedQuery && !showSavedOnly && (
-          <div
-            onClick={() =>
-              handleOpenEnlarged(formulaOfTheDay, [formulaOfTheDay], {
-                chapterTitle: formulaOfTheDay.chapter_title,
-                chapterNo: formulaOfTheDay.chapter_no,
-                categoryName: formulaOfTheDay.category_name,
-              })
-            }
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleOpenEnlarged(formulaOfTheDay, [formulaOfTheDay], {
-                  chapterTitle: formulaOfTheDay.chapter_title,
-                  chapterNo: formulaOfTheDay.chapter_no,
-                  categoryName: formulaOfTheDay.category_name,
-                });
-              }
-            }}
-            className="mb-5 cursor-pointer rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--accent)]"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-soft)] px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                  <Sparkles className="h-3 w-3" />
-                  Formula of the Day
-                </span>
-                <span className="font-mono text-xs text-[var(--muted)]">
-                  {formulaOfTheDay.category_name} ·{' '}
-                  {String(formulaOfTheDay.chapter_no).padStart(2, '0')}{' '}
-                  {formulaOfTheDay.chapter_title}
-                </span>
-              </div>
-              <span className="font-mono text-[11px] text-[var(--muted)] flex items-center gap-1">
-                <Maximize2 className="h-3 w-3" />
-                Tap to enlarge
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
-              <div className="overflow-x-auto text-sm sm:text-base font-medium text-[var(--text)]">
-                <MathText text={`$$${formulaOfTheDay.formula_latex}$$`} />
-              </div>
-              {formulaOfTheDay.note && (
-                <p className="text-xs text-[var(--muted)] sm:max-w-xs sm:text-right">
-                  {formulaOfTheDay.note}
-                </p>
+        {/* Two-Column Layout on Laptop/PC (280px sticky sidebar + main content) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
+          {/* Sticky Left Sidebar on Laptop/PC (>= 1024px) */}
+          <aside className="hidden lg:flex lg:flex-col lg:gap-3.5 sticky top-6 rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4">
+            {/* Desktop Search Pill */}
+            <div className="formula-search-pill">
+              <Search className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
+              <input
+                ref={desktopSearchInputRef}
+                type="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search formulas, chapters or subjects"
+                aria-label="Search formulas, chapters or subjects"
+                className="formula-search-input"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleClearSearch();
+                    desktopSearchInputRef.current?.focus();
+                  }}
+                  aria-label="Clear search"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--text)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
             </div>
-          </div>
-        )}
 
-        {/* Desktop Sidebar + Main Column */}
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
-          {/* Desktop Category Sidebar */}
-          <aside className="hidden lg:block sticky top-36 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-3">
-            <div className="px-3 py-2 flex items-center justify-between">
-              <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-[var(--muted)]">
-                Categories
+            {/* Desktop Saved Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!isSignedIn) {
+                  showToast('Sign in to save and view favourite formulas.', 'info');
+                  return;
+                }
+                setShowSavedOnly((prev) => !prev);
+              }}
+              className={`flex min-h-[44px] w-full items-center justify-between gap-2 rounded-full border px-4 py-2.5 text-xs font-semibold transition-all duration-150 active:scale-[0.98] ${
+                showSavedOnly
+                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
+                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Bookmark className="h-4 w-4" fill={showSavedOnly ? 'currentColor' : 'none'} />
+                <span>Saved</span>
               </span>
-              <span className="font-mono text-[11px] text-[var(--muted)]">
+              <span
+                className={`rounded-full px-2 py-0.5 font-[var(--font-dot)] text-xs ${
+                  showSavedOnly
+                    ? 'bg-[var(--surface)]/20 text-[var(--text-on-accent)]'
+                    : 'bg-[var(--surface)] text-[var(--text-secondary)]'
+                }`}
+              >
+                {bookmarkedIds.size}
+              </span>
+            </button>
+
+            <div className="h-px w-full bg-[var(--border)]" />
+
+            {/* Vertical List of Subjects with Formula Counts */}
+            <div className="px-1 flex items-center justify-between">
+              <span className="font-[var(--font-dot)] text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+                Subjects
+              </span>
+              <span className="font-[var(--font-dot)] text-[11px] text-[var(--text-secondary)]">
                 {categories.length}
               </span>
             </div>
-            <div className="space-y-1">
+
+            <div className="space-y-1.5" role="tablist" aria-label="Subjects">
               {loadingOverview
                 ? Array.from({ length: 8 }).map((_, idx) => (
                     <div
                       key={idx}
-                      className="h-10 w-full animate-pulse rounded-2xl bg-[var(--surface-2)]"
+                      className="h-11 w-full animate-pulse rounded-2xl bg-[var(--surface-2)]"
                     />
                   ))
-                : categories.map((cat) => {
-                    const isActive = !showSavedOnly && activeCategory?.id === cat.id;
+                : subjectPills.map((sub) => {
+                    const isSelected = !showSavedOnly && selectedCategoryId === sub.id;
                     return (
                       <button
-                        key={cat.id}
+                        key={sub.id}
                         type="button"
-                        onClick={() => handleSelectCategory(cat.id)}
-                        className={`w-full flex items-center justify-between gap-2 rounded-2xl px-3.5 py-2.5 text-left text-sm transition-colors ${
-                          isActive
-                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
-                            : 'text-[var(--text)] hover:bg-[var(--surface-2)]'
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => handleSelectSubject(sub.id)}
+                        className={`flex min-h-[44px] w-full items-center justify-between gap-2.5 rounded-2xl border px-3.5 py-2.5 text-left text-xs font-semibold transition-all duration-150 active:scale-[0.98] ${
+                          isSelected
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
+                            : 'border-transparent bg-transparent text-[var(--text)] hover:border-[var(--border)] hover:bg-[var(--surface-2)]'
                         }`}
                       >
-                        <span className="truncate">{cat.name}</span>
+                        <span className="leading-snug break-words">{sub.name}</span>
                         <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 font-mono text-xs ${
-                            isActive
-                              ? 'bg-[var(--surface)]/20 text-[var(--accent-contrast)]'
-                              : 'bg-[var(--surface-2)] text-[var(--muted)]'
+                          className={`shrink-0 rounded-full px-2.5 py-0.5 font-[var(--font-dot)] text-xs ${
+                            isSelected
+                              ? 'bg-[var(--surface)]/20 text-[var(--text-on-accent)]'
+                              : 'bg-[var(--surface-2)] text-[var(--text-secondary)]'
                           }`}
                         >
-                          {cat.chapter_count}
+                          {sub.formula_count}
                         </span>
                       </button>
                     );
@@ -667,298 +988,287 @@ export const FormulaVaultPage: React.FC = () => {
           </aside>
 
           {/* Main Content Area */}
-          <main className="min-w-0">
-            {/* Case 1: Active Search Results */}
-            {debouncedQuery ? (
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-display text-lg font-bold text-[var(--text)]">
-                    Search results for &ldquo;{debouncedQuery}&rdquo;
-                  </h2>
-                  <span className="font-mono text-xs text-[var(--muted)]">
-                    {searchMatchedFormulas.length} formulas · {searchMatchedChapters.length} chapters
+          <main className="min-w-0 space-y-4">
+            {/* Formula of the Day Card (shown when not searching and not in Saved-only view) */}
+            {formulaOfTheDay && !debouncedQuery && !showSavedOnly && (
+              <div
+                onClick={() =>
+                  handleOpenEnlarged(formulaOfTheDay, [formulaOfTheDay], {
+                    chapterTitle: formulaOfTheDay.chapter_title,
+                    chapterNo: formulaOfTheDay.chapter_no,
+                    categoryName: formulaOfTheDay.category_name,
+                  })
+                }
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleOpenEnlarged(formulaOfTheDay, [formulaOfTheDay], {
+                      chapterTitle: formulaOfTheDay.chapter_title,
+                      chapterNo: formulaOfTheDay.chapter_no,
+                      categoryName: formulaOfTheDay.category_name,
+                    });
+                  }
+                }}
+                className="cursor-pointer rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 transition-all duration-150 hover:border-[var(--accent)] active:scale-[0.99]"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-1 font-[var(--font-dot)] text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+                      <Sparkles className="h-3 w-3" />
+                      Formula of the Day
+                    </span>
+                    <span className="text-xs font-medium text-[var(--text-secondary)]">
+                      {formulaOfTheDay.category_name} ·{' '}
+                      {String(formulaOfTheDay.chapter_no).padStart(2, '0')}{' '}
+                      {formulaOfTheDay.chapter_title}
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)]">
+                    <Maximize2 className="h-3.5 w-3.5 text-[var(--accent)]" />
+                    Tap to enlarge
                   </span>
                 </div>
 
+                {formulaOfTheDay.title && (
+                  <p className="mb-2 text-sm font-semibold text-[var(--text)]">
+                    {formulaOfTheDay.title}
+                  </p>
+                )}
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3.5">
+                  <div className="formula-math-scroll text-sm sm:text-base font-medium text-[var(--text)]">
+                    <MathText text={`$$${formulaOfTheDay.formula_latex}$$`} />
+                  </div>
+                  {formulaOfTheDay.note && (
+                    <p className="text-xs leading-relaxed text-[var(--text-secondary)] sm:max-w-xs sm:text-right">
+                      {formulaOfTheDay.note}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Case 1: Active Search Across All Subjects (combined with Saved filter when active) */}
+            {debouncedQuery ? (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[22px] border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5">
+                  <div className="min-w-0">
+                    <h2 className="font-[var(--font-dot)] text-base sm:text-lg font-bold text-[var(--text)]">
+                      Search results for &ldquo;{debouncedQuery}&rdquo;
+                    </h2>
+                    {showSavedOnly && (
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Filtered to your saved formulas
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 font-[var(--font-dot)] text-xs font-bold text-[var(--accent)]">
+                      {filteredSearchFormulas.length} formula
+                      {filteredSearchFormulas.length === 1 ? '' : 's'} found
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="min-h-[38px] rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-transform active:scale-[0.98]"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                </div>
+
                 {searching ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
                     {Array.from({ length: 6 }).map((_, idx) => (
                       <div
                         key={idx}
-                        className="h-28 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)]"
+                        className="min-h-[168px] animate-pulse rounded-[24px] border border-[var(--border)] bg-[var(--surface)]"
                       />
                     ))}
                   </div>
-                ) : searchMatchedChapters.length === 0 && searchMatchedFormulas.length === 0 ? (
-                  <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
-                    <BookOpen className="mx-auto h-8 w-8 text-[var(--muted)] mb-2" />
-                    <p className="font-semibold text-[var(--text)]">No matching formulas found</p>
-                    <p className="text-xs text-[var(--muted)] mt-1">
-                      Try searching for another keyword like &ldquo;Percentages&rdquo;, &ldquo;Logarithm&rdquo;, or &ldquo;Kinematics&rdquo;.
+                ) : groupedSearchResults.length === 0 ? (
+                  <div className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
+                    <BookOpen className="mx-auto h-9 w-9 text-[var(--text-secondary)] mb-2.5" />
+                    <p className="font-[var(--font-dot)] text-base font-bold text-[var(--text)]">
+                      No formulas match
                     </p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-md mx-auto">
+                      No formulas matched &ldquo;{debouncedQuery}&rdquo;
+                      {showSavedOnly ? ' in your saved formulas' : ' across any subject'}.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-full border border-[var(--accent)] bg-[var(--accent)] px-5 py-2 text-xs font-semibold text-[var(--text-on-accent)] transition-transform duration-150 active:scale-[0.98]"
+                    >
+                      Clear search
+                    </button>
                   </div>
                 ) : (
-                  <>
-                    {searchMatchedChapters.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
-                          Matching Chapters
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {searchMatchedChapters.map((ch) => (
-                            <button
-                              key={ch.id}
-                              type="button"
-                              onClick={() => {
-                                setSearchQuery('');
-                                setDebouncedQuery('');
-                                setSelectedCategoryId(ch.category_id);
-                                setOpenChapterId(ch.id);
-                              }}
-                              className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5 text-left hover:border-[var(--accent)] transition-colors"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-display text-sm font-black text-[var(--accent)]">
-                                    {String(ch.chapter_no).padStart(2, '0')}
-                                  </span>
-                                  <span className="font-semibold text-sm text-[var(--text)] truncate">
-                                    <HighlightMatch text={ch.title} query={debouncedQuery} />
-                                  </span>
-                                </div>
-                                <p className="mt-0.5 text-xs text-[var(--muted)] truncate">
-                                  <HighlightMatch text={ch.subtopics} query={debouncedQuery} />
-                                </p>
-                              </div>
-                              <span className="shrink-0 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 font-mono text-[11px] text-[var(--muted)]">
-                                {formatFormulaCountBadge(ch.formula_count)}
-                              </span>
-                            </button>
-                          ))}
+                  <div className="space-y-5">
+                    {groupedSearchResults.map((group) => (
+                      <section
+                        key={group.key}
+                        className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 space-y-3.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] pb-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-1 font-[var(--font-dot)] text-xs font-bold text-[var(--accent)]">
+                              <HighlightMatch text={group.subjectName} query={debouncedQuery} />
+                            </span>
+                            <span className="font-[var(--font-dot)] text-sm sm:text-base font-bold text-[var(--text)]">
+                              {group.chapterNo}{' '}
+                              <HighlightMatch text={group.chapterTitle} query={debouncedQuery} />
+                            </span>
+                          </div>
+                          <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 font-[var(--font-dot)] text-xs text-[var(--text-secondary)]">
+                            {group.formulas.length} formula
+                            {group.formulas.length === 1 ? '' : 's'}
+                          </span>
                         </div>
-                      </div>
-                    )}
 
-                    {searchMatchedFormulas.length > 0 && (
-                      <div className="space-y-2">
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
-                          Matching Formulas
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {searchMatchedFormulas.map((item) => {
-                            const isSaved = bookmarkedIds.has(item.id);
-                            return (
-                              <div
-                                key={item.id}
-                                onClick={() =>
-                                  handleOpenEnlarged(item, searchMatchedFormulas, {
-                                    chapterTitle: item.chapter_title,
-                                    chapterNo: item.chapter_no,
-                                    categoryName: item.category_name,
-                                  })
-                                }
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    handleOpenEnlarged(item, searchMatchedFormulas, {
-                                      chapterTitle: item.chapter_title,
-                                      chapterNo: item.chapter_no,
-                                      categoryName: item.category_name,
-                                    });
-                                  }
-                                }}
-                                className="group relative flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-colors hover:border-[var(--accent)] cursor-pointer"
-                              >
-                                <div className="flex items-center justify-between gap-2 mb-2">
-                                  <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-[var(--accent)]">
-                                    <span className="rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 font-display">
-                                      #{item.formula_no}
-                                    </span>
-                                    <span className="text-[var(--muted)] truncate">
-                                      {item.chapter_title}
-                                    </span>
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleBookmarkClick(item.id, e)}
-                                    aria-label="Bookmark formula"
-                                    className={`rounded-full p-1 transition-colors ${
-                                      isSaved
-                                        ? 'text-[var(--accent)]'
-                                        : 'text-[var(--muted)] hover:text-[var(--text)]'
-                                    }`}
-                                  >
-                                    <Bookmark
-                                      className="h-3.5 w-3.5"
-                                      fill={isSaved ? 'currentColor' : 'none'}
-                                    />
-                                  </button>
-                                </div>
-                                <div className="my-1 overflow-x-auto py-1 text-sm text-[var(--text)]">
-                                  <MathText text={`$$${item.formula_latex}$$`} />
-                                </div>
-                                {item.note && (
-                                  <p className="mt-2 text-xs text-[var(--muted)] line-clamp-2">
-                                    <HighlightMatch text={item.note} query={debouncedQuery} />
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                          {group.formulas.map((item) =>
+                            renderFormulaCard(
+                              item,
+                              filteredSearchFormulas,
+                              {
+                                chapterTitle: group.chapterTitle,
+                                chapterNo: group.chapterNo,
+                                categoryName: group.subjectName,
+                              },
+                              {
+                                showSubjectChapterLabel: true,
+                                highlightQuery: debouncedQuery,
+                              }
+                            )
+                          )}
                         </div>
-                      </div>
-                    )}
-                  </>
+                      </section>
+                    ))}
+                  </div>
                 )}
               </div>
             ) : showSavedOnly ? (
               /* Case 2: Saved Favourites View */
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-[24px] border border-[var(--border)] bg-[var(--surface)] px-4 py-3.5">
                   <div>
-                    <h2 className="font-display text-lg font-bold text-[var(--text)]">
-                      Saved Favourites
+                    <h2 className="font-[var(--font-dot)] text-base sm:text-lg font-bold text-[var(--text)]">
+                      Saved Formulas
                     </h2>
-                    <p className="text-xs text-[var(--muted)]">
-                      Your bookmarked formulas across all categories
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Your bookmarked formulas across all subjects
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowSavedOnly(false)}
-                    className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 font-mono text-xs text-[var(--text)] hover:border-[var(--accent)]"
+                    className="min-h-[44px] rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98]"
                   >
-                    Back to chapters
+                    Back to sheets
                   </button>
                 </div>
 
                 {loadingSaved ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
                     {Array.from({ length: 6 }).map((_, idx) => (
                       <div
                         key={idx}
-                        className="h-28 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)]"
+                        className="min-h-[168px] animate-pulse rounded-[24px] border border-[var(--border)] bg-[var(--surface)]"
                       />
                     ))}
                   </div>
                 ) : savedFormulasList.length === 0 ? (
-                  <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
-                    <Bookmark className="mx-auto h-8 w-8 text-[var(--muted)] mb-2" />
-                    <p className="font-semibold text-[var(--text)]">No saved formulas yet</p>
-                    <p className="text-xs text-[var(--muted)] mt-1">
-                      Tap any formula and press Bookmark to keep it here for quick revision.
+                  <div className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
+                    <Bookmark className="mx-auto h-9 w-9 text-[var(--text-secondary)] mb-2.5" />
+                    <p className="font-[var(--font-dot)] text-base font-bold text-[var(--text)]">
+                      No saved formulas yet
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      Tap the bookmark icon on any formula card to save it here for fast revision.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {savedFormulasList.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() =>
-                          handleOpenEnlarged(item, savedFormulasList, {
-                            chapterTitle: item.chapter_title,
-                            chapterNo: item.chapter_no,
-                            categoryName: item.category_name,
-                          })
-                        }
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handleOpenEnlarged(item, savedFormulasList, {
-                              chapterTitle: item.chapter_title,
-                              chapterNo: item.chapter_no,
-                              categoryName: item.category_name,
-                            });
-                          }
-                        }}
-                        className="group relative flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-colors hover:border-[var(--accent)] cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-[var(--accent)] truncate">
-                            <span className="rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 font-display">
-                              #{item.formula_no}
-                            </span>
-                            <span className="text-[var(--muted)] truncate">
-                              {item.category_name} · {item.chapter_title}
-                            </span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => handleBookmarkClick(item.id, e)}
-                            aria-label="Remove bookmark"
-                            className="rounded-full p-1 text-[var(--accent)]"
-                          >
-                            <Bookmark className="h-3.5 w-3.5" fill="currentColor" />
-                          </button>
-                        </div>
-                        <div className="my-1 overflow-x-auto py-1 text-sm text-[var(--text)]">
-                          <MathText text={`$$${item.formula_latex}$$`} />
-                        </div>
-                        {item.note && (
-                          <p className="mt-2 text-xs text-[var(--muted)] line-clamp-2">
-                            {item.note}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                    {savedFormulasList.map((item) =>
+                      renderFormulaCard(
+                        item,
+                        savedFormulasList,
+                        {
+                          chapterTitle: item.chapter_title || 'Chapter',
+                          chapterNo: item.chapter_no || 1,
+                          categoryName: item.category_name || 'Formula Sheet',
+                        },
+                        { showSubjectChapterLabel: true }
+                      )
+                    )}
                   </div>
                 )}
               </div>
             ) : (
-              /* Case 3: Standard Category > Collapsible Chapter Rows > Formulas Grid */
-              <div className="space-y-3">
-                {/* Category Header Bar */}
-                {activeCategory && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-1">
-                    <div>
-                      <h2 className="font-display text-lg sm:text-xl font-black text-[var(--text)]">
-                        {activeCategory.name}
-                      </h2>
-                      {activeCategory.description && (
-                        <p className="text-xs text-[var(--muted)]">{activeCategory.description}</p>
-                      )}
-                    </div>
-                    <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3 py-1 font-mono text-xs text-[var(--muted)]">
-                      {visibleChapters.length} chapter{visibleChapters.length === 1 ? '' : 's'} ·{' '}
-                      {activeCategory.formula_count} formulas
-                    </span>
+              /* Case 3: Standard Subject > Collapsible Chapter Cards > Numbered Formula Cards */
+              <div className="space-y-3.5">
+                {/* Active Subject Heading Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <div>
+                    <h2 className="font-[var(--font-dot)] text-lg sm:text-xl font-bold text-[var(--text)]">
+                      {selectedCategoryId === 'all'
+                        ? 'All Subjects'
+                        : activeCategory?.name || 'Subject'}
+                    </h2>
+                    {selectedCategoryId !== 'all' && activeCategory?.description && (
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        {activeCategory.description}
+                      </p>
+                    )}
                   </div>
-                )}
+                  <span className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-3.5 py-1.5 font-[var(--font-dot)] text-xs text-[var(--text-secondary)]">
+                    {visibleChapters.length} chapter{visibleChapters.length === 1 ? '' : 's'} ·{' '}
+                    {selectedCategoryId === 'all'
+                      ? totalFormulasAllSubjects
+                      : activeCategory?.formula_count || 0}{' '}
+                    formulas
+                  </span>
+                </div>
 
                 {loadingOverview ? (
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
                     {Array.from({ length: 4 }).map((_, idx) => (
                       <div
                         key={idx}
-                        className="h-20 animate-pulse rounded-3xl border border-[var(--border)] bg-[var(--surface)]"
+                        className="min-h-[84px] animate-pulse rounded-[26px] border border-[var(--border)] bg-[var(--surface)]"
                       />
                     ))}
                   </div>
                 ) : visibleChapters.length === 0 ? (
-                  <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
-                    <p className="font-semibold text-[var(--text)]">
-                      No chapters in this category yet
+                  <div className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
+                    <p className="font-[var(--font-dot)] text-base font-bold text-[var(--text)]">
+                      No chapters in this subject yet
                     </p>
-                    <p className="text-xs text-[var(--muted)] mt-1">
-                      Select another category or add chapters in the Admin Formula Bank.
+                    <p className="text-xs text-[var(--text-secondary)] mt-1">
+                      Select another subject to view its formula sheets.
                     </p>
                   </div>
                 ) : (
                   visibleChapters.map((chapter) => {
                     const isOpen = openChapterId === chapter.id;
                     const isLoadingThisChapter = loadingChapterId === chapter.id;
+                    const chapterSubject = categoryMap.get(chapter.category_id);
+                    const pdfError = pdfErrorByChapterId[chapter.id];
 
                     return (
                       <section
                         key={chapter.id}
-                        className={`rounded-3xl border transition-colors overflow-hidden ${
+                        ref={(el) => {
+                          chapterCardRefs.current[chapter.id] = el;
+                        }}
+                        className={`rounded-[26px] border transition-colors overflow-hidden ${
                           isOpen
-                            ? 'border-[var(--accent)] bg-[var(--surface)] shadow-sm'
-                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/50'
+                            ? 'border-[var(--accent)] bg-[var(--surface)]'
+                            : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/60'
                         }`}
                       >
                         {/* Collapsible Chapter Header Row */}
@@ -966,41 +1276,42 @@ export const FormulaVaultPage: React.FC = () => {
                           type="button"
                           onClick={() => handleToggleChapter(chapter.id)}
                           aria-expanded={isOpen}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-4 sm:px-5 text-left"
+                          className="w-full flex items-center justify-between gap-3 px-4 py-4 sm:px-5 text-left transition-transform duration-150 active:scale-[0.995]"
                         >
-                          <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                          <div className="flex items-center gap-3.5 min-w-0">
                             <div
-                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border font-display text-base font-black ${
+                              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border font-[var(--font-dot)] text-base font-bold transition-colors ${
                                 isOpen
-                                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]'
+                                  ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
                                   : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)]'
                               }`}
                             >
                               {String(chapter.chapter_no).padStart(2, '0')}
                             </div>
+
                             <div className="min-w-0">
+                              {selectedCategoryId === 'all' && chapterSubject && (
+                                <span className="mb-0.5 inline-block text-[11px] font-semibold text-[var(--accent)]">
+                                  {chapterSubject.name}
+                                </span>
+                              )}
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-display text-base sm:text-lg font-black text-[var(--text)]">
+                                <span className="font-[var(--font-dot)] text-base sm:text-lg font-bold text-[var(--text)] break-words">
                                   {chapter.chapter_no} {chapter.title}
                                 </span>
                               </div>
-                              {chapter.subtopics && (
-                                <p className="mt-0.5 text-xs text-[var(--muted)] line-clamp-1">
-                                  {chapter.subtopics}
-                                </p>
-                              )}
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2.5 shrink-0">
-                            <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 font-mono text-xs font-semibold text-[var(--muted)]">
+                            <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 font-[var(--font-dot)] text-xs font-bold text-[var(--text-secondary)]">
                               {formatFormulaCountBadge(chapter.formula_count)}
                             </span>
                             <span
-                              className={`flex h-8 w-8 items-center justify-center rounded-full border ${
+                              className={`flex h-9 w-9 items-center justify-center rounded-full border transition-colors ${
                                 isOpen
                                   ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-                                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]'
+                                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)]'
                               }`}
                             >
                               {isOpen ? (
@@ -1014,10 +1325,10 @@ export const FormulaVaultPage: React.FC = () => {
 
                         {/* Open Chapter Body (KaTeX rendered ONLY for the open chapter) */}
                         {isOpen && (
-                          <div className="border-t border-[var(--border)] bg-[var(--surface-2)]/40 px-4 py-4 sm:px-5">
+                          <div className="border-t border-[var(--border)] bg-[var(--surface-2)]/50 px-4 py-4 sm:px-5">
                             {/* Action Sub-bar: "Pick a formula to enlarge it" + "Download PDF (Premium)" */}
-                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-mono text-xs text-[var(--muted)] flex items-center gap-1.5">
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
+                              <span className="text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1.5">
                                 <Maximize2 className="h-3.5 w-3.5 text-[var(--accent)]" />
                                 Pick a formula to enlarge it
                               </span>
@@ -1026,12 +1337,12 @@ export const FormulaVaultPage: React.FC = () => {
                                 type="button"
                                 onClick={(e) => handleDownloadChapterPdf(chapter, e)}
                                 disabled={downloadingPdfChapterId === chapter.id}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3.5 py-1.5 font-mono text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] transition-colors disabled:opacity-60"
+                                className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--text-on-accent)] transition-all duration-150 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
                               >
                                 {isProOrAdmin ? (
-                                  <Download className="h-3.5 w-3.5" />
+                                  <Download className="h-4 w-4" />
                                 ) : (
-                                  <Lock className="h-3.5 w-3.5" />
+                                  <Lock className="h-4 w-4" />
                                 )}
                                 <span>
                                   {downloadingPdfChapterId === chapter.id
@@ -1041,88 +1352,51 @@ export const FormulaVaultPage: React.FC = () => {
                               </button>
                             </div>
 
-                            {/* Formulas Grid: 3 cols desktop, 2 cols tablet, 1 col mobile */}
+                            {/* Inline PDF Error State with Retry Button */}
+                            {pdfError && (
+                              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--accent)] bg-[var(--surface)] px-4 py-3 text-xs text-[var(--text)]">
+                                <div className="flex items-center gap-2">
+                                  <AlertCircle className="h-4 w-4 shrink-0 text-[var(--accent)]" />
+                                  <span>{pdfError}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDownloadChapterPdf(chapter, e)}
+                                  disabled={downloadingPdfChapterId === chapter.id}
+                                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-[var(--accent)] bg-[var(--accent)] px-3.5 py-1.5 text-xs font-semibold text-[var(--text-on-accent)] transition-transform active:scale-[0.98]"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  <span>Retry</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Formulas Grid: 1 col phone, 2 cols tablet, 2-3 cols laptop/PC */}
                             {isLoadingThisChapter ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
                                 {Array.from({ length: 6 }).map((_, idx) => (
                                   <div
                                     key={idx}
-                                    className="h-28 animate-pulse rounded-2xl border border-[var(--border)] bg-[var(--surface)]"
+                                    className="min-h-[168px] animate-pulse rounded-[24px] border border-[var(--border)] bg-[var(--surface)]"
                                   />
                                 ))}
                               </div>
                             ) : openChapterFormulas.length === 0 ? (
-                              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-center text-xs text-[var(--muted)]">
+                              <div className="rounded-[22px] border border-[var(--border)] bg-[var(--surface)] p-6 text-center text-xs text-[var(--text-secondary)]">
                                 No formulas published in this chapter yet.
                               </div>
                             ) : (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {openChapterFormulas.map((formula) => {
-                                  const isSaved = bookmarkedIds.has(formula.id);
-                                  return (
-                                    <div
-                                      key={formula.id}
-                                      onClick={() =>
-                                        handleOpenEnlarged(formula, openChapterFormulas, {
-                                          chapterTitle: chapter.title,
-                                          chapterNo: chapter.chapter_no,
-                                          categoryName: activeCategory?.name,
-                                        })
-                                      }
-                                      role="button"
-                                      tabIndex={0}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
-                                          handleOpenEnlarged(formula, openChapterFormulas, {
-                                            chapterTitle: chapter.title,
-                                            chapterNo: chapter.chapter_no,
-                                            categoryName: activeCategory?.name,
-                                          });
-                                        }
-                                      }}
-                                      className="group relative flex flex-col justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-colors hover:border-[var(--accent)] cursor-pointer"
-                                    >
-                                      <div className="flex items-center justify-between gap-2 mb-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className="inline-flex h-6 min-w-[26px] items-center justify-center rounded-full bg-[var(--surface-2)] px-2 font-display text-xs font-black text-[var(--accent)]">
-                                            {formula.formula_no}
-                                          </span>
-                                          {formula.title && (
-                                            <span className="text-xs font-semibold text-[var(--text)] truncate">
-                                              {formula.title}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => handleBookmarkClick(formula.id, e)}
-                                          aria-label="Bookmark formula"
-                                          className={`rounded-full p-1 transition-colors ${
-                                            isSaved
-                                              ? 'text-[var(--accent)]'
-                                              : 'text-[var(--muted)] opacity-70 group-hover:opacity-100 hover:text-[var(--text)]'
-                                          }`}
-                                        >
-                                          <Bookmark
-                                            className="h-3.5 w-3.5"
-                                            fill={isSaved ? 'currentColor' : 'none'}
-                                          />
-                                        </button>
-                                      </div>
-
-                                      <div className="my-1 overflow-x-auto py-1.5 text-sm text-[var(--text)]">
-                                        <MathText text={`$$${formula.formula_latex}$$`} />
-                                      </div>
-
-                                      {formula.note && (
-                                        <p className="mt-2 text-[11px] text-[var(--muted)] line-clamp-2">
-                                          {formula.note}
-                                        </p>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                                {openChapterFormulas.map((formula) =>
+                                  renderFormulaCard(formula, openChapterFormulas, {
+                                    chapterTitle: chapter.title,
+                                    chapterNo: chapter.chapter_no,
+                                    categoryName:
+                                      chapterSubject?.name ||
+                                      activeCategory?.name ||
+                                      'Formula Library',
+                                  })
+                                )}
                               </div>
                             )}
                           </div>
@@ -1137,203 +1411,210 @@ export const FormulaVaultPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Enlarged Formula Modal / Bottom Sheet */}
-      {enlargedFormula && (
-        <div
-          data-fullscreen-modal="true"
-          className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4"
-          onClick={() => setEnlargedFormula(null)}
-        >
+      {/* Enlarged Formula Modal / Bottom Sheet rendered via Top-Level Portal above Header & Bottom Nav */}
+      {enlargedFormula &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            data-fullscreen-modal="true"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Formula #${enlargedFormula.formula.formula_no}`}
+            className="formula-enlarge-portal formula-modal-backdrop fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={handleCloseEnlarged}
           >
-            {/* Modal Top Bar */}
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-0.5 font-display text-xs font-black text-[var(--accent)]">
-                    Formula #{enlargedFormula.formula.formula_no}
-                  </span>
-                  <span className="font-mono text-xs text-[var(--muted)]">
-                    {enlargedFormula.categoryName} ·{' '}
-                    {String(enlargedFormula.chapterNo).padStart(2, '0')}{' '}
-                    {enlargedFormula.chapterTitle}
-                  </span>
-                </div>
-                {enlargedFormula.formula.title && (
-                  <h3 className="mt-1 font-display text-lg font-black text-[var(--text)]">
-                    {enlargedFormula.formula.title}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full sm:max-w-[560px] lg:max-w-[640px] rounded-t-[28px] sm:rounded-[28px] border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] p-5 sm:p-6 max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Top Bar */}
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-1 font-[var(--font-dot)] text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
+                      FORMULA #{enlargedFormula.formula.formula_no}
+                    </span>
+                    <span className="text-xs font-medium text-[var(--text-secondary)]">
+                      {enlargedFormula.categoryName} ·{' '}
+                      {String(enlargedFormula.chapterNo).padStart(2, '0')}{' '}
+                      {enlargedFormula.chapterTitle}
+                    </span>
+                  </div>
+                  <h3 className="mt-2 text-lg sm:text-xl font-bold leading-snug text-[var(--text)] break-words">
+                    {enlargedFormula.formula.title ||
+                      `Formula #${enlargedFormula.formula.formula_no}`}
                   </h3>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setEnlargedFormula(null)}
-                aria-label="Close enlarged view"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Large KaTeX Formula Box */}
-            <div className="rounded-3xl border border-[var(--accent)]/40 bg-[var(--surface-2)] px-5 py-8 text-center overflow-x-auto">
-              <div className="text-lg sm:text-2xl font-semibold text-[var(--text)]">
-                <MathText text={`$$${enlargedFormula.formula.formula_latex}$$`} />
-              </div>
-            </div>
-
-            {/* Formula Note */}
-            {enlargedFormula.formula.note && (
-              <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)]/60 px-4 py-3">
-                <span className="block font-mono text-[10px] font-bold uppercase tracking-wider text-[var(--muted)] mb-1">
-                  Note &amp; Application
-                </span>
-                <p className="text-sm text-[var(--text)]">{enlargedFormula.formula.note}</p>
-              </div>
-            )}
-
-            {/* Action Pills: Copy LaTeX, Copy Plain Text, Bookmark, Report */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCopyText(enlargedFormula.formula.formula_latex, 'latex')}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2 font-mono text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)]"
-              >
-                {copiedType === 'latex' ? (
-                  <Check className="h-3.5 w-3.5 text-[var(--accent)]" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-                <span>{copiedType === 'latex' ? 'Copied LaTeX' : 'Copy LaTeX'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleCopyText(
-                    enlargedFormula.formula.plain_text ||
-                      enlargedFormula.formula.formula_plain ||
-                      enlargedFormula.formula.formula_latex,
-                    'plain'
-                  )
-                }
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2 font-mono text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)]"
-              >
-                {copiedType === 'plain' ? (
-                  <Check className="h-3.5 w-3.5 text-[var(--accent)]" />
-                ) : (
-                  <Copy className="h-3.5 w-3.5" />
-                )}
-                <span>{copiedType === 'plain' ? 'Copied Text' : 'Copy plain text'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleBookmarkClick(enlargedFormula.formula.id)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 font-mono text-xs font-semibold transition-colors ${
-                  bookmarkedIds.has(enlargedFormula.formula.id)
-                    ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)]'
-                    : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
-                }`}
-              >
-                <Bookmark
-                  className="h-3.5 w-3.5"
-                  fill={bookmarkedIds.has(enlargedFormula.formula.id) ? 'currentColor' : 'none'}
-                />
-                <span>
-                  {bookmarkedIds.has(enlargedFormula.formula.id) ? 'Bookmarked' : 'Bookmark'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setReportModalOpen((prev) => !prev)}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 font-mono text-xs text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--accent)]"
-              >
-                <Flag className="h-3.5 w-3.5" />
-                <span>Report issue</span>
-              </button>
-            </div>
-
-            {/* Collapsible Report Issue Form */}
-            {reportModalOpen && (
-              <form
-                onSubmit={handleSubmitReport}
-                className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3.5 space-y-3"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-[var(--text)]">
-                    Report a formula error
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setReportModalOpen(false)}
-                    className="text-xs text-[var(--muted)] hover:text-[var(--text)]"
-                  >
-                    Cancel
-                  </button>
                 </div>
-                <select
-                  value={reportReason}
-                  onChange={(e) => setReportReason(e.target.value)}
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)]"
+
+                <button
+                  type="button"
+                  onClick={handleCloseEnlarged}
+                  aria-label="Close enlarged view"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] transition-transform duration-150 active:scale-[0.95] hover:border-[var(--accent)]"
                 >
-                  <option value="incorrect_formula">Incorrect formula or symbol</option>
-                  <option value="rendering_issue">LaTeX rendering issue</option>
-                  <option value="typo_in_note">Typo in note or title</option>
-                </select>
-                <input
-                  type="text"
-                  value={reportDetails}
-                  onChange={(e) => setReportDetails(e.target.value)}
-                  placeholder="Optional details (e.g. missing exponent on r)..."
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)] placeholder:text-[var(--muted)]"
-                />
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={submittingReport}
-                    className="rounded-full bg-[var(--accent)] px-4 py-1.5 font-mono text-xs font-bold text-[var(--accent-contrast)] disabled:opacity-50"
-                  >
-                    {submittingReport ? 'Sending...' : 'Submit Report'}
-                  </button>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Large KaTeX Formula Box in Tinted Panel */}
+              <div className="formula-math-scroll flex min-h-[112px] items-center justify-center rounded-[24px] border border-[var(--border)] bg-[var(--surface-2)] px-5 py-7 text-center">
+                <div className="mx-auto max-w-full text-lg sm:text-2xl font-semibold text-[var(--text)]">
+                  <MathText text={`$$${enlargedFormula.formula.formula_latex}$$`} />
                 </div>
-              </form>
-            )}
+              </div>
 
-            {/* Previous / Next Navigation Footer */}
-            <div className="mt-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
-              <button
-                type="button"
-                onClick={() => handlePrevNextFormula(-1)}
-                disabled={enlargedFormula.pool.length <= 1}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 font-mono text-xs font-bold text-[var(--text)] hover:border-[var(--accent)] disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span>Previous</span>
-              </button>
+              {/* Formula Note */}
+              {enlargedFormula.formula.note && (
+                <div className="mt-4 rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3.5">
+                  <span className="block font-[var(--font-dot)] text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
+                    Note
+                  </span>
+                  <p className="text-sm leading-relaxed text-[var(--text)]">
+                    {enlargedFormula.formula.note}
+                  </p>
+                </div>
+              )}
 
-              <span className="font-mono text-xs text-[var(--muted)]">
-                {enlargedFormula.pool.findIndex((f) => f.id === enlargedFormula.formula.id) + 1} of{' '}
-                {enlargedFormula.pool.length}
-              </span>
+              {/* Action Pill Buttons (All >= 44px high) */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(enlargedFormula.formula.formula_latex, 'latex')}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98]"
+                >
+                  {copiedType === 'latex' ? (
+                    <Check className="h-4 w-4 text-[var(--accent)]" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  <span>{copiedType === 'latex' ? 'Copied LaTeX' : 'Copy LaTeX'}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handlePrevNextFormula(1)}
-                disabled={enlargedFormula.pool.length <= 1}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 font-mono text-xs font-bold text-[var(--text)] hover:border-[var(--accent)] disabled:opacity-40"
-              >
-                <span>Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCopyText(
+                      enlargedFormula.formula.plain_text ||
+                        enlargedFormula.formula.formula_plain ||
+                        enlargedFormula.formula.formula_latex,
+                      'plain'
+                    )
+                  }
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98]"
+                >
+                  {copiedType === 'plain' ? (
+                    <Check className="h-4 w-4 text-[var(--accent)]" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                  <span>{copiedType === 'plain' ? 'Copied Text' : 'Copy plain text'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleBookmarkClick(enlargedFormula.formula.id)}
+                  className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-all duration-150 active:scale-[0.98] ${
+                    bookmarkedIds.has(enlargedFormula.formula.id)
+                      ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--text-on-accent)]'
+                      : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]'
+                  }`}
+                >
+                  <Bookmark
+                    className="h-4 w-4"
+                    fill={bookmarkedIds.has(enlargedFormula.formula.id) ? 'currentColor' : 'none'}
+                  />
+                  <span>
+                    {bookmarkedIds.has(enlargedFormula.formula.id) ? 'Bookmark' : 'Bookmark'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReportModalOpen((prev) => !prev)}
+                  className="ml-auto inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98]"
+                >
+                  <Flag className="h-4 w-4" />
+                  <span>Report issue</span>
+                </button>
+              </div>
+
+              {/* Collapsible Report Issue Form */}
+              {reportModalOpen && (
+                <form
+                  onSubmit={handleSubmitReport}
+                  className="mt-4 rounded-[20px] border border-[var(--border)] bg-[var(--surface-2)] p-4 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[var(--text)]">
+                      Report a formula error
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setReportModalOpen(false)}
+                      className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text)]"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--text)]"
+                  >
+                    <option value="incorrect_formula">Incorrect formula or symbol</option>
+                    <option value="rendering_issue">LaTeX rendering issue</option>
+                    <option value="typo_in_note">Typo in note or title</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={reportDetails}
+                    onChange={(e) => setReportDetails(e.target.value)}
+                    placeholder="Optional details (e.g. missing exponent on r)..."
+                    className="w-full min-h-[44px] rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-xs text-[var(--text)] placeholder:text-[var(--text-secondary)]"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={submittingReport}
+                      className="min-h-[40px] rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-bold text-[var(--text-on-accent)] disabled:opacity-50"
+                    >
+                      {submittingReport ? 'Sending...' : 'Submit Report'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Previous / Next Navigation Footer */}
+              <div className="mt-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
+                <button
+                  type="button"
+                  onClick={() => handlePrevNextFormula(-1)}
+                  disabled={enlargedFormula.pool.length <= 1}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-bold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98] disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span>Previous</span>
+                </button>
+
+                <span className="font-[var(--font-dot)] text-xs font-bold text-[var(--text-secondary)]">
+                  {enlargedFormula.pool.findIndex((f) => f.id === enlargedFormula.formula.id) + 1}{' '}
+                  of {enlargedFormula.pool.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrevNextFormula(1)}
+                  disabled={enlargedFormula.pool.length <= 1}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-bold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98] disabled:opacity-40"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

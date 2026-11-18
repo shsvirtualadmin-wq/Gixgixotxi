@@ -263,20 +263,29 @@ export async function searchFormulaVault(
   query: string,
   categoryId?: string
 ): Promise<FormulaSearchResponse> {
-  const q = String(query || '').trim();
+  const normalizeSearchStr = (val: string): string =>
+    String(val || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const rawTrimmed = String(query || '').replace(/\s+/g, ' ').trim();
+  const q = normalizeSearchStr(rawTrimmed);
   if (!q) {
     return { query: '', chapters: [], formulas: [] };
   }
   try {
     const headers = await getAuthHeaders();
-    const params = new URLSearchParams({ q });
-    if (categoryId) params.set('category_id', categoryId);
+    const params = new URLSearchParams({ q: rawTrimmed });
+    if (categoryId && categoryId !== 'all') params.set('category_id', categoryId);
     const res = await fetch(`/api/formulas/search?${params.toString()}`, { headers });
     if (res.ok) {
       const data = await res.json();
       if (data && data.success) {
         return {
-          query: q,
+          query: rawTrimmed,
           chapters: Array.isArray(data.chapters) ? data.chapters : [],
           formulas: Array.isArray(data.formulas) ? data.formulas : [],
         };
@@ -286,13 +295,22 @@ export async function searchFormulaVault(
     // Local search fallback
   }
 
-  const lower = q.toLowerCase();
-  const chapters = FORMULA_VAULT_CHAPTERS_SEED.filter(
-    (c) => (!categoryId || c.category_id === categoryId) && c.search_text.includes(lower)
-  );
-  const formulas = FORMULA_VAULT_ITEMS_SEED.filter(
-    (f) => (!categoryId || f.category_id === categoryId) && f.search_text.includes(lower)
-  ).map((f) => {
+  const tokens = q.split(' ').filter(Boolean);
+  const chapters = FORMULA_VAULT_CHAPTERS_SEED.filter((c) => {
+    if (categoryId && categoryId !== 'all' && c.category_id !== categoryId) return false;
+    const cat = FORMULA_VAULT_CATEGORIES_SEED.find((catItem) => catItem.id === c.category_id);
+    const hay = normalizeSearchStr(`${c.chapter_no} ${c.title} ${cat?.name || ''} ${c.search_text}`);
+    return tokens.every((t) => hay.includes(t));
+  });
+  const formulas = FORMULA_VAULT_ITEMS_SEED.filter((f) => {
+    if (categoryId && categoryId !== 'all' && f.category_id !== categoryId) return false;
+    const ch = FORMULA_VAULT_CHAPTERS_SEED.find((c) => c.id === f.chapter_id);
+    const cat = FORMULA_VAULT_CATEGORIES_SEED.find((c) => c.id === f.category_id);
+    const hay = normalizeSearchStr(
+      `${f.formula_no} ${f.title} ${f.note} ${f.plain_text} ${f.formula_latex} ${ch?.chapter_no || ''} ${ch?.title || ''} ${cat?.name || ''}`
+    );
+    return tokens.every((t) => hay.includes(t));
+  }).map((f) => {
     const ch = FORMULA_VAULT_CHAPTERS_SEED.find((c) => c.id === f.chapter_id);
     const cat = FORMULA_VAULT_CATEGORIES_SEED.find((c) => c.id === f.category_id);
     return {
@@ -303,7 +321,7 @@ export async function searchFormulaVault(
     };
   });
 
-  return { query: q, chapters, formulas };
+  return { query: rawTrimmed, chapters, formulas };
 }
 
 export async function toggleFormulaBookmark(formulaId: string): Promise<{

@@ -11802,3 +11802,134 @@ input[type="search"],
     display: none !important;
   }
 }
+
+/* ─── FORMULA LIBRARY SCREEN (THEME-TOKEN SCOPED STYLES) ─────────────────── */
+.formula-library-page {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 18px 18px;
+  color: var(--text);
+}
+
+.formula-library-page .katex,
+.formula-library-page .katex *,
+.formula-enlarge-portal .katex,
+.formula-enlarge-portal .katex * {
+  color: var(--text) !important;
+}
+
+.formula-search-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 44px;
+  border-radius: 9999px;
+  background-color: var(--surface-2);
+  border: 1.5px solid var(--border);
+  padding: 0 0.875rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.formula-search-pill:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.formula-search-input,
+.formula-search-input[type="search"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  font-family: var(--font-body);
+  font-size: 16px !important;
+  line-height: 1.4;
+  color: var(--text) !important;
+  caret-color: var(--accent);
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.formula-search-input::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1;
+}
+
+.formula-search-input:focus,
+.formula-search-input:focus-visible,
+.formula-search-input:active {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.formula-search-input::-webkit-search-cancel-button,
+.formula-search-input::-webkit-search-decoration,
+.formula-search-input::-webkit-search-results-button,
+.formula-search-input::-webkit-search-results-decoration {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  display: none !important;
+}
+
+.formula-search-input:-webkit-autofill,
+.formula-search-input:-webkit-autofill:hover,
+.formula-search-input:-webkit-autofill:focus,
+.formula-search-input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--text) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--surface-2) inset !important;
+  box-shadow: 0 0 0 1000px var(--surface-2) inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.formula-subject-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-right: 1.5rem;
+  mask-image: linear-gradient(
+    to right,
+    var(--bg) 0%,
+    var(--bg) calc(100% - 24px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    var(--bg) 0%,
+    var(--bg) calc(100% - 24px),
+    transparent 100%
+  );
+}
+
+.formula-subject-pills-row::-webkit-scrollbar {
+  display: none;
+}
+
+.formula-math-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.formula-modal-backdrop {
+  background-color: color-mix(in srgb, var(--bg) 76%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+

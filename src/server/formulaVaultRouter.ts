@@ -766,9 +766,15 @@ export function registerFormulaVaultRoutes(
       });
     }
 
-    const q = String(req.query.q || '')
-      .trim()
-      .toLowerCase();
+    const normalizeSearchStr = (val: string): string =>
+      String(val || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const q = normalizeSearchStr(String(req.query.q || ''));
     const categoryId = String(req.query.category_id || '').trim();
 
     if (!q) {
@@ -778,16 +784,19 @@ export function registerFormulaVaultRoutes(
     const store = loadFormulaVaultStore();
     const catMap = new Map(store.categories.map((c) => [c.id, c]));
     const chapMap = new Map(store.chapters.map((c) => [c.id, c]));
-    const tokens = q.split(/\s+/).filter(Boolean);
+    const tokens = q.split(' ').filter(Boolean);
 
     const matchedChapters = store.chapters
       .filter((ch) => {
         if (ch.status !== 'live') return false;
         if (categoryId && categoryId !== 'all' && ch.category_id !== categoryId) return false;
-        const hay = `${ch.chapter_no} ${ch.title} ${ch.subtopics} ${ch.search_text}`.toLowerCase();
+        const cat = catMap.get(ch.category_id);
+        const hay = normalizeSearchStr(
+          `${ch.chapter_no} ${ch.title} ${cat?.name || ''} ${ch.search_text || ''}`
+        );
         return tokens.every((t) => hay.includes(t));
       })
-      .slice(0, 25)
+      .slice(0, 40)
       .map((ch) => ({
         ...ch,
         category_name: catMap.get(ch.category_id)?.name || '',
@@ -798,10 +807,13 @@ export function registerFormulaVaultRoutes(
         if (f.status !== 'live') return false;
         if (categoryId && categoryId !== 'all' && f.category_id !== categoryId) return false;
         const ch = chapMap.get(f.chapter_id);
-        const hay = `${f.title} ${f.note} ${f.plain_text} ${f.formula_latex} ${ch?.title || ''} ${ch?.subtopics || ''}`.toLowerCase();
+        const cat = catMap.get(f.category_id);
+        const hay = normalizeSearchStr(
+          `${f.formula_no} ${f.title || ''} ${f.note || ''} ${f.plain_text || ''} ${f.formula_latex || ''} ${ch?.chapter_no || ''} ${ch?.title || ''} ${cat?.name || ''}`
+        );
         return tokens.every((t) => hay.includes(t));
       })
-      .slice(0, 60)
+      .slice(0, 150)
       .map((f) => {
         const ch = chapMap.get(f.chapter_id);
         const cat = catMap.get(f.category_id);
