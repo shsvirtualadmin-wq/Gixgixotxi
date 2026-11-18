@@ -8,7 +8,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
-import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { getDisplayName } from '@/utils/displayName';
 import {
   DashboardMenuContent,
   HamburgerMenuSheet,
@@ -68,7 +68,6 @@ export function DashboardTopBar({
 }: Props) {
   const { signOutUser, isAdmin, isGuest } = useAuth();
   const { user, profile } = useUserProfile();
-  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
   const location = useLocation();
   const handleBack = useSmartBack();
@@ -178,11 +177,11 @@ export function DashboardTopBar({
   const handleOpenProfile = useCallback(() => {
     setMenuOpen(false);
     if (user) {
-      openProfile();
+      navigate('/profile');
     } else {
       navigate('/login');
     }
-  }, [user, openProfile, navigate]);
+  }, [user, navigate]);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -315,13 +314,13 @@ export function DashboardTopBar({
               )}
             </button>
 
-            {/* Profile Avatar (36px circle, vertically centered and fully visible on 360px/390px/430px) */}
+            {/* Profile Avatar — opens /profile directly */}
             <button
               ref={avatarBtnRef}
               type="button"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              aria-label="User profile menu"
-              aria-expanded={menuOpen}
+              onClick={handleOpenProfile}
+              aria-label="Open profile"
+              title="Open profile"
               className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-visible shrink-0 flex items-center justify-center self-center cursor-pointer hover:opacity-90 transition-opacity"
               style={{
                 width: 36,
@@ -330,6 +329,11 @@ export function DashboardTopBar({
             >
               <BoardlyAvatar
                 uid={user?.uid}
+                name={getDisplayName({
+                  display_name: profile?.display_name ?? profile?.displayName,
+                  realName: profile?.realName ?? profile?.name ?? user?.displayName,
+                  username: profile?.username,
+                })}
                 equippedAvatar={
                   equipped?.avatar ||
                   (profile as Record<string, unknown> | null)?.avatar as string | undefined

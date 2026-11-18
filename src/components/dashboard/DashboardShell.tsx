@@ -46,7 +46,10 @@ export function DashboardShell() {
     safetyCleanupScrollLocks();
   }, [location.pathname]);
 
-  const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
+  const isProfileRoute =
+    location.pathname === '/profile' ||
+    location.pathname.startsWith('/profile/') ||
+    location.pathname.startsWith('/dashboard/profile');
   const isSettingsRoute =
     location.pathname.startsWith('/settings') ||
     location.pathname.startsWith('/dashboard/settings');
@@ -122,13 +125,7 @@ export function DashboardShell() {
 
   // NEVER return null or block with a full-screen startup gate — always render shell, route skeleton/cache, and bottom nav immediately
   return (
-    <div
-      className={`min-h-screen flex flex-col antialiased overflow-x-clip ${
-        isSettingsRoute
-          ? 'bg-[var(--menu-bg)] text-[var(--menu-text)]'
-          : 'bg-[var(--bg)] text-[var(--text)]'
-      }`}
-    >
+    <div className="min-h-[100dvh] flex flex-col antialiased overflow-x-clip bg-[var(--bg)] text-[var(--text)]">
       <PageMeta
         title="Student Cockpit — Boardly"
         description="Private Boardly student dashboard and practice cockpit."
@@ -174,11 +171,9 @@ export function DashboardShell() {
         className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''
         } ${
-          isSettingsRoute
+          isSettingsRoute || isProfileRoute
             ? 'max-w-none p-0'
-            : isProfileRoute
-              ? 'max-w-5xl px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[var(--sdn-page-pb)]'
-              : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
+            : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">

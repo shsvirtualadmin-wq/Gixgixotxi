@@ -274,12 +274,19 @@ export function UserOverrideDrawer({
         scrollToSection(initialSection, 'auto');
       });
     }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving && !pending2faAction && !confirmAction && !requestAccessModal) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', onKeyDown);
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     };
-  }, [activeUserUid, initialSection, scrollToSection]);
+  }, [activeUserUid, initialSection, scrollToSection, saving, pending2faAction, confirmAction, requestAccessModal, onClose]);
 
   // Initialize form state ONLY when opening a different user (prevents background refetches from snapping plan back to Free)
   useEffect(() => {
@@ -409,9 +416,10 @@ export function UserOverrideDrawer({
 
   const open2faActionModal = (action: Admin2faActionType) => {
     if (!canResetSecurity) {
+      const targetLabel = user ? getUserDisplayName(user) : 'user';
       setRequestAccessModal({
         permission: 'security.reset',
-        actionLabel: `Reset 2FA / Security (${action}) for ${user?.displayName || user?.email || 'user'}`,
+        actionLabel: `Reset 2FA / Security (${action}) for ${targetLabel}`,
       });
       return;
     }
@@ -785,28 +793,29 @@ export function UserOverrideDrawer({
         onClick={() => !saving && onClose()}
       />
 
-      {/* Flex Column Sheet: Fixed Header + Quick-Jump Chips + Scrollable Body + Sticky Footer using 100dvh */}
-      <div className="relative w-full md:max-w-[720px] max-h-[100dvh] h-[100dvh] bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl">
-        {/* Mobile grab handle */}
-        <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto mt-2.5 shrink-0" />
+      {/* Flex Column Sheet: Fixed Header + Quick-Jump Chips + Scrollable Body + Sticky Footer using dvh */}
+      <div className="relative w-full md:max-w-[720px] max-h-[90dvh] md:max-h-[100dvh] md:h-[100dvh] bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl">
+        {/* Mobile grab handle 36x4px */}
+        <div className="md:hidden w-9 h-1 bg-[var(--border)] rounded-full mx-auto mt-2.5 shrink-0" />
 
         {/* 1. FIXED HEADER */}
         <div className="px-5 py-3.5 border-b border-[var(--border)] flex flex-col gap-2.5 shrink-0 bg-[var(--card)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
                 {userInitial}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] truncate">
+                  <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] truncate">
                     {displayName}
                   </h2>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] shrink-0">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] shrink-0">
                     {selectedRoleOption.shortLabel}
                   </span>
                 </div>
-                <p className="font-heading text-[12px] text-[var(--muted)] truncate">
+                <p className="font-heading text-[12px] text-[var(--text-muted)] truncate">
+                  {user.username ? `@${String(user.username).replace(/^@/, '')} · ` : ''}
                   {isSuperAdmin ? user.email || 'No email' : maskEmail(user.email)}
                 </p>
               </div>
@@ -815,7 +824,7 @@ export function UserOverrideDrawer({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="p-2 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer shrink-0"
               aria-label="Close user detail sheet"
             >
               <X size={18} />
@@ -831,7 +840,7 @@ export function UserOverrideDrawer({
               [
                 { id: 'plan', label: 'Plan' },
                 { id: 'role', label: 'Role' },
-                { id: 'attempts', label: 'Attempts' },
+                { id: 'attempts', label: 'Test attempts' },
                 ...(!targetIsGuest ? [{ id: 'security', label: 'Security' } as const] : []),
               ] as const
             ).map((chip) => {
@@ -842,10 +851,10 @@ export function UserOverrideDrawer({
                   type="button"
                   data-testid={`user-override-jump-${chip.id}`}
                   onClick={() => scrollToSection(chip.id, 'smooth')}
-                  className={`px-3 py-1 rounded-full text-[11px] font-heading font-semibold border transition-colors shrink-0 cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-heading font-semibold border transition-colors shrink-0 cursor-pointer ${
                     isActive
-                      ? 'border-[#D71921] bg-[#D71921]/15 text-[var(--text)]'
-                      : 'border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)]'
+                      ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                      : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
                   {chip.label}
@@ -935,11 +944,11 @@ export function UserOverrideDrawer({
                   <BoardlyAvatar
                     uid={user.uid}
                     equippedAvatar={user.equipped?.avatar || user.avatar}
-                    name={user.displayName || user.email}
+                    name={displayName}
                     size={24}
                     className="shrink-0"
                   />
-                  <span className="text-[11px] font-mono text-[var(--muted)]">
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
                     {user.streak || 0}d streak
                   </span>
                 </div>
@@ -950,19 +959,19 @@ export function UserOverrideDrawer({
               ) : userCrew ? (
                 <div className="space-y-1.5 pt-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[var(--muted)]">Crew Name</span>
+                    <span className="text-[var(--text-muted)]">Crew Name</span>
                     <span className="font-bold text-[var(--text)] flex items-center gap-1.5">
                       <span>{userCrew.name}</span>
-                      <span className="text-[10px] font-mono uppercase px-1 py-0.2 rounded bg-white/10 text-white/80">
+                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] text-[var(--text-muted)]">
                         {userCrew.code}
                       </span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[var(--muted)]">Crew Tier</span>
+                    <span className="text-[var(--text-muted)]">Crew Tier</span>
                     <span className="text-[var(--text)] font-semibold">
                       {userCrew.tier === 'paid' && isCrewPaidActive(userCrew.paid_until) ? (
-                        <span className="text-emerald-400 flex items-center gap-1 font-bold">
+                        <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-bold">
                           <Sparkles size={11} /> Large Crew (Pro Shared)
                         </span>
                       ) : (
@@ -977,7 +986,7 @@ export function UserOverrideDrawer({
                         onClose();
                         navigate('/admin/crews');
                       }}
-                      className="flex-1 py-1.5 px-2 rounded-lg bg-[var(--surface-hover)] hover:bg-neutral-800 border border-[var(--border)] text-[11px] text-[var(--text)] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      className="flex-1 py-1.5 px-2 rounded-lg bg-[var(--card)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[11px] text-[var(--text)] font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                     >
                       <ExternalLink size={12} />
                       <span>View Crew</span>
@@ -1004,7 +1013,7 @@ export function UserOverrideDrawer({
                         }
                       }}
                       disabled={removingFromCrew}
-                      className="py-1.5 px-3 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-950/20 text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
+                      className="py-1.5 px-3 rounded-lg border border-[var(--danger-border)] text-[var(--danger)] hover:bg-[var(--danger)]/10 text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <UserMinus size={12} />
                       <span>{removingFromCrew ? 'Removing...' : 'Remove'}</span>
@@ -1012,7 +1021,7 @@ export function UserOverrideDrawer({
                   </div>
                 </div>
               ) : (
-                <div className="text-[11px] text-[var(--muted)] flex items-center justify-between">
+                <div className="text-[11px] text-[var(--text-muted)] flex items-center justify-between">
                   <span>Not enrolled in any study crew.</span>
                   <button
                     type="button"
@@ -1020,7 +1029,7 @@ export function UserOverrideDrawer({
                       onClose();
                       navigate('/admin/crews');
                     }}
-                    className="text-[#D71921] hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
+                    className="text-[var(--accent)] hover:underline flex items-center gap-1 text-[11px] cursor-pointer"
                   >
                     <span>Browse Crews</span>
                     <ExternalLink size={10} />
@@ -1033,10 +1042,10 @@ export function UserOverrideDrawer({
           {/* SECTION 2: SUBSCRIPTION PLAN */}
           <section ref={planSectionRef} className="space-y-2 pt-1 border-t border-[var(--border)] scroll-mt-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
+              <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-muted)] font-semibold">
                 Subscription plan
               </h3>
-              <span className="text-[11px] font-heading text-[var(--muted)]">
+              <span className="text-[11px] font-heading text-[var(--text-muted)]">
                 {selectedPlan === 'annual'
                   ? '365 days access'
                   : selectedPlan === 'custom'
@@ -1055,11 +1064,11 @@ export function UserOverrideDrawer({
                 onClick={() => handleSelectPlanPreset('monthly')}
                 className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedPlan === 'monthly'
-                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
-                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
+                    : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                {!canChangePlan && <Lock size={12} className="text-amber-500" />}
                 <span>Monthly Pro</span>
               </button>
               <button
@@ -1069,11 +1078,11 @@ export function UserOverrideDrawer({
                 onClick={() => handleSelectPlanPreset('annual')}
                 className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedPlan === 'annual'
-                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
-                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
+                    : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                {!canChangePlan && <Lock size={12} className="text-amber-500" />}
                 <span>Annual Pro</span>
               </button>
               <button
@@ -1083,11 +1092,11 @@ export function UserOverrideDrawer({
                 onClick={() => handleSelectPlanPreset('custom')}
                 className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedPlan === 'custom'
-                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
-                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
+                    : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                {!canChangePlan && <Lock size={12} className="text-amber-500" />}
                 <span>Custom</span>
               </button>
               <button
@@ -1097,11 +1106,11 @@ export function UserOverrideDrawer({
                 onClick={() => handleSelectPlanPreset('free')}
                 className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
                   selectedPlan === 'free'
-                    ? 'border-[#D71921] bg-[#D71921]/20 text-white ring-2 ring-[#D71921]/45 shadow-[0_0_16px_rgba(215,25,33,0.25)]'
-                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
+                    : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {!canChangePlan && <Lock size={12} className="text-amber-400" />}
+                {!canChangePlan && <Lock size={12} className="text-amber-500" />}
                 <span>Revoke / Free</span>
               </button>
             </div>

@@ -12,6 +12,7 @@ import {
 } from '@/services/publicProfileService';
 import { invalidateCommonsPostsCache } from '@/services/commonsService';
 import { ensureUserShortId } from '@/utils/shortId';
+import { writeOptimisticUserSnapshot } from '@/lib/swrCache';
 import type { UserProfile } from '@/types/index';
 
 function getLocalCachedProfile(uid: string): UserProfile | null {
@@ -166,8 +167,8 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
     const guestProfile: UserProfile = authProfileFallback || getLocalCachedProfile(uid) || {
       uid,
       email: '',
-      displayName: uid.replace(/^guest_/, ''),
-      name: uid.replace(/^guest_/, ''),
+      displayName: null,
+      name: null,
       username: uid.replace(/^guest_/, ''),
       shortId: 'GUEST',
       role: 'student',
@@ -469,7 +470,7 @@ export function useUserProfile(): UserProfileHookResult {
         planExpiresAt: live.planExpiresAt,
         premiumExpiresAt: live.premiumExpiresAt,
         proPlanId: live.proPlanId,
-        ...(live.displayName ? { displayName: live.displayName, name: live.displayName } : {}),
+        ...(live.displayName ? { displayName: live.displayName, display_name: live.displayName } : {}),
         ...(live.username ? { username: live.username } : {}),
         ...(live.bio !== undefined ? { bio: live.bio } : {}),
         ...(live.accent !== undefined ? { accent: live.accent } : {}),
@@ -569,15 +570,18 @@ export function useUserProfile(): UserProfileHookResult {
         updatedAt: serverTimestamp(),
       };
 
-      const nextNameRaw = updates.displayName ?? updates.nickname ?? updates.name;
+      const nextNameRaw = (updates as any).display_name ?? updates.displayName;
       if (nextNameRaw !== undefined) {
         const cleanName = String(nextNameRaw).trim();
         localPayload.displayName = cleanName;
-        localPayload.nickname = cleanName;
-        localPayload.name = cleanName;
+        localPayload.display_name = cleanName;
         firestorePayload.displayName = cleanName;
-        firestorePayload.nickname = cleanName;
-        firestorePayload.name = cleanName;
+        firestorePayload.display_name = cleanName;
+      }
+      if (updates.name !== undefined) {
+        const cleanRealName = String(updates.name).trim();
+        localPayload.name = cleanRealName;
+        firestorePayload.name = cleanRealName;
       }
       if (updates.username !== undefined) {
         const cleanUsername = String(updates.username).trim();
@@ -710,6 +714,23 @@ export function useUserProfile(): UserProfileHookResult {
       sharedState.fetchStatus = 'success';
       sharedState.hasReceivedSnapshot = true;
       setLocalCachedProfile(user.uid, nextSharedProfile);
+      if (localPayload.displayName) {
+        writeOptimisticUserSnapshot({
+          uid: user.uid,
+          email: nextSharedProfile.email || user.email || '',
+          displayName: localPayload.displayName,
+          username: nextSharedProfile.username || null,
+          shortId: nextSharedProfile.shortId,
+          role: 'student',
+          customRole: nextSharedProfile.customRole || null,
+          plan: nextSharedProfile.plan || 'free',
+          isGuest: false,
+          avatar: nextSharedProfile.equipped?.avatar || nextSharedProfile.avatar || null,
+          frame: nextSharedProfile.equipped?.frame || nextSharedProfile.frame || null,
+          streak: Number(nextSharedProfile.streak || 0),
+          targetUniversity: nextSharedProfile.targetUniversity || undefined,
+        });
+      }
       broadcastState();
 
       invalidatePublicProfileCache(user.uid);
@@ -718,7 +739,7 @@ export function useUserProfile(): UserProfileHookResult {
 
       console.log(`[useUserProfile] Confirmed profile update to ${path}:`, localPayload);
     },
-    [user?.uid, profile, isGuest, syncGuestProgress]
+    [user?.uid, user?.email, profile, isGuest, syncGuestProgress]
   );
 
   const streak = Math.max(

@@ -4,7 +4,8 @@ import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { addPostComment, fetchPostComments } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { MathText } from '@/components/ui/MathText';
-import { sanitizeStudentDisplayName, maskPublicUserText } from '@/utils/privacy';
+import { maskPublicUserText } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -231,10 +232,10 @@ export function CommonsCommentsDrawer({
                           (comment as any).authorEquippedAvatar || comment.authorAvatar || undefined
                         }
                         frame={(comment as any).authorFrame}
-                        name={sanitizeStudentDisplayName(
-                          comment.authorName,
-                          comment.authorUid
-                        )}
+                        name={getDisplayName({
+                          displayName: comment.authorName,
+                          username: (comment as any).authorUsername,
+                        })}
                         size={32}
                       />
                     </button>
@@ -258,10 +259,10 @@ export function CommonsCommentsDrawer({
                               }}
                               className="font-bold text-primary hover:underline truncate max-w-full cursor-pointer text-left"
                             >
-                              {sanitizeStudentDisplayName(
-                                comment.authorName,
-                                comment.authorUid
-                              )}
+                              {getDisplayName({
+                                displayName: comment.authorName,
+                                username: (comment as any).authorUsername,
+                              })}
                             </button>
                             {(comment.authorProBadge || comment.proBadge) && (
                               <ProBadge
@@ -305,10 +306,10 @@ export function CommonsCommentsDrawer({
                           handleReplyTo(
                             comment.isAnonymous
                               ? 'Anonymous'
-                              : sanitizeStudentDisplayName(
-                                  comment.authorName,
-                                  comment.authorUid
-                                )
+                              : getDisplayName({
+                                  displayName: comment.authorName,
+                                  username: (comment as any).authorUsername,
+                                })
                           )
                         }
                         className="hover:underline hover:text-primary cursor-pointer flex items-center gap-1"

@@ -18,7 +18,8 @@ import {
 } from '@/services/publicProfileService';
 import { isAdminAccount } from '@/constants/superAdmin';
 import { useAuth } from '@/contexts/AuthContext';
-import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
+import { buildEntitySlug } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 
 const LEADERBOARD_SWR_KEY = 'gl_leaderboard_enriched_v1';
@@ -138,7 +139,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
   }, [loadLeaderboardData]);
 
   return (
-    <div data-student-page="arena" className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-hidden">
+    <div data-student-page="arena" className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-clip">
       <PageMeta
         title="Grand Line Leaderboard — Live Standings & Top Scorers | Boardly"
         description="View real-time student rankings and top scorers across public Grand Line mock tests authored by Nakama Captains on Boardly."
@@ -195,16 +196,16 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                   className="ranking-glass-row min-h-[64px] flex items-center justify-between gap-2.5 p-2.5 sm:px-4 sm:py-3.5 animate-pulse"
                 >
                   <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 flex-1">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white/10 shrink-0" />
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-white/10 shrink-0" />
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[var(--border)] shrink-0" />
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-[var(--border)] shrink-0" />
                     <div className="min-w-0 flex-1 space-y-2">
-                      <div className="h-3.5 w-32 sm:w-44 rounded bg-white/10" />
-                      <div className="h-2.5 w-24 sm:w-36 rounded bg-white/5" />
+                      <div className="h-3.5 w-32 sm:w-44 rounded bg-[var(--border)]" />
+                      <div className="h-2.5 w-24 sm:w-36 rounded bg-[var(--border)]/60" />
                     </div>
                   </div>
                   <div className="shrink-0 space-y-1.5 text-right">
-                    <div className="h-3.5 w-10 rounded bg-white/10 ml-auto" />
-                    <div className="h-2.5 w-8 rounded bg-white/5 ml-auto" />
+                    <div className="h-3.5 w-10 rounded bg-[var(--border)] ml-auto" />
+                    <div className="h-2.5 w-8 rounded bg-[var(--border)]/60 ml-auto" />
                   </div>
                 </div>
               ))}
@@ -249,9 +250,16 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                 const rank = entry.rank || idx + 1;
                 const uid = (entry.studentUid || '').trim();
                 const liveProfile = uid ? profilesByUid[uid] : undefined;
-                const displayName =
-                  (entry.userName || entry.studentName || entry.name || liveProfile?.displayName || '').trim() ||
-                  'Student';
+                const displayName = getDisplayName(
+                  {
+                    display_name: liveProfile?.displayName,
+                    studentName: entry.studentName,
+                    name: entry.name,
+                    username: liveProfile?.username,
+                    userName: entry.userName,
+                  },
+                  'Student'
+                );
                 const isCurrentUser = Boolean(user?.uid && uid && uid === user.uid);
                 const isSuperAdminActor =
                   Boolean(liveProfile?.isSuperAdmin) ||
@@ -352,7 +360,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                     </div>
                     <p className="text-xs text-[var(--muted)] tabular-nums truncate pt-1">
                       {qCount} {qCount === 1 ? 'question' : 'questions'} · By{' '}
-                      {sanitizeStudentDisplayName(t.creatorName, t.creatorUid)}
+                      {getDisplayName({ displayName: t.creatorName }, 'Captain')}
                     </p>
                   </Link>
                 );

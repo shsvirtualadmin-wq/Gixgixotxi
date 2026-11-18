@@ -1,6 +1,8 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 import { ProfileView } from '@/components/profile/ProfileView';
+import { PageMeta } from '@/components/ui/PageMeta';
 
 interface ProfileErrorBoundaryProps {
   children: React.ReactNode;
@@ -11,7 +13,10 @@ interface ProfileErrorBoundaryState {
   error: Error | null;
 }
 
-class ProfileErrorBoundary extends React.Component<ProfileErrorBoundaryProps, ProfileErrorBoundaryState> {
+class ProfileErrorBoundary extends React.Component<
+  ProfileErrorBoundaryProps,
+  ProfileErrorBoundaryState
+> {
   constructor(props: ProfileErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -28,27 +33,31 @@ class ProfileErrorBoundary extends React.Component<ProfileErrorBoundaryProps, Pr
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-full max-w-xl mx-auto p-6 my-8 rounded-2xl bg-[var(--card)] border border-[var(--border)] text-center flex flex-col items-center gap-4 shadow-lg">
-          <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center font-bold">
-            !
+        <div className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] flex items-center justify-center p-4">
+          <div className="w-full max-w-md p-6 rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] text-center flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)] flex items-center justify-center">
+              <AlertCircle size={22} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <h3 className="text-[16px] font-semibold text-[var(--text)]">
+                Could not display profile
+              </h3>
+              <p className="text-[13px] text-[var(--text-muted)] leading-relaxed">
+                {this.state.error?.message ||
+                  'Something went wrong while loading this profile. Try again in a moment.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+              }}
+              className="min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity cursor-pointer"
+            >
+              <RefreshCw size={15} />
+              <span>Retry</span>
+            </button>
           </div>
-          <div className="flex flex-col gap-1">
-            <h3 className="font-heading font-bold text-base text-[var(--text)]">
-              Could not display student profile
-            </h3>
-            <p className="text-xs text-[var(--muted)]">
-              {this.state.error?.message || 'An unexpected error occurred while loading this profile view.'}
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              this.setState({ hasError: false, error: null });
-              window.location.reload();
-            }}
-            className="h-9 px-4 rounded-xl bg-[var(--red)] text-white text-xs font-heading font-semibold hover:bg-[var(--red-dark)] transition-colors cursor-pointer"
-          >
-            Reload Profile
-          </button>
         </div>
       );
     }
@@ -61,14 +70,15 @@ export function ProfilePage() {
   const targetUid = searchParams.get('uid');
 
   return (
-    <div className="w-full flex justify-center py-2 sm:py-6">
+    <>
+      <PageMeta
+        title="Profile | Boardly"
+        description="View and customize your Boardly student profile, equipped cosmetics, badges, and study activity."
+      />
       <ProfileErrorBoundary>
-        <ProfileView
-          targetUid={targetUid}
-          isFullPage={true}
-        />
+        <ProfileView targetUid={targetUid} isFullPage={true} />
       </ProfileErrorBoundary>
-    </div>
+    </>
   );
 }
 

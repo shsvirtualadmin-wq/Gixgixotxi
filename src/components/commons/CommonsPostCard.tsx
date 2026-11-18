@@ -32,7 +32,8 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { MathText } from '@/components/ui/MathText';
-import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 import {
   formatRelativeTimePkt,
   formatAbsoluteDateTimePkt,
@@ -431,10 +432,11 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   undefined
                 }
                 frame={liveAuthor?.equippedFrame || liveAuthor?.frame || (post as any).authorFrame}
-                name={sanitizeStudentDisplayName(
-                  liveAuthor?.displayName || liveAuthor?.username || post.authorName,
-                  post.authorUid
-                )}
+                name={getDisplayName({
+                  display_name: liveAuthor?.displayName,
+                  authorName: post.authorName,
+                  username: liveAuthor?.username || post.authorUsername,
+                })}
                 isSuperAdmin={isSuperAdminAuthor}
                 size={40}
               />
@@ -480,10 +482,11 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                     onClick={handleAuthorClick}
                     className="text-[15px] font-bold text-primary hover:text-accent transition-colors truncate max-w-full cursor-pointer"
                   >
-                    {sanitizeStudentDisplayName(
-                      liveAuthor?.displayName || liveAuthor?.username || post.authorName,
-                      post.authorUid
-                    )}
+                    {getDisplayName({
+                      display_name: liveAuthor?.displayName,
+                      authorName: post.authorName,
+                      username: liveAuthor?.username || post.authorUsername,
+                    })}
                   </span>
                   {(liveAuthor?.proBadge ?? post.authorProBadge ?? post.proBadge) && (
                     <ProBadge

@@ -707,7 +707,7 @@ export function RewardsPage() {
   return (
     <div
       data-student-page="rewards"
-      className="rewards-page-root min-h-screen w-full flex flex-col overflow-x-hidden transition-colors duration-150"
+      className="rewards-page-root min-h-[100dvh] w-full flex flex-col overflow-x-clip transition-colors duration-150"
       style={{
         backgroundColor: 'var(--rw-bg)',
         color: 'var(--rw-text)',
@@ -1080,10 +1080,10 @@ export function RewardsPage() {
                       border: '1.5px solid var(--rw-gold)',
                     };
                   } else {
-                    // Regular future days: clear disc with visible 1.5px outline
+                    // Regular future locked days: clear disc with visible dashed outline
                     discStyle = {
                       backgroundColor: 'var(--rw-disc-future-bg)',
-                      border: '1.5px solid var(--rw-disc-outline)',
+                      border: '1.5px dashed var(--rw-disc-outline)',
                     };
                   }
 

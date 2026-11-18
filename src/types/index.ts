@@ -7,6 +7,8 @@ export interface UserProfile {
   uid: string;
   email: string;
   displayName: string | null;
+  display_name?: string | null;
+  realName?: string | null;
   name?: string | null;
   nickname?: string | null;
   username?: string | null;

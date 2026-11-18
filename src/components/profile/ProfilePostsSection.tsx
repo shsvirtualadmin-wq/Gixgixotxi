@@ -10,6 +10,7 @@ import {
   X,
   Loader2,
   CornerDownRight,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -17,6 +18,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { normalizeProBadgeDesign } from '@/lib/proBadgeDesigns';
 import { auth } from '@/lib/firebase';
 import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
+import { getDisplayName, getUsernameHandle } from '@/utils/displayName';
 
 export interface CommonsCommentItem {
   id: string;
@@ -289,6 +291,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const { user, profile: viewerProfile, isGuest } = useAuth();
   const [posts, setPosts] = useState<ProfilePostItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Composer state (own profile only)
   const [composerText, setComposerText] = useState('');
@@ -316,9 +319,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     if (!targetUid) {
       setPosts([]);
       setLoading(false);
+      setLoadError(null);
       return;
     }
     setLoading(true);
+    setLoadError(null);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 8000);
     try {
       const headers = await getCommonsAuthHeaders().catch(() => ({} as Record<string, string>));
       const res = await fetch(
@@ -326,8 +333,12 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
         {
           headers,
           credentials: 'include',
+          signal: controller.signal,
         }
       );
+      if (!res.ok) {
+        throw new Error('Could not load posts.');
+      }
       const data = await res.json().catch(() => ({}));
       const rawList = Array.isArray(data?.posts) ? data.posts : [];
       const filtered = rawList
@@ -341,9 +352,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
       setPosts(filtered);
       onCountChange?.(filtered.length);
-    } catch {
-      setPosts([]);
+    } catch (err) {
+      setLoadError(
+        err instanceof Error && err.name === 'AbortError'
+          ? 'Posts took too long to load.'
+          : 'Could not load posts right now.'
+      );
     } finally {
+      window.clearTimeout(timer);
       setLoading(false);
     }
   }, [targetUid, onCountChange]);
@@ -586,8 +602,8 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     if (!commentsByPost[postId]) {
       setCommentsLoadingByPost((prev) => ({ ...prev, [postId]: true }));
       try {
-        const res = await fetchCommonsComments(postId);
-        setCommentsByPost((prev) => ({ ...prev, [postId]: res.comments || [] }));
+        const list = await fetchCommonsComments(postId);
+        setCommentsByPost((prev) => ({ ...prev, [postId]: Array.isArray(list) ? list : [] }));
       } catch {
         setCommentsByPost((prev) => ({ ...prev, [postId]: [] }));
       } finally {
@@ -602,7 +618,20 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     setSubmittingCommentPostId(postId);
     try {
       const replyTarget = replyToByPost[postId] || null;
-      const created = await createCommonsComment(postId, text, replyTarget?.id || null);
+      const viewerDisplayName = getDisplayName({
+        display_name: viewerProfile?.display_name ?? viewerProfile?.displayName,
+        realName: viewerProfile?.realName ?? viewerProfile?.name ?? user.displayName,
+        username: viewerProfile?.username,
+      });
+      const created = await createCommonsComment(postId, {
+        text,
+        parentId: replyTarget?.id || null,
+        authorName: viewerDisplayName,
+        authorUsername: viewerProfile?.username || null,
+        authorRole: viewerProfile?.role || 'student',
+        authorAvatar: viewerProfile?.equippedAvatar || viewerProfile?.avatar || undefined,
+        authorFrame: viewerProfile?.equippedFrame || viewerProfile?.frame || undefined,
+      });
       if (created) {
         setCommentsByPost((prev) => ({
           ...prev,
@@ -645,11 +674,16 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const handleLikeComment = async (postId: string, commentId: string) => {
     try {
       const res = await toggleCommonsCommentLike(postId, commentId);
+      if (!res) return;
       setCommentsByPost((prev) => ({
         ...prev,
         [postId]: (prev[postId] || []).map((c) =>
           c.id === commentId
-            ? { ...c, likedByMe: res.liked, likesCount: res.likesCount }
+            ? {
+                ...c,
+                likedByMe: res.liked ?? c.likedByMe,
+                likesCount: res.likesCount ?? c.likesCount,
+              }
             : c
         ),
       }));
@@ -691,12 +725,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Section Header with Count Chip ("5 posts") */}
+      {/* Section Header with Count Chip */}
       <div className="flex items-center justify-between px-1">
-        <h3 className="font-doto-title text-[13px] tracking-[0.14em] text-white/90">
-          POSTS
-        </h3>
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold font-inter-num text-white/80 bg-white/[0.07] border border-white/[0.14]">
+        <h3 className="text-[14px] font-medium text-[var(--text-muted)]">Posts</h3>
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold font-inter-num text-[var(--text-muted)] bg-[var(--card)] border border-[var(--border)]">
           {posts.length.toLocaleString()} {posts.length === 1 ? 'post' : 'posts'}
         </span>
       </div>
@@ -705,7 +737,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       {isOwnProfile && !isGuest && (
         <form
           onSubmit={handlePublishPost}
-          className="boardly-glass-card rounded-[24px] p-4 transition-all"
+          className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-4 transition-all"
         >
           <div className="flex items-start gap-3">
             <div className="shrink-0 pt-0.5">
@@ -724,11 +756,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 rows={2}
                 maxLength={2000}
                 placeholder="Share something with your study squad..."
-                className="w-full resize-none bg-transparent border-0 outline-none text-[14px] leading-relaxed text-white placeholder:text-white/50 font-sans"
+                className="w-full resize-none bg-transparent border-0 outline-none text-[15px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-muted)]"
               />
 
               {composerImagePreview && (
-                <div className="relative mt-2.5 inline-block rounded-2xl overflow-hidden border border-white/15">
+                <div className="relative mt-2.5 inline-block rounded-2xl overflow-hidden border border-[var(--border)]">
                   <img
                     src={composerImagePreview}
                     alt="Attachment preview"
@@ -746,10 +778,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
               )}
 
               {composerError && (
-                <p className="mt-1.5 text-xs font-medium text-[#ff6b72]">{composerError}</p>
+                <p className="mt-1.5 text-[12px] font-medium text-[var(--danger)]">{composerError}</p>
               )}
 
-              <div className="mt-3 pt-3 nothing-dotted-divider flex items-center justify-between gap-2">
+              <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between gap-2">
                 <div>
                   <input
                     ref={fileInputRef}
@@ -761,9 +793,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="press-scale inline-flex items-center gap-2 min-h-[44px] px-3.5 rounded-full text-xs font-semibold text-white/80 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.14] transition-all cursor-pointer"
+                    className="inline-flex items-center gap-2 min-h-[42px] px-3.5 rounded-full text-[13px] font-semibold text-[var(--text)] bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] transition-colors cursor-pointer"
                   >
-                    <ImageIcon className="w-4 h-4 text-[#D71921]" />
+                    <ImageIcon className="w-4 h-4 text-[var(--accent)]" />
                     <span>Attach image</span>
                   </button>
                 </div>
@@ -771,7 +803,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 <button
                   type="submit"
                   disabled={publishing || (!composerText.trim() && !composerImageFile)}
-                  className="boardly-red-pill press-scale inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-full text-xs font-bold tracking-wide disabled:opacity-45 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 min-h-[42px] px-5 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold hover:opacity-95 disabled:opacity-45 transition cursor-pointer"
                 >
                   {publishing ? (
                     <>
@@ -797,23 +829,35 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           {[0, 1].map((idx) => (
             <div
               key={idx}
-              className="boardly-glass-card rounded-[24px] p-4 animate-pulse space-y-3"
+              className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-4 animate-pulse space-y-3"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/10" />
+                <div className="w-10 h-10 rounded-full bg-[var(--border)]" />
                 <div className="space-y-1.5 flex-1">
-                  <div className="h-3.5 w-32 rounded bg-white/10" />
-                  <div className="h-2.5 w-20 rounded bg-white/10" />
+                  <div className="h-3.5 w-32 rounded bg-[var(--border)]" />
+                  <div className="h-2.5 w-20 rounded bg-[var(--border)]/70" />
                 </div>
               </div>
-              <div className="h-12 w-full rounded-xl bg-white/5" />
+              <div className="h-12 w-full rounded-xl bg-[var(--bg)]" />
             </div>
           ))}
         </div>
+      ) : loadError ? (
+        <div className="rounded-[24px] p-5 bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-3">
+          <p className="text-[13px] text-[var(--text-muted)]">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => void loadUserPosts()}
+            className="min-h-[38px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text)] inline-flex items-center gap-1.5 hover:bg-[var(--settings-row-hover)] cursor-pointer shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Retry</span>
+          </button>
+        </div>
       ) : posts.length === 0 ? (
-        <div className="rounded-[24px] p-8 text-center border border-dashed border-white/20 bg-white/[0.02]">
-          <p className="text-[15px] font-semibold text-white/85">No posts yet</p>
-          <p className="text-[13px] mt-1 text-white/60">
+        <div className="rounded-[24px] p-7 text-center border border-dashed border-[var(--border)] bg-[var(--card)]">
+          <p className="text-[15px] font-semibold text-[var(--text)]">No posts yet</p>
+          <p className="text-[13px] mt-1 text-[var(--text-muted)]">
             {isOwnProfile
               ? 'Share study notes, updates, or questions with your study squad above.'
               : `${authorDisplayName} hasn't shared any posts yet.`}
@@ -821,7 +865,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
         </div>
       ) : (
         <div className="space-y-3.5">
-          {posts.map((post, idx) => {
+          {posts.map((post) => {
             const isCommentsOpen = openCommentsPostId === post.id;
             const postComments = commentsByPost[post.id] || [];
             const loadingComments = Boolean(commentsLoadingByPost[post.id]);
@@ -839,12 +883,18 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 : post.title || post.description;
             const isLong = shouldCollapsePost(bodyText);
             const isExpanded = Boolean(expandedPostIds[post.id]);
+            const resolvedPostAuthor = getDisplayName({
+              display_name: post.authorName || authorDisplayName,
+              username: post.authorUsername || authorUsername,
+            });
+            const resolvedPostHandle = getUsernameHandle({
+              username: post.authorUsername || authorUsername,
+            });
 
             return (
               <article
                 key={post.id}
-                style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
-                className="boardly-glass-card rounded-[24px] p-4 sm:p-5 transition-all"
+                className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-4 sm:p-5 transition-all"
               >
                 {/* Post Author Row */}
                 <div className="flex items-center justify-between gap-2">
@@ -854,12 +904,12 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       uid={post.authorId || targetUid}
                       equippedAvatar={post.authorAvatar || authorAvatar}
                       equippedFrameId={post.authorFrame || authorFrame}
-                      alt={post.authorName || authorDisplayName}
+                      alt={resolvedPostAuthor}
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[15px] font-bold text-white truncate">
-                          {post.authorName || authorDisplayName}
+                        <span className="text-[15px] font-semibold text-[var(--text)] truncate">
+                          {resolvedPostAuthor}
                         </span>
                         {(post.authorProBadge || (isPro && authorProBadge)) && (
                           <ProBadge
@@ -870,13 +920,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           />
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[12px] text-white/65">
-                        {(post.authorUsername || authorUsername) && (
-                          <span className="truncate">
-                            @{String(post.authorUsername || authorUsername).replace(/^@+/, '')}
-                          </span>
+                      <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
+                        {resolvedPostHandle && (
+                          <span className="truncate">{resolvedPostHandle}</span>
                         )}
-                        <span>·</span>
+                        {resolvedPostHandle && <span>·</span>}
                         <span>{formatRelativeDate(post.createdAt)}</span>
                       </div>
                     </div>
@@ -888,17 +936,17 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       onClick={() => handleDeletePost(post.id)}
                       title="Delete post"
                       aria-label="Delete post"
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white/50 hover:text-[#D71921] hover:bg-red-500/10 transition-colors cursor-pointer"
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
                 </div>
 
-                {/* Post Body (collapses after ~6 lines with Show more) */}
+                {/* Post Body */}
                 <div className="mt-3">
                   <div
-                    className={`text-[15px] leading-[1.55] whitespace-pre-wrap break-words text-white/90 font-sans ${
+                    className={`text-[15px] leading-[1.55] whitespace-pre-wrap break-words text-[var(--text)] ${
                       isLong && !isExpanded ? 'line-clamp-6' : ''
                     }`}
                   >
@@ -913,7 +961,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           [post.id]: !prev[post.id],
                         }))
                       }
-                      className="mt-1.5 text-[13px] font-semibold text-[#D71921] hover:underline cursor-pointer"
+                      className="mt-1.5 text-[13px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
                     >
                       {isExpanded ? 'Show less' : 'Show more'}
                     </button>
@@ -929,27 +977,27 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         src={img.url}
                         alt={img.name || 'Post attachment'}
                         loading="lazy"
-                        className="w-full max-h-80 object-cover rounded-2xl border border-white/10"
+                        className="w-full max-h-80 object-cover rounded-2xl border border-[var(--border)]"
                       />
                     ))}
                   </div>
                 )}
 
-                {/* Commons Action Bar: Like, Comment, Bookmark, Share */}
-                <div className="mt-3.5 pt-3 nothing-dotted-divider flex items-center justify-between gap-2">
+                {/* Action Bar */}
+                <div className="mt-3.5 pt-3 border-t border-[var(--border)] flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => handleToggleLike(post)}
-                      className={`press-scale inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-full text-[13px] font-semibold transition-colors cursor-pointer ${
                         post.likedByMe
-                          ? 'bg-[#D71921]/20 text-[#ff6b72] border border-[#D71921]/40'
-                          : 'text-white/75 hover:bg-white/10 border border-transparent'
+                          ? 'bg-[var(--accent)]/12 text-[var(--accent)] border border-[var(--accent)]/30'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] border border-transparent'
                       }`}
                     >
                       <Heart
                         className={`w-4 h-4 ${
-                          post.likedByMe ? 'fill-[#D71921] text-[#D71921]' : ''
+                          post.likedByMe ? 'fill-[var(--accent)] text-[var(--accent)]' : ''
                         }`}
                       />
                       <span className="font-inter-num">{post.likesCount.toLocaleString()}</span>
@@ -958,16 +1006,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleCommentsDrawer(post.id)}
-                      className={`press-scale inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-full text-[13px] font-semibold transition-colors cursor-pointer ${
                         isCommentsOpen
-                          ? 'bg-white/15 text-white border border-white/25'
-                          : 'text-white/75 hover:bg-white/10 border border-transparent'
+                          ? 'bg-[var(--bg)] text-[var(--text)] border border-[var(--border)]'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] border border-transparent'
                       }`}
                     >
                       <MessageSquare className="w-4 h-4" />
-                      <span className="font-inter-num">
-                        {post.commentsCount.toLocaleString()}
-                      </span>
+                      <span className="font-inter-num">{post.commentsCount.toLocaleString()}</span>
                     </button>
                   </div>
 
@@ -976,14 +1022,15 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       type="button"
                       onClick={() => handleToggleBookmark(post)}
                       aria-label="Bookmark post"
-                      className={`press-scale w-11 h-11 rounded-full inline-flex items-center justify-center transition-colors cursor-pointer ${
+                      className={`w-10 h-10 rounded-full inline-flex items-center justify-center transition-colors cursor-pointer ${
                         post.bookmarkedByMe
-                          ? 'text-amber-400 bg-amber-500/15'
-                          : 'text-white/70 hover:bg-white/10'
+                          ? 'bg-[var(--koban-bg)]'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)]'
                       }`}
+                      style={post.bookmarkedByMe ? { color: 'var(--koban)' } : undefined}
                     >
                       <Bookmark
-                        className={`w-4 h-4 ${post.bookmarkedByMe ? 'fill-amber-400' : ''}`}
+                        className={`w-4 h-4 ${post.bookmarkedByMe ? 'fill-current' : ''}`}
                       />
                     </button>
 
@@ -991,11 +1038,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       type="button"
                       onClick={() => handleSharePost(post)}
                       aria-label="Share post"
-                      className="press-scale px-3 min-h-[44px] rounded-full inline-flex items-center gap-1 text-xs font-semibold text-white/70 hover:bg-white/10 transition-colors cursor-pointer"
+                      className="px-3 min-h-[40px] rounded-full inline-flex items-center gap-1 text-[13px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer"
                     >
                       <Share2 className="w-4 h-4" />
                       {shareToastPostId === post.id && (
-                        <span className="text-[11px] text-emerald-400">Copied!</span>
+                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                          Copied!
+                        </span>
                       )}
                     </button>
                   </div>
@@ -1003,90 +1052,93 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
                 {/* Inline Comments Drawer */}
                 {isCommentsOpen && (
-                  <div className="mt-3 pt-3 nothing-dotted-divider space-y-3">
+                  <div className="mt-3 pt-3 border-t border-[var(--border)] space-y-3">
                     {loadingComments ? (
-                      <div className="py-3 flex items-center justify-center gap-2 text-xs text-white/60">
+                      <div className="py-3 flex items-center justify-center gap-2 text-[12px] text-[var(--text-muted)]">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span>Loading comments...</span>
                       </div>
                     ) : postComments.length === 0 ? (
-                      <p className="text-xs py-2 text-center text-white/55">
+                      <p className="text-[12px] py-2 text-center text-[var(--text-muted)]">
                         No comments yet. Start the conversation!
                       </p>
                     ) : (
                       <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
-                        {postComments.map((c) => (
-                          <div
-                            key={c.id}
-                            className={`rounded-2xl p-3 text-xs bg-white/[0.04] border border-white/10 ${
-                              c.parentCommentId ? 'ml-5' : ''
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-bold text-white truncate">
-                                  {c.authorName || 'Student'}
-                                </span>
-                                {c.authorUsername && (
-                                  <span className="text-[11px] text-white/55 truncate">
-                                    @{String(c.authorUsername).replace(/^@+/, '')}
+                        {postComments.map((c) => {
+                          const cDisplay = getDisplayName({
+                            display_name: c.authorName,
+                            username: c.authorUsername,
+                          });
+                          const cHandle = getUsernameHandle({ username: c.authorUsername });
+                          return (
+                            <div
+                              key={c.id}
+                              className={`rounded-2xl p-3 text-[12px] bg-[var(--bg)] border border-[var(--border)] ${
+                                c.parentId ? 'ml-5' : ''
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-semibold text-[var(--text)] truncate">
+                                    {cDisplay}
                                   </span>
-                                )}
-                                <span className="text-[10px] text-white/45">
-                                  {formatRelativeDate(
-                                    typeof c.createdAt === 'number'
-                                      ? c.createdAt
-                                      : Date.now()
+                                  {cHandle && (
+                                    <span className="text-[11px] text-[var(--text-muted)] truncate">
+                                      {cHandle}
+                                    </span>
                                   )}
-                                </span>
-                              </div>
+                                  <span className="text-[11px] text-[var(--text-muted)]">
+                                    {formatRelativeDate(
+                                      typeof c.createdAt === 'number' ? c.createdAt : Date.now()
+                                    )}
+                                  </span>
+                                </div>
 
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleLikeComment(post.id, c.id)}
-                                  className={`inline-flex items-center gap-1 text-[11px] cursor-pointer ${
-                                    c.likedByMe ? 'text-[#D71921]' : 'text-white/55'
-                                  }`}
-                                >
-                                  <Heart
-                                    className={`w-3 h-3 ${
-                                      c.likedByMe ? 'fill-[#D71921]' : ''
-                                    }`}
-                                  />
-                                  {c.likesCount > 0 && (
-                                    <span className="font-inter-num">{c.likesCount}</span>
-                                  )}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setReplyToByPost((prev) => ({
-                                      ...prev,
-                                      [post.id]: { id: c.id, authorName: c.authorName },
-                                    }))
-                                  }
-                                  className="text-[11px] font-semibold text-white/60 hover:text-white cursor-pointer"
-                                >
-                                  Reply
-                                </button>
-                                {(c.authorId === user?.uid || isOwnProfile) && (
+                                <div className="flex items-center gap-2 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => handleDeleteComment(post.id, c.id)}
-                                    className="text-white/45 hover:text-[#D71921] cursor-pointer"
-                                    aria-label="Delete comment"
+                                    onClick={() => handleLikeComment(post.id, c.id)}
+                                    className={`inline-flex items-center gap-1 text-[11px] cursor-pointer ${
+                                      c.likedByMe ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                                    }`}
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Heart
+                                      className={`w-3 h-3 ${c.likedByMe ? 'fill-current' : ''}`}
+                                    />
+                                    {(c.likesCount ?? 0) > 0 && (
+                                      <span className="font-inter-num">{c.likesCount}</span>
+                                    )}
                                   </button>
-                                )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setReplyToByPost((prev) => ({
+                                        ...prev,
+                                        [post.id]: { id: c.id, authorName: cDisplay },
+                                      }))
+                                    }
+                                    className="text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                                  >
+                                    Reply
+                                  </button>
+                                  {(c.authorId === user?.uid || isOwnProfile) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteComment(post.id, c.id)}
+                                      className="text-[var(--text-muted)] hover:text-[var(--danger)] cursor-pointer"
+                                      aria-label="Delete comment"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
+                              <p className="mt-1 leading-relaxed text-[var(--text)] break-words">
+                                {c.text}
+                              </p>
                             </div>
-                            <p className="mt-1 leading-relaxed text-white/85 break-words">
-                              {c.text}
-                            </p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1094,10 +1146,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     {user?.uid && !isGuest && (
                       <div className="space-y-1.5">
                         {replyTarget && (
-                          <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-white/5 text-white/70">
+                          <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-[var(--bg)] text-[var(--text-muted)]">
                             <span className="inline-flex items-center gap-1">
                               <CornerDownRight className="w-3 h-3" />
-                              Replying to <strong>{replyTarget.authorName}</strong>
+                              Replying to <strong className="text-[var(--text)]">{replyTarget.authorName}</strong>
                             </span>
                             <button
                               type="button"
@@ -1111,30 +1163,28 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           </div>
                         )}
                         <div className="flex items-center gap-2">
-                          <div className="search-pill-wrapper flex-1 flex items-center rounded-full px-3.5 min-h-[44px] bg-white/[0.06] border border-white/15 transition-all">
-                            <input
-                              type="text"
-                              value={commentDraftByPost[post.id] || ''}
-                              onChange={(e) =>
-                                setCommentDraftByPost((prev) => ({
-                                  ...prev,
-                                  [post.id]: e.target.value,
-                                }))
+                          <input
+                            type="text"
+                            value={commentDraftByPost[post.id] || ''}
+                            onChange={(e) =>
+                              setCommentDraftByPost((prev) => ({
+                                ...prev,
+                                [post.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                void handleSendComment(post.id);
                               }
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  void handleSendComment(post.id);
-                                }
-                              }}
-                              placeholder={
-                                replyTarget
-                                  ? `Reply to ${replyTarget.authorName}...`
-                                  : 'Write a comment...'
-                              }
-                              className="flex-1 text-xs text-white placeholder:text-white/45"
-                            />
-                          </div>
+                            }}
+                            placeholder={
+                              replyTarget
+                                ? `Reply to ${replyTarget.authorName}...`
+                                : 'Write a comment...'
+                            }
+                            className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+                          />
                           <button
                             type="button"
                             disabled={
@@ -1142,7 +1192,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                               !(commentDraftByPost[post.id] || '').trim()
                             }
                             onClick={() => void handleSendComment(post.id)}
-                            className="boardly-red-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold disabled:opacity-40 cursor-pointer"
+                            className="min-h-[42px] px-4 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold disabled:opacity-40 cursor-pointer"
                           >
                             {submittingCommentPostId === post.id ? '...' : 'Reply'}
                           </button>

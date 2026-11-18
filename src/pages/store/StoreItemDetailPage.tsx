@@ -19,11 +19,21 @@ import { useWallet } from '@/hooks/useWallet';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useStoreCart } from '@/hooks/useStoreCart';
 import { Plus } from 'lucide-react';
+import { getDisplayName } from '@/utils/displayName';
+import { RARITY_ACCENT } from '@/components/store/StoreCard';
 
 export const StoreItemDetailPage: React.FC = () => {
   const { item: rawItem, slug: rawSlug } = useParams<{ item?: string; slug?: string }>();
   const itemParam = rawItem || rawSlug || '';
-  const { user, isGuest } = useAuth();
+  const { user, profile, isGuest } = useAuth();
+  const displayName = getDisplayName(
+    {
+      display_name: profile?.display_name ?? profile?.displayName,
+      realName: profile?.realName ?? profile?.name ?? user?.displayName,
+      username: profile?.username,
+    },
+    'Boardly Scholar'
+  );
   const { owned, equipped, purchaseCosmetic, equipCosmetic } = useWallet();
   const { requireAuth } = useAuthGate();
   const { isInCart, toggleCartItem } = useStoreCart({
@@ -122,8 +132,10 @@ export const StoreItemDetailPage: React.FC = () => {
     (c) => c.type === cosmetic.type && c.id !== cosmetic.id
   ).slice(0, 4);
 
+  const rarityStyle = RARITY_ACCENT[cosmetic.rarity] || RARITY_ACCENT.common;
+
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-32 px-4 sm:px-6">
+    <div className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] pt-28 pb-32 px-4 sm:px-6 overflow-x-clip">
       <PageMeta
         title={`${cosmetic.name} — ${cosmetic.rarity.toUpperCase()} ${cosmetic.type} | Boardly Store`}
         description={`${cosmetic.description} Unlock ${cosmetic.name} for ${cosmetic.priceKobans} Kobans in the Boardly Store.`}
@@ -161,7 +173,7 @@ export const StoreItemDetailPage: React.FC = () => {
               <div className="w-full px-2">
                 <Nameplate
                   nameplateId={cosmetic.id}
-                  displayName={user?.displayName || 'Boardly Scholar'}
+                  displayName={displayName}
                   animated={cosmetic.animated}
                   allowWrap="full"
                 />
@@ -172,7 +184,7 @@ export const StoreItemDetailPage: React.FC = () => {
                 <ProfileEffectCardPreview
                   effectId={cosmetic.id}
                   animated={cosmetic.animated}
-                  displayName={user?.displayName || 'Boardly Scholar'}
+                  displayName={displayName}
                 />
               </div>
             )}
@@ -180,13 +192,17 @@ export const StoreItemDetailPage: React.FC = () => {
 
           {/* Item Details & Unlock CTA */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="section-chip-red uppercase">{cosmetic.rarity}</span>
-              <span className="glass-pill px-3 py-1 text-xs text-white/70 capitalize">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider border ${rarityStyle.badgeBg} ${rarityStyle.badgeText} ${rarityStyle.badgeBorder}`}
+              >
+                {rarityStyle.label}
+              </span>
+              <span className="glass-pill px-3 py-1 text-xs font-medium text-[var(--text-muted)] capitalize">
                 {cosmetic.type}
               </span>
               {cosmetic.animated && (
-                <span className="glass-pill px-3 py-1 text-xs text-[#E8A317] inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)]">
                   <Sparkles size={11} />
                   <span>Animated</span>
                 </span>
@@ -214,7 +230,7 @@ export const StoreItemDetailPage: React.FC = () => {
             </div>
 
             {feedback && (
-              <div className="mb-4 p-3 rounded-xl bg-white/[0.06] border border-white/15 text-xs text-[var(--text)]">
+              <div className="mb-4 p-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)]">
                 {feedback}
               </div>
             )}
@@ -282,25 +298,30 @@ export const StoreItemDetailPage: React.FC = () => {
         {/* Related Cosmetics */}
         {relatedItems.length > 0 && (
           <section className="glass-panel p-6 sm:p-8">
-            <h2 className="font-dot text-xl font-bold text-white mb-4 capitalize">
+            <h2 className="font-dot text-xl font-bold text-[var(--text)] mb-4 capitalize">
               More {cosmetic.type}s in the Store
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {relatedItems.map((rel) => (
-                <Link
-                  key={rel.id}
-                  to={`/store/${rel.id}`}
-                  className="glass-card-interactive p-4 block"
-                >
-                  <span className="text-[10px] uppercase tracking-wider text-[#E8A317] font-semibold">
-                    {rel.rarity}
-                  </span>
-                  <h3 className="font-dot text-sm font-bold text-white mt-1 mb-2 truncate">
-                    {rel.name}
-                  </h3>
-                  <KobanAmount amount={rel.priceKobans} size="sm" />
-                </Link>
-              ))}
+              {relatedItems.map((rel) => {
+                const relRarity = RARITY_ACCENT[rel.rarity] || RARITY_ACCENT.common;
+                return (
+                  <Link
+                    key={rel.id}
+                    to={`/store/${rel.id}`}
+                    className="glass-card-interactive p-4 block"
+                  >
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${relRarity.badgeBg} ${relRarity.badgeText} ${relRarity.badgeBorder}`}
+                    >
+                      {relRarity.label}
+                    </span>
+                    <h3 className="font-dot text-sm font-bold text-[var(--text)] mt-1.5 mb-2 truncate">
+                      {rel.name}
+                    </h3>
+                    <KobanAmount amount={rel.priceKobans} size="sm" />
+                  </Link>
+                );
+              })}
             </div>
           </section>
         )}

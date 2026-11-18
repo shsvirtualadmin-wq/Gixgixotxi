@@ -89,33 +89,33 @@
   --surface-muted: #f0f0f5;
   --surface-2: #e8e8f0;
 
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-surface: rgba(255, 255, 255, 0.78);
-  --glass-surface-strong: rgba(255, 255, 255, 0.88);
-  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
-  --glass-surface-highlight-color: rgba(255, 250, 250, 0.90);
-  --glass-row-bg: rgba(241, 245, 249, 0.88);
-  --glass-pill-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-outer-edge: rgba(0, 0, 0, 0.06);
-  --glass-border-strong: rgba(0, 0, 0, 0.14);
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-surface: #ffffff;
+  --glass-surface-strong: #ffffff;
+  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.96) 0%, #ffffff 100%);
+  --glass-surface-highlight-color: #fffafa;
+  --glass-row-bg: #f8f9fb;
+  --glass-pill-bg: #ffffff;
+  --glass-border: rgba(17, 17, 20, 0.09);
+  --glass-outer-edge: rgba(17, 17, 20, 0.06);
+  --glass-border-strong: rgba(17, 17, 20, 0.14);
   --glass-border-hover: rgba(217, 20, 34, 0.35);
   --glass-border-highlight: rgba(217, 20, 34, 0.50);
-  --glass-highlight: rgba(255, 255, 255, 0.85);
-  --glass-shadow: 0 12px 30px -8px rgba(17, 17, 24, 0.08), 0 4px 12px -2px rgba(17, 17, 24, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.06);
-  --glass-glow: 0 14px 32px -6px rgba(217, 20, 34, 0.18), 0 4px 14px -2px rgba(217, 20, 34, 0.10), 0 0 0 1px rgba(217, 20, 34, 0.18);
-  --blob-1: rgba(217, 20, 34, 0.18);
-  --blob-2: rgba(190, 18, 60, 0.16);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 2px 10px -2px rgba(17, 17, 24, 0.06), 0 1px 2px rgba(17, 17, 24, 0.04);
+  --glass-glow: 0 10px 24px -6px rgba(217, 20, 34, 0.14), 0 2px 8px -2px rgba(217, 20, 34, 0.08);
+  --blob-1: rgba(217, 20, 34, 0.03);
+  --blob-2: rgba(58, 76, 255, 0.025);
 
-  --border: rgba(17, 17, 20, 0.09);
-  --border-strong: rgba(17, 17, 20, 0.16);
-  --divider: rgba(17, 17, 20, 0.08);
-  --track-bg: rgba(17, 17, 20, 0.10);
+  --border: rgba(17, 17, 20, 0.10);
+  --border-strong: rgba(17, 17, 20, 0.18);
+  --divider: rgba(17, 17, 20, 0.09);
+  --track-bg: rgba(17, 17, 20, 0.12);
 
   --text: #111114;
   --text-primary: #111114;
-  --text-secondary: #32323a;
-  --text-muted: #5b5b66;
+  --text-secondary: #2e2e36;
+  --text-muted: #52525c;
   --text-on-accent: #ffffff;
   --accent-contrast: #ffffff;
   --step-number-color: #111114;
@@ -261,6 +261,33 @@
   --pill-chip-border: rgba(15, 23, 42, 0.08);
   --meter-off: rgba(15, 23, 42, 0.11);
   --ring-track: rgba(15, 23, 42, 0.10);
+
+  /* Boardly Semantic Tokens — Light Theme (WCAG AA Verified) */
+  --koban: #9a6400;
+  --koban-bg: #fef7e0;
+  --koban-border: rgba(154, 100, 0, 0.25);
+  --pro: #9a6400;
+  --pro-bg: #fef7e0;
+  --pro-border: rgba(154, 100, 0, 0.28);
+  --danger-border: rgba(185, 28, 28, 0.28);
+  --settings-card-shadow: 0 1px 3px rgba(17, 17, 20, 0.05), 0 6px 18px -6px rgba(17, 17, 20, 0.06);
+  --settings-row-hover: rgba(17, 17, 20, 0.035);
+  --settings-row-active: rgba(17, 17, 20, 0.065);
+  --rarity-common-text: #475569;
+  --rarity-common-bg: #f1f5f9;
+  --rarity-common-border: #cbd5e1;
+  --rarity-rare-text: #1d4ed8;
+  --rarity-rare-bg: #eff6ff;
+  --rarity-rare-border: #bfdbfe;
+  --rarity-epic-text: #7e22ce;
+  --rarity-epic-bg: #faf5ff;
+  --rarity-epic-border: #e9d5ff;
+  --rarity-legendary-text: #9a6400;
+  --rarity-legendary-bg: #fef9e7;
+  --rarity-legendary-border: #f3d078;
+  --rarity-mythic-text: #b91c1c;
+  --rarity-mythic-bg: #fef2f2;
+  --rarity-mythic-border: #fecaca;
 }
 
 /* ===== DARK THEME OVERRIDES (PART 2: iOS + Glassmorphism + Nothing OS) ===== */
@@ -357,7 +384,7 @@
   --brand: var(--accent-red);
   --brand-2: var(--text-primary);
   --violet: var(--accent-red);
-  --danger: var(--accent-red);
+  --danger: #f87171;
   --success: var(--tag-success-text);
   --warning: var(--tag-warning-text);
   --nav-bg: rgba(18, 18, 22, 0.72);
@@ -412,6 +439,33 @@
   --bubble-outer-glow: 0 6px 20px rgba(215, 25, 33, 0.45);
   --menu-row-pressed: rgba(255, 255, 255, 0.08);
   --menu-icon-bg: rgba(255, 255, 255, 0.09);
+
+  /* Boardly Semantic Tokens — Dark Theme */
+  --koban: #f5b731;
+  --koban-bg: rgba(245, 183, 49, 0.14);
+  --koban-border: rgba(245, 183, 49, 0.32);
+  --pro: #f5b731;
+  --pro-bg: rgba(245, 183, 49, 0.14);
+  --pro-border: rgba(245, 183, 49, 0.32);
+  --danger-border: rgba(248, 113, 113, 0.32);
+  --settings-card-shadow: none;
+  --settings-row-hover: rgba(255, 255, 255, 0.04);
+  --settings-row-active: rgba(255, 255, 255, 0.08);
+  --rarity-common-text: #cbd5e1;
+  --rarity-common-bg: rgba(148, 163, 184, 0.14);
+  --rarity-common-border: rgba(148, 163, 184, 0.32);
+  --rarity-rare-text: #93c5fd;
+  --rarity-rare-bg: rgba(59, 130, 246, 0.16);
+  --rarity-rare-border: rgba(96, 165, 250, 0.35);
+  --rarity-epic-text: #d8b4fe;
+  --rarity-epic-bg: rgba(168, 85, 247, 0.18);
+  --rarity-epic-border: rgba(192, 132, 252, 0.38);
+  --rarity-legendary-text: #fcd34d;
+  --rarity-legendary-bg: rgba(245, 158, 11, 0.16);
+  --rarity-legendary-border: rgba(251, 191, 36, 0.38);
+  --rarity-mythic-text: #fca5a5;
+  --rarity-mythic-bg: rgba(239, 68, 68, 0.18);
+  --rarity-mythic-border: rgba(248, 113, 113, 0.40);
 }
 
 /* ===== EXPLICIT LIGHT THEME ===== */
@@ -424,33 +478,33 @@
   --surface-muted: #f0f0f5;
   --surface-2: #e8e8f0;
 
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-surface: rgba(255, 255, 255, 0.78);
-  --glass-surface-strong: rgba(255, 255, 255, 0.88);
-  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.92) 0%, rgba(255, 255, 255, 0.88) 100%);
-  --glass-surface-highlight-color: rgba(255, 250, 250, 0.90);
-  --glass-row-bg: rgba(241, 245, 249, 0.88);
-  --glass-pill-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-outer-edge: rgba(0, 0, 0, 0.06);
-  --glass-border-strong: rgba(0, 0, 0, 0.14);
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-surface: #ffffff;
+  --glass-surface-strong: #ffffff;
+  --glass-surface-highlight: linear-gradient(180deg, rgba(254, 242, 242, 0.96) 0%, #ffffff 100%);
+  --glass-surface-highlight-color: #fffafa;
+  --glass-row-bg: #f8f9fb;
+  --glass-pill-bg: #ffffff;
+  --glass-border: rgba(17, 17, 20, 0.09);
+  --glass-outer-edge: rgba(17, 17, 20, 0.06);
+  --glass-border-strong: rgba(17, 17, 20, 0.14);
   --glass-border-hover: rgba(217, 20, 34, 0.35);
   --glass-border-highlight: rgba(217, 20, 34, 0.50);
-  --glass-highlight: rgba(255, 255, 255, 0.85);
-  --glass-shadow: 0 12px 30px -8px rgba(17, 17, 24, 0.08), 0 4px 12px -2px rgba(17, 17, 24, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.06);
-  --glass-glow: 0 14px 32px -6px rgba(217, 20, 34, 0.18), 0 4px 14px -2px rgba(217, 20, 34, 0.10), 0 0 0 1px rgba(217, 20, 34, 0.18);
-  --blob-1: rgba(217, 20, 34, 0.18);
-  --blob-2: rgba(190, 18, 60, 0.16);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 2px 10px -2px rgba(17, 17, 24, 0.06), 0 1px 2px rgba(17, 17, 24, 0.04);
+  --glass-glow: 0 10px 24px -6px rgba(217, 20, 34, 0.14), 0 2px 8px -2px rgba(217, 20, 34, 0.08);
+  --blob-1: rgba(217, 20, 34, 0.03);
+  --blob-2: rgba(58, 76, 255, 0.025);
 
-  --border: rgba(17, 17, 20, 0.09);
-  --border-strong: rgba(17, 17, 20, 0.16);
-  --divider: rgba(17, 17, 20, 0.08);
-  --track-bg: rgba(17, 17, 20, 0.10);
+  --border: rgba(17, 17, 20, 0.10);
+  --border-strong: rgba(17, 17, 20, 0.18);
+  --divider: rgba(17, 17, 20, 0.09);
+  --track-bg: rgba(17, 17, 20, 0.12);
 
   --text: #111114;
   --text-primary: #111114;
-  --text-secondary: #32323a;
-  --text-muted: #5b5b66;
+  --text-secondary: #2e2e36;
+  --text-muted: #52525c;
   --text-on-accent: #ffffff;
   --accent-contrast: #ffffff;
   --step-number-color: #111114;
@@ -537,6 +591,33 @@
   --uni-logo-box-text: #111115;
   --uni-logo-box-border: rgba(215, 25, 33, 0.32);
   --uni-logo-box-shadow: 0 2px 8px rgba(215, 25, 33, 0.14);
+
+  /* Boardly Semantic Tokens — Explicit Light Theme */
+  --koban: #9a6400;
+  --koban-bg: #fef7e0;
+  --koban-border: rgba(154, 100, 0, 0.25);
+  --pro: #9a6400;
+  --pro-bg: #fef7e0;
+  --pro-border: rgba(154, 100, 0, 0.28);
+  --danger-border: rgba(185, 28, 28, 0.28);
+  --settings-card-shadow: 0 1px 3px rgba(17, 17, 20, 0.05), 0 6px 18px -6px rgba(17, 17, 20, 0.06);
+  --settings-row-hover: rgba(17, 17, 20, 0.035);
+  --settings-row-active: rgba(17, 17, 20, 0.065);
+  --rarity-common-text: #475569;
+  --rarity-common-bg: #f1f5f9;
+  --rarity-common-border: #cbd5e1;
+  --rarity-rare-text: #1d4ed8;
+  --rarity-rare-bg: #eff6ff;
+  --rarity-rare-border: #bfdbfe;
+  --rarity-epic-text: #7e22ce;
+  --rarity-epic-bg: #faf5ff;
+  --rarity-epic-border: #e9d5ff;
+  --rarity-legendary-text: #9a6400;
+  --rarity-legendary-bg: #fef9e7;
+  --rarity-legendary-border: #f3d078;
+  --rarity-mythic-text: #b91c1c;
+  --rarity-mythic-bg: #fef2f2;
+  --rarity-mythic-border: #fecaca;
 }
 
 /* ===== TAILWIND TOKEN UTILITY SHORTCUTS ===== */
@@ -5727,30 +5808,30 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   --rw-muted: #5d5d66;
   --rw-red: #d4142a;
   --rw-gold: #8a5a00;
-  --rw-green: #0f8a4b;
+  --rw-green: #0d7a3f;
   --rw-on-red: #ffffff;
 
   /* 1. Liquid Glass Tab Indicator tokens (Light) */
-  --rw-tab-indicator-bg: rgba(255, 255, 255, 0.12);
+  --rw-tab-indicator-bg: rgba(255, 255, 255, 0.72);
   --rw-tab-indicator-rim: rgba(20, 20, 24, 0.14);
-  --rw-tab-indicator-hl-tl: rgba(255, 255, 255, 0.6);
-  --rw-tab-indicator-hl-br: rgba(255, 255, 255, 0.3);
+  --rw-tab-indicator-hl-tl: rgba(255, 255, 255, 0.8);
+  --rw-tab-indicator-hl-br: rgba(255, 255, 255, 0.4);
   --rw-tab-indicator-drop: rgba(20, 20, 24, 0.10);
   --rw-tab-indicator-lifted-drop: rgba(20, 20, 24, 0.22);
 
   /* 2. Red Glass Buttons (Light) */
-  --rw-btn-red-bg: rgba(212, 20, 42, 0.82);
+  --rw-btn-red-bg: rgba(212, 20, 42, 0.88);
   --rw-btn-red-rim: rgba(255, 255, 255, 0.4);
   --rw-btn-red-press-shadow: rgba(110, 8, 20, 0.55);
 
   /* 3. Clear Glass Buttons & WhatsApp (Light) */
-  --rw-btn-clear-bg: rgba(255, 255, 255, 0.5);
+  --rw-btn-clear-bg: rgba(255, 255, 255, 0.88);
   --rw-btn-clear-rim: rgba(20, 20, 24, 0.14);
-  --rw-whatsapp-text: #128c4a;
+  --rw-whatsapp-text: #0d7a3f;
 
   /* 6. Day Discs & Coins (Light) */
-  --rw-disc-outline: rgba(20, 20, 24, 0.24);
-  --rw-disc-future-bg: rgba(255, 255, 255, 0.35);
+  --rw-disc-outline: rgba(20, 20, 24, 0.28);
+  --rw-disc-future-bg: #ffffff;
   --rw-amber-coin: #ffb020;
   --rw-amber-coin-rim: #c47f00;
   --rw-disc-claimed-bg: #f5c542;
@@ -5760,7 +5841,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   --rw-page-bg: var(--rw-bg);
   --rw-card-bg: var(--rw-card);
   --rw-card-border: var(--rw-border);
-  --rw-card-shadow: none;
+  --rw-card-shadow: var(--settings-card-shadow);
   --rw-card-primary-shadow: none;
   --rw-pill-bg: var(--rw-bg);
   --rw-pill-border: var(--rw-border);
@@ -5835,21 +5916,21 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   --rw-muted: #5d5d66;
   --rw-red: #d4142a;
   --rw-gold: #8a5a00;
-  --rw-green: #0f8a4b;
+  --rw-green: #0d7a3f;
   --rw-on-red: #ffffff;
 
-  --rw-tab-indicator-bg: rgba(255, 255, 255, 0.12);
+  --rw-tab-indicator-bg: rgba(255, 255, 255, 0.72);
   --rw-tab-indicator-rim: rgba(20, 20, 24, 0.14);
   --rw-tab-indicator-drop: rgba(20, 20, 24, 0.10);
   --rw-tab-indicator-lifted-drop: rgba(20, 20, 24, 0.22);
 
-  --rw-btn-red-bg: rgba(212, 20, 42, 0.82);
-  --rw-btn-clear-bg: rgba(255, 255, 255, 0.5);
+  --rw-btn-red-bg: rgba(212, 20, 42, 0.88);
+  --rw-btn-clear-bg: rgba(255, 255, 255, 0.88);
   --rw-btn-clear-rim: rgba(20, 20, 24, 0.14);
-  --rw-whatsapp-text: #128c4a;
+  --rw-whatsapp-text: #0d7a3f;
 
-  --rw-disc-outline: rgba(20, 20, 24, 0.24);
-  --rw-disc-future-bg: rgba(255, 255, 255, 0.35);
+  --rw-disc-outline: rgba(20, 20, 24, 0.28);
+  --rw-disc-future-bg: #ffffff;
 }
 
 .dark,
@@ -7705,11 +7786,11 @@ body.modal-open .boardly-post-card {
   --rs-red: #d4142a;
   --rs-red-text: #c10f24;
   --rs-gold: #8a5a00;
-  --rs-green: #128c4a;
-  --rs-blue: #0a74b5;
-  --rs-glass-fill: rgba(255, 255, 255, 0.55);
-  --rs-red-glass-fill: rgba(212, 20, 42, 0.66);
-  --rs-red-glass-fill: color-mix(in srgb, #d4142a 66%, transparent);
+  --rs-green: #0d7a3f;
+  --rs-blue: #0369a1;
+  --rs-glass-fill: #ffffff;
+  --rs-red-glass-fill: rgba(212, 20, 42, 0.90);
+  --rs-red-glass-fill: color-mix(in srgb, #d4142a 90%, transparent);
   --rs-font-doto: 'Doto', var(--font-dot), sans-serif;
   --rs-font-body: 'Space Grotesk', var(--font-heading), sans-serif;
 }
@@ -7751,10 +7832,8 @@ body.modal-open .boardly-post-card {
   -webkit-backdrop-filter: blur(2px) saturate(1.5);
   backdrop-filter: blur(2px) saturate(1.5);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
-    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
-    0 3px 10px -3px rgba(0, 0, 0, 0.3);
+    inset 0 0 0 1px var(--rs-line),
+    0 2px 8px rgba(15, 23, 42, 0.06);
   color: var(--rs-text);
   font-family: var(--rs-font-body);
   font-weight: 700;
@@ -7767,6 +7846,15 @@ body.modal-open .boardly-post-card {
     transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
     opacity 0.16s ease,
     background-color 0.16s ease;
+}
+
+.dark .rs-glass-btn,
+[data-theme="dark"] .rs-glass-btn {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    0 3px 10px -3px rgba(0, 0, 0, 0.3);
 }
 
 .rs-glass-btn:active:not(:disabled) {
@@ -7927,6 +8015,13 @@ body.modal-open .boardly-post-card {
   min-width: max-content;
   padding: 4px;
   border-radius: 999px;
+  background: var(--rs-card);
+  border: 1px solid var(--rs-line);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.dark .rs-seg-track,
+[data-theme="dark"] .rs-seg-track {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 8px 24px rgba(0, 0, 0, 0.38);
@@ -8120,7 +8215,7 @@ button.rs-day-cell:active {
   padding: 16px 18px !important;
   background-color: var(--rs-card) !important;
   border: none !important;
-  box-shadow: inset 0 0 0 1px var(--rs-line) !important;
+  box-shadow: inset 0 0 0 1px var(--rs-line), var(--settings-card-shadow) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
   display: grid !important;

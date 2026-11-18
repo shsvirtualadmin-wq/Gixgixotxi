@@ -55,11 +55,11 @@ import { routes } from '@/utils/routes';
 import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 import {
-  sanitizeStudentDisplayName,
   maskPublicUserText,
   extractIdFromSlug,
   buildEntitySlug,
 } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 import {
   formatPostDetailTimestampPkt,
   formatRelativeTimePkt,
@@ -315,10 +315,11 @@ export const PublicPostDetailPage: React.FC = () => {
     !post.isAnonymous && post.authorUid ? liveAuthors[post.authorUid] : undefined;
   const authorDisplay = post.isAnonymous
     ? post.anonymousAlias || 'Anonymous Student'
-    : sanitizeStudentDisplayName(
-        livePostAuthor?.displayName || post.authorName,
-        post.authorUid
-      );
+    : getDisplayName({
+        display_name: livePostAuthor?.displayName,
+        authorName: post.authorName,
+        username: livePostAuthor?.username || post.authorUsername,
+      });
   const authorEquippedAvatar =
     livePostAuthor?.equippedAvatar ||
     livePostAuthor?.avatar ||
@@ -508,7 +509,11 @@ export const PublicPostDetailPage: React.FC = () => {
       const actor = {
         uid: user.uid,
         email: user.email || null,
-        displayName: profile?.displayName || user.displayName || 'Student',
+        displayName: getDisplayName({
+          display_name: profile?.display_name ?? profile?.displayName,
+          realName: profile?.realName ?? profile?.name ?? user.displayName,
+          username: profile?.username,
+        }),
         photoURL: null,
         equippedAvatar: profile?.equipped?.avatar || (profile as any)?.avatar || null,
         frame: profile?.equipped?.frame || (profile as any)?.frame || null,
@@ -885,10 +890,11 @@ export const PublicPostDetailPage: React.FC = () => {
                   !c.isAnonymous && c.authorUid ? liveAuthors[c.authorUid] : undefined;
                 const cAuthor = c.isAnonymous
                   ? (c as any).anonymousAlias || 'Anonymous Student'
-                  : sanitizeStudentDisplayName(
-                      liveCAuthor?.displayName || c.authorName,
-                      c.authorUid
-                    );
+                  : getDisplayName({
+                      display_name: liveCAuthor?.displayName,
+                      authorName: c.authorName,
+                      username: liveCAuthor?.username || c.authorUsername,
+                    });
                 const cAvatar =
                   liveCAuthor?.equippedAvatar ||
                   liveCAuthor?.avatar ||

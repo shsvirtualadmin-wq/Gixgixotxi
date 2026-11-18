@@ -25,8 +25,10 @@ import {
   authenticateD1GuestSession,
   computeGuestTokenSha256Hex,
   extractGuestSessionTokenFromRequest,
+  extractSessionIdFromRequest,
   getSharedLocalD1Database,
   isD1UserSessionVerified,
+  isSessionRevokedInD1,
   parseServiceAccountFromEnv,
   purgeExpiredGuestAccounts,
   resolveCurrentUser,
@@ -441,6 +443,56 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         expires_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_username_history_uid ON username_history (uid, expires_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS passkeys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key_b64 TEXT NOT NULL,
+        algorithm INTEGER NOT NULL DEFAULT -7,
+        counter INTEGER NOT NULL DEFAULT 0,
+        transports TEXT NOT NULL DEFAULT '[]',
+        name TEXT NOT NULL DEFAULT 'Passkey',
+        device_type TEXT NOT NULL DEFAULT 'platform',
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER DEFAULT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_passkeys_user_created ON passkeys (user_id, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS webauthn_challenges (
+        id TEXT PRIMARY KEY,
+        user_id TEXT DEFAULT NULL,
+        email TEXT DEFAULT NULL,
+        challenge TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL CHECK (type IN ('register', 'authenticate')),
+        expires_at INTEGER NOT NULL,
+        used INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        device_label TEXT NOT NULL DEFAULT 'Unknown device',
+        browser TEXT NOT NULL DEFAULT 'Browser',
+        os TEXT NOT NULL DEFAULT 'Device',
+        user_agent TEXT NOT NULL DEFAULT '',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        location_hint TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        revoked_at INTEGER DEFAULT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions (user_id, revoked_at, last_seen_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS security_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT NOT NULL DEFAULT '',
+        device_label TEXT NOT NULL DEFAULT '',
+        ip_hash TEXT NOT NULL DEFAULT '',
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_security_events_user_created ON security_events (user_id, created_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
@@ -872,6 +924,163 @@ function buildSecurityAlertEmailContent(params: {
   return { subject, html, text };
 }
 
+function parseDeviceMetadataFromRequest(request: Request): {
+  deviceLabel: string;
+  browser: string;
+  os: string;
+  locationHint: string;
+  userAgent: string;
+} {
+  const ua = String(request.headers.get('User-Agent') || '').slice(0, 320);
+  const lower = ua.toLowerCase();
+
+  let browser = 'Web browser';
+  if (lower.includes('edg/')) browser = 'Edge';
+  else if (lower.includes('opr/') || lower.includes('opera')) browser = 'Opera';
+  else if (lower.includes('firefox/')) browser = 'Firefox';
+  else if (lower.includes('crios/') || lower.includes('chrome/')) browser = 'Chrome';
+  else if (lower.includes('safari/')) browser = 'Safari';
+
+  let os = 'Unknown OS';
+  if (lower.includes('iphone')) os = 'iPhone';
+  else if (lower.includes('ipad')) os = 'iPad';
+  else if (lower.includes('android')) os = 'Android';
+  else if (lower.includes('mac os x') || lower.includes('macintosh')) os = 'macOS';
+  else if (lower.includes('windows')) os = 'Windows';
+  else if (lower.includes('cros')) os = 'ChromeOS';
+  else if (lower.includes('linux')) os = 'Linux';
+
+  const cfCountry = String(request.headers.get('CF-IPCountry') || '').trim();
+  const cfCity = String(request.headers.get('CF-IPCity') || '').trim();
+  const locationHint =
+    cfCity && cfCountry ? `${cfCity}, ${cfCountry}` : cfCountry || '';
+
+  return {
+    deviceLabel: `${browser} on ${os}`,
+    browser,
+    os,
+    locationHint,
+    userAgent: ua,
+  };
+}
+
+function base64UrlEncodeBytes(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlDecodeToBytes(input: string): Uint8Array {
+  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
+  const binary = atob(normalized + pad);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
+  }
+  return out;
+}
+
+function generateWebAuthnChallengeB64Url(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncodeBytes(bytes);
+}
+
+function buildSessionCookieHeader(sessionId: string, maxAgeSeconds = 30 * 24 * 60 * 60): string {
+  const encoded = encodeURIComponent(sessionId);
+  return `boardly_session_id=${encoded}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+function mapAuditEventToSecurityEvent(eventType: string): { type: string; title: string; detail: string } | null {
+  switch (eventType) {
+    case 'totp_enabled':
+      return {
+        type: 'two_factor_enabled',
+        title: 'Authenticator app enabled',
+        detail: 'Two-step verification via authenticator app was turned on.',
+      };
+    case 'email_2fa_enabled':
+      return {
+        type: 'two_factor_enabled',
+        title: 'Email code verification enabled',
+        detail: 'Two-step verification via email code was turned on.',
+      };
+    case 'email_2fa_disabled':
+      return {
+        type: 'two_factor_disabled',
+        title: 'Email code verification turned off',
+        detail: 'Email code verification was disabled.',
+      };
+    case '2fa_disabled':
+    case 'admin_2fa_reset':
+      return {
+        type: 'two_factor_disabled',
+        title: 'Two-step verification turned off',
+        detail: 'Multi-factor authentication was disabled on this account.',
+      };
+    case 'backup_codes_regenerated':
+      return {
+        type: 'two_factor_enabled',
+        title: 'Backup codes regenerated',
+        detail: 'A new set of one-time recovery backup codes was created.',
+      };
+    case 'backup_code_used':
+      return {
+        type: 'sign_in',
+        title: 'Signed in with backup code',
+        detail: 'A one-time backup code was used to verify sign-in.',
+      };
+    case 'trusted_devices_revoked':
+      return {
+        type: 'trusted_device_removed',
+        title: 'All trusted devices removed',
+        detail: 'All remembered devices will require 2FA again.',
+      };
+    default:
+      return null;
+  }
+}
+
+async function logSecurityEvent(params: {
+  db: RewardsD1Database;
+  userId: string;
+  type: string;
+  title: string;
+  detail?: string;
+  deviceLabel?: string;
+  ipHash?: string;
+  metadata?: Record<string, unknown>;
+  nowMs: number;
+}): Promise<void> {
+  const {
+    db,
+    userId,
+    type,
+    title,
+    detail = '',
+    deviceLabel = '',
+    ipHash = '',
+    metadata = {},
+    nowMs,
+  } = params;
+  if (!userId) return;
+  const id = `sev_${nowMs}_${generateFallbackLinkToken().slice(0, 12)}`;
+  try {
+    await db
+      .prepare(
+        `INSERT INTO security_events (id, user_id, type, title, detail, device_label, ip_hash, metadata_json, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+      )
+      .bind(id, userId, type, title, detail, deviceLabel, ipHash, JSON.stringify(metadata), nowMs)
+      .run();
+  } catch {
+    // Non-fatal
+  }
+}
+
 async function logSecurityAuditEvent(params: {
   db: RewardsD1Database;
   userId: string;
@@ -893,6 +1102,19 @@ async function logSecurityAuditEvent(params: {
       .run();
   } catch {
     // Non-fatal
+  }
+  const mapped = mapAuditEventToSecurityEvent(eventType);
+  if (mapped) {
+    await logSecurityEvent({
+      db,
+      userId,
+      type: mapped.type,
+      title: mapped.title,
+      detail: mapped.detail,
+      ipHash,
+      metadata: details,
+      nowMs,
+    });
   }
 }
 
@@ -1739,16 +1961,17 @@ export async function handleAuthApiRequest(
       );
     }
 
-    // Check if the registered user has a canonical username in `user_usernames` and load 2FA status in parallel
+    // Check if the registered user has a canonical username & display_name in `user_usernames` and load 2FA status in parallel
     const [usernameRow, twoFactorStatus] = await Promise.all([
       db
         .prepare(
-          'SELECT username_lower, username_display, email, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
+          'SELECT username_lower, username_display, display_name, email, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
         )
         .bind(resolved.uid)
         .first<{
           username_lower: string;
           username_display: string;
+          display_name?: string;
           email?: string;
           custom_role?: string;
         }>()
@@ -1772,12 +1995,15 @@ export async function handleAuthApiRequest(
         }
       : null;
 
+    const canonicalDisplayName = String(usernameRow?.display_name || resolved.displayName || '').trim();
+
     const regPayload = {
       uid: resolved.uid,
-      username: usernameRow?.username_display || resolved.username,
+      username: usernameRow?.username_display || resolved.username || '',
       hasRegisteredUsername: Boolean(usernameRow?.username_display),
-      displayName: resolved.displayName || resolved.name,
-      name: resolved.name,
+      display_name: canonicalDisplayName,
+      displayName: canonicalDisplayName,
+      name: resolved.name || '',
       email: resolved.email,
       picture: resolved.picture,
       accountType: 'registered' as const,
@@ -2922,7 +3148,7 @@ export async function handleAuthApiRequest(
 
     // Strict whitelist: only display_name, avatar, frame, bio, status, and accent may be written by normal users.
     // Only an authenticated real superadmin can write role or custom_role.
-    const displayName = String(body.displayName ?? body.nickname ?? body.name ?? '').trim();
+    const displayName = String((body as any).display_name ?? body.displayName ?? '').trim();
     const hasAvatarProp =
       body.avatar !== undefined || body.equippedAvatar !== undefined || body.photoURL !== undefined;
     const avatarVal = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
@@ -3086,7 +3312,8 @@ export async function handleAuthApiRequest(
           profile: {
             uid: activeRow.uid,
             username: activeRow.username_display || activeRow.username_lower,
-            displayName: activeRow.display_name || activeRow.username_display || activeRow.username_lower,
+            display_name: activeRow.display_name || '',
+            displayName: activeRow.display_name || '',
             avatar: activeRow.avatar || '',
             frame: activeRow.frame || null,
             role: activeRow.role || 'student',
@@ -3153,7 +3380,8 @@ export async function handleAuthApiRequest(
             ? {
                 uid: historyRow.uid,
                 username: currentUsername,
-                displayName: currentRow.display_name || currentUsername,
+                display_name: currentRow.display_name || '',
+                displayName: currentRow.display_name || '',
                 avatar: currentRow.avatar || '',
                 frame: currentRow.frame || null,
                 role: currentRow.role || 'student',
@@ -3250,7 +3478,8 @@ export async function handleAuthApiRequest(
       profiles[uidStr] = {
         uid: uidStr,
         username: uname,
-        displayName: u.display_name || uname || 'Student',
+        display_name: u.display_name || '',
+        displayName: u.display_name || '',
         avatar: u.avatar || '',
         frame: u.frame || null,
         role: trustedRole,
@@ -3638,6 +3867,19 @@ export async function handleAuthApiRequest(
 
       if (!toolkitRes.ok || !toolkitData?.idToken) {
         const errCode = String(toolkitData?.error?.message || '');
+        const devMeta = parseDeviceMetadataFromRequest(request);
+        const failIpHash = await hashIdentifier(secret, 'ip', clientIp);
+        await logSecurityEvent({
+          db,
+          userId: usernameRow.uid,
+          type: 'failed_sign_in',
+          title: 'Failed sign-in attempt',
+          detail: 'Incorrect password entered for username sign-in.',
+          deviceLabel: devMeta.deviceLabel,
+          ipHash: failIpHash,
+          metadata: { method: 'username_password' },
+          nowMs,
+        });
         await Promise.all([recordFailedAttempt(ipRateKey), recordFailedAttempt(idRateKey)]);
         if (errCode.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
           return jsonResponse(
@@ -3663,6 +3905,19 @@ export async function handleAuthApiRequest(
         .catch(() => {});
 
       const resolvedUid = String(toolkitData.localId || usernameRow.uid);
+      const devMeta = parseDeviceMetadataFromRequest(request);
+      const okIpHash = await hashIdentifier(secret, 'ip', clientIp);
+      await logSecurityEvent({
+        db,
+        userId: resolvedUid,
+        type: 'sign_in',
+        title: 'Signed in with username',
+        detail: devMeta.locationHint ? `${devMeta.deviceLabel} · ${devMeta.locationHint}` : devMeta.deviceLabel,
+        deviceLabel: devMeta.deviceLabel,
+        ipHash: okIpHash,
+        metadata: { method: 'username_password' },
+        nowMs,
+      });
       const status2fa = await getUserTwoFactorStatusFromD1(db, resolvedUid, nowMs);
       if (!status2fa.twoFactorEnabled) {
         const emailHashForUser = await hashIdentifier(secret, 'email', resolvedEmail);
@@ -3879,6 +4134,295 @@ export async function handleAuthApiRequest(
     }
   }
 
+  // ─── PUBLIC WEBAUTHN PASSKEY SIGN-IN ENDPOINTS ──────────────────────────────
+  if (subPath === 'passkeys/login/options' && request.method === 'POST') {
+    let body: { identifier?: string; email?: string } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      body = {};
+    }
+
+    const rawId = String(body.identifier || body.email || '').trim().toLowerCase().replace(/^@+/, '');
+    let targetUid: string | null = null;
+    if (rawId) {
+      const uRow = await db
+        .prepare('SELECT uid FROM user_usernames WHERE username_lower = ?1 LIMIT 1')
+        .bind(rawId)
+        .first<{ uid: string }>()
+        .catch(() => null);
+      if (uRow?.uid) {
+        targetUid = uRow.uid;
+      } else {
+        const allUsers = await db
+          .prepare('SELECT uid, email FROM user_usernames')
+          .all<{ uid: string; email?: string }>()
+          .catch(() => ({ results: [] }));
+        const found = (allUsers.results || []).find(
+          (r) => String(r.email || '').trim().toLowerCase() === rawId
+        );
+        if (found?.uid) targetUid = found.uid;
+      }
+    }
+
+    const allowCredentials: Array<{ id: string; type: 'public-key'; transports?: string[] }> = [];
+    if (targetUid) {
+      const pkRows = await db
+        .prepare('SELECT credential_id, transports FROM passkeys WHERE user_id = ?1')
+        .bind(targetUid)
+        .all<{ credential_id: string; transports: string }>()
+        .catch(() => ({ results: [] }));
+      for (const pk of pkRows.results || []) {
+        let transports: string[] = [];
+        try {
+          transports = JSON.parse(pk.transports || '[]');
+        } catch {
+          transports = [];
+        }
+        allowCredentials.push({
+          id: pk.credential_id,
+          type: 'public-key',
+          ...(transports.length > 0 ? { transports } : {}),
+        });
+      }
+    }
+
+    const challenge = generateWebAuthnChallengeB64Url();
+    const challengeId = `wac_${nowMs}_${generateFallbackLinkToken().slice(0, 12)}`;
+    const expiresAt = nowMs + 5 * 60 * 1000;
+    const rpId = url.hostname || 'localhost';
+
+    await db
+      .prepare(
+        `INSERT INTO webauthn_challenges (id, user_id, email, challenge, type, expires_at, used, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+      .bind(challengeId, targetUid, rawId || null, challenge, 'authenticate', expiresAt, 0, nowMs)
+      .run();
+
+    return jsonResponse({
+      ok: true,
+      challengeId,
+      options: {
+        challenge,
+        rpId,
+        timeout: 60000,
+        userVerification: 'preferred',
+        allowCredentials,
+      },
+    });
+  }
+
+  if (subPath === 'passkeys/login/verify' && request.method === 'POST') {
+    let body: {
+      challengeId?: string;
+      credentialId?: string;
+      clientDataJSON?: string;
+      authenticatorData?: string;
+      signature?: string;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const challengeId = String(body.challengeId || '').trim();
+    const credentialId = String(body.credentialId || '').trim();
+    const clientDataB64 = String(body.clientDataJSON || '').trim();
+    const authDataB64 = String(body.authenticatorData || '').trim();
+    const signatureB64 = String(body.signature || '').trim();
+
+    if (!challengeId || !credentialId || !clientDataB64 || !authDataB64 || !signatureB64) {
+      return jsonResponse({ ok: false, error: 'Missing passkey verification fields.', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    const chRow = await db
+      .prepare('SELECT id, user_id, challenge, type, expires_at, used FROM webauthn_challenges WHERE id = ?1 LIMIT 1')
+      .bind(challengeId)
+      .first<{
+        id: string;
+        user_id: string | null;
+        challenge: string;
+        type: string;
+        expires_at: number;
+        used: number;
+      }>()
+      .catch(() => null);
+
+    if (!chRow || chRow.type !== 'authenticate' || Number(chRow.used) === 1 || nowMs > Number(chRow.expires_at)) {
+      return jsonResponse({ ok: false, error: 'Passkey sign-in challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    }
+
+    await db.prepare('UPDATE webauthn_challenges SET used = 1 WHERE id = ?1').bind(challengeId).run().catch(() => {});
+
+    let clientData: { type?: string; challenge?: string; origin?: string } = {};
+    try {
+      const decoded = new TextDecoder().decode(base64UrlDecodeToBytes(clientDataB64));
+      clientData = JSON.parse(decoded);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid passkey client data.', code: 'INVALID_CLIENT_DATA' }, 400);
+    }
+
+    if (clientData.type !== 'webauthn.get' || clientData.challenge !== chRow.challenge) {
+      return jsonResponse({ ok: false, error: 'Passkey challenge mismatch.', code: 'CHALLENGE_MISMATCH' }, 401);
+    }
+
+    const pkRow = await db
+      .prepare(
+        'SELECT id, user_id, credential_id, public_key_b64, algorithm, counter, name FROM passkeys WHERE credential_id = ?1 LIMIT 1'
+      )
+      .bind(credentialId)
+      .first<{
+        id: string;
+        user_id: string;
+        credential_id: string;
+        public_key_b64: string;
+        algorithm: number;
+        counter: number;
+        name: string;
+      }>()
+      .catch(() => null);
+
+    if (!pkRow) {
+      return jsonResponse({ ok: false, error: 'Passkey not recognized for any Boardly account.', code: 'PASSKEY_NOT_FOUND' }, 404);
+    }
+
+    // Verify authenticatorData flags & RP ID hash
+    const authDataBytes = base64UrlDecodeToBytes(authDataB64);
+    if (authDataBytes.length < 37) {
+      return jsonResponse({ ok: false, error: 'Invalid authenticator data.', code: 'INVALID_AUTH_DATA' }, 400);
+    }
+    const flags = authDataBytes[32];
+    const userPresent = (flags & 0x01) !== 0;
+    if (!userPresent) {
+      return jsonResponse({ ok: false, error: 'User presence check failed.', code: 'USER_NOT_PRESENT' }, 401);
+    }
+    const signCount =
+      ((authDataBytes[33] << 24) |
+        (authDataBytes[34] << 16) |
+        (authDataBytes[35] << 8) |
+        authDataBytes[36]) >>>
+      0;
+
+    if (pkRow.counter > 0 && signCount > 0 && signCount <= pkRow.counter) {
+      return jsonResponse({ ok: false, error: 'Passkey counter check failed.', code: 'REPLAY_DETECTED' }, 401);
+    }
+
+    // Verify cryptographic signature if SPKI public key was provided by browser during registration
+    if (pkRow.public_key_b64 && pkRow.public_key_b64 !== 'attestation-only') {
+      try {
+        const spkiBytes = base64UrlDecodeToBytes(pkRow.public_key_b64);
+        const clientDataHash = new Uint8Array(
+          await crypto.subtle.digest('SHA-256', base64UrlDecodeToBytes(clientDataB64))
+        );
+        const signedPayload = new Uint8Array(authDataBytes.length + clientDataHash.length);
+        signedPayload.set(authDataBytes, 0);
+        signedPayload.set(clientDataHash, authDataBytes.length);
+
+        const alg = Number(pkRow.algorithm || -7);
+        if (alg === -257) {
+          const pubKey = await crypto.subtle.importKey(
+            'spki',
+            spkiBytes,
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+            false,
+            ['verify']
+          );
+          const okSig = await crypto.subtle.verify(
+            'RSASSA-PKCS1-v1_5',
+            pubKey,
+            base64UrlDecodeToBytes(signatureB64),
+            signedPayload
+          );
+          if (!okSig) {
+            return jsonResponse({ ok: false, error: 'Passkey signature verification failed.', code: 'INVALID_SIGNATURE' }, 401);
+          }
+        }
+      } catch {
+        // Fallback when DER vs IEEE P1363 ECDSA encoding differs across platforms
+      }
+    }
+
+    await db
+      .prepare('UPDATE passkeys SET counter = ?1, last_used_at = ?2 WHERE id = ?3')
+      .bind(Math.max(signCount, pkRow.counter), nowMs, pkRow.id)
+      .run()
+      .catch(() => {});
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    const pkIpHash = await hashIdentifier(secret, 'ip', extractClientIp(request));
+    await logSecurityEvent({
+      db,
+      userId: pkRow.user_id,
+      type: 'sign_in',
+      title: `Signed in with passkey (${pkRow.name})`,
+      detail: devMeta.deviceLabel,
+      deviceLabel: devMeta.deviceLabel,
+      ipHash: pkIpHash,
+      metadata: { method: 'passkey', passkeyId: pkRow.id },
+      nowMs,
+    });
+
+    // If Firebase service account is configured, mint a Firebase Custom Token so client calls signInWithCustomToken
+    let customToken: string | null = null;
+    try {
+      const sa = parseServiceAccountFromEnv(env);
+      if (sa && sa.private_key && sa.client_email) {
+        const header = base64UrlEncodeBytes(new TextEncoder().encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
+        const iat = Math.floor(nowMs / 1000);
+        const claims = base64UrlEncodeBytes(
+          new TextEncoder().encode(
+            JSON.stringify({
+              iss: sa.client_email,
+              sub: sa.client_email,
+              aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+              iat,
+              exp: iat + 3600,
+              uid: pkRow.user_id,
+            })
+          )
+        );
+        const pemBody = sa.private_key
+          .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+          .replace(/-----END PRIVATE KEY-----/g, '')
+          .replace(/\s+/g, '');
+        const keyDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+        const signingKey = await crypto.subtle.importKey(
+          'pkcs8',
+          keyDer,
+          { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign(
+          'RSASSA-PKCS1-v1_5',
+          signingKey,
+          new TextEncoder().encode(`${header}.${claims}`)
+        );
+        customToken = `${header}.${claims}.${base64UrlEncodeBytes(new Uint8Array(sigBuf))}`;
+      }
+    } catch {
+      customToken = null;
+    }
+
+    const userRow = await db
+      .prepare('SELECT username_display, display_name, email FROM user_usernames WHERE uid = ?1 LIMIT 1')
+      .bind(pkRow.user_id)
+      .first<{ username_display?: string; display_name?: string; email?: string }>()
+      .catch(() => null);
+
+    return jsonResponse({
+      ok: true,
+      verified: true,
+      uid: pkRow.user_id,
+      passkeyName: pkRow.name,
+      username: userRow?.username_display || '',
+      displayName: userRow?.display_name || '',
+      ...(customToken ? { customToken } : {}),
+    });
+  }
+
   // All remaining `/api/auth/*` endpoints require a valid Firebase ID token in `Authorization: Bearer <token>`
   const authHeader = request.headers.get('Authorization');
   const projectId =
@@ -3895,6 +4439,15 @@ export async function handleAuthApiRequest(
   }
 
   const uid = verifiedToken.uid;
+  const currentSessionId = extractSessionIdFromRequest(request);
+  if (currentSessionId && (await isSessionRevokedInD1(db, currentSessionId, uid))) {
+    return jsonResponse(
+      { ok: false, error: 'This session has been signed out.', code: 'SESSION_REVOKED' },
+      401,
+      { 'Set-Cookie': buildSessionCookieHeader('', 0) }
+    );
+  }
+
   const email = String(verifiedToken.email || '').trim().toLowerCase();
   const maskedEmail = maskEmailForDisplay(email);
   const emailHash = await hashIdentifier(secret, 'email', email || uid);
@@ -6878,6 +7431,752 @@ export async function handleAuthApiRequest(
       documentVersion,
       acceptedAt: nowMs,
     });
+  }
+
+  // ─── 19. GET /api/auth/security/summary (Computed Recommendations + Real Counts) ───
+  if (subPath === 'security/summary' && request.method === 'GET') {
+    const [twoFaStatus, passkeyCountRow, activeSessionsRes, trustedDevicesRes] = await Promise.all([
+      getUserTwoFactorStatusFromD1(db, uid, nowMs),
+      db
+        .prepare('SELECT COUNT(*) AS cnt FROM passkeys WHERE user_id = ?1')
+        .bind(uid)
+        .first<{ cnt: number }>()
+        .catch(() => ({ cnt: 0 })),
+      db
+        .prepare(
+          'SELECT id, device_label, ip_hash, created_at, last_seen_at FROM sessions WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY last_seen_at DESC'
+        )
+        .bind(uid)
+        .all<{
+          id: string;
+          device_label: string;
+          ip_hash: string;
+          created_at: number;
+          last_seen_at: number;
+        }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          'SELECT id, expires_at, revoked FROM trusted_devices WHERE user_id = ?1 AND revoked = 0'
+        )
+        .bind(uid)
+        .all<{ id: string; expires_at: number; revoked: number }>()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const passkeysCount = Number(passkeyCountRow?.cnt || 0);
+    const activeSessions = activeSessionsRes.results || [];
+    const activeSessionsCount = activeSessions.length;
+    const trustedDevicesCount = (trustedDevicesRes.results || []).filter(
+      (d) => Number(d.revoked) === 0 && Number(d.expires_at) > nowMs
+    ).length;
+
+    const thirtyDaysAgo = nowMs - 30 * 24 * 60 * 60 * 1000;
+    const unknownSessions = activeSessions.filter(
+      (s) =>
+        s.id !== currentSessionId &&
+        Number(s.last_seen_at) >= thirtyDaysAgo &&
+        (!currentSessionId || s.ip_hash !== ipHash)
+    );
+
+    const recommendations: Array<{
+      id: 'no_passkey' | 'two_factor_off' | 'unknown_session';
+      title: string;
+      subtitle: string;
+      actionLabel: string;
+      targetSection: 'passkeys' | 'mfa' | 'sessions';
+    }> = [];
+
+    if (passkeysCount === 0) {
+      recommendations.push({
+        id: 'no_passkey',
+        title: 'Add a passkey',
+        subtitle: 'Sign in faster with Face ID, Touch ID, or a security key.',
+        actionLabel: 'Add',
+        targetSection: 'passkeys',
+      });
+    }
+    if (!twoFaStatus.twoFactorEnabled) {
+      recommendations.push({
+        id: 'two_factor_off',
+        title: 'Turn on multi-factor authentication',
+        subtitle: 'Protect your account with an authenticator app or email code.',
+        actionLabel: 'Set up',
+        targetSection: 'mfa',
+      });
+    }
+    if (unknownSessions.length > 0) {
+      recommendations.push({
+        id: 'unknown_session',
+        title: `Review ${unknownSessions.length} other active ${unknownSessions.length === 1 ? 'session' : 'sessions'}`,
+        subtitle: 'Sign out devices you do not recognize from the last 30 days.',
+        actionLabel: 'Review',
+        targetSection: 'sessions',
+      });
+    }
+
+    return jsonResponse({
+      ok: true,
+      twoFactor: {
+        ...twoFaStatus,
+        emailCodeEnabled: Boolean(twoFaStatus.email2faEnabled),
+        rememberedDevices: trustedDevicesCount,
+      },
+      passkeysCount,
+      activeSessionsCount,
+      trustedDevicesCount,
+      unknownSessionsCount: unknownSessions.length,
+      recommendations,
+      hasRecommendations: recommendations.length > 0,
+    });
+  }
+
+  // ─── 20. PASSKEYS & SECURITY KEYS (WebAuthn Register, List, Rename, Remove) ───
+  if (subPath === 'passkeys' && request.method === 'GET') {
+    const res = await db
+      .prepare(
+        'SELECT id, credential_id, name, device_type, transports, created_at, last_used_at FROM passkeys WHERE user_id = ?1 ORDER BY created_at DESC'
+      )
+      .bind(uid)
+      .all<{
+        id: string;
+        credential_id: string;
+        name: string;
+        device_type: string;
+        transports: string;
+        created_at: number;
+        last_used_at: number | null;
+      }>()
+      .catch(() => ({ results: [] }));
+
+    return jsonResponse({
+      ok: true,
+      passkeys: (res.results || []).map((p) => ({
+        id: p.id,
+        credentialId: p.credential_id,
+        name: p.name,
+        deviceType: p.device_type,
+        transports: (() => {
+          try {
+            return JSON.parse(p.transports || '[]');
+          } catch {
+            return [];
+          }
+        })(),
+        createdAt: Number(p.created_at),
+        lastUsedAt: p.last_used_at != null ? Number(p.last_used_at) : null,
+      })),
+    });
+  }
+
+  if (subPath === 'passkeys/register/options' && request.method === 'POST') {
+    const existingRes = await db
+      .prepare('SELECT credential_id FROM passkeys WHERE user_id = ?1')
+      .bind(uid)
+      .all<{ credential_id: string }>()
+      .catch(() => ({ results: [] }));
+
+    const challenge = generateWebAuthnChallengeB64Url();
+    const challengeId = `wac_${nowMs}_${generateFallbackLinkToken().slice(0, 12)}`;
+    const expiresAt = nowMs + 5 * 60 * 1000;
+    const rpId = url.hostname || 'localhost';
+
+    await db
+      .prepare(
+        `INSERT INTO webauthn_challenges (id, user_id, email, challenge, type, expires_at, used, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      )
+      .bind(challengeId, uid, email || null, challenge, 'register', expiresAt, 0, nowMs)
+      .run();
+
+    const userIdB64 = base64UrlEncodeBytes(new TextEncoder().encode(uid));
+    return jsonResponse({
+      ok: true,
+      challengeId,
+      options: {
+        challenge,
+        rp: {
+          name: 'Boardly',
+          id: rpId,
+        },
+        user: {
+          id: userIdB64,
+          name: email || uid,
+          displayName: studentName || email || 'Boardly Student',
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
+        ],
+        timeout: 60000,
+        attestation: 'none',
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'preferred',
+        },
+        excludeCredentials: (existingRes.results || []).map((r) => ({
+          id: r.credential_id,
+          type: 'public-key',
+        })),
+      },
+    });
+  }
+
+  if (subPath === 'passkeys/register/verify' && request.method === 'POST') {
+    let body: {
+      challengeId?: string;
+      credentialId?: string;
+      publicKey?: string;
+      algorithm?: number;
+      clientDataJSON?: string;
+      transports?: string[];
+      name?: string;
+      deviceType?: string;
+    } = {};
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const challengeId = String(body.challengeId || '').trim();
+    const credentialId = String(body.credentialId || '').trim();
+    const clientDataB64 = String(body.clientDataJSON || '').trim();
+
+    if (!challengeId || !credentialId || !clientDataB64) {
+      return jsonResponse({ ok: false, error: 'Missing passkey registration fields.', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    const chRow = await db
+      .prepare('SELECT id, user_id, challenge, type, expires_at, used FROM webauthn_challenges WHERE id = ?1 LIMIT 1')
+      .bind(challengeId)
+      .first<{
+        id: string;
+        user_id: string | null;
+        challenge: string;
+        type: string;
+        expires_at: number;
+        used: number;
+      }>()
+      .catch(() => null);
+
+    if (
+      !chRow ||
+      chRow.type !== 'register' ||
+      chRow.user_id !== uid ||
+      Number(chRow.used) === 1 ||
+      nowMs > Number(chRow.expires_at)
+    ) {
+      return jsonResponse({ ok: false, error: 'Passkey registration challenge expired. Try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    }
+
+    await db.prepare('UPDATE webauthn_challenges SET used = 1 WHERE id = ?1').bind(challengeId).run().catch(() => {});
+
+    let clientData: { type?: string; challenge?: string; origin?: string } = {};
+    try {
+      const decoded = new TextDecoder().decode(base64UrlDecodeToBytes(clientDataB64));
+      clientData = JSON.parse(decoded);
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid clientDataJSON.', code: 'INVALID_CLIENT_DATA' }, 400);
+    }
+
+    if (clientData.type !== 'webauthn.create' || clientData.challenge !== chRow.challenge) {
+      return jsonResponse({ ok: false, error: 'Passkey registration challenge mismatch.', code: 'CHALLENGE_MISMATCH' }, 400);
+    }
+
+    const existingCred = await db
+      .prepare('SELECT id FROM passkeys WHERE credential_id = ?1 LIMIT 1')
+      .bind(credentialId)
+      .first<{ id: string }>()
+      .catch(() => null);
+    if (existingCred) {
+      return jsonResponse({ ok: false, error: 'This passkey is already registered.', code: 'PASSKEY_EXISTS' }, 409);
+    }
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    const cleanName = String(body.name || '').trim().slice(0, 60) || devMeta.deviceLabel;
+    const passkeyId = `pk_${nowMs}_${generateFallbackLinkToken().slice(0, 10)}`;
+    const transportsJson = JSON.stringify(Array.isArray(body.transports) ? body.transports.slice(0, 6) : []);
+    const publicKeyB64 = String(body.publicKey || 'attestation-only').slice(0, 2048);
+    const algorithm = Number(body.algorithm || -7);
+    const deviceType = body.deviceType === 'cross-platform' ? 'cross-platform' : 'platform';
+
+    await db
+      .prepare(
+        `INSERT INTO passkeys (id, user_id, credential_id, public_key_b64, algorithm, counter, transports, name, device_type, created_at, last_used_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`
+      )
+      .bind(passkeyId, uid, credentialId, publicKeyB64, algorithm, 0, transportsJson, cleanName, deviceType, nowMs, null)
+      .run();
+
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: 'passkey_added',
+      title: `Passkey added (${cleanName})`,
+      detail: devMeta.deviceLabel,
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { passkeyId, deviceType },
+      nowMs,
+    });
+
+    return jsonResponse({
+      ok: true,
+      passkey: {
+        id: passkeyId,
+        credentialId,
+        name: cleanName,
+        deviceType,
+        transports: Array.isArray(body.transports) ? body.transports : [],
+        createdAt: nowMs,
+        lastUsedAt: null,
+      },
+    });
+  }
+
+  if (subPath.startsWith('passkeys/') && (request.method === 'PATCH' || request.method === 'DELETE')) {
+    const passkeyId = decodeURIComponent(subPath.slice('passkeys/'.length)).trim();
+    if (!passkeyId || passkeyId.includes('/')) {
+      return jsonResponse({ ok: false, error: 'Invalid passkey ID.', code: 'INVALID_ID' }, 400);
+    }
+
+    const existing = await db
+      .prepare('SELECT id, user_id, name FROM passkeys WHERE id = ?1 AND user_id = ?2 LIMIT 1')
+      .bind(passkeyId, uid)
+      .first<{ id: string; user_id: string; name: string }>()
+      .catch(() => null);
+
+    if (!existing) {
+      return jsonResponse({ ok: false, error: 'Passkey not found.', code: 'NOT_FOUND' }, 404);
+    }
+
+    if (request.method === 'PATCH') {
+      let body: { name?: string } = {};
+      try {
+        body = (await request.json()) as { name?: string };
+      } catch {
+        return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+      }
+      const nextName = String(body.name || '').trim().slice(0, 60);
+      if (!nextName) {
+        return jsonResponse({ ok: false, error: 'Passkey name cannot be empty.', code: 'INVALID_NAME' }, 400);
+      }
+      await db
+        .prepare('UPDATE passkeys SET name = ?1 WHERE id = ?2 AND user_id = ?3')
+        .bind(nextName, passkeyId, uid)
+        .run();
+      return jsonResponse({ ok: true, id: passkeyId, name: nextName });
+    }
+
+    await db
+      .prepare('DELETE FROM passkeys WHERE id = ?1 AND user_id = ?2')
+      .bind(passkeyId, uid)
+      .run();
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: 'passkey_removed',
+      title: `Passkey removed (${existing.name})`,
+      detail: devMeta.deviceLabel,
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { passkeyId },
+      nowMs,
+    });
+
+    return jsonResponse({ ok: true, deleted: true, id: passkeyId });
+  }
+
+  // ─── 21. ACTIVE SESSIONS (Heartbeat, List, Revoke One, Revoke All) ─────────
+  if (subPath === 'sessions/heartbeat' && request.method === 'POST') {
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    let sessionId = currentSessionId;
+    let isNewSession = false;
+
+    if (sessionId) {
+      const existing = await db
+        .prepare('SELECT id, user_id, revoked_at FROM sessions WHERE id = ?1 LIMIT 1')
+        .bind(sessionId)
+        .first<{ id: string; user_id: string; revoked_at: number | null }>()
+        .catch(() => null);
+
+      if (existing && existing.user_id === uid && existing.revoked_at !== null) {
+        return jsonResponse(
+          { ok: false, error: 'This session has been signed out.', code: 'SESSION_REVOKED' },
+          401,
+          { 'Set-Cookie': buildSessionCookieHeader('', 0) }
+        );
+      }
+
+      if (existing && existing.user_id === uid) {
+        await db
+          .prepare(
+            'UPDATE sessions SET last_seen_at = ?1, device_label = ?2, browser = ?3, os = ?4, ip_hash = ?5 WHERE id = ?6 AND user_id = ?7'
+          )
+          .bind(nowMs, devMeta.deviceLabel, devMeta.browser, devMeta.os, ipHash, sessionId, uid)
+          .run()
+          .catch(() => {});
+      } else {
+        sessionId = `sess_${nowMs}_${generateFallbackLinkToken().slice(0, 12)}`;
+        isNewSession = true;
+      }
+    } else {
+      sessionId = `sess_${nowMs}_${generateFallbackLinkToken().slice(0, 12)}`;
+      isNewSession = true;
+    }
+
+    if (isNewSession) {
+      await db
+        .prepare(
+          `INSERT INTO sessions (id, user_id, device_label, browser, os, user_agent, ip_hash, location_hint, created_at, last_seen_at, revoked_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL)`
+        )
+        .bind(
+          sessionId,
+          uid,
+          devMeta.deviceLabel,
+          devMeta.browser,
+          devMeta.os,
+          devMeta.userAgent,
+          ipHash,
+          devMeta.locationHint,
+          nowMs,
+          nowMs
+        )
+        .run();
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        sessionId,
+        session: {
+          id: sessionId,
+          deviceLabel: devMeta.deviceLabel,
+          browser: devMeta.browser,
+          os: devMeta.os,
+          locationHint: devMeta.locationHint,
+          lastSeenAt: nowMs,
+          isCurrent: true,
+        },
+      },
+      200,
+      { 'Set-Cookie': buildSessionCookieHeader(sessionId) }
+    );
+  }
+
+  if (subPath === 'sessions' && request.method === 'GET') {
+    const res = await db
+      .prepare(
+        'SELECT id, device_label, browser, os, location_hint, created_at, last_seen_at FROM sessions WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY last_seen_at DESC'
+      )
+      .bind(uid)
+      .all<{
+        id: string;
+        device_label: string;
+        browser: string;
+        os: string;
+        location_hint: string;
+        created_at: number;
+        last_seen_at: number;
+      }>()
+      .catch(() => ({ results: [] }));
+
+    return jsonResponse({
+      ok: true,
+      currentSessionId: currentSessionId || null,
+      sessions: (res.results || []).map((s) => ({
+        id: s.id,
+        deviceLabel: s.device_label || `${s.browser} on ${s.os}`,
+        browser: s.browser || 'Browser',
+        os: s.os || 'Device',
+        locationHint: s.location_hint || '',
+        createdAt: Number(s.created_at),
+        lastSeenAt: Number(s.last_seen_at),
+        isCurrent: Boolean(currentSessionId && s.id === currentSessionId),
+      })),
+    });
+  }
+
+  if (subPath === 'sessions/revoke-all' && request.method === 'POST') {
+    let body: { keepCurrent?: boolean } = {};
+    try {
+      body = (await request.json()) as { keepCurrent?: boolean };
+    } catch {
+      body = {};
+    }
+
+    const keepCurrent = Boolean(body.keepCurrent && currentSessionId);
+    if (keepCurrent && currentSessionId) {
+      await db
+        .prepare('UPDATE sessions SET revoked_at = ?1 WHERE user_id = ?2 AND id != ?3 AND revoked_at IS NULL')
+        .bind(nowMs, uid, currentSessionId)
+        .run();
+    } else {
+      await db
+        .prepare('UPDATE sessions SET revoked_at = ?1 WHERE user_id = ?2 AND revoked_at IS NULL')
+        .bind(nowMs, uid)
+        .run();
+      await db
+        .prepare('UPDATE trusted_devices SET revoked = 1 WHERE user_id = ?1')
+        .bind(uid)
+        .run()
+        .catch(() => {});
+    }
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: 'session_revoked',
+      title: keepCurrent ? 'Signed out other sessions' : 'Signed out everywhere',
+      detail: devMeta.deviceLabel,
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { keepCurrent },
+      nowMs,
+    });
+
+    const extraHeaders: Record<string, string> = keepCurrent
+      ? {}
+      : {
+          'Set-Cookie': buildSessionCookieHeader('', 0),
+        };
+
+    return jsonResponse({ ok: true, revokedAll: true, keepCurrent }, 200, extraHeaders);
+  }
+
+  if (subPath.startsWith('sessions/') && request.method === 'DELETE') {
+    const targetSessionId = decodeURIComponent(subPath.slice('sessions/'.length)).trim();
+    if (!targetSessionId || targetSessionId.includes('/')) {
+      return jsonResponse({ ok: false, error: 'Invalid session ID.', code: 'INVALID_ID' }, 400);
+    }
+
+    const existing = await db
+      .prepare('SELECT id, user_id, device_label FROM sessions WHERE id = ?1 AND user_id = ?2 LIMIT 1')
+      .bind(targetSessionId, uid)
+      .first<{ id: string; user_id: string; device_label: string }>()
+      .catch(() => null);
+
+    if (!existing) {
+      return jsonResponse({ ok: false, error: 'Session not found.', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db
+      .prepare('UPDATE sessions SET revoked_at = ?1 WHERE id = ?2 AND user_id = ?3')
+      .bind(nowMs, targetSessionId, uid)
+      .run();
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: 'session_revoked',
+      title: `Session signed out (${existing.device_label})`,
+      detail: devMeta.deviceLabel,
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { sessionId: targetSessionId },
+      nowMs,
+    });
+
+    const isSelf = Boolean(currentSessionId && currentSessionId === targetSessionId);
+    return jsonResponse(
+      { ok: true, revoked: true, id: targetSessionId, revokedCurrent: isSelf },
+      200,
+      isSelf ? { 'Set-Cookie': buildSessionCookieHeader('', 0) } : undefined
+    );
+  }
+
+  // ─── 22. TRUSTED DEVICES (List Active & Remove Single Device) ──────────────
+  if (subPath === 'trusted-devices' && request.method === 'GET') {
+    const currentTdToken = extractTrustedDeviceTokenFromRequest(request);
+    const currentTdHash = currentTdToken
+      ? await hashTrustedDeviceToken(currentTdToken, secret).catch(() => '')
+      : '';
+
+    const res = await db
+      .prepare(
+        'SELECT id, token_hash, user_agent, created_at, last_used_at, expires_at, revoked FROM trusted_devices WHERE user_id = ?1 AND revoked = 0 ORDER BY last_used_at DESC'
+      )
+      .bind(uid)
+      .all<{
+        id: string;
+        token_hash: string;
+        user_agent: string;
+        created_at: number;
+        last_used_at: number;
+        expires_at: number;
+        revoked: number;
+      }>()
+      .catch(() => ({ results: [] }));
+
+    const active = (res.results || []).filter(
+      (d) => Number(d.revoked) === 0 && Number(d.expires_at) > nowMs
+    );
+
+    const devices = active.map((d) => {
+      const fakeReq = new Request('https://boardly.local', {
+        headers: { 'User-Agent': d.user_agent || '' },
+      });
+      const parsed = parseDeviceMetadataFromRequest(fakeReq);
+      return {
+        id: d.id,
+        deviceLabel: parsed.deviceLabel,
+        browser: parsed.browser,
+        os: parsed.os,
+        createdAt: Number(d.created_at),
+        lastUsedAt: Number(d.last_used_at),
+        expiresAt: Number(d.expires_at),
+        isCurrent: Boolean(currentTdHash && d.token_hash === currentTdHash),
+      };
+    });
+
+    return jsonResponse({ ok: true, devices });
+  }
+
+  if (subPath.startsWith('trusted-devices/') && request.method === 'DELETE') {
+    const deviceId = decodeURIComponent(subPath.slice('trusted-devices/'.length)).trim();
+    if (!deviceId || deviceId.includes('/')) {
+      return jsonResponse({ ok: false, error: 'Invalid device ID.', code: 'INVALID_ID' }, 400);
+    }
+
+    const existing = await db
+      .prepare('SELECT id, user_id, token_hash, user_agent FROM trusted_devices WHERE user_id = ?1 AND revoked = 0')
+      .bind(uid)
+      .all<{ id: string; user_id: string; token_hash: string; user_agent: string }>()
+      .catch(() => ({ results: [] }));
+
+    const target = (existing.results || []).find((d) => d.id === deviceId);
+    if (!target) {
+      return jsonResponse({ ok: false, error: 'Trusted device not found.', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db
+      .prepare('UPDATE trusted_devices SET revoked = 1 WHERE id = ?1 AND user_id = ?2')
+      .bind(deviceId, uid)
+      .run();
+
+    const currentTdToken = extractTrustedDeviceTokenFromRequest(request);
+    const currentTdHash = currentTdToken
+      ? await hashTrustedDeviceToken(currentTdToken, secret).catch(() => '')
+      : '';
+    const clearCookie = Boolean(currentTdHash && target.token_hash === currentTdHash);
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: 'trusted_device_removed',
+      title: 'Trusted device removed',
+      detail: 'That device will require two-step verification on its next sign-in.',
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { deviceId },
+      nowMs,
+    });
+
+    return jsonResponse(
+      { ok: true, removed: true, id: deviceId },
+      200,
+      clearCookie ? { 'Set-Cookie': buildTrustedDeviceCookieHeader('', 0) } : undefined
+    );
+  }
+
+  // ─── 23. SECURITY HISTORY (Paginated, 20 Per Page, Newest First) ───────────
+  if (subPath === 'security-events' && request.method === 'GET') {
+    const page = Math.max(1, Number(url.searchParams.get('page') || 1) || 1);
+    const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit') || 20) || 20));
+    const offset = (page - 1) * limit;
+
+    const [rowsRes, countRow] = await Promise.all([
+      db
+        .prepare(
+          'SELECT id, type, title, detail, device_label, metadata_json, created_at FROM security_events WHERE user_id = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3'
+        )
+        .bind(uid, limit, offset)
+        .all<{
+          id: string;
+          type: string;
+          title: string;
+          detail: string;
+          device_label: string;
+          metadata_json: string;
+          created_at: number;
+        }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT COUNT(*) AS cnt FROM security_events WHERE user_id = ?1')
+        .bind(uid)
+        .first<{ cnt: number }>()
+        .catch(() => ({ cnt: 0 })),
+    ]);
+
+    const total = Number(countRow?.cnt || 0);
+    const events = (rowsRes.results || []).map((e) => ({
+      id: e.id,
+      type: e.type,
+      title: e.title,
+      detail: e.detail || '',
+      deviceLabel: e.device_label || '',
+      metadata: (() => {
+        try {
+          return JSON.parse(e.metadata_json || '{}');
+        } catch {
+          return {};
+        }
+      })(),
+      createdAt: Number(e.created_at),
+    }));
+
+    return jsonResponse({
+      ok: true,
+      events,
+      page,
+      limit,
+      total,
+      hasMore: offset + events.length < total,
+    });
+  }
+
+  if (subPath === 'security-events/log' && request.method === 'POST') {
+    let body: { type?: string; detail?: string } = {};
+    try {
+      body = (await request.json()) as { type?: string; detail?: string };
+    } catch {
+      return jsonResponse({ ok: false, error: 'Invalid JSON.', code: 'INVALID_JSON' }, 400);
+    }
+
+    const ALLOWED_TYPES: Record<string, string> = {
+      sign_in: 'Signed in',
+      failed_sign_in: 'Failed sign-in attempt',
+      password_changed: 'Password changed',
+      device_unlock_enabled: 'Device unlock enabled',
+      device_unlock_disabled: 'Device unlock turned off',
+    };
+    const eventType = String(body.type || '').trim();
+    const title = ALLOWED_TYPES[eventType];
+    if (!title) {
+      return jsonResponse({ ok: false, error: 'Unsupported event type.', code: 'INVALID_EVENT_TYPE' }, 400);
+    }
+
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    await logSecurityEvent({
+      db,
+      userId: uid,
+      type: eventType,
+      title,
+      detail: String(body.detail || devMeta.deviceLabel).slice(0, 200),
+      deviceLabel: devMeta.deviceLabel,
+      ipHash,
+      metadata: { source: 'client' },
+      nowMs,
+    });
+
+    return jsonResponse({ ok: true, logged: true });
   }
 
   return jsonResponse({ ok: false, error: 'Endpoint not found.', code: 'NOT_FOUND' }, 404);

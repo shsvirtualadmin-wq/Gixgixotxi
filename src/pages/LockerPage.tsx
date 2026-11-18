@@ -25,6 +25,7 @@ import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { computeLevelFromStats } from '@/components/profile/ProfileView';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { getDisplayName } from '@/utils/displayName';
 
 type LockerCategoryTab =
   | 'all'
@@ -244,12 +245,23 @@ export const LockerPage: React.FC = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [filteredItems, selectedItemId, selectedItem, handleSelectTile, handleEquipSelected]);
 
-  const displayName =
-    (authProfile as any)?.displayName ||
-    profile?.nickname ||
-    profile?.displayName ||
-    user?.displayName ||
-    'Student';
+  const displayName = getDisplayName(
+    {
+      display_name:
+        (authProfile as any)?.display_name ??
+        (authProfile as any)?.displayName ??
+        profile?.display_name ??
+        profile?.displayName,
+      realName:
+        (authProfile as any)?.realName ??
+        (authProfile as any)?.name ??
+        profile?.realName ??
+        profile?.name ??
+        user?.displayName,
+      username: (authProfile as any)?.username ?? profile?.username,
+    },
+    'Student'
+  );
   const username = String(
     (authProfile as any)?.username || profile?.username || 'student'
   ).replace(/^@+/, '');

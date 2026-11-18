@@ -81,30 +81,26 @@ html.ui-glass {
   --sdn-page-pb: calc(128px + env(safe-area-inset-bottom, 0px));
 }
 
-/* Adaptive Light Theme Tokens */
+/* Adaptive Light Theme Tokens: crisp white cards on clean neutral canvas */
 html.ui-glass[data-theme="light"],
 html.ui-glass.light {
-  --bg: #f4f3f8;
-  --bg-2: #eceaf3;
-  --glass: rgba(255, 255, 255, 0.76);
-  --glass-2: rgba(255, 255, 255, 0.90);
-  --glass-hi: rgba(255, 255, 255, 0.96);
-  --edge: rgba(15, 16, 20, 0.10);
-  --edge-top: rgba(255, 255, 255, 0.92);
+  --bg: #f6f7f9;
+  --bg-2: #edeff3;
+  --glass: #ffffff;
+  --glass-2: #ffffff;
+  --glass-hi: #ffffff;
+  --edge: rgba(15, 16, 20, 0.09);
+  --edge-top: rgba(255, 255, 255, 1);
   --border: var(--edge);
   --border-hi: var(--edge-top);
-  --text: #0f1014;
-  --mute: rgba(15, 16, 20, 0.60);
+  --text: #111318;
+  --mute: #52525c;
   --muted: var(--mute);
-  --dim: rgba(15, 16, 20, 0.38);
-  --lg-surface-gradient: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.92) 0%,
-    rgba(255, 255, 255, 0.76) 100%
-  );
+  --dim: #6e6e78;
+  --lg-surface-gradient: none;
   --lg-shadow:
-    inset 0 1px 0 var(--border-hi),
-    0 10px 26px -6px rgba(15, 16, 20, 0.07);
+    0 1px 2px rgba(15, 16, 20, 0.05),
+    0 4px 12px rgba(15, 16, 20, 0.04);
 }
 
 /* ==========================================================================
@@ -133,9 +129,7 @@ html.ui-glass body::before {
 
 html.ui-glass[data-theme="light"] body::before,
 html.ui-glass.light body::before {
-  background:
-    radial-gradient(220px circle at 16% 5%, rgba(215, 25, 33, 0.05) 0%, transparent 70%),
-    radial-gradient(280px circle at 86% 10%, rgba(15, 16, 20, 0.02) 0%, transparent 68%);
+  background: none;
 }
 
 /* Disable page-level blurred blob divs so only the single static radial-gradient layer exists */
@@ -284,11 +278,10 @@ html.ui-glass[data-theme="light"] [data-admin-shell="true"] > aside,
 html.ui-glass[data-theme="light"] .sdn-dock .plate,
 html.ui-glass[data-theme="light"] [data-admin-bottom-nav="true"] > nav,
 html.ui-glass[data-theme="light"] [role="status"].fixed > div {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(244, 243, 248, 0.88) 100%) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
   box-shadow:
-    inset 0 1px 0 var(--border-hi),
-    0 10px 28px rgba(15, 16, 20, 0.10) !important;
+    0 2px 8px rgba(15, 16, 20, 0.06),
+    0 10px 28px rgba(15, 16, 20, 0.08) !important;
 }
 
 /* ==========================================================================

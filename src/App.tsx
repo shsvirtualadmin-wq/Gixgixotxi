@@ -285,6 +285,7 @@ import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
 import { KobanStyleProvider } from './contexts/KobanStyleContext';
 import { ProBadgeProvider } from './contexts/ProBadgeContext';
+import { DeviceUnlockGate } from './components/security/DeviceUnlockGate';
 import { useBoardlyUIMode } from './utils/uiMode';
 import './styles/glass.css';
 
@@ -427,7 +428,7 @@ function AppInner() {
             }
           />
           <Route path="plans" element={<PlansBillingPage />} />
-          <Route path="profile" element={<ProfilePage />} />
+          <Route path="profile" element={<Navigate to="/profile" replace />} />
           <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
           <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
           <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
@@ -475,6 +476,9 @@ function AppInner() {
         <Route path="/menu" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
         </Route>
+        <Route path="/profile" element={<DashboardShell />}>
+          <Route index element={<ProfilePage />} />
+        </Route>
         <Route path="/profile/edit" element={<DashboardShell />}>
           <Route index element={<ProfilePage />} />
         </Route>
@@ -485,9 +489,8 @@ function AppInner() {
           <Route index element={<PlansBillingPage />} />
         </Route>
 
-        {/* Global shortcuts for plans and profile */}
+        {/* Global shortcuts for plans */}
         <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
-        <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
         <Route path="/commons/contact" element={<Navigate to="/contact" replace />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
@@ -616,6 +619,7 @@ function AppInner() {
       </Routes>
     </BoardlySuspenseBoundary>
     <ProfileModalHost />
+    <DeviceUnlockGate />
     {import.meta.env.DEV && (
       <Suspense fallback={null}>
         <LazyDebugPanel />

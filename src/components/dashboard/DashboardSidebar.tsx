@@ -19,12 +19,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Logo } from '@/components/ui/Logo';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
-import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 
@@ -32,7 +31,6 @@ export function DashboardSidebar() {
   const { isAdmin, isSuperAdmin, isCaptain, isGuest, signOutUser, isSigningOut } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
-  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
 
@@ -51,8 +49,14 @@ export function DashboardSidebar() {
 
   const isPro = !isGuest && effectivePlan.isUnlimited;
   const { effectiveProBadge } = useProBadge();
-  const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
-  const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
+  const displayName = getDisplayName(
+    {
+      display_name: profile?.display_name ?? profile?.displayName,
+      realName: profile?.realName ?? profile?.name ?? user?.displayName,
+      username: profile?.username,
+    },
+    'Student'
+  );
 
   return (
     <aside
@@ -280,7 +284,7 @@ export function DashboardSidebar() {
       {/* Footer: User summary, Theme Toggle & Sign Out */}
       <div className="p-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2">
         <div
-          onClick={() => openProfile()}
+          onClick={() => navigate('/profile')}
           className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)] overflow-hidden cursor-pointer hover:border-[var(--red)] transition-colors group"
           title="View profile"
         >

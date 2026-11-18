@@ -21,38 +21,38 @@ export const RARITY_ACCENT: Record<
   }
 > = {
   common: {
-    topEdgeClass: 'bg-zinc-400',
-    badgeBg: 'bg-zinc-500/10',
-    badgeText: 'text-zinc-500 dark:text-zinc-300',
-    badgeBorder: 'border-zinc-400/30',
+    topEdgeClass: 'bg-slate-400',
+    badgeBg: 'bg-[var(--rarity-common-bg)]',
+    badgeText: 'text-[var(--rarity-common-text)]',
+    badgeBorder: 'border-[var(--rarity-common-border)]',
     label: 'Common',
   },
   rare: {
-    topEdgeClass: 'bg-blue-500',
-    badgeBg: 'bg-blue-500/10',
-    badgeText: 'text-blue-600 dark:text-blue-400',
-    badgeBorder: 'border-blue-500/30',
+    topEdgeClass: 'bg-blue-600',
+    badgeBg: 'bg-[var(--rarity-rare-bg)]',
+    badgeText: 'text-[var(--rarity-rare-text)]',
+    badgeBorder: 'border-[var(--rarity-rare-border)]',
     label: 'Rare',
   },
   epic: {
-    topEdgeClass: 'bg-purple-500',
-    badgeBg: 'bg-purple-500/10',
-    badgeText: 'text-purple-600 dark:text-purple-400',
-    badgeBorder: 'border-purple-500/30',
+    topEdgeClass: 'bg-purple-600',
+    badgeBg: 'bg-[var(--rarity-epic-bg)]',
+    badgeText: 'text-[var(--rarity-epic-text)]',
+    badgeBorder: 'border-[var(--rarity-epic-border)]',
     label: 'Epic',
   },
   legendary: {
-    topEdgeClass: 'bg-amber-500',
-    badgeBg: 'bg-amber-500/10',
-    badgeText: 'text-amber-600 dark:text-amber-400',
-    badgeBorder: 'border-amber-500/30',
+    topEdgeClass: 'bg-amber-600',
+    badgeBg: 'bg-[var(--rarity-legendary-bg)]',
+    badgeText: 'text-[var(--rarity-legendary-text)]',
+    badgeBorder: 'border-[var(--rarity-legendary-border)]',
     label: 'Legendary',
   },
   mythic: {
     topEdgeClass: 'bg-[#E11D2A]',
-    badgeBg: 'bg-[#E11D2A]/10',
-    badgeText: 'text-[#E11D2A]',
-    badgeBorder: 'border-[#E11D2A]/30',
+    badgeBg: 'bg-[var(--rarity-mythic-bg)]',
+    badgeText: 'text-[var(--rarity-mythic-text)]',
+    badgeBorder: 'border-[var(--rarity-mythic-border)]',
     label: 'Mythic',
   },
 };
@@ -395,11 +395,11 @@ export const StoreCardSkeleton: React.FC = () => {
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col h-full bg-[var(--bg-card)] border border-[var(--border)] animate-pulse">
       <div className="h-[3px] w-full bg-[var(--border)]" />
-      <div className="h-[34px] px-2.5 flex items-center justify-between bg-[#0B0C11]">
+      <div className="h-[34px] px-2.5 flex items-center justify-between bg-[#0B0C11] dark-surface-preserve">
         <div className="h-3.5 w-14 rounded-full bg-white/10" />
         <div className="h-5 w-5 rounded-full bg-white/10" />
       </div>
-      <div className="h-[142px] sm:h-[156px] w-full bg-[#090A0F] flex items-center justify-center p-3">
+      <div className="h-[142px] sm:h-[156px] w-full bg-[#090A0F] dark-surface-preserve flex items-center justify-center p-3">
         <div className="w-24 h-24 rounded-2xl bg-white/[0.06]" />
       </div>
       <div className="p-3 flex-1 flex flex-col justify-between gap-2.5">

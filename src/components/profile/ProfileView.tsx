@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   doc,
   getDoc,
@@ -13,7 +13,7 @@ import {
   limit,
   serverTimestamp,
 } from 'firebase/firestore';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -23,25 +23,22 @@ import {
   UserCheck,
   MessageSquare,
   Award,
-  Flame,
   Shield,
-  Target,
   Check,
   X,
   Lock,
   Sparkles,
-  CheckCircle2,
   Crown,
   Share2,
   Ban,
-  AlertTriangle,
-  Copy,
+  AlertCircle,
   ShoppingBag,
   Settings,
-  ArrowLeft,
+  ChevronLeft,
   Package,
+  RefreshCw,
 } from 'lucide-react';
-import { PublicProfile, EquippedCosmetics } from '@/types';
+import type { PublicProfile, EquippedCosmetics } from '@/types';
 import {
   getPublicProfile,
   syncPublicProfile,
@@ -54,12 +51,11 @@ import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { resolveEffectivePlan } from '@/hooks/useEffectivePlan';
-import {
-  getCosmeticById,
-  CosmeticRarity,
-} from '@/data/cosmeticsCatalog';
+import { getCosmeticById, type CosmeticRarity } from '@/data/cosmeticsCatalog';
 import { useWallet } from '@/hooks/useWallet';
 import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
+import { getDisplayName, getUsernameHandle, getRawUsername } from '@/utils/displayName';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import { ProfilePostsSection } from './ProfilePostsSection';
 
 const COSMETIC_ROLE_OPTIONS = [
@@ -72,6 +68,9 @@ const COSMETIC_ROLE_OPTIONS = [
   'ECAT Aspirant',
   'Class Topper',
 ];
+
+const PROFILE_REQUEST_TIMEOUT_MS = 8000;
+const PROFILE_SWR_PREFIX = 'boardly_profile_swr_v1_';
 
 interface AchievementBadgeMeta {
   id: string;
@@ -119,6 +118,24 @@ const ALL_ACHIEVEMENT_BADGES: AchievementBadgeMeta[] = [
   },
 ];
 
+function withTimeout<T>(promise: Promise<T>, ms = PROFILE_REQUEST_TIMEOUT_MS, label = 'Request'): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`));
+    }, ms);
+    promise.then(
+      (val) => {
+        window.clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        window.clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 export function computeLevelFromStats(stats: {
   xp?: number;
   testsCompleted?: number;
@@ -165,7 +182,16 @@ export interface ProfileViewProps {
 
 type ProfileTabId = 'overview' | 'loadout' | 'badges';
 
+interface EquippedCosmeticsMap extends EquippedCosmetics {
+  profileBanner?: string | null;
+  avatarFrame?: string | null;
+  profileEffect?: string | null;
+  title?: string | null;
+}
+
 interface EnrichedProfile extends PublicProfile {
+  display_name?: string;
+  realName?: string;
   bio?: string;
   status?: string;
   accent?: string;
@@ -176,51 +202,39 @@ interface EnrichedProfile extends PublicProfile {
   equippedBanner?: string;
   equippedTitle?: string;
   equippedBadges?: string[];
-  equippedCosmetics?: EquippedCosmetics & {
-    profileBanner?: string | null;
-    avatarFrame?: string | null;
-    profileEffect?: string | null;
-    title?: string | null;
-  };
+  equippedCosmetics?: EquippedCosmeticsMap;
   followersCount?: number;
   followingCount?: number;
   isBanned?: boolean;
   proBadge?: ProBadgeDesignId | null;
+  kobans?: number;
 }
 
-const RARITY_STYLES: Record<
-  CosmeticRarity,
-  { badge: string; border: string; glow: string; text: string }
-> = {
+const RARITY_BADGE_TOKENS: Record<CosmeticRarity, { color: string; background: string; borderColor: string }> = {
   common: {
-    badge: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
-    border: 'border-white/15',
-    glow: '',
-    text: 'text-zinc-300',
+    color: 'var(--rarity-common-text)',
+    background: 'var(--rarity-common-bg)',
+    borderColor: 'var(--rarity-common-border)',
   },
   rare: {
-    badge: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
-    border: 'border-sky-500/40',
-    glow: 'shadow-[0_0_20px_rgba(14,165,233,0.18)]',
-    text: 'text-sky-300',
+    color: 'var(--rarity-rare-text)',
+    background: 'var(--rarity-rare-bg)',
+    borderColor: 'var(--rarity-rare-border)',
   },
   epic: {
-    badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-    border: 'border-purple-500/40',
-    glow: 'shadow-[0_0_22px_rgba(168,85,247,0.22)]',
-    text: 'text-purple-300',
+    color: 'var(--rarity-epic-text)',
+    background: 'var(--rarity-epic-bg)',
+    borderColor: 'var(--rarity-epic-border)',
   },
   legendary: {
-    badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-    border: 'border-amber-500/50',
-    glow: 'shadow-[0_0_25px_rgba(245,158,11,0.28)]',
-    text: 'text-amber-300',
+    color: 'var(--rarity-legendary-text)',
+    background: 'var(--rarity-legendary-bg)',
+    borderColor: 'var(--rarity-legendary-border)',
   },
   mythic: {
-    badge: 'bg-[#D71921]/25 text-red-200 border-[#D71921]/60',
-    border: 'border-[#D71921]/60',
-    glow: 'shadow-[0_0_28px_rgba(215,25,33,0.35)]',
-    text: 'text-red-200',
+    color: 'var(--rarity-mythic-text)',
+    background: 'var(--rarity-mythic-bg)',
+    borderColor: 'var(--rarity-mythic-border)',
   },
 };
 
@@ -235,59 +249,140 @@ function deriveDeterministicShortId(uid: string): string {
   return String(num);
 }
 
-const SHORT_ID_MEMORY_CACHE = new Map<string, string>();
-
-async function ensureUserShortId(uid: string, existingShortId?: string): Promise<string> {
-  const cleanExisting = String(existingShortId || '').replace(/^#+/, '').trim();
-  if (/^\d{5}$/.test(cleanExisting)) {
-    SHORT_ID_MEMORY_CACHE.set(uid, cleanExisting);
-    return cleanExisting;
-  }
-  const cached = SHORT_ID_MEMORY_CACHE.get(uid);
-  if (cached && /^\d{5}$/.test(cached)) {
-    return cached;
-  }
+function readCachedProfile(uid: string): EnrichedProfile | null {
+  if (!uid || typeof window === 'undefined') return null;
   try {
-    const userRef = doc(db, 'users', uid);
-    const snap = await getDoc(userRef);
-    const data = snap.exists() ? snap.data() : null;
-    const saved = String(data?.shortId || data?.studentId || '').replace(/^#+/, '').trim();
-    if (/^\d{5}$/.test(saved)) {
-      SHORT_ID_MEMORY_CACHE.set(uid, saved);
-      return saved;
-    }
+    const raw = window.localStorage.getItem(`${PROFILE_SWR_PREFIX}${uid}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt?: number; data?: EnrichedProfile };
+    if (!parsed?.data || parsed.data.uid !== uid) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
 
-    const pubRef = doc(db, 'publicProfiles', uid);
-    const pubSnap = await getDoc(pubRef).catch(() => null);
-    const pubData = pubSnap && pubSnap.exists() ? pubSnap.data() : null;
-    const pubSaved = String(pubData?.studentId || pubData?.shortId || '')
+function writeCachedProfile(uid: string, data: EnrichedProfile): void {
+  if (!uid || typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      `${PROFILE_SWR_PREFIX}${uid}`,
+      JSON.stringify({ savedAt: Date.now(), data })
+    );
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function buildImmediateOwnSeed(
+  uid: string,
+  ownProfile: any,
+  currentUser: any,
+  walletEquipped: any,
+  myProBadgeVisible: boolean,
+  myProBadgeDesign: ProBadgeDesignId
+): EnrichedProfile {
+  const resolvedDisplayName = getDisplayName({
+    display_name: ownProfile?.display_name ?? ownProfile?.displayName,
+    realName: ownProfile?.realName ?? ownProfile?.name ?? currentUser?.displayName,
+    username: ownProfile?.username,
+  });
+  const rawUsername = getRawUsername({ username: ownProfile?.username }) || '';
+  const shortId =
+    String(ownProfile?.shortId || ownProfile?.studentId || deriveDeterministicShortId(uid))
       .replace(/^#+/, '')
       .trim();
-    if (/^\d{5}$/.test(pubSaved)) {
-      SHORT_ID_MEMORY_CACHE.set(uid, pubSaved);
-      return pubSaved;
-    }
 
-    const fallbackId = deriveDeterministicShortId(uid);
-    SHORT_ID_MEMORY_CACHE.set(uid, fallbackId);
-    if (auth.currentUser?.uid === uid) {
-      await setDoc(
-        userRef,
-        { shortId: fallbackId, studentId: fallbackId },
-        { merge: true }
-      ).catch(() => {});
-      await setDoc(
-        pubRef,
-        { studentId: fallbackId, shortId: fallbackId },
-        { merge: true }
-      ).catch(() => {});
-    }
-    return fallbackId;
-  } catch {
-    const fallback = deriveDeterministicShortId(uid);
-    SHORT_ID_MEMORY_CACHE.set(uid, fallback);
-    return fallback;
-  }
+  const equippedAvatar =
+    ownProfile?.equippedAvatar === 'custom'
+      ? 'custom'
+      : walletEquipped?.avatar || ownProfile?.equippedAvatar || ownProfile?.avatar || 'avatar-1';
+  const equippedFrame =
+    walletEquipped?.frame || ownProfile?.equippedFrame || ownProfile?.frame || 'none';
+  const equippedBanner =
+    walletEquipped?.banner || ownProfile?.equippedBanner || ownProfile?.banner || 'none';
+  const equippedEffect =
+    walletEquipped?.effect || ownProfile?.equippedCosmetics?.profileEffect || ownProfile?.effectId || 'none';
+  const equippedTitle =
+    walletEquipped?.title || ownProfile?.equippedTitle || 'title-rookie';
+  const equippedNameplate =
+    walletEquipped?.nameplate || ownProfile?.nameplate || 'none';
+
+  return {
+    uid,
+    display_name: resolvedDisplayName,
+    displayName: resolvedDisplayName,
+    realName: ownProfile?.realName || ownProfile?.name || currentUser?.displayName || undefined,
+    username: rawUsername,
+    role: ownProfile?.role || 'student',
+    customRole: ownProfile?.customRole || 'Student',
+    equippedAvatar,
+    photoURL: ownProfile?.photoURL || currentUser?.photoURL || '',
+    equippedFrame,
+    equippedBanner,
+    equippedTitle,
+    nameplate: equippedNameplate,
+    equippedBadges: ownProfile?.equippedBadges || ['first_login'],
+    equippedCosmetics: {
+      ...(ownProfile?.equippedCosmetics || {}),
+      avatar: equippedAvatar !== 'custom' ? equippedAvatar : undefined,
+      frame: equippedFrame !== 'none' ? equippedFrame : undefined,
+      avatarFrame: equippedFrame !== 'none' ? equippedFrame : undefined,
+      banner: equippedBanner !== 'none' ? equippedBanner : undefined,
+      profileBanner: equippedBanner !== 'none' ? equippedBanner : undefined,
+      effect: equippedEffect !== 'none' ? equippedEffect : undefined,
+      profileEffect: equippedEffect !== 'none' ? equippedEffect : undefined,
+      nameplate: equippedNameplate !== 'none' ? equippedNameplate : undefined,
+      title: equippedTitle,
+    },
+    bio: ownProfile?.bio || '',
+    status: ownProfile?.status || '',
+    shortId,
+    studentId: shortId,
+    followersCount: Number(ownProfile?.followersCount ?? 0),
+    followingCount: Number(ownProfile?.followingCount ?? 0),
+    isBanned: Boolean(ownProfile?.isBanned),
+    proBadge: myProBadgeVisible ? myProBadgeDesign : null,
+    stats: {
+      streakDays: Number(ownProfile?.streakDays ?? ownProfile?.streak ?? 0),
+      testsCompleted: Number(ownProfile?.testsCompleted ?? 0),
+      questionsAnswered: Number(ownProfile?.totalQuestionsSolved ?? ownProfile?.questionsAnswered ?? 0),
+      accuracyRate: Number(ownProfile?.accuracyRate ?? 0),
+      xp: Number(ownProfile?.xp ?? ownProfile?.score ?? 0),
+    },
+  };
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="max-w-[640px] mx-auto px-4 pt-4 pb-12 space-y-5 animate-pulse" aria-busy="true">
+      <div className="rounded-[32px] bg-[var(--card)] border border-[var(--border)] overflow-hidden shadow-[var(--settings-card-shadow)]">
+        <div className="h-36 sm:h-40 w-full bg-[var(--border)]/50" />
+        <div className="px-5 pb-5">
+          <div className="-mt-12 mb-3 flex items-end justify-between">
+            <div className="w-[92px] h-[92px] rounded-full bg-[var(--border)] ring-4 ring-[var(--card)]" />
+            <div className="h-8 w-32 rounded-full bg-[var(--border)]/70" />
+          </div>
+          <div className="space-y-2 mt-2">
+            <div className="h-6 w-48 rounded-lg bg-[var(--border)]/80" />
+            <div className="h-4 w-28 rounded-lg bg-[var(--border)]/60" />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <div className="h-7 w-24 rounded-full bg-[var(--border)]/60" />
+            <div className="h-7 w-20 rounded-full bg-[var(--border)]/60" />
+          </div>
+          <div className="mt-4 h-[68px] rounded-[22px] bg-[var(--bg)] border border-[var(--border)]" />
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="h-[46px] rounded-full bg-[var(--border)]/70" />
+            <div className="h-[46px] rounded-full bg-[var(--border)]/50" />
+            <div className="h-[46px] rounded-full bg-[var(--border)]/50" />
+          </div>
+        </div>
+      </div>
+      <div className="h-[48px] rounded-full bg-[var(--card)] border border-[var(--border)]" />
+      <div className="h-32 rounded-[24px] bg-[var(--card)] border border-[var(--border)]" />
+    </div>
+  );
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -305,39 +400,62 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const {
     user: currentUser,
     profile: ownProfile,
-    authProfile,
+    profileLoading: authProfileLoading,
     isAdmin,
     isGuest,
-    refreshUserProfile,
+    updateProfile: updateAuthContextProfile,
     proBadgeDesign: myProBadgeDesign,
     proBadgeVisible: myProBadgeVisible,
   } = useAuth();
   const navigate = useNavigate();
   const wallet = useWallet();
 
-  const uid = targetUid || propData?.uid || currentUser?.uid;
+  const uid = targetUid || propData?.uid || currentUser?.uid || '';
   const isOwnProfile =
     typeof propIsOwnProfile === 'boolean'
       ? propIsOwnProfile
-      : Boolean(currentUser && uid === currentUser.uid);
+      : Boolean(currentUser && uid && uid === currentUser.uid);
 
-  const [profile, setProfile] = useState<EnrichedProfile | null>(null);
-  const [loading, setLoading] = useState(!previewMode);
+  const [scrolled, setScrolled] = useState(false);
+
+  // Instant SWR or ownProfile seed so revisits paint immediately (<50ms) with zero black screen
+  const [profile, setProfile] = useState<EnrichedProfile | null>(() => {
+    if (previewMode && propData) return null;
+    if (!uid) return null;
+    const cached = readCachedProfile(uid);
+    if (cached) return cached;
+    if (isOwnProfile && (ownProfile || currentUser)) {
+      return buildImmediateOwnSeed(
+        uid,
+        ownProfile,
+        currentUser,
+        wallet.equipped,
+        myProBadgeVisible,
+        myProBadgeDesign
+      );
+    }
+    return null;
+  });
+
+  const [basicsLoading, setBasicsLoading] = useState<boolean>(() => !previewMode && !profile && Boolean(uid));
+  const [basicsError, setBasicsError] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [activeTab, setActiveTab] = useState<ProfileTabId>('overview');
 
-  // Follow state
+  // Independent follows state (non-blocking)
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [postsCount, setPostsCount] = useState(0);
+  const [followsSyncing, setFollowsSyncing] = useState(false);
+  const [followsError, setFollowsError] = useState<string | null>(null);
+  const [followersCount, setFollowersCount] = useState<number>(() => Number(profile?.followersCount ?? 0));
+  const [followingCount, setFollowingCount] = useState<number>(() => Number(profile?.followingCount ?? 0));
+  const [, setPostsCount] = useState(0);
 
   // Followers / Following Modal state
-  const [followListModal, setFollowListModal] = useState<'followers' | 'following' | null>(
-    null
-  );
+  const [followListModal, setFollowListModal] = useState<'followers' | 'following' | null>(null);
   const [followListUsers, setFollowListUsers] = useState<PublicProfile[]>([]);
   const [followListLoading, setFollowListLoading] = useState(false);
+  const [followListError, setFollowListError] = useState<string | null>(null);
 
   // Direct Message Modal state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -347,7 +465,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Edit Profile Modal state
   const [isEditing, setIsEditing] = useState(false);
-  const [editNickname, setEditNickname] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editStatus, setEditStatus] = useState('');
@@ -356,11 +474,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [editFrame, setEditFrame] = useState<string>('none');
   const [editBanner, setEditBanner] = useState<string>('none');
   const [editEffect, setEditEffect] = useState<string>('none');
-  const [editBadges, setEditBadges] = useState<string[]>([]);
+  const [editBadges, setEditBadges] = useState<string[]>(['first_login']);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep latest ownProfile & wallet refs without re-triggering network fetch loops
+  const ownProfileRef = useRef(ownProfile);
+  ownProfileRef.current = ownProfile;
+  const walletEquippedRef = useRef(wallet.equipped);
+  walletEquippedRef.current = wallet.equipped;
+  const myProBadgeRef = useRef({ visible: myProBadgeVisible, design: myProBadgeDesign });
+  myProBadgeRef.current = { visible: myProBadgeVisible, design: myProBadgeDesign };
+
+  useBodyScrollLock(Boolean(isEditing || followListModal), 'profile-submodal');
+
+  // Sticky top bar scroll border + reset scroll to 0 on uid change
+  useEffect(() => {
+    if (!previewMode && !isModal) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [uid, previewMode, isModal]);
 
   // Sync modal attribute for bottom nav hiding when sub-modals are open
   useEffect(() => {
@@ -375,235 +514,273 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [isEditing, followListModal, isChatOpen, isModal]);
 
-  // Load Profile Data
+  // Close sub-modals on Escape
   useEffect(() => {
-    if (previewMode && propData) {
-      const candidateUid = String(propData.uid || uid || 'preview_user');
-      const resolvedShortId =
-        String(
-          propData.shortId ||
-            propData.studentId ||
-            ownProfile?.shortId ||
-            ownProfile?.studentId ||
-            SHORT_ID_MEMORY_CACHE.get(candidateUid) ||
-            deriveDeterministicShortId(candidateUid)
+    if (!isEditing && !followListModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (followListModal) setFollowListModal(null);
+        else if (isEditing && !saving) setIsEditing(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isEditing, followListModal, saving]);
+
+  const hydrateEditFields = useCallback((p: EnrichedProfile) => {
+    const cleanName = getDisplayName({
+      display_name: p.display_name ?? p.displayName,
+      realName: p.realName,
+      username: p.username,
+    });
+    setEditDisplayName(cleanName);
+    setEditUsername(getRawUsername({ username: p.username }) || '');
+    setEditBio(p.bio || '');
+    setEditStatus(p.status || '');
+    setEditCustomRole(p.customRole || 'Student');
+    setEditAvatar(p.equippedAvatar || 'avatar-1');
+    setEditFrame(p.equippedFrame || 'none');
+    setEditBanner(p.equippedBanner || 'none');
+    setEditEffect(p.equippedCosmetics?.profileEffect || p.equippedCosmetics?.effect || 'none');
+    setEditBadges(p.equippedBadges || ['first_login']);
+  }, []);
+
+  // Preview mode hydration
+  useEffect(() => {
+    if (!previewMode || !propData) return;
+    const candidateUid = String(propData.uid || uid || 'preview_user');
+    const resolvedShortId = String(
+      propData.shortId || propData.studentId || deriveDeterministicShortId(candidateUid)
+    )
+      .replace(/^#+/, '')
+      .trim();
+    const resolvedName = getDisplayName({
+      display_name: propData.display_name ?? propData.displayName,
+      realName: propData.realName ?? propData.name,
+      username: propData.username,
+    });
+
+    setProfile({
+      uid: candidateUid,
+      display_name: resolvedName,
+      displayName: resolvedName,
+      username: getRawUsername({ username: propData.username }) || '',
+      role: propData.role || 'student',
+      customRole: propData.customRole || 'Student',
+      equippedAvatar: propData.equippedAvatar || propData.avatar || 'avatar-1',
+      photoURL: propData.photoURL || '',
+      equippedFrame: propData.equippedFrame || propData.frame || 'none',
+      equippedBanner: propData.equippedBanner || 'none',
+      equippedTitle: propData.equippedTitle || 'title-rookie',
+      equippedBadges: propData.equippedBadges || ['first_login'],
+      equippedCosmetics: propData.equippedCosmetics || {},
+      bio: propData.bio || '',
+      status: propData.status || 'Active',
+      shortId: resolvedShortId,
+      studentId: resolvedShortId,
+      followersCount: Number(propData.followersCount ?? 0),
+      followingCount: Number(propData.followingCount ?? 0),
+      proBadge: propData.proBadge ?? null,
+      stats: propData.stats || {
+        streakDays: 1,
+        testsCompleted: 0,
+        questionsAnswered: 0,
+        accuracyRate: 0,
+        xp: 120,
+      },
+    });
+    setBasicsLoading(false);
+    setBasicsError(null);
+  }, [previewMode, propData, uid]);
+
+  // 1. PARALLEL, TIMEOUT-GUARDED BASICS LOAD (never spins forever; never re-triggers on ownProfile identity changes)
+  useEffect(() => {
+    if (previewMode) return;
+    if (!uid) {
+      if (!authProfileLoading) {
+        setBasicsLoading(false);
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    // Immediate paint from SWR cache or ownProfile before network finishes
+    const cached = readCachedProfile(uid);
+    const immediateSeed =
+      cached ||
+      (isOwnProfile && (ownProfileRef.current || currentUser)
+        ? buildImmediateOwnSeed(
+            uid,
+            ownProfileRef.current,
+            currentUser,
+            walletEquippedRef.current,
+            myProBadgeRef.current.visible,
+            myProBadgeRef.current.design
+          )
+        : null);
+
+    if (immediateSeed) {
+      setProfile(immediateSeed);
+      setFollowersCount(Number(immediateSeed.followersCount ?? 0));
+      setFollowingCount(Number(immediateSeed.followingCount ?? 0));
+      hydrateEditFields(immediateSeed);
+      setBasicsLoading(false);
+    } else {
+      setBasicsLoading(true);
+    }
+    setBasicsError(null);
+
+    const loadBasics = async () => {
+      try {
+        if (isGuest && isOwnProfile) {
+          const seed = buildImmediateOwnSeed(
+            uid,
+            ownProfileRef.current,
+            currentUser,
+            walletEquippedRef.current,
+            false,
+            myProBadgeRef.current.design
+          );
+          if (!cancelled) {
+            setProfile(seed);
+            hydrateEditFields(seed);
+            writeCachedProfile(uid, seed);
+            setBasicsLoading(false);
+          }
+          return;
+        }
+
+        // Fire-and-forget publicProfile sync for own profile (NEVER blocks render)
+        const op = ownProfileRef.current as any;
+        if (isOwnProfile && currentUser && op) {
+          const ownDisplayName = getDisplayName({
+            display_name: op.display_name ?? op.displayName,
+            realName: op.realName ?? op.name ?? currentUser.displayName,
+            username: op.username,
+          });
+          void syncPublicProfile(uid, {
+            display_name: ownDisplayName,
+            displayName: ownDisplayName,
+            username: op.username,
+            role: op.role,
+            customRole: op.customRole,
+            equippedAvatar: op.equippedAvatar || op.avatar || 'avatar-1',
+            photoURL: op.photoURL || currentUser.photoURL || '',
+            equippedFrame: op.equippedFrame || op.frame,
+            streak: op.streak,
+            score: op.score,
+            bio: op.bio,
+            status: op.status,
+          }).catch(() => {});
+        }
+
+        // Fetch D1 profile, publicProfile, and Firestore users/{uid} IN PARALLEL with 8s timeouts
+        const d1Controller = new AbortController();
+        const d1Timer = window.setTimeout(() => d1Controller.abort(), PROFILE_REQUEST_TIMEOUT_MS);
+
+        const d1Promise = fetch(
+          `/api/auth/resolve-profiles?uids=${encodeURIComponent(uid)}&_t=${Date.now()}`,
+          { cache: 'no-store', signal: d1Controller.signal }
+        )
+          .then(async (res) => {
+            window.clearTimeout(d1Timer);
+            const json = await res.json().catch(() => null);
+            return res.ok && json?.profiles?.[uid] ? json.profiles[uid] : null;
+          })
+          .catch(() => {
+            window.clearTimeout(d1Timer);
+            return null;
+          });
+
+        const pubPromise = withTimeout(getPublicProfile(uid), PROFILE_REQUEST_TIMEOUT_MS, 'Public profile');
+        const userDocPromise = withTimeout(
+          getDoc(doc(db, 'users', uid)).then((snap) => (snap.exists() ? snap.data() : null)),
+          PROFILE_REQUEST_TIMEOUT_MS,
+          'User profile'
+        );
+
+        const [d1Result, pubResult, userResult] = await Promise.allSettled([
+          d1Promise,
+          pubPromise,
+          userDocPromise,
+        ]);
+
+        if (cancelled) return;
+
+        const d1Live: any = d1Result.status === 'fulfilled' ? d1Result.value : null;
+        const pubData: any = pubResult.status === 'fulfilled' ? pubResult.value : null;
+        const uData: any =
+          userResult.status === 'fulfilled' && userResult.value
+            ? userResult.value
+            : isOwnProfile && ownProfileRef.current
+            ? ownProfileRef.current
+            : null;
+
+        // If every single source failed and we have no cached data, show inline retry card
+        if (!d1Live && !pubData && !uData) {
+          if (!immediateSeed) {
+            const firstRejection =
+              (pubResult.status === 'rejected' && pubResult.reason) ||
+              (userResult.status === 'rejected' && userResult.reason);
+            setBasicsError(
+              firstRejection instanceof Error
+                ? firstRejection.message
+                : 'Could not load this profile right now.'
+            );
+          }
+          setBasicsLoading(false);
+          return;
+        }
+
+        const shortId = String(
+          uData?.shortId ||
+            uData?.studentId ||
+            pubData?.studentId ||
+            pubData?.shortId ||
+            deriveDeterministicShortId(uid)
         )
           .replace(/^#+/, '')
           .trim();
 
-      setProfile({
-        uid: candidateUid,
-        displayName: propData.displayName || propData.nickname || 'Student',
-        username: propData.username || 'student',
-        role: propData.role || 'student',
-        customRole: propData.customRole || 'Student',
-        equippedAvatar: propData.equippedAvatar || propData.avatar || 'avatar-1',
-        photoURL: propData.photoURL || '',
-        equippedFrame: propData.equippedFrame || propData.frame || 'none',
-        equippedBanner: propData.equippedBanner || 'none',
-        equippedTitle: propData.equippedTitle || 'title-rookie',
-        equippedBadges: propData.equippedBadges || ['first_login'],
-        equippedCosmetics: propData.equippedCosmetics || {},
-        bio: propData.bio || '',
-        status: propData.status || 'Active',
-        shortId: resolvedShortId,
-        studentId: resolvedShortId,
-        followersCount: Number(propData.followersCount ?? 0),
-        followingCount: Number(propData.followingCount ?? 0),
-        proBadge: propData.proBadge ?? null,
-        stats: propData.stats || {
-          streakDays: 1,
-          testsCompleted: 0,
-          questionsAnswered: 0,
-          accuracyRate: 0,
-          xp: 120,
-        },
-      });
-      setLoading(false);
-      return;
-    }
+        const rawUsername =
+          getRawUsername({
+            username:
+              d1Live?.username ||
+              (isOwnProfile ? (ownProfileRef.current as any)?.username : undefined) ||
+              uData?.username ||
+              pubData?.username,
+          }) || '';
 
-    if (!uid) {
-      setLoading(false);
-      return;
-    }
-    let isMounted = true;
-
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        if (isGuest && isOwnProfile) {
-          const activeGuestSource = (authProfile || ownProfile) as any;
-          const guestDisplayName =
-            activeGuestSource?.displayName ||
-            activeGuestSource?.nickname ||
-            activeGuestSource?.username ||
-            'Guest Student';
-          const guestUsername = (
-            activeGuestSource?.username ||
-            guestDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '')
-          ).slice(0, 24);
-          const guestShortId = String(
-            activeGuestSource?.shortId ||
-              activeGuestSource?.studentId ||
-              deriveDeterministicShortId(uid)
-          )
-            .replace(/^#+/, '')
-            .trim();
-
-          if (!isMounted) return;
-          const enrichedGuest: EnrichedProfile = {
-            uid,
-            displayName: guestDisplayName,
-            username: guestUsername,
-            role: 'student',
-            customRole: activeGuestSource?.customRole || 'Student',
-            equippedAvatar: activeGuestSource?.equippedAvatar || 'avatar-1',
-            photoURL: activeGuestSource?.photoURL || '',
-            equippedFrame: activeGuestSource?.equippedFrame || 'none',
-            equippedBanner: activeGuestSource?.equippedBanner || 'none',
-            equippedTitle: activeGuestSource?.equippedTitle || 'title-rookie',
-            equippedBadges: activeGuestSource?.equippedBadges || ['first_login'],
-            equippedCosmetics: activeGuestSource?.equippedCosmetics || {},
-            bio: activeGuestSource?.bio || 'Exploring Boardly in Guest Mode.',
-            status: activeGuestSource?.status || 'Studying in Guest Mode',
-            shortId: guestShortId,
-            studentId: guestShortId,
-            followersCount: 0,
-            followingCount: 0,
-            isBanned: false,
-            stats: {
-              streakDays: activeGuestSource?.streakDays || 0,
-              testsCompleted: 0,
-              questionsAnswered: 0,
-              accuracyRate: 0,
-              xp: activeGuestSource?.xp || 0,
-            },
-          };
-          setProfile(enrichedGuest);
-          setEditNickname(enrichedGuest.displayName);
-          setEditUsername(enrichedGuest.username || '');
-          setEditBio(enrichedGuest.bio || '');
-          setEditStatus(enrichedGuest.status || '');
-          setEditCustomRole(enrichedGuest.customRole || 'Student');
-          setEditAvatar(enrichedGuest.equippedAvatar);
-          setEditFrame(enrichedGuest.equippedFrame || 'none');
-          setEditBanner(enrichedGuest.equippedBanner || 'none');
-          setEditEffect(enrichedGuest.equippedCosmetics?.profileEffect || 'none');
-          setEditBadges(enrichedGuest.equippedBadges || ['first_login']);
-          setLoading(false);
-          return;
-        }
-
-        if (isOwnProfile && currentUser && ownProfile) {
-          await syncPublicProfile(uid, {
-            nickname:
-              (authProfile as any)?.displayName ||
-              ownProfile.nickname ||
-              currentUser.displayName ||
-              'Student',
-            username: (authProfile as any)?.username || ownProfile.username,
-            role: (authProfile as any)?.role || ownProfile.role,
-            customRole: (authProfile as any)?.customRole || (ownProfile as any).customRole,
-            equippedAvatar:
-              (authProfile as any)?.avatar || ownProfile.equippedAvatar || 'avatar-1',
-            photoURL: ownProfile.photoURL || currentUser.photoURL || '',
-            equippedFrame: (authProfile as any)?.frame || ownProfile.equippedFrame,
-            streak: ownProfile.streak,
-            score: ownProfile.score,
-            bio: (authProfile as any)?.bio ?? ownProfile.bio,
-            status: (authProfile as any)?.status ?? ownProfile.status,
-          }).catch(() => {});
-        }
-
-        let d1Live: any = null;
-        try {
-          const d1Res = await fetch(
-            `/api/auth/resolve-profiles?uids=${encodeURIComponent(uid)}&_t=${Date.now()}`,
-            { cache: 'no-store' }
-          );
-          const d1Json = await d1Res.json().catch(() => null);
-          if (d1Res.ok && d1Json?.profiles?.[uid]) {
-            d1Live = d1Json.profiles[uid];
-          }
-        } catch {
-          // ignore
-        }
-
-        let pubData = await getPublicProfile(uid);
-        let uData: any = null;
-        try {
-          const uSnap = await getDoc(doc(db, 'users', uid));
-          if (uSnap.exists()) {
-            uData = uSnap.data();
-          }
-        } catch {
-          if (isOwnProfile && ownProfile) {
-            uData = ownProfile;
-          }
-        }
-
-        const shortId = await ensureUserShortId(
-          uid,
-          uData?.shortId || uData?.studentId || pubData?.studentId || pubData?.shortId
-        );
-
-        let fCount = uData?.followersCount || 0;
-        let fgCount = uData?.followingCount || 0;
-        try {
-          const fQuery = query(
-            collection(db, 'follows'),
-            where('followingId', '==', uid),
-            limit(500)
-          );
-          const fgQuery = query(
-            collection(db, 'follows'),
-            where('followerId', '==', uid),
-            limit(500)
-          );
-          const [fSnap, fgSnap] = await Promise.all([getDocs(fQuery), getDocs(fgQuery)]);
-          fCount = fSnap.size;
-          fgCount = fgSnap.size;
-
-          if (currentUser && !isOwnProfile && !isGuest) {
-            const myFollowDoc = await getDoc(
-              doc(db, 'follows', `${currentUser.uid}_${uid}`)
-            );
-            if (isMounted) setIsFollowing(myFollowDoc.exists());
-          }
-        } catch {
-          // fallback to stored count
-        }
-
-        if (!isMounted) return;
-
-        setFollowersCount(fCount);
-        setFollowingCount(fgCount);
-
-        const resolvedDisplayName =
-          d1Live?.displayName ||
-          (isOwnProfile ? (authProfile as any)?.displayName : undefined) ||
-          pubData?.displayName ||
-          uData?.nickname ||
-          uData?.displayName ||
-          'Student';
-        const resolvedUsername =
-          d1Live?.username ||
-          (isOwnProfile ? (authProfile as any)?.username : undefined) ||
-          pubData?.username ||
-          uData?.username ||
-          resolvedDisplayName.toLowerCase().replace(/[^a-z0-9_]/g, '');
+        const resolvedDisplayName = getDisplayName({
+          display_name:
+            (isOwnProfile
+              ? ownProfileRef.current?.display_name ?? ownProfileRef.current?.displayName
+              : undefined) ||
+            uData?.display_name ||
+            uData?.displayName ||
+            pubData?.display_name ||
+            pubData?.displayName ||
+            d1Live?.display_name ||
+            d1Live?.displayName,
+          realName:
+            uData?.realName ||
+            uData?.name ||
+            (isOwnProfile ? currentUser?.displayName : undefined),
+          username: rawUsername,
+        });
 
         const rawEquippedCosmetics: EquippedCosmeticsMap = {
           ...(pubData?.equippedCosmetics || {}),
           ...(uData?.equippedCosmetics || {}),
+          ...(isOwnProfile ? walletEquippedRef.current || {} : {}),
         };
 
         const rawAvatarCandidate =
-          d1Live?.avatar ||
-          (isOwnProfile ? (authProfile as any)?.avatar : undefined) ||
-          rawEquippedCosmetics.avatar ||
+          (isOwnProfile ? walletEquippedRef.current?.avatar : undefined) ||
           uData?.equippedAvatar ||
+          d1Live?.avatar ||
+          rawEquippedCosmetics.avatar ||
           pubData?.equippedAvatar ||
           'avatar-1';
 
@@ -620,63 +797,68 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         const resolvedPhotoURL = isCustomUploadedAvatar
           ? rawAvatarCandidate
-          : pubData?.photoURL ||
-            uData?.photoURL ||
+          : uData?.photoURL ||
+            pubData?.photoURL ||
             (isOwnProfile ? currentUser?.photoURL || '' : '');
 
         const resolvedFrame =
-          d1Live?.frame ||
-          (isOwnProfile ? (authProfile as any)?.frame : undefined) ||
+          (isOwnProfile ? walletEquippedRef.current?.frame : undefined) ||
+          rawEquippedCosmetics.frame ||
           rawEquippedCosmetics.avatarFrame ||
           uData?.equippedFrame ||
+          d1Live?.frame ||
           pubData?.equippedFrame ||
           'none';
 
         const resolvedBanner =
+          (isOwnProfile ? walletEquippedRef.current?.banner : undefined) ||
+          rawEquippedCosmetics.banner ||
           rawEquippedCosmetics.profileBanner ||
           uData?.equippedBanner ||
           pubData?.equippedBanner ||
           'none';
 
+        const resolvedEffect =
+          (isOwnProfile ? walletEquippedRef.current?.effect : undefined) ||
+          rawEquippedCosmetics.effect ||
+          rawEquippedCosmetics.profileEffect ||
+          uData?.effectId ||
+          pubData?.effectId ||
+          'none';
+
         const resolvedTitle =
+          (isOwnProfile ? walletEquippedRef.current?.title : undefined) ||
           rawEquippedCosmetics.title ||
           uData?.equippedTitle ||
           pubData?.equippedTitle ||
           'title-rookie';
 
+        const resolvedNameplate =
+          (isOwnProfile ? walletEquippedRef.current?.nameplate : undefined) ||
+          rawEquippedCosmetics.nameplate ||
+          uData?.nameplate ||
+          pubData?.nameplate ||
+          'none';
+
         const resolvedRole =
-          d1Live?.role ||
-          (isOwnProfile ? (authProfile as any)?.role : undefined) ||
-          pubData?.role ||
+          (isOwnProfile ? ownProfileRef.current?.role : undefined) ||
           uData?.role ||
+          pubData?.role ||
+          d1Live?.role ||
           'student';
 
         const resolvedCustomRole =
-          d1Live?.customRole ??
-          (isOwnProfile ? (authProfile as any)?.customRole : undefined) ??
-          pubData?.customRole ??
-          uData?.customRole ??
-          'Student';
+          uData?.customRole ?? pubData?.customRole ?? d1Live?.customRole ?? 'Student';
 
         const resolvedBio =
-          d1Live?.bio !== undefined && d1Live?.bio !== ''
-            ? d1Live.bio
-            : (isOwnProfile ? (authProfile as any)?.bio : undefined) ??
-              uData?.bio ??
-              pubData?.bio ??
-              '';
+          uData?.bio ?? pubData?.bio ?? (d1Live?.bio !== undefined ? d1Live.bio : '');
 
         const resolvedStatus =
-          d1Live?.status !== undefined && d1Live?.status !== ''
-            ? d1Live.status
-            : (isOwnProfile ? (authProfile as any)?.status : undefined) ??
-              uData?.status ??
-              pubData?.status ??
-              '';
+          uData?.status ?? pubData?.status ?? (d1Live?.status !== undefined ? d1Live.status : '');
 
         const resolvedProBadge: ProBadgeDesignId | null = isOwnProfile
-          ? myProBadgeVisible
-            ? myProBadgeDesign
+          ? myProBadgeRef.current.visible
+            ? myProBadgeRef.current.design
             : null
           : d1Live?.proBadge
           ? normalizeProBadgeDesign(d1Live.proBadge)
@@ -688,8 +870,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         const enriched: EnrichedProfile = {
           uid,
+          display_name: resolvedDisplayName,
           displayName: resolvedDisplayName,
-          username: resolvedUsername,
+          realName: uData?.realName || uData?.name || (isOwnProfile ? currentUser?.displayName || undefined : undefined),
+          username: rawUsername,
           role: resolvedRole as any,
           customRole: resolvedCustomRole || 'Student',
           equippedAvatar: resolvedEquippedAvatar,
@@ -697,68 +881,104 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           equippedFrame: resolvedFrame,
           equippedBanner: resolvedBanner,
           equippedTitle: resolvedTitle,
-          equippedBadges: uData?.equippedBadges ||
-            pubData?.equippedBadges || ['first_login'],
+          nameplate: resolvedNameplate,
+          equippedBadges: uData?.equippedBadges || pubData?.equippedBadges || ['first_login'],
           equippedCosmetics: {
             ...rawEquippedCosmetics,
             avatar: isCustomUploadedAvatar ? undefined : resolvedEquippedAvatar,
+            frame: resolvedFrame !== 'none' ? resolvedFrame : undefined,
             avatarFrame: resolvedFrame !== 'none' ? resolvedFrame : undefined,
+            banner: resolvedBanner !== 'none' ? resolvedBanner : undefined,
             profileBanner: resolvedBanner !== 'none' ? resolvedBanner : undefined,
+            effect: resolvedEffect !== 'none' ? resolvedEffect : undefined,
+            profileEffect: resolvedEffect !== 'none' ? resolvedEffect : undefined,
+            nameplate: resolvedNameplate !== 'none' ? resolvedNameplate : undefined,
             title: resolvedTitle,
           },
           bio: resolvedBio,
           status: resolvedStatus,
           shortId,
           studentId: shortId,
-          followersCount: fCount,
-          followingCount: fgCount,
-          isBanned: uData?.isBanned || false,
+          followersCount: Number(uData?.followersCount ?? immediateSeed?.followersCount ?? 0),
+          followingCount: Number(uData?.followingCount ?? immediateSeed?.followingCount ?? 0),
+          isBanned: Boolean(uData?.isBanned),
           proBadge: resolvedProBadge,
+          kobans: Number(uData?.kobans ?? pubData?.kobans ?? 0),
           stats: {
-            streakDays: uData?.streakDays ?? pubData?.stats?.streakDays ?? 0,
-            testsCompleted: pubData?.stats?.testsCompleted ?? 0,
-            questionsAnswered: pubData?.stats?.questionsAnswered ?? 0,
-            accuracyRate: pubData?.stats?.accuracyRate ?? 0,
-            xp: uData?.xp ?? pubData?.stats?.xp ?? 0,
+            streakDays: Number(uData?.streakDays ?? uData?.streak ?? pubData?.stats?.streakDays ?? 0),
+            testsCompleted: Number(uData?.testsCompleted ?? pubData?.stats?.testsCompleted ?? 0),
+            questionsAnswered: Number(
+              uData?.totalQuestionsSolved ?? pubData?.stats?.questionsAnswered ?? 0
+            ),
+            accuracyRate: Number(uData?.accuracyRate ?? pubData?.stats?.accuracyRate ?? 0),
+            xp: Number(uData?.xp ?? uData?.score ?? pubData?.stats?.xp ?? 0),
           },
         };
 
         setProfile(enriched);
-        setEditNickname(enriched.displayName);
-        setEditUsername(enriched.username || '');
-        setEditBio(enriched.bio || '');
-        setEditStatus(enriched.status || '');
-        setEditCustomRole(enriched.customRole || 'Student');
-        setEditAvatar(enriched.equippedAvatar);
-        setEditFrame(enriched.equippedFrame || 'none');
-        setEditBanner(enriched.equippedBanner || 'none');
-        setEditEffect(enriched.equippedCosmetics?.profileEffect || 'none');
-        setEditBadges(enriched.equippedBadges || ['first_login']);
+        setFollowersCount((prev) => (prev > 0 ? prev : enriched.followersCount || 0));
+        setFollowingCount((prev) => (prev > 0 ? prev : enriched.followingCount || 0));
+        hydrateEditFields(enriched);
+        writeCachedProfile(uid, enriched);
+        setBasicsError(null);
       } catch (err) {
-        console.error('Error loading profile:', err);
+        if (!cancelled && !immediateSeed) {
+          setBasicsError(err instanceof Error ? err.message : 'Could not load profile.');
+        }
       } finally {
-        if (isMounted) setLoading(false);
+        if (!cancelled) setBasicsLoading(false);
       }
     };
 
-    void loadData();
+    void loadBasics();
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
-  }, [
-    uid,
-    currentUser,
-    isOwnProfile,
-    isGuest,
-    previewMode,
-    propData,
-    authProfile,
-    ownProfile,
-    myProBadgeDesign,
-    myProBadgeVisible,
-  ]);
+  }, [uid, isOwnProfile, isGuest, previewMode, authProfileLoading, currentUser, reloadToken, hydrateEditFields]);
 
-  // Real-time listener for publicProfiles/{uid}
+  // 2. INDEPENDENT NON-BLOCKING FOLLOWS LOAD (8s timeout + inline retry)
+  const loadFollows = useCallback(async () => {
+    if (!uid || isGuest || previewMode) return;
+    setFollowsSyncing(true);
+    setFollowsError(null);
+    try {
+      const fQuery = query(collection(db, 'follows'), where('followingId', '==', uid), limit(500));
+      const fgQuery = query(collection(db, 'follows'), where('followerId', '==', uid), limit(500));
+      const checks: [Promise<any>, Promise<any>, Promise<any>] = [
+        withTimeout(getDocs(fQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Followers'),
+        withTimeout(getDocs(fgQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Following'),
+        currentUser && !isOwnProfile
+          ? withTimeout(
+              getDoc(doc(db, 'follows', `${currentUser.uid}_${uid}`)),
+              PROFILE_REQUEST_TIMEOUT_MS,
+              'Follow status'
+            )
+          : Promise.resolve(null),
+      ];
+      const [fSnap, fgSnap, myFollowDoc] = await Promise.all(checks);
+      setFollowersCount(fSnap.size);
+      setFollowingCount(fgSnap.size);
+      if (myFollowDoc) {
+        setIsFollowing(myFollowDoc.exists());
+      }
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, followersCount: fSnap.size, followingCount: fgSnap.size };
+        writeCachedProfile(uid, next);
+        return next;
+      });
+    } catch {
+      setFollowsError('Could not refresh follower counts.');
+    } finally {
+      setFollowsSyncing(false);
+    }
+  }, [uid, isGuest, previewMode, currentUser, isOwnProfile]);
+
+  useEffect(() => {
+    void loadFollows();
+  }, [loadFollows]);
+
+  // 3. Real-time listener for publicProfiles/{uid} (merges cleanly without causing reload flicker)
   useEffect(() => {
     if (!uid || isGuest || previewMode) return;
     const pubRef = doc(db, 'publicProfiles', uid);
@@ -769,10 +989,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const data = snap.data();
         setProfile((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            displayName: data.displayName || prev.displayName,
+          const nextDisplay = getDisplayName({
+            display_name: data.display_name ?? data.displayName ?? prev.display_name ?? prev.displayName,
+            realName: prev.realName,
             username: data.username || prev.username,
+          });
+          const next: EnrichedProfile = {
+            ...prev,
+            display_name: nextDisplay,
+            displayName: nextDisplay,
+            username: getRawUsername({ username: data.username || prev.username }) || prev.username,
             customRole: data.customRole ?? prev.customRole,
             bio: data.bio ?? prev.bio,
             status: data.status ?? prev.status,
@@ -786,6 +1012,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ...(data.equippedCosmetics || {}),
             },
           };
+          writeCachedProfile(uid, next);
+          return next;
         });
       },
       () => {}
@@ -793,59 +1021,85 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return () => unsub();
   }, [uid, isGuest, previewMode]);
 
-  // Keep own profile synced with live WalletContext & AuthContext
+  // 4. Keep own profile synced live with AuthContext & WalletContext (zero loading spinner!)
   useEffect(() => {
-    if (!isOwnProfile || !ownProfile || previewMode) return;
+    if (!isOwnProfile || !ownProfile || previewMode || !uid) return;
     setProfile((prev) => {
-      if (!prev) return prev;
+      const base =
+        prev ||
+        buildImmediateOwnSeed(
+          uid,
+          ownProfile,
+          currentUser,
+          wallet.equipped,
+          myProBadgeVisible,
+          myProBadgeDesign
+        );
       const op = ownProfile as any;
       const liveEquipped = wallet.equipped || {};
-      const nextFrame =
-        liveEquipped.avatarFrame || op.equippedFrame || prev.equippedFrame || 'none';
-      const nextBanner =
-        liveEquipped.profileBanner || op.equippedBanner || prev.equippedBanner || 'none';
-      const nextTitle =
-        liveEquipped.title || op.equippedTitle || prev.equippedTitle || 'title-rookie';
+      const nextFrame = liveEquipped.frame || op.equippedFrame || base.equippedFrame || 'none';
+      const nextBanner = liveEquipped.banner || op.equippedBanner || base.equippedBanner || 'none';
+      const nextEffect =
+        liveEquipped.effect ||
+        op.equippedCosmetics?.profileEffect ||
+        base.equippedCosmetics?.profileEffect ||
+        'none';
+      const nextTitle = liveEquipped.title || op.equippedTitle || base.equippedTitle || 'title-rookie';
+      const nextNameplate = liveEquipped.nameplate || op.nameplate || base.nameplate || 'none';
       const nextAvatar =
         op.equippedAvatar === 'custom'
           ? 'custom'
-          : liveEquipped.avatar || op.equippedAvatar || prev.equippedAvatar || 'avatar-1';
+          : liveEquipped.avatar || op.equippedAvatar || base.equippedAvatar || 'avatar-1';
 
-      return {
-        ...prev,
-        displayName:
-          (authProfile as any)?.displayName || op.nickname || prev.displayName,
-        username: (authProfile as any)?.username || op.username || prev.username,
-        role: (authProfile as any)?.role || op.role || prev.role,
-        customRole:
-          (authProfile as any)?.customRole ?? op.customRole ?? prev.customRole,
-        bio: (authProfile as any)?.bio ?? op.bio ?? prev.bio,
-        status: (authProfile as any)?.status ?? op.status ?? prev.status,
+      const nextName = getDisplayName({
+        display_name: op.display_name ?? op.displayName ?? base.display_name ?? base.displayName,
+        realName: op.realName ?? op.name ?? currentUser?.displayName ?? base.realName,
+        username: op.username ?? base.username,
+      });
+
+      const next: EnrichedProfile = {
+        ...base,
+        display_name: nextName,
+        displayName: nextName,
+        username: getRawUsername({ username: op.username ?? base.username }) || base.username,
+        role: op.role || base.role,
+        customRole: op.customRole ?? base.customRole,
+        bio: op.bio ?? base.bio,
+        status: op.status ?? base.status,
         equippedAvatar: nextAvatar,
-        photoURL: op.photoURL ?? prev.photoURL,
+        photoURL: op.photoURL ?? base.photoURL,
         equippedFrame: nextFrame,
         equippedBanner: nextBanner,
         equippedTitle: nextTitle,
-        equippedBadges: op.equippedBadges ?? prev.equippedBadges,
+        nameplate: nextNameplate,
+        equippedBadges: op.equippedBadges ?? base.equippedBadges,
         proBadge: myProBadgeVisible ? myProBadgeDesign : null,
         equippedCosmetics: {
-          ...(prev.equippedCosmetics || {}),
+          ...(base.equippedCosmetics || {}),
           ...(op.equippedCosmetics || {}),
           ...liveEquipped,
+          frame: nextFrame !== 'none' ? nextFrame : undefined,
           avatarFrame: nextFrame !== 'none' ? nextFrame : undefined,
+          banner: nextBanner !== 'none' ? nextBanner : undefined,
           profileBanner: nextBanner !== 'none' ? nextBanner : undefined,
+          effect: nextEffect !== 'none' ? nextEffect : undefined,
+          profileEffect: nextEffect !== 'none' ? nextEffect : undefined,
+          nameplate: nextNameplate !== 'none' ? nextNameplate : undefined,
           title: nextTitle,
         },
       };
+      writeCachedProfile(uid, next);
+      return next;
     });
   }, [
     isOwnProfile,
     ownProfile,
-    authProfile,
+    currentUser,
     wallet.equipped,
     myProBadgeDesign,
     myProBadgeVisible,
     previewMode,
+    uid,
   ]);
 
   const handleFollowToggle = async () => {
@@ -861,18 +1115,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setFollowLoading(true);
     const followDocId = `${currentUser.uid}_${uid}`;
     const followRef = doc(db, 'follows', followDocId);
-
     try {
       if (isFollowing) {
-        await deleteDoc(followRef);
+        await withTimeout(deleteDoc(followRef), PROFILE_REQUEST_TIMEOUT_MS, 'Unfollow');
         setIsFollowing(false);
         setFollowersCount((c) => Math.max(0, c - 1));
       } else {
-        await setDoc(followRef, {
-          followerId: currentUser.uid,
-          followingId: uid,
-          createdAt: serverTimestamp(),
-        });
+        await withTimeout(
+          setDoc(followRef, {
+            followerId: currentUser.uid,
+            followingId: uid,
+            createdAt: serverTimestamp(),
+          }),
+          PROFILE_REQUEST_TIMEOUT_MS,
+          'Follow'
+        );
         setIsFollowing(true);
         setFollowersCount((c) => c + 1);
       }
@@ -887,24 +1144,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!uid || previewMode) return;
     setFollowListModal(type);
     setFollowListLoading(true);
+    setFollowListError(null);
     setFollowListUsers([]);
     try {
       const field = type === 'followers' ? 'followingId' : 'followerId';
       const targetField = type === 'followers' ? 'followerId' : 'followingId';
       const q = query(collection(db, 'follows'), where(field, '==', uid), limit(50));
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), PROFILE_REQUEST_TIMEOUT_MS, 'Follow list');
       const targetUids = snap.docs
         .map((d) => d.data()[targetField] as string)
         .filter(Boolean);
 
+      const results = await Promise.allSettled(
+        targetUids.map((tUid) => withTimeout(getPublicProfile(tUid), PROFILE_REQUEST_TIMEOUT_MS))
+      );
       const loaded: PublicProfile[] = [];
-      for (const tUid of targetUids) {
-        const p = await getPublicProfile(tUid);
-        if (p) loaded.push(p);
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) loaded.push(r.value);
       }
       setFollowListUsers(loaded);
     } catch (err) {
-      console.error('Error loading follow list:', err);
+      setFollowListError(err instanceof Error ? err.message : 'Could not load list.');
     } finally {
       setFollowListLoading(false);
     }
@@ -913,12 +1173,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentUser || !uid) return;
-
     if (!file.type.startsWith('image/')) {
       setEditError('Please select a valid image file (PNG, JPG, WEBP).');
       return;
     }
-
     if (file.size > 5 * 1024 * 1024) {
       setEditError('Image must be under 5MB.');
       return;
@@ -926,7 +1184,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     setUploadingPhoto(true);
     setEditError('');
-
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -961,26 +1218,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
 
       const idToken = await currentUser.getIdToken();
-      const uploadResp = await fetch('/api/profile/avatar', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ dataUrl }),
-      });
+      const uploadResp = await withTimeout(
+        fetch('/api/profile/avatar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ dataUrl }),
+        }),
+        PROFILE_REQUEST_TIMEOUT_MS,
+        'Avatar upload'
+      );
 
       let finalPhotoUrl = dataUrl;
       if (uploadResp.ok) {
         const payload = await uploadResp.json();
-        if (payload?.avatarUrl) {
-          finalPhotoUrl = payload.avatarUrl;
-        }
+        if (payload?.avatarUrl) finalPhotoUrl = payload.avatarUrl;
       }
 
       if (!finalPhotoUrl.startsWith('data:')) {
         try {
-          await updateProfile(currentUser, { photoURL: finalPhotoUrl });
+          await updateFirebaseAuthProfile(currentUser, { photoURL: finalPhotoUrl });
         } catch {
           // ignore
         }
@@ -1001,20 +1260,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     e.preventDefault();
     if (!currentUser || !uid || !isOwnProfile || !profile) return;
 
-    const cleanNick = editNickname.trim();
+    const cleanDisplayName = editDisplayName.trim();
     const cleanUser = editUsername
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '');
 
-    if (cleanNick.length < 2 || cleanNick.length > 32) {
+    if (cleanDisplayName.length < 2 || cleanDisplayName.length > 32) {
       setEditError('Display name must be between 2 and 32 characters.');
       return;
     }
-    if (cleanUser.length < 3 || cleanUser.length > 20) {
-      setEditError(
-        'Username must be 3–20 characters (letters, numbers, underscores).'
-      );
+    if (cleanUser && (cleanUser.length < 3 || cleanUser.length > 20)) {
+      setEditError('Username must be 3–20 characters (letters, numbers, underscores).');
       return;
     }
 
@@ -1025,96 +1282,99 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const nextEquippedCosmetics: EquippedCosmeticsMap = {
         ...(profile.equippedCosmetics || {}),
         avatar: editAvatar !== 'custom' ? editAvatar : undefined,
+        frame: editFrame !== 'none' ? editFrame : undefined,
         avatarFrame: editFrame !== 'none' ? editFrame : undefined,
+        banner: editBanner !== 'none' ? editBanner : undefined,
         profileBanner: editBanner !== 'none' ? editBanner : undefined,
+        effect: editEffect !== 'none' ? editEffect : undefined,
         profileEffect: editEffect !== 'none' ? editEffect : undefined,
       };
 
+      const nextProfile: EnrichedProfile = {
+        ...profile,
+        display_name: cleanDisplayName,
+        displayName: cleanDisplayName,
+        username: cleanUser || profile.username,
+        customRole: editCustomRole,
+        bio: editBio.trim(),
+        status: editStatus.trim(),
+        equippedAvatar: editAvatar,
+        equippedFrame: editFrame,
+        equippedBanner: editBanner,
+        equippedBadges: editBadges,
+        equippedCosmetics: nextEquippedCosmetics,
+      };
+
       if (isGuest) {
-        setProfile((prev) =>
-          prev
-            ? {
-                ...prev,
-                displayName: cleanNick,
-                username: cleanUser,
-                customRole: editCustomRole,
-                bio: editBio.trim(),
-                status: editStatus.trim(),
-                equippedAvatar: editAvatar,
-                equippedFrame: editFrame,
-                equippedBanner: editBanner,
-                equippedBadges: editBadges,
-                equippedCosmetics: nextEquippedCosmetics,
-              }
-            : null
-        );
+        setProfile(nextProfile);
+        writeCachedProfile(uid, nextProfile);
         setIsEditing(false);
         return;
       }
 
-      try {
-        await wallet.equipMultipleCosmetics({
-          avatar: editAvatar !== 'custom' ? editAvatar : null,
-          frame: editFrame !== 'none' ? editFrame : null,
-          banner: editBanner !== 'none' ? editBanner : null,
-          effect: editEffect !== 'none' ? editEffect : null,
-        });
-      } catch {
-        // fallback below
-      }
-
-      await setDoc(
-        doc(db, 'users', uid),
-        {
-          displayName: cleanNick,
-          nickname: cleanNick,
-          username: cleanUser,
+      // Single source of truth propagation via AuthContext.updateProfile
+      await withTimeout(
+        updateAuthContextProfile({
+          display_name: cleanDisplayName,
+          displayName: cleanDisplayName,
+          nickname: cleanDisplayName,
+          ...(cleanUser ? { username: cleanUser } : {}),
           bio: editBio.trim(),
           status: editStatus.trim(),
           customRole: editCustomRole,
           avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
           equippedAvatar: editAvatar,
-          photoURL: editAvatar === 'custom' ? profile.photoURL || '' : '',
+          photoURL: editAvatar === 'custom' ? profile.photoURL || '' : profile.photoURL || '',
           frame: editFrame,
           equippedFrame: editFrame,
           banner: editBanner,
           equippedBanner: editBanner,
           equippedBadges: editBadges,
           equipped: nextEquippedCosmetics,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch(() => {});
+        } as any),
+        PROFILE_REQUEST_TIMEOUT_MS,
+        'Save profile'
+      );
 
-      await syncPublicProfile(uid, {
-        displayName: cleanNick,
-        nickname: cleanNick,
-        username: cleanUser,
-        bio: editBio.trim(),
-        status: editStatus.trim(),
-        customRole: editCustomRole,
-        avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
-        equippedAvatar: editAvatar,
-        frame: editFrame,
-        equippedFrame: editFrame,
-        banner: editBanner,
-        equippedBanner: editBanner,
-        badges: editBadges,
-        equipped: nextEquippedCosmetics,
-      }).catch(() => {});
-
-      await syncProfileToD1Backend(uid, {
-        displayName: cleanNick,
-        username: cleanUser,
-        customRole: editCustomRole,
-        avatar: editAvatar,
-        frame: editFrame,
-        banner: editBanner,
-      }).catch(() => {});
+      // Sync cosmetics & public profile caches in parallel (non-blocking if one lags)
+      void Promise.allSettled([
+        wallet.equipMultipleCosmetics({
+          avatar: editAvatar !== 'custom' ? editAvatar : null,
+          frame: editFrame !== 'none' ? editFrame : null,
+          banner: editBanner !== 'none' ? editBanner : null,
+          effect: editEffect !== 'none' ? editEffect : null,
+        }),
+        syncPublicProfile(uid, {
+          display_name: cleanDisplayName,
+          displayName: cleanDisplayName,
+          username: cleanUser || profile.username,
+          bio: editBio.trim(),
+          status: editStatus.trim(),
+          customRole: editCustomRole,
+          avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
+          equippedAvatar: editAvatar,
+          frame: editFrame,
+          equippedFrame: editFrame,
+          banner: editBanner,
+          equippedBanner: editBanner,
+          badges: editBadges,
+          equipped: nextEquippedCosmetics,
+        }),
+        syncProfileToD1Backend(uid, {
+          display_name: cleanDisplayName,
+          displayName: cleanDisplayName,
+          username: cleanUser || profile.username,
+          customRole: editCustomRole,
+          avatar: editAvatar,
+          frame: editFrame,
+          banner: editBanner,
+        }),
+      ]);
 
       broadcastPublicProfileUpdate(uid, {
-        displayName: cleanNick,
-        username: cleanUser,
+        display_name: cleanDisplayName,
+        displayName: cleanDisplayName,
+        username: cleanUser || profile.username,
         customRole: editCustomRole,
         bio: editBio.trim(),
         status: editStatus.trim(),
@@ -1126,25 +1386,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         equippedBanner: editBanner,
       });
 
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              displayName: cleanNick,
-              username: cleanUser,
-              customRole: editCustomRole,
-              bio: editBio.trim(),
-              status: editStatus.trim(),
-              equippedAvatar: editAvatar,
-              equippedFrame: editFrame,
-              equippedBanner: editBanner,
-              equippedBadges: editBadges,
-              equippedCosmetics: nextEquippedCosmetics,
-            }
-          : null
-      );
-
-      await refreshUserProfile().catch(() => {});
+      setProfile(nextProfile);
+      writeCachedProfile(uid, nextProfile);
       setIsEditing(false);
     } catch (err: any) {
       setEditError(err?.message || 'Failed to save profile changes.');
@@ -1159,9 +1402,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       return;
     }
     if (!profile) return;
-    const handle = profile.username || profile.uid;
+    const handle = getRawUsername({ username: profile.username }) || profile.uid;
     const url = `${window.location.origin}/u/${handle}`;
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url).catch(() => {});
     setCopiedToast(true);
     setTimeout(() => setCopiedToast(false), 2500);
   };
@@ -1170,37 +1413,123 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!isAdmin || !uid || isOwnProfile || !profile) return;
     const nextBan = !profile.isBanned;
     try {
-      await updateDoc(doc(db, 'users', uid), { isBanned: nextBan }).catch((err) => {
-        console.error(`Failed to update users/${uid}:`, err);
-      });
+      await withTimeout(
+        updateDoc(doc(db, 'users', uid), { isBanned: nextBan }),
+        PROFILE_REQUEST_TIMEOUT_MS,
+        'Update ban status'
+      );
       setProfile((prev) => (prev ? { ...prev, isBanned: nextBan } : null));
     } catch (err) {
       console.error('Failed to update ban state:', err);
     }
   };
 
-  if (loading) {
+  const handleBack = () => {
+    if (isModal && onClose) {
+      onClose();
+    } else if (window.history.length > 2) {
+      navigate(-1);
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
+  const topBar = !previewMode && (
+    <header
+      className={`sticky top-0 z-30 bg-[var(--bg)] pt-[env(safe-area-inset-top,0px)] transition-colors ${
+        scrolled ? 'border-b border-[var(--border)]' : 'border-b border-transparent'
+      }`}
+    >
+      <div className="max-w-[640px] mx-auto h-[56px] px-4 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label="Go back"
+          className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
+        >
+          <ChevronLeft size={20} strokeWidth={2} />
+        </button>
+
+        <h1 className="text-[17px] font-semibold text-[var(--text)] truncate select-none">
+          Profile
+        </h1>
+
+        {isOwnProfile ? (
+          <button
+            type="button"
+            onClick={() => navigate('/settings')}
+            aria-label="Open settings"
+            className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
+          >
+            <Settings size={19} strokeWidth={1.9} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleShareProfile}
+            aria-label="Share profile"
+            className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
+          >
+            {copiedToast ? (
+              <Check size={18} className="text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <Share2 size={18} strokeWidth={1.9} />
+            )}
+          </button>
+        )}
+      </div>
+    </header>
+  );
+
+  // Fast skeleton (never a black screen, never a spinner-only screen)
+  if (basicsLoading && !profile) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 bg-[#050506]">
-        <div className="w-12 h-12 rounded-full border-2 border-[#D71921] border-t-transparent animate-spin mb-4" />
-        <p className="font-doto-title text-xs tracking-[0.2em] text-white/70">
-          LOADING PROFILE...
-        </p>
+      <div className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip">
+        {topBar}
+        <ProfileSkeleton />
       </div>
     );
   }
 
+  // Inline error card with Retry (never a red banner)
   if (!profile) {
     return (
-      <div className="p-8 text-center boardly-glass-card rounded-[32px] max-w-md mx-auto my-12">
-        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-        <h3 className="font-doto-title text-lg text-white mb-1">Profile Not Found</h3>
-        <p className="text-sm text-white/70">
-          This user profile could not be loaded or does not exist.
-        </p>
+      <div className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip">
+        {topBar}
+        <div className="max-w-[640px] mx-auto px-4 py-12">
+          <div className="p-6 rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] text-center flex flex-col items-center gap-3.5">
+            <div className="w-12 h-12 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
+              <AlertCircle size={22} />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-[16px] font-semibold text-[var(--text)]">
+                {basicsError ? "Couldn't load profile" : 'Profile not found'}
+              </h2>
+              <p className="text-[13px] text-[var(--text-muted)] leading-relaxed max-w-sm">
+                {basicsError || 'This student profile could not be found or is unavailable.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReloadToken((t) => t + 1)}
+              className="min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity cursor-pointer"
+            >
+              <RefreshCw size={15} />
+              <span>Retry</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
+
+  const displayName = getDisplayName({
+    display_name: profile.display_name ?? profile.displayName,
+    realName: profile.realName,
+    username: profile.username,
+  });
+  const usernameHandle = getUsernameHandle({ username: profile.username });
+  const rawUsername = getRawUsername({ username: profile.username }) || 'student';
 
   const levelInfo = computeLevelFromStats(profile.stats || {});
   const isTargetPro = (() => {
@@ -1264,15 +1593,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     .replace(/^#+/, '')
     .trim();
 
-  const handleString = String(profile.username || 'student').replace(/^@+/, '');
   const kobanDisplayCount = isOwnProfile
     ? Number(wallet.balance || 0)
-    : Number((profile as any).kobans ?? (profile.stats?.xp || 0));
+    : Number(profile.kobans ?? profile.stats?.xp ?? 0);
 
   const openEditAction = () => {
     if (propOnEditProfile) {
       propOnEditProfile();
     } else {
+      hydrateEditFields(profile);
       setIsEditing(true);
     }
   };
@@ -1282,108 +1611,46 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     { id: 'loadout', label: 'Loadout' },
     { id: 'badges', label: 'Badges' },
   ];
-  const activeTabIndex = Math.max(
-    0,
-    TABS.findIndex((t) => t.id === activeTab)
-  );
+  const activeTabIndex = Math.max(0, TABS.findIndex((t) => t.id === activeTab));
 
   return (
-    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom overflow-x-hidden">
-      {/* Ambient blurred red (#D71921) and blue (#3a4cff) glows */}
-      <div
-        className="pointer-events-none fixed inset-0 overflow-hidden z-0"
-        aria-hidden="true"
-      >
-        <div className="absolute -top-28 -left-24 w-[360px] h-[360px] rounded-full bg-[#D71921]/22 blur-[120px]" />
-        <div className="absolute top-1/3 -right-28 w-[340px] h-[340px] rounded-full bg-[#3a4cff]/18 blur-[130px]" />
-        <div className="absolute bottom-10 left-1/4 w-[280px] h-[280px] rounded-full bg-[#D71921]/12 blur-[120px]" />
-      </div>
+    <div className="relative min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
+      {topBar}
 
-      <div className="relative z-10 max-w-2xl mx-auto px-3.5 sm:px-5 pt-3 pb-8 space-y-4">
-        {/* 1. FLOATING GLASS TOP BAR: back button, "Profile" in Doto, settings button */}
-        {!previewMode && (
-          <header className="boardly-glass-pill sticky top-3 z-30 h-14 px-2.5 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (isModal && onClose) {
-                  onClose();
-                } else if (window.history.length > 2) {
-                  navigate(-1);
-                } else {
-                  navigate('/dashboard');
-                }
-              }}
-              aria-label="Go back"
-              className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-
-            <h1 className="font-doto-title text-[16px] tracking-[0.16em] text-white select-none truncate">
-              PROFILE
-            </h1>
-
-            {isOwnProfile ? (
-              <button
-                type="button"
-                onClick={() => navigate('/settings')}
-                aria-label="Open settings"
-                className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleShareProfile}
-                aria-label="Share profile"
-                className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-              >
-                {copiedToast ? (
-                  <Check className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <Share2 className="w-5 h-5" />
-                )}
-              </button>
-            )}
-          </header>
-        )}
-
-        {/* 2. HERO GLASS CARD (radius 32) */}
-        <section className="boardly-glass-card relative rounded-[32px] overflow-hidden">
+      <div className="relative z-10 max-w-[640px] mx-auto px-4 pt-3 pb-8 space-y-5">
+        {/* 1. PROFILE HERO CARD (Lives ONLY on /profile) */}
+        <section className="relative rounded-[32px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] overflow-hidden">
           {/* Equipped profile effect overlay */}
           {equippedEffectId && equippedEffectId !== 'none' && (
             <ProfileCardEffect itemId={equippedEffectId} canAnimate />
           )}
 
-          {/* Equipped Banner on top with a dotted texture */}
-          <div className="relative h-36 sm:h-44 w-full overflow-hidden bg-gradient-to-br from-[#D71921]/35 via-[#14141c] to-[#3a4cff]/30">
+          {/* Equipped Banner */}
+          <div className="relative h-36 sm:h-44 w-full overflow-hidden bg-gradient-to-br from-[#D71921]/25 via-[#18181f] to-[#3a4cff]/25">
             <BannerRenderer
               bannerId={equippedBannerId === 'none' ? undefined : equippedBannerId}
               showReadabilityOverlay={false}
               className="h-36 sm:h-44"
             />
-            {/* Nothing OS Dotted Texture Overlay */}
             <div
-              className="pointer-events-none absolute inset-0 opacity-35"
+              className="pointer-events-none absolute inset-0 opacity-25"
               style={{
                 backgroundImage:
-                  'radial-gradient(rgba(255,255,255,0.28) 1px, transparent 1px)',
+                  'radial-gradient(rgba(255,255,255,0.35) 1px, transparent 1px)',
                 backgroundSize: '10px 10px',
               }}
             />
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#09090c] via-transparent to-black/25" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" />
           </div>
 
           {/* Main Hero Body */}
           <div className="relative px-4 sm:px-6 pb-5 pt-0">
-            {/* Overlapping Avatar with Equipped Frame Ring & Red LV Badge */}
-            <div className="relative -mt-14 sm:-mt-16 mb-3 flex items-end justify-between gap-3">
-              <div className="relative inline-flex items-center justify-center">
-                <div className="rounded-full p-1 bg-[#09090c]/90 backdrop-blur-md border border-white/15 shadow-[0_12px_30px_rgba(0,0,0,0.65)]">
+            {/* Overlapping Avatar + Equipped Frame Ring + Nameplate */}
+            <div className="relative -mt-12 sm:-mt-14 mb-3 flex items-end justify-between gap-2 flex-wrap">
+              <div className="relative inline-flex items-center justify-center shrink-0">
+                <div className="rounded-full p-1 bg-[var(--card)] ring-2 ring-[var(--border)] shadow-md">
                   <BoardlyAvatar
-                    size={92}
+                    size={88}
                     uid={profile.uid}
                     equippedAvatar={
                       (isOwnProfile ? wallet.equipped?.avatar : null) ||
@@ -1392,41 +1659,56 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     }
                     customPhotoURL={profile.photoURL}
                     equippedFrameId={equippedFrameId}
-                    alt={profile.displayName || 'Student'}
+                    alt={displayName}
                   />
                 </div>
-                {/* Red LV Badge */}
-                <span className="absolute -bottom-1.5 right-0 z-20 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#D71921] text-white font-doto-title text-[11px] tracking-wider border border-white/30 shadow-[0_4px_12px_rgba(215,25,33,0.55)]">
+                <span className="absolute -bottom-1 right-0 z-20 inline-flex items-center px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white font-doto-title text-[11px] tracking-wider border-2 border-[var(--card)] shadow-sm">
                   LV {levelInfo.level}
                 </span>
               </div>
 
-              {/* Gold-outlined Nameplate Chip ("pkig #89617") */}
+              {/* Equipped Nameplate Chip */}
               {equippedNameplateId && equippedNameplateId !== 'none' ? (
-                <Nameplate
-                  itemId={equippedNameplateId}
-                  name={handleString}
-                  shortId={canonicalShortId}
-                />
+                <div className="max-w-full overflow-hidden">
+                  <Nameplate
+                    itemId={equippedNameplateId}
+                    name={rawUsername}
+                    shortId={canonicalShortId}
+                  />
+                </div>
               ) : (
-                <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/15 border border-amber-400/55 shadow-[0_0_18px_rgba(245,158,11,0.2)]">
-                  <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-                  <span className="text-[12px] font-bold tracking-wide text-amber-100 font-inter-num">
-                    {handleString} #{canonicalShortId}
+                <div
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] font-bold tracking-wide max-w-full"
+                  style={{
+                    background: 'var(--koban-bg)',
+                    borderColor: 'var(--koban-border)',
+                    color: 'var(--koban)',
+                  }}
+                >
+                  <Crown className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate font-inter-num">
+                    {rawUsername} #{canonicalShortId}
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Name + @handle + gold PRO pill */}
+            {/* Display Name + @username + PRO Chip */}
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-[22px] sm:text-[24px] font-extrabold tracking-tight text-white leading-tight">
-                  {profile.displayName}
+                <h2 className="text-[22px] sm:text-[24px] font-bold tracking-tight text-[var(--text)] leading-tight break-words">
+                  {displayName}
                 </h2>
                 {isTargetPro && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-amber-400/25 via-yellow-300/20 to-amber-500/25 text-amber-200 border border-amber-400/60 shadow-[0_0_14px_rgba(245,158,11,0.28)]">
-                    <Sparkles className="w-3 h-3 text-amber-300" />
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border"
+                    style={{
+                      background: 'var(--koban-bg)',
+                      borderColor: 'var(--koban-border)',
+                      color: 'var(--koban)',
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3" />
                     PRO
                   </span>
                 )}
@@ -1434,119 +1716,146 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <ProBadge design={activeProBadgeDesign} size="sm" animated />
                 )}
               </div>
-              <p className="text-[14px] font-medium text-white/72">@{handleString}</p>
+              {usernameHandle && (
+                <p className="text-[14px] font-medium text-[var(--text-muted)]">
+                  {usernameHandle}
+                </p>
+              )}
             </div>
 
-            {/* Student and Active Chips */}
+            {/* Role & Active Status Chips */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-white/[0.08] border border-white/[0.16] text-white/90">
-                <Shield className="w-3.5 h-3.5 text-[#D71921]" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-[var(--bg)] border border-[var(--border)] text-[var(--text)]">
+                <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
                 {profile.customRole || 'Student'}
               </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/12 border border-emerald-400/30 text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/10 border border-emerald-600/25 text-emerald-700 dark:text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 {profile.status?.trim() || 'Active'}
               </span>
             </div>
 
-            {/* Stats Row in One Inset Card with Dotted Vertical Dividers: Level, Kobans (gold), Followers, Following */}
-            <div className="mt-4 boardly-glass-inset rounded-[22px] p-3 grid grid-cols-4 items-center text-center">
-              <div className="px-1.5 py-1">
-                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
+            {/* Stats Row: Level, Kobans, Followers, Following */}
+            <div className="mt-4 rounded-[22px] bg-[var(--bg)] border border-[var(--border)] p-2.5 grid grid-cols-4 items-center text-center divide-x divide-[var(--border)]">
+              <div className="px-1 py-1">
+                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
                   {levelInfo.level.toLocaleString()}
                 </div>
-                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
-                  LEVEL
+                <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
+                  Level
                 </div>
               </div>
 
-              <div className="px-1.5 py-1 nothing-dotted-divider-v">
-                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-amber-300">
+              <div className="px-1 py-1">
+                <div
+                  className="font-inter-num text-[17px] sm:text-[18px] font-bold"
+                  style={{ color: 'var(--koban)' }}
+                >
                   {kobanDisplayCount.toLocaleString()}
                 </div>
-                <div className="font-doto-title text-[10px] tracking-[0.12em] text-amber-300/80 mt-0.5">
-                  KOBANS
+                <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
+                  Kobans
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={() => openFollowList('followers')}
-                className="px-1.5 py-1 nothing-dotted-divider-v hover:bg-white/[0.04] rounded-r-xl transition-colors cursor-pointer"
+                className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
-                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
-                  {followersCount.toLocaleString()}
+                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
+                  {followsSyncing && followersCount === 0 ? (
+                    <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
+                  ) : (
+                    followersCount.toLocaleString()
+                  )}
                 </div>
-                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
-                  FOLLOWERS
+                <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
+                  Followers
                 </div>
               </button>
 
               <button
                 type="button"
                 onClick={() => openFollowList('following')}
-                className="px-1.5 py-1 nothing-dotted-divider-v hover:bg-white/[0.04] rounded-r-xl transition-colors cursor-pointer"
+                className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
-                <div className="font-inter-num text-[17px] sm:text-[19px] font-extrabold text-white">
-                  {followingCount.toLocaleString()}
+                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
+                  {followsSyncing && followingCount === 0 ? (
+                    <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
+                  ) : (
+                    followingCount.toLocaleString()
+                  )}
                 </div>
-                <div className="font-doto-title text-[10px] tracking-[0.12em] text-white/65 mt-0.5">
-                  FOLLOWING
+                <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
+                  Following
                 </div>
               </button>
             </div>
 
-            {/* Dot-Matrix Barcode Strip with the ID Number */}
-            <div className="mt-3.5 px-3.5 py-2.5 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between gap-3">
+            {followsError && (
+              <div className="mt-2 flex items-center justify-between text-[12px] text-[var(--text-muted)] px-1">
+                <span>{followsError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadFollows()}
+                  className="text-[var(--accent)] font-medium hover:underline cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Dot-Matrix ID Strip */}
+            <div className="mt-3 px-3.5 py-2 rounded-2xl bg-[var(--bg)] border border-[var(--border)] flex items-center justify-between gap-3">
               <div
-                className="flex-1 h-5 opacity-75"
+                className="flex-1 h-4 opacity-50"
                 aria-hidden="true"
                 style={{
                   backgroundImage:
-                    'repeating-linear-gradient(90deg, rgba(255,255,255,0.85) 0px, rgba(255,255,255,0.85) 2px, transparent 2px, transparent 5px, rgba(215,25,33,0.85) 5px, rgba(215,25,33,0.85) 6px, transparent 6px, transparent 9px)',
-                  maskImage:
-                    'radial-gradient(circle, black 1.5px, transparent 1.5px)',
-                  WebkitMaskImage:
-                    'radial-gradient(circle, black 1.5px, transparent 1.5px)',
+                    'repeating-linear-gradient(90deg, var(--text) 0px, var(--text) 2px, transparent 2px, transparent 5px, var(--accent) 5px, var(--accent) 6px, transparent 6px, transparent 9px)',
+                  maskImage: 'radial-gradient(circle, black 1.4px, transparent 1.4px)',
+                  WebkitMaskImage: 'radial-gradient(circle, black 1.4px, transparent 1.4px)',
                   maskSize: '4px 4px',
                   WebkitMaskSize: '4px 4px',
                 }}
               />
-              <span className="font-doto-title text-[12px] tracking-[0.18em] text-white/85 shrink-0">
+              <span className="font-mono text-[12px] font-semibold tracking-wider text-[var(--text-muted)] shrink-0">
                 ID #{canonicalShortId}
               </span>
             </div>
 
-            {/* Action Pill Buttons (50px tall): Edit profile (red), Locker (glass), Store (glass) */}
+            {/* Action Buttons: zero truncation or clipping at 360px */}
             {!previewMode && (
-              <div className="mt-4 grid grid-cols-3 gap-2.5">
+              <div className="mt-4 grid grid-cols-3 gap-2">
                 {isOwnProfile ? (
                   <>
                     <button
                       type="button"
                       onClick={openEditAction}
-                      className="boardly-red-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-bold tracking-wide cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--accent)] text-white inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:opacity-95 active:scale-[0.98] transition cursor-pointer"
                     >
                       <Edit2 className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Edit profile</span>
+                      <span className="hidden min-[400px]:inline">Edit profile</span>
+                      <span className="min-[400px]:hidden">Edit</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => navigate('/locker')}
-                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer"
                     >
-                      <Package className="w-4 h-4 text-[#D71921] shrink-0" />
-                      <span className="truncate">Locker</span>
+                      <Package className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                      <span>Locker</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => navigate('/store')}
-                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer"
                     >
-                      <ShoppingBag className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="truncate">Store</span>
+                      <ShoppingBag className="w-4 h-4 shrink-0" style={{ color: 'var(--koban)' }} />
+                      <span>Store</span>
                     </button>
                   </>
                 ) : (
@@ -1562,27 +1871,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           setIsChatOpen(true);
                         }
                       }}
-                      className="boardly-red-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-bold tracking-wide cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--accent)] text-white inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:opacity-95 active:scale-[0.98] transition cursor-pointer"
                     >
                       <MessageSquare className="w-4 h-4 shrink-0" />
-                      <span className="truncate">Message</span>
+                      <span>Message</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleFollowToggle}
                       disabled={followLoading}
-                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer disabled:opacity-50"
                     >
                       {isFollowing ? (
                         <>
-                          <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="truncate">Following</span>
+                          <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>Following</span>
                         </>
                       ) : (
                         <>
-                          <UserPlus className="w-4 h-4 text-[#D71921] shrink-0" />
-                          <span className="truncate">Follow</span>
+                          <UserPlus className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                          <span>Follow</span>
                         </>
                       )}
                     </button>
@@ -1590,17 +1899,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       type="button"
                       onClick={handleShareProfile}
-                      className="boardly-glass-pill press-scale h-[50px] px-3 rounded-full inline-flex items-center justify-center gap-2 text-[13px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+                      className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer"
                     >
                       {copiedToast ? (
                         <>
-                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="truncate">Copied</span>
+                          <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>Copied</span>
                         </>
                       ) : (
                         <>
                           <Share2 className="w-4 h-4 shrink-0" />
-                          <span className="truncate">Share</span>
+                          <span>Share</span>
                         </>
                       )}
                     </button>
@@ -1609,16 +1918,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             )}
 
-            {/* Admin Moderation Bar (if viewing another user as Admin) */}
+            {/* Admin Moderation Bar */}
             {isAdmin && !isOwnProfile && !previewMode && (
-              <div className="mt-3 pt-3 nothing-dotted-divider flex justify-end">
+              <div className="mt-3 pt-3 border-t border-[var(--border)] flex justify-end">
                 <button
                   type="button"
                   onClick={handleAdminToggleBan}
-                  className={`press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 border cursor-pointer ${
+                  className={`min-h-[40px] px-4 rounded-full text-[13px] font-semibold inline-flex items-center gap-1.5 border cursor-pointer ${
                     profile.isBanned
-                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
-                      : 'bg-red-500/15 border-red-500/35 text-red-300'
+                      ? 'bg-emerald-500/10 border-emerald-600/30 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-[var(--danger)]/10 border-[var(--danger-border)] text-[var(--danger)]'
                   }`}
                 >
                   <Ban className="w-3.5 h-3.5" />
@@ -1629,19 +1938,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </section>
 
-        {/* 3. iOS SEGMENTED TABS: Overview, Loadout, Badges (red-tinted active thumb) */}
+        {/* 2. SEGMENTED TABS: Overview, Loadout, Badges */}
         <div
           role="tablist"
           aria-label="Profile sections"
-          className="boardly-glass-pill relative p-1.5 grid grid-cols-3 items-center h-[52px]"
+          className="relative p-1 rounded-full bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] grid grid-cols-3 items-center h-[48px]"
         >
-          {/* Shared sliding red-tinted active thumb */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-[#D71921]/90 to-[#b51219]/90 border border-white/25 shadow-[0_4px_16px_rgba(215,25,33,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+            className="pointer-events-none absolute top-1 bottom-1 rounded-full bg-[var(--accent)] transition-transform duration-200 ease-out"
             style={{
-              width: 'calc((100% - 12px) / 3)',
-              left: '6px',
+              width: 'calc((100% - 8px) / 3)',
+              left: '4px',
               transform: `translateX(${activeTabIndex * 100}%)`,
             }}
           />
@@ -1654,8 +1962,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setActiveTab(t.id)}
-                className={`relative z-10 h-full rounded-full text-[13px] font-bold tracking-wide transition-colors cursor-pointer ${
-                  active ? 'text-white' : 'text-white/70 hover:text-white'
+                className={`relative z-10 h-full rounded-full text-[13px] font-semibold transition-colors cursor-pointer ${
+                  active ? 'text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
                 {t.label}
@@ -1664,20 +1972,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           })}
         </div>
 
-        {/* 4. TAB PANELS */}
+        {/* 3. TAB PANELS */}
         {activeTab === 'overview' && (
           <div className="space-y-4">
-            {/* About me card (dashed "Add a bio..." placeholder when empty) */}
-            <div className="boardly-glass-card rounded-[24px] p-4 sm:p-5">
+            {/* About me card */}
+            <div className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-doto-title text-[12px] tracking-[0.16em] text-white/80">
-                  ABOUT ME
-                </h3>
+                <h3 className="text-[14px] font-medium text-[var(--text-muted)]">About me</h3>
                 {isOwnProfile && !previewMode && (
                   <button
                     type="button"
                     onClick={openEditAction}
-                    className="text-xs font-semibold text-[#D71921] hover:underline cursor-pointer"
+                    className="text-[13px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
                   >
                     Edit
                   </button>
@@ -1685,26 +1991,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
 
               {profile.bio && profile.bio.trim().length > 0 ? (
-                <p className="text-[14px] leading-relaxed text-white/90 whitespace-pre-wrap break-words font-sans">
+                <p className="text-[15px] leading-relaxed text-[var(--text)] whitespace-pre-wrap break-words">
                   {profile.bio}
                 </p>
               ) : (
                 <button
                   type="button"
                   onClick={() => isOwnProfile && !previewMode && openEditAction()}
-                  className="w-full text-left rounded-2xl p-3.5 border border-dashed border-white/25 bg-white/[0.02] text-[14px] text-white/55 hover:border-white/40 transition-colors cursor-pointer"
+                  disabled={!isOwnProfile || previewMode}
+                  className="w-full text-left rounded-2xl p-3.5 border border-dashed border-[var(--border)] bg-[var(--bg)] text-[14px] text-[var(--text-muted)] hover:border-[var(--text-muted)] transition-colors cursor-pointer disabled:cursor-default"
                 >
                   {isOwnProfile ? 'Add a bio...' : 'No bio added yet.'}
                 </button>
               )}
             </div>
 
-            {/* Posts Section */}
+            {/* Posts Section (loads independently) */}
             {!previewMode && (
               <ProfilePostsSection
                 targetUid={profile.uid}
                 isOwnProfile={isOwnProfile}
-                authorDisplayName={profile.displayName}
+                authorDisplayName={displayName}
                 authorUsername={profile.username}
                 authorAvatar={
                   profile.equippedAvatar === 'custom'
@@ -1722,13 +2029,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )}
 
         {activeTab === 'loadout' && (
-          <div className="boardly-glass-card rounded-[28px] p-5 space-y-4">
-            <div className="flex items-center justify-between gap-2">
+          <div className="rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
-                <h3 className="font-doto-title text-[14px] tracking-[0.14em] text-white">
-                  EQUIPPED LOADOUT
-                </h3>
-                <p className="text-xs text-white/70 mt-0.5">
+                <h3 className="text-[16px] font-semibold text-[var(--text)]">Equipped loadout</h3>
+                <p className="text-[13px] text-[var(--text-muted)] mt-0.5">
                   Cosmetic items active on this student profile.
                 </p>
               </div>
@@ -1736,7 +2041,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigate('/locker')}
-                  className="boardly-red-pill press-scale min-h-[44px] px-4 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[40px] px-4 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
                 >
                   <Package className="w-3.5 h-3.5" />
                   <span>Open Locker</span>
@@ -1750,9 +2055,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   slot: 'Avatar',
                   item: getCosmeticById(profile.equippedAvatar),
                   fallback:
-                    profile.equippedAvatar === 'custom'
-                      ? 'Custom Photo'
-                      : 'Default Avatar',
+                    profile.equippedAvatar === 'custom' ? 'Custom Photo' : 'Default Avatar',
                 },
                 {
                   slot: 'Avatar Frame',
@@ -1781,22 +2084,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 },
               ].map((entry) => {
                 const rarity: CosmeticRarity = entry.item?.rarity || 'common';
-                const rStyle = RARITY_STYLES[rarity];
+                const rStyle = RARITY_BADGE_TOKENS[rarity];
                 return (
                   <div
                     key={entry.slot}
-                    className="boardly-glass-inset rounded-2xl p-3.5 flex items-center justify-between gap-3"
+                    className="rounded-2xl p-3.5 bg-[var(--bg)] border border-[var(--border)] flex items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
-                      <div className="font-doto-title text-[10px] tracking-[0.14em] text-white/60">
-                        {entry.slot.toUpperCase()}
+                      <div className="text-[12px] font-medium text-[var(--text-muted)]">
+                        {entry.slot}
                       </div>
-                      <div className="text-[14px] font-bold text-white truncate mt-0.5">
+                      <div className="text-[14px] font-semibold text-[var(--text)] truncate mt-0.5">
                         {entry.item?.name || entry.fallback}
                       </div>
                     </div>
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border shrink-0 ${rStyle.badge}`}
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize border shrink-0"
+                      style={rStyle}
                     >
                       {rarity}
                     </span>
@@ -1808,49 +2112,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )}
 
         {activeTab === 'badges' && (
-          <div className="boardly-glass-card rounded-[28px] p-5 space-y-4">
+          <div className="rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-doto-title text-[14px] tracking-[0.14em] text-white">
-                ACHIEVEMENT BADGES
-              </h3>
-              <span className="text-xs font-semibold font-inter-num text-white/70">
+              <h3 className="text-[16px] font-semibold text-[var(--text)]">Achievement badges</h3>
+              <span className="text-[13px] font-medium text-[var(--text-muted)]">
                 {(profile.equippedBadges || ['first_login']).length} unlocked
               </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {ALL_ACHIEVEMENT_BADGES.map((badge) => {
-                const unlocked = (profile.equippedBadges || ['first_login']).includes(
-                  badge.id
-                );
-                const rStyle = RARITY_STYLES[badge.rarity || 'common'];
+                const unlocked = (profile.equippedBadges || ['first_login']).includes(badge.id);
+                const rStyle = RARITY_BADGE_TOKENS[badge.rarity || 'common'];
                 return (
                   <div
                     key={badge.id}
-                    className={`rounded-2xl p-3.5 border transition-all ${
+                    className={`rounded-2xl p-3.5 border transition-colors ${
                       unlocked
-                        ? 'boardly-glass-inset border-white/20'
-                        : 'bg-white/[0.02] border-dashed border-white/10 opacity-55'
+                        ? 'bg-[var(--bg)] border-[var(--border)]'
+                        : 'bg-[var(--bg)]/60 border-dashed border-[var(--border)]'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="w-9 h-9 rounded-xl bg-[#D71921]/15 border border-[#D71921]/30 flex items-center justify-center text-[#D71921]">
-                        {unlocked ? (
-                          <Award className="w-5 h-5" />
-                        ) : (
-                          <Lock className="w-4 h-4 text-white/50" />
-                        )}
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div
+                        className={`w-9 h-9 rounded-xl border flex items-center justify-center ${
+                          unlocked
+                            ? 'bg-[var(--accent)]/12 border-[var(--accent)]/30 text-[var(--accent)]'
+                            : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-muted)]'
+                        }`}
+                      >
+                        {unlocked ? <Award className="w-5 h-5" /> : <Lock className="w-4 h-4" />}
                       </div>
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${rStyle.badge}`}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize border"
+                        style={rStyle}
                       >
                         {badge.rarity}
                       </span>
                     </div>
-                    <div className="text-[13px] font-bold text-white truncate">
+                    <div
+                      className={`text-[13px] font-semibold truncate ${
+                        unlocked ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'
+                      }`}
+                    >
                       {badge.name}
                     </div>
-                    <div className="text-[11px] text-white/65 line-clamp-2 mt-0.5">
+                    <div className="text-[12px] text-[var(--text-muted)] line-clamp-2 mt-0.5 leading-snug">
                       {badge.description}
                     </div>
                   </div>
@@ -1864,62 +2171,95 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {/* Followers / Following Modal */}
       {followListModal && (
         <div
-          data-modal-layer="true"
           role="dialog"
           aria-modal="true"
-          className="boardly-modal-backdrop fixed inset-0 flex items-center justify-center p-4"
+          aria-label={followListModal}
+          className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
-          <div className="boardly-glass-card rounded-[32px] w-full max-w-md max-h-[75vh] flex flex-col overflow-hidden">
-            <div className="p-4 nothing-dotted-divider flex items-center justify-between">
-              <h3 className="font-doto-title text-sm tracking-[0.14em] text-white uppercase">
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
+            onClick={() => setFollowListModal(null)}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full sm:max-w-md max-h-[85dvh] rounded-t-[24px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
+            <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
+            <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-[var(--text)] capitalize">
                 {followListModal}
               </h3>
               <button
                 type="button"
                 onClick={() => setFollowListModal(null)}
                 aria-label="Close list"
-                className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
+                className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-4 overflow-y-auto space-y-2.5 flex-1">
+            <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
               {followListLoading ? (
-                <div className="py-12 text-center text-white/65 text-sm">Loading...</div>
+                <div className="space-y-2.5 py-2 animate-pulse">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-14 rounded-2xl bg-[var(--bg)] border border-[var(--border)]" />
+                  ))}
+                </div>
+              ) : followListError ? (
+                <div className="py-8 text-center space-y-3">
+                  <p className="text-[13px] text-[var(--text-muted)]">{followListError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void openFollowList(followListModal)}
+                    className="px-4 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : followListUsers.length === 0 ? (
-                <div className="py-12 text-center text-white/60 text-sm">
+                <div className="py-10 text-center text-[var(--text-muted)] text-[14px]">
                   No {followListModal} yet.
                 </div>
               ) : (
-                followListUsers.map((u) => (
-                  <div
-                    key={u.uid}
-                    onClick={() => {
-                      setFollowListModal(null);
-                      navigate(`/u/${u.username || u.uid}`);
-                    }}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <BoardlyAvatar
-                        size={40}
-                        uid={u.uid}
-                        equippedAvatar={u.equippedAvatar}
-                        customPhotoURL={u.photoURL}
-                        equippedFrameId={u.equippedFrame}
-                      />
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-white truncate">
-                          {u.displayName}
-                        </div>
-                        <div className="text-xs text-white/60 truncate">
-                          @{u.username || 'student'}
+                followListUsers.map((u) => {
+                  const uDisplay = getDisplayName({
+                    display_name: (u as any).display_name ?? u.displayName,
+                    username: u.username,
+                  });
+                  const uHandle = getUsernameHandle({ username: u.username });
+                  return (
+                    <button
+                      type="button"
+                      key={u.uid}
+                      onClick={() => {
+                        setFollowListModal(null);
+                        navigate(`/profile?uid=${encodeURIComponent(u.uid)}`);
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] cursor-pointer transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <BoardlyAvatar
+                          size={40}
+                          uid={u.uid}
+                          equippedAvatar={u.equippedAvatar}
+                          customPhotoURL={u.photoURL}
+                          equippedFrameId={u.equippedFrame}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-[14px] font-semibold text-[var(--text)] truncate">
+                            {uDisplay}
+                          </div>
+                          {uHandle && (
+                            <div className="text-[12px] text-[var(--text-muted)] truncate">
+                              {uHandle}
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                    <span className="text-xs font-bold text-[#D71921]">View</span>
-                  </div>
-                ))
+                      <span className="text-[13px] font-semibold text-[var(--accent)] shrink-0">
+                        View
+                      </span>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -1933,7 +2273,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onClose={() => setIsChatOpen(false)}
           partner={{
             uid: profile.uid,
-            displayName: profile.displayName,
+            displayName,
             username: profile.username,
             equippedAvatar: profile.equippedAvatar,
             photoURL: profile.photoURL,
@@ -1943,58 +2283,60 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         />
       )}
 
-      {/* Edit Profile Modal (z-index 2000) */}
+      {/* Edit Profile Sheet */}
       {isEditing && isOwnProfile && (
         <div
-          data-modal-layer="true"
           role="dialog"
           aria-modal="true"
-          className="boardly-modal-backdrop fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+          aria-label="Edit profile"
+          className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
-          <div className="boardly-glass-card rounded-t-[36px] sm:rounded-[32px] w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden">
-            <div className="px-5 py-4 nothing-dotted-divider flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#D71921]" />
-                <h3 className="font-doto-title text-sm tracking-[0.14em] text-white">
-                  EDIT PROFILE
-                </h3>
-              </div>
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
+            onClick={() => !saving && setIsEditing(false)}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full sm:max-w-lg max-h-[90dvh] rounded-t-[24px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
+            <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
+            <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+              <h3 className="text-[17px] font-semibold text-[var(--text)]">Edit profile</h3>
               <button
                 type="button"
+                disabled={saving}
                 onClick={() => setIsEditing(false)}
                 aria-label="Close edit profile"
-                className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
+                className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <form
               onSubmit={handleSaveProfile}
-              className="p-5 overflow-y-auto space-y-5 flex-1"
+              className="p-5 overflow-y-auto overscroll-contain space-y-4 flex-1 pb-[calc(24px+env(safe-area-inset-bottom,0px))]"
             >
               {editError && (
-                <div className="p-3.5 bg-red-500/15 border border-red-500/35 rounded-2xl text-red-200 text-xs font-semibold flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-[#D71921]" />
-                  {editError}
+                <div className="p-3 rounded-2xl bg-[var(--danger)]/10 border border-[var(--danger-border)] text-[var(--danger)] text-[13px] font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{editError}</span>
                 </div>
               )}
 
               {/* Custom Photo Upload */}
-              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-white/[0.04] border border-white/12">
+              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)]">
                 <BoardlyAvatar
-                  size={64}
+                  size={60}
                   uid={profile.uid}
                   equippedAvatar={editAvatar}
                   customPhotoURL={profile.photoURL}
                   equippedFrameId={editFrame}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-white">Profile Picture</div>
-                  <p className="text-xs text-white/65 mt-0.5">
-                    Upload a custom photo or equip a Boardly avatar in your Locker.
+                  <div className="text-[14px] font-semibold text-[var(--text)]">Profile photo</div>
+                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                    Upload a photo or equip a Boardly avatar in your Locker.
                   </p>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -2006,37 +2348,35 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       type="button"
                       disabled={uploadingPhoto}
                       onClick={() => fileInputRef.current?.click()}
-                      className="press-scale min-h-[44px] px-4 rounded-full text-xs font-bold bg-white/10 hover:bg-white/15 border border-white/20 text-white cursor-pointer"
+                      className="min-h-[38px] px-4 rounded-full text-[13px] font-semibold bg-[var(--card)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[var(--text)] cursor-pointer"
                     >
-                      {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                      {uploadingPhoto ? 'Uploading...' : 'Upload photo'}
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
-                    DISPLAY NAME
+                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
+                    Display name
                   </label>
-                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
-                    <input
-                      type="text"
-                      value={editNickname}
-                      onChange={(e) => setEditNickname(e.target.value)}
-                      maxLength={32}
-                      required
-                      className="w-full text-sm text-white"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    maxLength={32}
+                    required
+                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+                  />
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
-                    USERNAME (@HANDLE)
+                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
+                    Username
                   </label>
-                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
-                    <span className="text-white/50 text-sm mr-1">@</span>
+                  <div className="min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center focus-within:border-[var(--accent)]">
+                    <span className="text-[var(--text-muted)] text-[15px] mr-1">@</span>
                     <input
                       type="text"
                       value={editUsername}
@@ -2046,38 +2386,35 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         )
                       }
                       maxLength={20}
-                      required
-                      className="w-full text-sm text-white"
+                      className="w-full bg-transparent text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
-                    STATUS LINE
+                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
+                    Status
                   </label>
-                  <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 px-3.5 min-h-[48px] flex items-center">
-                    <input
-                      type="text"
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value)}
-                      placeholder="Studying for Finals..."
-                      maxLength={50}
-                      className="w-full text-sm text-white placeholder:text-white/40"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    placeholder="Studying for Finals..."
+                    maxLength={50}
+                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+                  />
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
-                    ACADEMIC ROLE CHIP
+                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
+                    Academic track
                   </label>
                   <select
                     value={editCustomRole}
                     onChange={(e) => setEditCustomRole(e.target.value)}
-                    className="w-full rounded-2xl bg-[#121216] border border-white/15 px-3.5 min-h-[48px] text-sm text-white outline-none"
+                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
                   >
                     {COSMETIC_ROLE_OPTIONS.map((roleOpt) => (
                       <option key={roleOpt} value={roleOpt}>
@@ -2089,33 +2426,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-doto-title text-[10px] tracking-[0.14em] text-white/70 mb-1.5">
-                  ABOUT ME / BIO
+                <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
+                  Bio
                 </label>
-                <div className="search-pill-wrapper rounded-2xl bg-white/[0.06] border border-white/15 p-3.5">
-                  <textarea
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    placeholder="Add a bio..."
-                    rows={3}
-                    maxLength={240}
-                    className="w-full bg-transparent border-0 outline-none text-sm text-white placeholder:text-white/45 resize-none"
-                  />
-                </div>
+                <textarea
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value)}
+                  placeholder="Add a short bio..."
+                  rows={3}
+                  maxLength={240}
+                  className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none"
+                />
               </div>
 
-              <div className="pt-2 nothing-dotted-divider flex items-center justify-end gap-2.5">
+              <div className="pt-2 border-t border-[var(--border)] flex items-center justify-end gap-2.5">
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={() => setIsEditing(false)}
-                  className="boardly-glass-pill press-scale min-h-[48px] px-5 rounded-full text-xs font-bold text-white/80 hover:text-white cursor-pointer"
+                  className="min-h-[44px] px-5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[14px] font-semibold text-[var(--text)] hover:bg-[var(--settings-row-hover)] cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="boardly-red-pill press-scale min-h-[48px] px-6 rounded-full text-xs font-bold tracking-wide disabled:opacity-50 cursor-pointer"
+                  className="min-h-[44px] px-6 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold hover:opacity-95 disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? 'Saving...' : 'Save changes'}
                 </button>

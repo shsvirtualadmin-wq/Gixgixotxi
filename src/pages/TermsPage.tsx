@@ -418,7 +418,7 @@ export const TermsPage: React.FC = () => {
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
                 <strong>Virtual Credits Only (No Cash Value):</strong> &ldquo;Kobans&rdquo; are
-                virtual in-app points used solely within Boardly to unlock profile cosmetics
+                virtual in-app credits used solely within Boardly to unlock profile cosmetics
                 (avatars, frames, effects, banners) or redeem Boardly Pro passes. Kobans have{' '}
                 <strong>no real-world monetary or cash value</strong>, are not a currency or
                 financial instrument, cannot be withdrawn or exchanged for cash, and cannot be

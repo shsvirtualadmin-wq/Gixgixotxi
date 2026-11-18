@@ -27,6 +27,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '@/lib/firebase';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import { getDisplayName } from '@/utils/displayName';
 import type {
   UserProfile,
   UserTwoFactorSummary,
@@ -143,21 +144,14 @@ export function getUserDisplayName(
   profile?: Partial<UserProfile> | null,
   fallbackAuthUser?: { displayName?: string | null; email?: string | null } | null
 ): string {
-  if (profile?.displayName && profile.displayName.trim() && profile.displayName !== 'Unnamed Student') {
-    return profile.displayName.trim();
-  }
-  if (profile?.name && profile.name.trim() && profile.name !== 'Unnamed Student') {
-    return profile.name.trim();
-  }
-  if (fallbackAuthUser?.displayName && fallbackAuthUser.displayName.trim()) {
-    return fallbackAuthUser.displayName.trim();
-  }
-  const email = profile?.email || fallbackAuthUser?.email;
-  if (email && email.includes('@')) {
-    const prefix = email.split('@')[0];
-    return prefix.replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  }
-  return 'Student';
+  return getDisplayName(
+    {
+      display_name: (profile as any)?.display_name ?? profile?.displayName,
+      realName: (profile as any)?.realName ?? profile?.name ?? fallbackAuthUser?.displayName,
+      username: profile?.username,
+    },
+    'Student'
+  );
 }
 
 // ─── ADMIN OVERVIEW STATS & SHARED SWR CACHE ─────────────────────────────────

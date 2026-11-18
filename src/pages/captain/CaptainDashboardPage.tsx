@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { getDisplayName } from '@/utils/displayName';
 import { collection, query, where, getDocs, orderBy, limit, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -105,7 +106,21 @@ export function CaptainDashboardPage() {
         } else {
           // Fallback if captains collection hasn't been populated yet
           setCaptainRankings([
-            { id: user!.uid, name: profile?.displayName || 'You', university: profile?.targetUniversity || 'Campus', referralCount: refs.length, points: refs.length * 50, tier: 'Bronze' },
+            {
+              id: user!.uid,
+              name: getDisplayName(
+                {
+                  display_name: profile?.display_name ?? profile?.displayName,
+                  realName: profile?.realName ?? profile?.name ?? user?.displayName,
+                  username: profile?.username,
+                },
+                'You'
+              ),
+              university: profile?.targetUniversity || 'Campus',
+              referralCount: refs.length,
+              points: refs.length * 50,
+              tier: 'Bronze',
+            },
           ]);
         }
       } catch (err) {

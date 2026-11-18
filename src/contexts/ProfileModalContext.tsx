@@ -1,12 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, lazy } from 'react';
-import { createPortal } from 'react-dom';
-import { useLocation } from 'react-router-dom';
-import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
-import { useBodyScrollLock } from '@/utils/scrollLock';
-
-const LazyProfileView = lazy(() =>
-  import('@/components/profile/ProfileView').then((m) => ({ default: m.ProfileView }))
-);
+import React, { createContext, useContext, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProfileModalContextType {
   openProfile: (uid?: string | null) => void;
@@ -24,53 +18,50 @@ const ProfileModalContext = createContext<ProfileModalContextType>({
 
 export const useProfileModal = () => useContext(ProfileModalContext);
 
+/**
+ * ProfileModalProvider routes all profile opens directly to the dedicated
+ * /profile page (or /profile?uid=<id> for other users) so profile never
+ * opens as an overlay on top of Notifications or other tabs, and browser
+ * back + page refresh always work reliably.
+ */
 export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeUid, setActiveUid] = useState<string | null>(null);
+  const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
-  const openProfile = useCallback((uid?: string | null) => {
-    setActiveUid(uid || null);
-    setIsOpen((prevOpen) => {
-      if (!prevOpen) {
-        window.history.pushState({ profileModal: true }, '');
+  const openProfile = useCallback(
+    (uid?: string | null) => {
+      const targetUid = typeof uid === 'string' && uid.trim() ? uid.trim() : null;
+      if (!targetUid || (user?.uid && targetUid === user.uid)) {
+        navigate('/profile');
+      } else {
+        navigate(`/profile?uid=${encodeURIComponent(targetUid)}`);
       }
-      return true;
-    });
-  }, []);
+    },
+    [navigate, user?.uid]
+  );
 
-  const closeProfile = useCallback((skipHistoryBack = false) => {
-    setIsOpen(false);
-    setActiveUid(null);
-    if (!skipHistoryBack && window.history.state?.profileModal) {
-      window.history.back();
-    }
-  }, []);
-
-  // Automatically close the full-screen profile modal when navigating to a new route
-  useEffect(() => {
-    setIsOpen(false);
-    setActiveUid(null);
-  }, [location.pathname]);
-
-  // Listen for browser / mobile back gesture (popstate)
-  useEffect(() => {
-    const handlePopState = () => {
-      if (isOpen) {
-        setIsOpen(false);
-        setActiveUid(null);
+  const closeProfile = useCallback(
+    (skipHistoryBack = false) => {
+      if (!skipHistoryBack && location.pathname === '/profile') {
+        if (window.history.length > 1) {
+          navigate(-1);
+        } else {
+          navigate('/dashboard');
+        }
       }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [isOpen]);
-
-  // Lock body scroll when modal is open
-  useBodyScrollLock(isOpen, 'profile-modal');
+    },
+    [location.pathname, navigate]
+  );
 
   const contextValue = useMemo(
-    () => ({ openProfile, closeProfile, isOpen, activeUid }),
-    [openProfile, closeProfile, isOpen, activeUid]
+    () => ({
+      openProfile,
+      closeProfile,
+      isOpen: false,
+      activeUid: null,
+    }),
+    [openProfile, closeProfile]
   );
 
   return (
@@ -81,44 +72,5 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
 };
 
 export const ProfileModalHost: React.FC = () => {
-  const { isOpen, closeProfile, activeUid } = useProfileModal();
-
-  if (!isOpen) return null;
-
-  const modalContent = (
-    <div
-      role="dialog"
-      aria-modal="true"
-      data-fullscreen-modal="true"
-      className="fixed inset-0 z-[140] flex items-center justify-center p-0 sm:p-4 animate-fade-in"
-    >
-      {/* Sibling dimmed/blurred backdrop */}
-      <div
-        onClick={() => closeProfile()}
-        className="fixed inset-0 z-0 bg-black/30 backdrop-blur-sm glass-backdrop cursor-pointer"
-        aria-hidden="true"
-      />
-
-      {/* Modal Container: Full-screen on mobile, centered dialog max-w-560px on desktop */}
-      <div
-        className="relative z-10 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] glass sm:rounded-3xl shadow-2xl overflow-y-auto scrollbar-none flex flex-col"
-      >
-        <BoardlySuspenseBoundary
-          variant="inline"
-          messages={['Loading profile...', 'Syncing your subjects...']}
-        >
-          <LazyProfileView
-            key={activeUid || 'self'}
-            targetUid={activeUid}
-            isFullPage={false}
-            onClose={closeProfile}
-          />
-        </BoardlySuspenseBoundary>
-      </div>
-    </div>
-  );
-
-  return typeof document !== 'undefined'
-    ? createPortal(modalContent, document.body)
-    : modalContent;
+  return null;
 };

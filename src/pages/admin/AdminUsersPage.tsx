@@ -109,17 +109,19 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
                 {name}
               </p>
               {isGuestUser && (
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                   Guest
                 </span>
               )}
-              <span className="font-mono text-[11px] font-bold text-[#D71921] px-1.5 py-0.2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+              <span className="font-mono text-[11px] font-bold text-[var(--accent)] px-1.5 py-0.5 rounded bg-[var(--bg)] border border-[var(--border)]">
                 {studentId}
               </span>
             </div>
-            <p className="font-heading text-[12px] text-[var(--muted)] truncate">
+            <p className="font-heading text-[12px] text-[var(--text-muted)] truncate">
               {isGuestUser
-                ? `@${u.username || name}`
+                ? u.username
+                  ? `@${String(u.username).replace(/^@/, '')}`
+                  : 'Guest'
                 : isSuperAdmin
                 ? u.email
                 : maskEmail(u.email)}
@@ -212,10 +214,10 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
                 }}
                 className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
                   badge2fa === 'Recovery pending'
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold'
                     : badge2fa !== 'Off'
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
-                    : 'border-[var(--border)] text-[var(--muted)]'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold'
+                    : 'border-[var(--border)] text-[var(--text-muted)]'
                 }`}
               >
                 2FA: {badge2fa}
@@ -288,9 +290,11 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       </td>
 
       {/* 3. Email / Username */}
-      <td className="py-3.5 px-4 text-[12px] text-[var(--muted)]">
+      <td className="py-3.5 px-4 text-[12px] text-[var(--text-muted)]">
         {isGuestUser
-          ? `@${u.username || name}`
+          ? u.username
+            ? `@${String(u.username).replace(/^@/, '')}`
+            : 'Guest'
           : isSuperAdmin
           ? u.email
           : maskEmail(u.email)}
@@ -334,10 +338,10 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
             data-testid={`user-2fa-badge-desktop-${u.uid}`}
             className={`text-[11px] font-mono px-2 py-0.5 rounded-full border whitespace-nowrap ${
               badge2fa === 'Recovery pending'
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold'
                 : badge2fa !== 'Off'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
-                : 'border-[var(--border)] text-[var(--muted)]'
+                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold'
+                : 'border-[var(--border)] text-[var(--text-muted)]'
             }`}
           >
             {badge2fa}

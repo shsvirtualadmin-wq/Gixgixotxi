@@ -860,6 +860,46 @@ export async function authenticateD1GuestSession(
  * 2. A guest user (valid, non-revoked, non-expired, non-suspended session cookie / token)
  * Returns uid, username, displayName, accountType, plan, and role.
  */
+export function extractSessionIdFromRequest(request: Request): string | null {
+  const fromHeader = String(request.headers.get('X-Boardly-Session') || '').trim();
+  if (fromHeader && fromHeader.length >= 8 && fromHeader.length <= 128) {
+    return fromHeader;
+  }
+  const cookieHeader = request.headers.get('Cookie') || '';
+  if (cookieHeader) {
+    const parts = cookieHeader.split(';');
+    for (const part of parts) {
+      const idx = part.indexOf('=');
+      if (idx === -1) continue;
+      const k = part.slice(0, idx).trim();
+      const v = part.slice(idx + 1).trim();
+      if (k === 'boardly_session_id' && v.length >= 8 && v.length <= 128) {
+        return decodeURIComponent(v);
+      }
+    }
+  }
+  return null;
+}
+
+export async function isSessionRevokedInD1(
+  db: RewardsD1Database,
+  sessionId: string | null,
+  uid: string
+): Promise<boolean> {
+  if (!sessionId || !uid) return false;
+  try {
+    const row = await db
+      .prepare('SELECT id, user_id, revoked_at FROM sessions WHERE id = ?1 LIMIT 1')
+      .bind(sessionId)
+      .first<{ id: string; user_id: string; revoked_at: number | null }>();
+    if (!row) return false;
+    if (String(row.user_id || '') !== uid) return false;
+    return row.revoked_at !== null && Number(row.revoked_at) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveCurrentUser(params: {
   request: Request;
   env?: RewardsEnv;
@@ -881,6 +921,10 @@ export async function resolveCurrentUser(params: {
 
     if (verified && verified.uid) {
       const uid = verified.uid;
+      const reqSessionId = extractSessionIdFromRequest(request);
+      if (reqSessionId && (await isSessionRevokedInD1(db, reqSessionId, uid))) {
+        return null;
+      }
       const email = String(verified.email || '').trim().toLowerCase();
 
       let roleRow: {
@@ -897,6 +941,7 @@ export async function resolveCurrentUser(params: {
         username_lower?: string;
         username_display?: string;
         username?: string;
+        display_name?: string;
         role?: string;
         custom_role?: string | null;
       } | null = null;
@@ -911,7 +956,7 @@ export async function resolveCurrentUser(params: {
             .first(),
           db
             .prepare(
-              'SELECT username_lower, username_display, uid, role, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
+              'SELECT username_lower, username_display, display_name, uid, role, custom_role FROM user_usernames WHERE uid = ?1 LIMIT 1'
             )
             .bind(uid)
             .first(),
@@ -946,15 +991,10 @@ export async function resolveCurrentUser(params: {
         usernameRow?.username_display || usernameRow?.username || usernameRow?.username_lower || ''
       ).trim();
 
-      const rawName = String(verified.name || '').trim();
-      const safeName =
-        rawName && !rawName.includes('@')
-          ? rawName
-          : resolvedUsername
-          ? resolvedUsername
-          : email
-          ? email.split('@')[0] || 'Student'
-          : 'Student';
+      const explicitDisplayName = String(usernameRow?.display_name || '').trim();
+      const rawRealName = String(verified.name || '').trim();
+      const safeRealName = rawRealName && !rawRealName.includes('@') ? rawRealName : '';
+      const resolvedDisplayName = explicitDisplayName || safeRealName || '';
 
       const sessionVerified = await isD1UserSessionVerified(db, verified, {
         request,
@@ -964,9 +1004,9 @@ export async function resolveCurrentUser(params: {
       return {
         uid,
         email,
-        name: safeName,
-        displayName: safeName,
-        username: resolvedUsername || safeName,
+        name: safeRealName,
+        displayName: resolvedDisplayName,
+        username: resolvedUsername,
         accountType: 'registered',
         plan: isCaptainOrAbove ? 'pro' : 'free',
         picture: verified.picture || null,
@@ -2120,6 +2160,65 @@ export interface InMemoryD1Tables {
         updated_at: number;
       }
     >;
+    passkeys: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        credential_id: string;
+        public_key_b64: string;
+        algorithm: number;
+        counter: number;
+        transports: string;
+        name: string;
+        device_type: string;
+        created_at: number;
+        last_used_at: number | null;
+      }
+    >;
+    webauthn_challenges: Map<
+      string,
+      {
+        id: string;
+        user_id: string | null;
+        email: string | null;
+        challenge: string;
+        type: string;
+        expires_at: number;
+        used: number;
+        created_at: number;
+      }
+    >;
+    sessions: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        device_label: string;
+        browser: string;
+        os: string;
+        user_agent: string;
+        ip_hash: string;
+        location_hint: string;
+        created_at: number;
+        last_seen_at: number;
+        revoked_at: number | null;
+      }
+    >;
+    security_events: Map<
+      string,
+      {
+        id: string;
+        user_id: string;
+        type: string;
+        title: string;
+        detail: string;
+        device_label: string;
+        ip_hash: string;
+        metadata_json: string;
+        created_at: number;
+      }
+    >;
   }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -2149,6 +2248,10 @@ export class InMemoryD1Database implements RewardsD1Database {
     legal_consent_records: new Map(),
     user_koban_style: new Map(),
     user_pro_badge: new Map(),
+    passkeys: new Map(),
+    webauthn_challenges: new Map(),
+    sessions: new Map(),
+    security_events: new Map(),
   };
 
   constructor() {
@@ -2285,6 +2388,21 @@ export class InMemoryD1Database implements RewardsD1Database {
           if (r && r.uid) this.tables.user_roles.set(String(r.uid), r);
         }
       }
+      if (Array.isArray(raw.passkeys)) {
+        for (const r of raw.passkeys) {
+          if (r && r.id) this.tables.passkeys.set(String(r.id), r);
+        }
+      }
+      if (Array.isArray(raw.sessions)) {
+        for (const r of raw.sessions) {
+          if (r && r.id) this.tables.sessions.set(String(r.id), r);
+        }
+      }
+      if (Array.isArray(raw.security_events)) {
+        for (const r of raw.security_events) {
+          if (r && r.id) this.tables.security_events.set(String(r.id), r);
+        }
+      }
 
       // Restore canonical 2FA rows for existing seeded test accounts if prior saveToDisk omitted user_2fa
       for (const u of this.tables.user_usernames.values()) {
@@ -2347,6 +2465,9 @@ export class InMemoryD1Database implements RewardsD1Database {
         trusted_devices: Array.from(this.tables.trusted_devices.values()),
         security_audit_logs: Array.from(this.tables.security_audit_logs.values()),
         user_roles: Array.from(this.tables.user_roles.values()),
+        passkeys: Array.from(this.tables.passkeys.values()),
+        sessions: Array.from(this.tables.sessions.values()),
+        security_events: Array.from(this.tables.security_events.values()),
       };
       fsMod.writeFileSync(diskPath, JSON.stringify(payload, null, 2), 'utf8');
     } catch {
@@ -2950,6 +3071,108 @@ export class InMemoryD1Database implements RewardsD1Database {
         return row ? [{ ...row }] : [];
       }
       return Array.from(this.tables.user_pro_badge.values()).map((r) => ({ ...r }));
+    }
+
+    // 25. passkeys
+    if (upper.includes('FROM PASSKEYS')) {
+      const all = Array.from(this.tables.passkeys.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return [{ cnt: all.filter((r) => r.user_id === uid).length }];
+      }
+      if (upper.includes('WHERE CREDENTIAL_ID =')) {
+        const cid = String(args[0] ?? '');
+        const found = all.find((r) => r.credential_id === cid);
+        return found ? [{ ...found }] : [];
+      }
+      if (upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const id = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.passkeys.get(id);
+        return row && row.user_id === uid ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.passkeys.get(id);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.user_id === uid)
+          .sort((a, b) => b.created_at - a.created_at)
+          .map((r) => ({ ...r }));
+      }
+      return all.sort((a, b) => b.created_at - a.created_at).map((r) => ({ ...r }));
+    }
+
+    // 26. webauthn_challenges
+    if (upper.includes('FROM WEBAUTHN_CHALLENGES')) {
+      const all = Array.from(this.tables.webauthn_challenges.values());
+      if (upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.webauthn_challenges.get(id);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE CHALLENGE =')) {
+        const ch = String(args[0] ?? '');
+        const found = all.find((r) => r.challenge === ch);
+        return found ? [{ ...found }] : [];
+      }
+      return all.map((r) => ({ ...r }));
+    }
+
+    // 27. sessions
+    if (upper.includes('FROM SESSIONS')) {
+      const all = Array.from(this.tables.sessions.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const onlyActive = upper.includes('REVOKED_AT IS NULL');
+        const cnt = all.filter(
+          (r) => r.user_id === uid && (!onlyActive || r.revoked_at === null)
+        ).length;
+        return [{ cnt }];
+      }
+      if (upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const id = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.sessions.get(id);
+        return row && row.user_id === uid ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.sessions.get(id);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        let rows = all.filter((r) => r.user_id === uid);
+        if (upper.includes('REVOKED_AT IS NULL')) {
+          rows = rows.filter((r) => r.revoked_at === null);
+        }
+        return rows.sort((a, b) => b.last_seen_at - a.last_seen_at).map((r) => ({ ...r }));
+      }
+      return all.sort((a, b) => b.last_seen_at - a.last_seen_at).map((r) => ({ ...r }));
+    }
+
+    // 28. security_events
+    if (upper.includes('FROM SECURITY_EVENTS')) {
+      const all = Array.from(this.tables.security_events.values());
+      if (upper.includes('COUNT(*)') && upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return [{ cnt: all.filter((r) => r.user_id === uid).length }];
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const limit = args.length > 1 ? Number(args[1] ?? 20) : 20;
+        const offset = args.length > 2 ? Number(args[2] ?? 0) : 0;
+        return all
+          .filter((r) => r.user_id === uid)
+          .sort((a, b) => b.created_at - a.created_at)
+          .slice(offset, offset + limit)
+          .map((r) => ({ ...r }));
+      }
+      return all.sort((a, b) => b.created_at - a.created_at).map((r) => ({ ...r }));
     }
 
     return [];
@@ -3983,6 +4206,14 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('UPDATE TRUSTED_DEVICES')) {
+      if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const id = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.trusted_devices.get(id);
+        if (!row || row.user_id !== uid || row.revoked === 1) return 0;
+        row.revoked = 1;
+        return 1;
+      }
       if (upper.includes('SET REVOKED = 1') && upper.includes('WHERE USER_ID =')) {
         const uid = String(args[0] ?? '');
         let changes = 0;
@@ -4005,6 +4236,13 @@ export class InMemoryD1Database implements RewardsD1Database {
     }
 
     if (upper.startsWith('DELETE FROM TRUSTED_DEVICES')) {
+      if (upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const id = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.trusted_devices.get(id);
+        if (!row || row.user_id !== uid) return 0;
+        return this.tables.trusted_devices.delete(id) ? 1 : 0;
+      }
       const uid = String(args[0] ?? '');
       let changes = 0;
       for (const [id, r] of this.tables.trusted_devices.entries()) {
@@ -4165,6 +4403,208 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.startsWith('DELETE FROM USER_PRO_BADGE')) {
       const user_id = String(args[0] ?? '');
       return this.tables.user_pro_badge.delete(user_id) ? 1 : 0;
+    }
+
+    // 19. passkeys
+    if (upper.includes('INTO PASSKEYS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1] ?? '');
+      const credential_id = String(args[2] ?? '');
+      const public_key_b64 = String(args[3] ?? '');
+      const algorithm = Number(args[4] ?? -7);
+      const counter = Number(args[5] ?? 0);
+      const transports = String(args[6] ?? '[]');
+      const name = String(args[7] ?? 'Passkey');
+      const device_type = String(args[8] ?? 'platform');
+      const created_at = Number(args[9] ?? Date.now());
+      const last_used_at = args[10] != null ? Number(args[10]) : null;
+      this.tables.passkeys.set(id, {
+        id,
+        user_id,
+        credential_id,
+        public_key_b64,
+        algorithm,
+        counter,
+        transports,
+        name,
+        device_type,
+        created_at,
+        last_used_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE PASSKEYS')) {
+      if (upper.includes('SET NAME =') && upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const name = String(args[0] ?? 'Passkey');
+        const id = String(args[1] ?? '');
+        const uid = String(args[2] ?? '');
+        const row = this.tables.passkeys.get(id);
+        if (!row || row.user_id !== uid) return 0;
+        row.name = name;
+        return 1;
+      }
+      if (upper.includes('SET COUNTER =') && upper.includes('WHERE ID =')) {
+        const counter = Number(args[0] ?? 0);
+        const lastUsed = Number(args[1] ?? Date.now());
+        const id = String(args[2] ?? '');
+        const row = this.tables.passkeys.get(id);
+        if (!row) return 0;
+        row.counter = counter;
+        row.last_used_at = lastUsed;
+        return 1;
+      }
+    }
+
+    if (upper.startsWith('DELETE FROM PASSKEYS')) {
+      if (upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const id = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.passkeys.get(id);
+        if (!row || row.user_id !== uid) return 0;
+        return this.tables.passkeys.delete(id) ? 1 : 0;
+      }
+    }
+
+    // 20. webauthn_challenges
+    if (upper.includes('INTO WEBAUTHN_CHALLENGES')) {
+      const id = String(args[0]);
+      const user_id = args[1] != null ? String(args[1]) : null;
+      const email = args[2] != null ? String(args[2]) : null;
+      const challenge = String(args[3] ?? '');
+      const type = String(args[4] ?? 'register');
+      const expires_at = Number(args[5] ?? Date.now() + 5 * 60 * 1000);
+      const used = Number(args[6] ?? 0);
+      const created_at = Number(args[7] ?? Date.now());
+      this.tables.webauthn_challenges.set(id, {
+        id,
+        user_id,
+        email,
+        challenge,
+        type,
+        expires_at,
+        used,
+        created_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE WEBAUTHN_CHALLENGES')) {
+      if (upper.includes('SET USED = 1') && upper.includes('WHERE ID =')) {
+        const id = String(args[0] ?? '');
+        const row = this.tables.webauthn_challenges.get(id);
+        if (!row) return 0;
+        row.used = 1;
+        return 1;
+      }
+    }
+
+    // 21. sessions
+    if (upper.includes('INTO SESSIONS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1] ?? '');
+      const device_label = String(args[2] ?? 'Unknown device');
+      const browser = String(args[3] ?? 'Browser');
+      const os = String(args[4] ?? 'Device');
+      const user_agent = String(args[5] ?? '');
+      const ip_hash = String(args[6] ?? '');
+      const location_hint = String(args[7] ?? '');
+      const created_at = Number(args[8] ?? Date.now());
+      const last_seen_at = Number(args[9] ?? created_at);
+      const revoked_at = args[10] != null ? Number(args[10]) : null;
+      this.tables.sessions.set(id, {
+        id,
+        user_id,
+        device_label,
+        browser,
+        os,
+        user_agent,
+        ip_hash,
+        location_hint,
+        created_at,
+        last_seen_at,
+        revoked_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE SESSIONS')) {
+      if (upper.includes('SET LAST_SEEN_AT =') && upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const lastSeen = Number(args[0] ?? Date.now());
+        const deviceLabel = String(args[1] ?? '');
+        const browser = String(args[2] ?? '');
+        const os = String(args[3] ?? '');
+        const ipHash = String(args[4] ?? '');
+        const id = String(args[5] ?? '');
+        const uid = String(args[6] ?? '');
+        const row = this.tables.sessions.get(id);
+        if (!row || row.user_id !== uid || row.revoked_at !== null) return 0;
+        row.last_seen_at = lastSeen;
+        if (deviceLabel) row.device_label = deviceLabel;
+        if (browser) row.browser = browser;
+        if (os) row.os = os;
+        if (ipHash) row.ip_hash = ipHash;
+        return 1;
+      }
+      if (upper.includes('SET REVOKED_AT =') && upper.includes('WHERE ID =') && upper.includes('AND USER_ID =')) {
+        const revokedAt = Number(args[0] ?? Date.now());
+        const id = String(args[1] ?? '');
+        const uid = String(args[2] ?? '');
+        const row = this.tables.sessions.get(id);
+        if (!row || row.user_id !== uid || row.revoked_at !== null) return 0;
+        row.revoked_at = revokedAt;
+        return 1;
+      }
+      if (upper.includes('SET REVOKED_AT =') && upper.includes('WHERE USER_ID =') && upper.includes('AND ID != ')) {
+        const revokedAt = Number(args[0] ?? Date.now());
+        const uid = String(args[1] ?? '');
+        const keepId = String(args[2] ?? '');
+        let changes = 0;
+        for (const r of this.tables.sessions.values()) {
+          if (r.user_id === uid && r.id !== keepId && r.revoked_at === null) {
+            r.revoked_at = revokedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
+      if (upper.includes('SET REVOKED_AT =') && upper.includes('WHERE USER_ID =')) {
+        const revokedAt = Number(args[0] ?? Date.now());
+        const uid = String(args[1] ?? '');
+        let changes = 0;
+        for (const r of this.tables.sessions.values()) {
+          if (r.user_id === uid && r.revoked_at === null) {
+            r.revoked_at = revokedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
+    }
+
+    // 22. security_events
+    if (upper.includes('INTO SECURITY_EVENTS')) {
+      const id = String(args[0]);
+      const user_id = String(args[1] ?? '');
+      const type = String(args[2] ?? '');
+      const title = String(args[3] ?? '');
+      const detail = String(args[4] ?? '');
+      const device_label = String(args[5] ?? '');
+      const ip_hash = String(args[6] ?? '');
+      const metadata_json = String(args[7] ?? '{}');
+      const created_at = Number(args[8] ?? Date.now());
+      this.tables.security_events.set(id, {
+        id,
+        user_id,
+        type,
+        title,
+        detail,
+        device_label,
+        ip_hash,
+        metadata_json,
+        created_at,
+      });
+      return 1;
     }
 
     return 0;

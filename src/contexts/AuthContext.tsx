@@ -69,6 +69,11 @@ import {
   preloadSecurityAndSettingsForUid,
   clearSecurityStatusCache,
 } from '@/hooks/useSecurityStatus';
+import {
+  heartbeatSession,
+  registerSessionRevokedHandler,
+  setStoredSessionId,
+} from '@/services/securityCenterService';
 import { migrateGuestKobanStyleToUser } from '@/contexts/KobanStyleContext';
 
 const GuestLogoutConfirmModal = lazy(() =>
@@ -1004,17 +1009,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // SECURITY: Never trust client-writable Firestore `role`, `isCaptain`, `isAdmin`, or `superAdmin` fields.
         // Role comes strictly from verified Firebase Auth custom claims (`claimDerivedRole`).
+        // Single source of truth for display_name: never overwrite a saved displayName with username or real name.
         const silentPatches: Record<string, unknown> = {};
-        if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
+        const storedDisplayName = String(
+          (loadedProfile as any).display_name || loadedProfile.displayName || ''
+        ).trim();
+        if (storedDisplayName && storedDisplayName !== 'Unnamed Student') {
+          loadedProfile.displayName = storedDisplayName;
+          (loadedProfile as any).display_name = storedDisplayName;
+        } else if (loadedProfile.name && loadedProfile.name !== 'Unnamed Student') {
+          loadedProfile.displayName = loadedProfile.name;
+        } else if (fallbackName && fallbackName !== 'Student') {
           loadedProfile.displayName = fallbackName;
-          silentPatches.displayName = fallbackName;
-        }
-        if (
-          !claimSuperAdmin &&
-          String(loadedProfile.displayName || '').trim().toLowerCase() === 'shs virtual academy'
-        ) {
-          loadedProfile.displayName = loadedProfile.username || fallbackName;
-          silentPatches.displayName = loadedProfile.displayName;
         }
         const docRoleValue =
           typeof loadedProfile.role === 'string' ? loadedProfile.role : null;
@@ -1829,11 +1835,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (hasAdminClaim && !hasSuperAdminClaim) {
             refreshActiveGrants().catch(() => {});
           }
+          const serverDisplayName = String(
+            meData.user.display_name || meData.user.displayName || ''
+          ).trim();
+          const serverUsername = String(meData.user.username || '').trim();
+          const serverDisplayIsDistinct =
+            Boolean(serverDisplayName) &&
+            (!serverUsername || serverDisplayName.toLowerCase() !== serverUsername.toLowerCase());
           setProfile((prev) =>
             prev
               ? {
                   ...prev,
-                  ...(meData.user.username ? { username: meData.user.username } : {}),
+                  ...(serverUsername ? { username: serverUsername } : {}),
+                  ...(!prev.displayName && serverDisplayIsDistinct
+                    ? { displayName: serverDisplayName, display_name: serverDisplayName }
+                    : {}),
                   ...(meData.user.plan === 'pro' || meData.user.plan === 'free'
                     ? { plan: meData.user.plan, isPremium: meData.user.plan === 'pro' }
                     : {}),
@@ -2554,11 +2570,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      const preservedGoogleDisplayName =
+        (snapshotGuestProfile.displayName &&
+        snapshotGuestProfile.displayName.toLowerCase() !== guestUsername.toLowerCase()
+          ? snapshotGuestProfile.displayName
+          : '') ||
+        googleUser.displayName?.trim() ||
+        '';
       const upgradedProfileDoc: UserProfile = {
         uid: googleUser.uid,
         email: (googleUser.email || '').toLowerCase(),
-        displayName: guestUsername,
-        name: googleUser.displayName || guestUsername,
+        displayName: preservedGoogleDisplayName || null,
+        name: googleUser.displayName || null,
         username: guestUsername,
         photoURL: snapshotGuestProfile.photoURL || guestCachedGoogleCustom.photoURL || null,
         shortId: upgData?.shortId || snapshotGuestProfile.shortId || deriveFallbackShortId(googleUser.uid),
@@ -3324,18 +3347,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = useCallback(
     async (updates: Partial<UserProfile>) => {
-      updateLocalProfile(updates);
+      const cleanDisplayName =
+        updates.displayName !== undefined
+          ? String(updates.displayName ?? '').trim()
+          : (updates as any).display_name !== undefined
+          ? String((updates as any).display_name ?? '').trim()
+          : undefined;
+      const normalizedUpdates: Partial<UserProfile> = {
+        ...updates,
+        ...(cleanDisplayName !== undefined
+          ? { displayName: cleanDisplayName, display_name: cleanDisplayName }
+          : {}),
+      };
+
+      updateLocalProfile(normalizedUpdates);
+
+      if (user?.uid) {
+        const mergedProfile: UserProfile = {
+          ...(profileRef.current || ({ uid: user.uid, email: user.email || '' } as UserProfile)),
+          ...normalizedUpdates,
+          uid: user.uid,
+        };
+        seedSharedUserProfileCache(user.uid, mergedProfile);
+        if (cleanDisplayName !== undefined) {
+          writeOptimisticUserSnapshot({
+            uid: user.uid,
+            email: mergedProfile.email || user.email || '',
+            displayName: cleanDisplayName,
+            username: mergedProfile.username || null,
+            shortId: mergedProfile.shortId,
+            role: 'student',
+            customRole: mergedProfile.customRole || null,
+            plan: mergedProfile.plan || 'free',
+            isGuest: Boolean(isGuest),
+            avatar: mergedProfile.equipped?.avatar || mergedProfile.avatar || null,
+            frame: mergedProfile.equipped?.frame || mergedProfile.frame || null,
+            streak: Number(mergedProfile.streak || 0),
+            targetUniversity: mergedProfile.targetUniversity || undefined,
+          });
+          void import('@/services/publicProfileService')
+            .then(({ broadcastPublicProfileUpdate, syncProfileToD1Backend, syncPublicProfile }) => {
+              broadcastPublicProfileUpdate(user.uid, {
+                displayName: cleanDisplayName,
+                display_name: cleanDisplayName,
+                ...(normalizedUpdates.username ? { username: normalizedUpdates.username } : {}),
+              });
+              void syncProfileToD1Backend(user.uid, {
+                ...mergedProfile,
+                displayName: cleanDisplayName,
+                display_name: cleanDisplayName,
+              });
+              if (!isGuest) {
+                void syncPublicProfile(user.uid, {
+                  ...mergedProfile,
+                  displayName: cleanDisplayName,
+                  display_name: cleanDisplayName,
+                });
+              }
+            })
+            .catch(() => {});
+        }
+      }
+
       if (isGuest) {
         await syncGuestProgress({
-          testsCompleted: updates.testsCompleted,
-          totalQuestionsSolved: updates.totalQuestionsSolved,
-          streak: updates.streak,
-          targetUniversity: updates.targetUniversity || undefined,
+          testsCompleted: normalizedUpdates.testsCompleted,
+          totalQuestionsSolved: normalizedUpdates.totalQuestionsSolved,
+          streak: normalizedUpdates.streak,
+          targetUniversity: normalizedUpdates.targetUniversity || undefined,
         });
         return;
       }
       if (user) {
-        if (updates.username) {
+        if (cleanDisplayName !== undefined && auth.currentUser && auth.currentUser.uid === user.uid) {
+          void firebaseUpdateProfile(auth.currentUser, { displayName: cleanDisplayName }).catch(
+            () => {}
+          );
+        }
+        if (normalizedUpdates.username) {
           const idToken = await user.getIdToken().catch(() => '');
           fetch('/api/auth/username-register', {
             method: 'POST',
@@ -3346,14 +3435,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
             body: JSON.stringify({
               uid: user.uid,
-              username: updates.username,
+              username: normalizedUpdates.username,
               email: (user.email || profile?.email || '').toLowerCase(),
               accountType: 'registered',
             }),
           }).catch(() => {});
         }
         try {
-          const safeUpdates: Record<string, unknown> = { ...updates };
+          const safeUpdates: Record<string, unknown> = { ...normalizedUpdates };
           for (const protectedKey of [
             'plan',
             'tier',
@@ -3468,6 +3557,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUsernamePromptState({ open: false, allowSkip: false, suggested: '' });
   }, [user?.uid]);
+
+  // Keep active device session heartbeated and immediately sign out if revoked elsewhere
+  useEffect(() => {
+    if (!user?.uid || isGuest) {
+      setStoredSessionId(null);
+      registerSessionRevokedHandler(null);
+      return;
+    }
+
+    registerSessionRevokedHandler(() => {
+      void signOutUser();
+    });
+
+    void heartbeatSession();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void heartbeatSession();
+      }
+    }, 5 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(timer);
+      registerSessionRevokedHandler(null);
+    };
+  }, [user?.uid, isGuest, signOutUser]);
 
   const contextValue = useMemo<AuthContextValue>(
     () => ({

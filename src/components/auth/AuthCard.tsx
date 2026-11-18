@@ -12,11 +12,13 @@ import {
   UserCheck,
   Loader2,
   Check,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
 import { OtpVerificationCard } from './OtpVerificationCard';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
+import { isWebAuthnSupported, signInWithPasskey } from '@/services/securityCenterService';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
@@ -89,10 +91,24 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   // Status State
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState('');
   const [emailAlreadyInUse, setEmailAlreadyInUse] = useState(false);
+  const passkeySupported = useMemo(() => isWebAuthnSupported(), []);
+
+  const handlePasskeySignIn = useCallback(async () => {
+    setGeneralError('');
+    setPasskeyLoading(true);
+    try {
+      await signInWithPasskey(email.trim() || undefined);
+    } catch (err: any) {
+      setGeneralError(sanitizeFriendlyAuthMessage(err?.message) || 'Could not sign in with passkey.');
+    } finally {
+      setPasskeyLoading(false);
+    }
+  }, [email]);
 
   // Segmented thumb liquid stretch state
   const [segStretching, setSegStretching] = useState(false);
@@ -1249,10 +1265,26 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           <span>Continue with Google</span>
         </button>
 
+        {mode === 'signin' && passkeySupported && (
+          <button
+            type="button"
+            onClick={handlePasskeySignIn}
+            disabled={googleLoading || loading || passkeyLoading}
+            className="btn-secondary w-full min-h-[52px] px-5 rounded-full text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer inline-flex items-center justify-center gap-2.5 disabled:opacity-50"
+          >
+            {passkeyLoading ? (
+              <Loader2 size={16} className="animate-spin shrink-0 text-[var(--accent)]" />
+            ) : (
+              <KeyRound size={16} className="text-[var(--accent)] shrink-0" />
+            )}
+            <span>{passkeyLoading ? 'Verifying passkey…' : 'Sign in with passkey'}</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={handleStartGuestMode}
-          disabled={googleLoading || loading}
+          disabled={googleLoading || loading || passkeyLoading}
           className="btn-secondary w-full min-h-[52px] px-5 rounded-full text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer inline-flex items-center justify-center gap-2.5 disabled:opacity-50"
         >
           <UserCheck size={16} className="text-[#D71921] shrink-0" />

@@ -42,6 +42,7 @@ import {
   getCosmeticById,
 } from '@/data/cosmeticsCatalog';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { getDisplayName } from '@/utils/displayName';
 import { CoinBurstEffect } from '@/components/koban/CoinBurstEffect';
 import {
   ProfileEffectCardPreview,
@@ -421,11 +422,14 @@ export const StorePage: React.FC<StorePageProps> = ({
     }, 2000);
   }, []);
 
-  const displayName =
-    userProfile?.displayName ||
-    user?.displayName ||
-    (userProfile as any)?.username ||
-    'You';
+  const displayName = getDisplayName(
+    {
+      display_name: userProfile?.display_name ?? userProfile?.displayName,
+      realName: userProfile?.realName ?? userProfile?.name ?? user?.displayName,
+      username: userProfile?.username,
+    },
+    'You'
+  );
   const photoURL: string | null = null;
 
   // Resolved items in the cart (preserving insertion order)
@@ -947,7 +951,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   const isLoadingGrid = catalogLoading || (Boolean(user) && walletLoading);
 
   return (
-    <div data-student-page="store" className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)]">
+    <div data-student-page="store" className="min-h-[100dvh] bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)] overflow-x-clip">
       <PageMeta
         title="Boardly Store — Animated Banners, Avatars, Frames, Profile Effects & Nameplates"
         description="Customize your Boardly identity with animated profile banners, avatar pictures, frames, profile effects, and nameplates using Kobans."
@@ -1015,7 +1019,7 @@ export const StorePage: React.FC<StorePageProps> = ({
           {/* Right Header Controls: SuperAdmin badge, Live Wallet Balance + "+", Theme Toggle */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {isSuperAdmin && (
-              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 text-[11px] font-black">
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-black">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>SUPER ADMIN</span>
               </div>
@@ -1106,7 +1110,7 @@ export const StorePage: React.FC<StorePageProps> = ({
 
           <div className="flex items-center gap-2">
             {effectiveIsPro && !isGuest && proStatusSummary.statusText && (
-              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 font-semibold hidden md:inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 font-semibold hidden md:inline-flex items-center gap-1.5">
                 <Crown className="w-3 h-3" />
                 <span>{proStatusSummary.statusText}</span>
               </span>
@@ -1259,7 +1263,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                 ))}
               </div>
               <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                <ShieldCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
                 <span>{REFUND_POLICY_TEXT}</span>
               </div>
             </div>
@@ -1284,7 +1288,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         {isPreviewingAny ? 'Live Try-On Preview' : 'Active Loadout'}
                       </span>
                       {isPreviewingAny && (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)]">
                           Previewing
                         </span>
                       )}
@@ -1920,7 +1924,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)]">
                           {CATEGORY_SHORT_LABEL[detailItem.type]}
                         </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-500 inline-flex items-center gap-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--koban-bg)] border border-[var(--koban-border)] text-[var(--koban)] inline-flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
                           <span>Animated</span>
                         </span>
@@ -2090,7 +2094,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                 {singlePurchaseSuccess ? (
                   <div className="space-y-4">
                     <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
                       <div className="text-xs space-y-0.5">
                         <p className="font-extrabold text-[var(--text-primary)]">
                           {singlePurchaseSuccess.item.name} is now in your collection!
@@ -2114,7 +2118,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         <span className="text-[var(--text-secondary)] font-semibold">
                           New Wallet Balance
                         </span>
-                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-emerald-500">
+                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-emerald-700 dark:text-emerald-400">
                           <KobanIcon size={14} />
                           {singlePurchaseSuccess.newBalance.toLocaleString()} Kobans
                         </span>
@@ -2294,9 +2298,7 @@ export const StorePage: React.FC<StorePageProps> = ({
         initialPlanId={proCheckoutPlanId}
         uid={user?.uid}
         userEmail={user?.email || userProfile?.email}
-        userName={
-          userProfile?.displayName || userProfile?.name || user?.displayName
-        }
+        userName={displayName}
         kobanBalance={balance}
         currentProExpiresAt={rawProExpiresAt}
         hasPendingProRequest={Boolean(pendingProRequest)}

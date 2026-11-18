@@ -236,39 +236,13 @@ const MidnightArtwork = React.memo(function MidnightArtwork({ isThumbnail = fals
 import { useTheme } from '@/hooks/useTheme';
 
 const LightCanvasArtwork = React.memo(function LightCanvasArtwork() {
-  return (
-    <div className="absolute inset-0 w-full h-full overflow-hidden bg-[var(--bg)]">
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(circle at 86% 14%, rgba(215, 25, 33, 0.055) 0%, transparent 55%), radial-gradient(circle at 14% 82%, rgba(245, 158, 11, 0.045) 0%, transparent 50%), radial-gradient(circle at 50% 45%, rgba(215, 25, 33, 0.025) 0%, transparent 65%)',
-        }}
-      />
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        viewBox="0 0 1440 900"
-        preserveAspectRatio="xMidYMid slice"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <defs>
-          <pattern id="light-dot-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1" fill="rgba(0, 0, 0, 0.055)" />
-            <circle cx="18" cy="18" r="0.8" fill="rgba(215, 25, 33, 0.065)" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#light-dot-grid)" />
-      </svg>
-    </div>
-  );
+  return <div className="absolute inset-0 w-full h-full overflow-hidden bg-[var(--bg)]" />;
 });
 
 /**
  * Global Wallpaper Background layer rendered behind the app at all times.
  * Rendered at position: fixed; inset: 0; z-index: -1.
- * Supports dark mode (custom chosen wallpaper + contrast overlay) and light mode (Nothing OS light dot-matrix).
- * Hardware-accelerated with contain: strict and zero offscreen blur compositing passes.
+ * Clean neutral surface in light mode; custom chosen wallpaper in dark mode.
  */
 export const WallpaperBackground = React.memo(function WallpaperBackground() {
   const { wallpaper } = useWallpaper();
@@ -280,14 +254,7 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
       className="fixed inset-0 pointer-events-none select-none overflow-hidden"
       style={{
         zIndex: -1,
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: isDark ? '#050506' : undefined,
+        backgroundColor: isDark ? '#050506' : 'var(--bg)',
         contain: 'strict',
       }}
     >
@@ -306,17 +273,17 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
             }}
           />
 
-          {/* Ambient Glows: Red #D71921 top-left, Blue #3a4cff right, soft radial gradient without filter:blur */}
+          {/* Ambient Glows (dark mode only, strictly clipped inside overflow-hidden container) */}
           <div
             className="boardly-ambient-glow absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full pointer-events-none"
             style={{
-              background: 'radial-gradient(circle, rgba(215, 25, 33, 0.18) 0%, rgba(215, 25, 33, 0) 70%)',
+              background: 'radial-gradient(circle, rgba(215, 25, 33, 0.16) 0%, rgba(215, 25, 33, 0) 70%)',
             }}
           />
           <div
             className="boardly-ambient-glow absolute top-[22%] -right-28 w-[440px] h-[440px] rounded-full pointer-events-none"
             style={{
-              background: 'radial-gradient(circle, rgba(58, 76, 255, 0.15) 0%, rgba(58, 76, 255, 0) 70%)',
+              background: 'radial-gradient(circle, rgba(58, 76, 255, 0.12) 0%, rgba(58, 76, 255, 0) 70%)',
             }}
           />
         </>

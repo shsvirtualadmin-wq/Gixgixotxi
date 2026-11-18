@@ -23,6 +23,7 @@ import {
   isValidProBadgeDesign,
   normalizeProBadgeDesign,
 } from '@/lib/proBadgeDesigns';
+import { getDisplayName, getRawUsername } from '@/utils/displayName';
 import type { PublicProfile as BasePublicProfile } from '@/types';
 
 export interface PublicProfile extends BasePublicProfile {
@@ -257,7 +258,8 @@ export async function syncProfileToD1Backend(
       body: JSON.stringify({
         uid,
         username: data.username || undefined,
-        displayName: data.displayName || data.nickname || data.name || undefined,
+        display_name: data.display_name || data.displayName || undefined,
+        displayName: data.display_name || data.displayName || undefined,
         avatar: equippedAvatar !== undefined ? equippedAvatar : undefined,
         frame: equippedFrame !== undefined ? equippedFrame : undefined,
         banner: equippedBanner !== undefined ? equippedBanner : undefined,
@@ -326,22 +328,15 @@ export function normalizePublicProfileDoc(
     p.shortId ||
     botMatch?.shortId ||
     uid.slice(0, 6).toUpperCase();
-  const candidateName =
-    u.displayName ||
-    p.displayName ||
-    u.name ||
-    p.name ||
-    u.username ||
-    p.username ||
-    botMatch?.displayName ||
-    (isSuperAdmin ? SUPER_ADMIN_NAME : 'Student');
-  const safeRawName =
-    !isSuperAdmin && String(candidateName).trim().toLowerCase() === 'shs virtual academy'
-      ? u.username || p.username || 'Student'
-      : candidateName;
-  const displayName = isSuperAdmin
-    ? u.displayName || p.displayName || SUPER_ADMIN_NAME
-    : sanitizeStudentDisplayName(safeRawName, shortId);
+  const resolvedUsername = u.username || p.username || botMatch?.username || undefined;
+  const displayName = getDisplayName(
+    {
+      display_name: u.display_name || p.display_name || u.displayName || p.displayName,
+      realName: u.realName || p.realName || u.name || p.name || botMatch?.displayName,
+      username: resolvedUsername,
+    },
+    isSuperAdmin ? SUPER_ADMIN_NAME : 'Student'
+  );
 
   const avatarCandidates = [
     u.equipped?.avatar,
@@ -610,12 +605,22 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
       return null;
     }
 
+    const d1CleanDisplayName = (() => {
+      const dn = String(d1Data?.display_name || d1Data?.displayName || '').trim();
+      const un = getRawUsername({ username: d1Data?.username }).toLowerCase();
+      if (!dn) return '';
+      if (un && dn.toLowerCase() === un) return '';
+      return dn;
+    })();
+
     const mergedPub = {
       ...(pubData || {}),
       ...(d1Data
         ? {
             ...(d1Data.username ? { username: d1Data.username } : {}),
-            ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+            ...(d1CleanDisplayName
+              ? { displayName: d1CleanDisplayName, display_name: d1CleanDisplayName }
+              : {}),
             ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
             ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
             ...(d1Data.role ? { role: d1Data.role, d1Role: d1Data.role } : {}),
@@ -632,7 +637,9 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
       ...(d1Data
         ? {
             ...(d1Data.username ? { username: d1Data.username } : {}),
-            ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+            ...(!uData?.displayName && !uData?.display_name && d1CleanDisplayName
+              ? { displayName: d1CleanDisplayName, display_name: d1CleanDisplayName }
+              : {}),
             ...(d1Data.avatar ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar } : {}),
             ...(d1Data.frame ? { frame: d1Data.frame, equippedFrame: d1Data.frame } : {}),
           }
@@ -788,12 +795,19 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
         const isSuperAdmin = isAdminAccount(uid);
 
         if (pubData || uData || d1Data || botMatch || isSuperAdmin) {
+          const d1CleanName = (() => {
+            const dn = String(d1Data?.display_name || d1Data?.displayName || '').trim();
+            const un = getRawUsername({ username: d1Data?.username }).toLowerCase();
+            if (!dn) return '';
+            if (un && dn.toLowerCase() === un) return '';
+            return dn;
+          })();
           const mergedPub = {
             ...(pubData || {}),
             ...(d1Data
               ? {
                   ...(d1Data.username ? { username: d1Data.username } : {}),
-                  ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+                  ...(d1CleanName ? { displayName: d1CleanName, display_name: d1CleanName } : {}),
                   ...(d1Data.avatar
                     ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
                     : {}),
@@ -809,7 +823,9 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
             ...(d1Data
               ? {
                   ...(d1Data.username ? { username: d1Data.username } : {}),
-                  ...(d1Data.displayName ? { displayName: d1Data.displayName } : {}),
+                  ...(!uData?.displayName && !uData?.display_name && d1CleanName
+                    ? { displayName: d1CleanName, display_name: d1CleanName }
+                    : {}),
                   ...(d1Data.avatar
                     ? { avatar: d1Data.avatar, equippedAvatar: d1Data.avatar }
                     : {}),
@@ -927,12 +943,18 @@ export async function syncUserPublicProfile(
       existingData.shortId ||
       uid.slice(0, 6).toUpperCase();
 
+    const cleanDisplayName = String(
+      input.display_name ||
+        input.displayName ||
+        existingData.display_name ||
+        existingData.displayName ||
+        ''
+    ).trim();
+
     const payload: Record<string, any> = {
       uid,
-      displayName: sanitizeStudentDisplayName(
-        input.displayName || existingData.displayName || 'Student',
-        shortId
-      ),
+      displayName: cleanDisplayName || sanitizeStudentDisplayName(existingData.name || 'Student', shortId),
+      display_name: cleanDisplayName || undefined,
       studentId: shortId,
       shortId,
       board: input.board ?? existingData.board ?? null,
