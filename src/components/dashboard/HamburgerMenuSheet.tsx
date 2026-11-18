@@ -1129,6 +1129,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   }, [
     resolvedTheme,
     commonsTarget,
+    formulasTarget,
     kobanBalance,
     isApprovedCaptain,
     isConfirmedAdmin,
