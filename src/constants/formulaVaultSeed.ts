@@ -238,7 +238,304 @@ interface SeedChapterSpec {
 
 const RAW_SEED_CHAPTERS: SeedChapterSpec[] = [
   // =========================================================================
-  // 1. BASIC MATHS — Chapter 14: Percentages (16 formulas)
+  // 1. BASIC MATHS — Chapter 1: Number System (12 formulas)
+  // =========================================================================
+  {
+    id: 'chap_bm_number-system',
+    category_id: 'cat_basic-maths',
+    chapter_no: 1,
+    title: 'Number System',
+    slug: 'number-system',
+    subtopics: 'Euclidean Division · HCF & LCM · Divisibility & Factors · Modular Arithmetic',
+    sort_order: 1,
+    formulas: [
+      {
+        formula_no: 1,
+        title: 'Euclidean Division Lemma',
+        formula_latex: 'N = d \\cdot q + r \\quad (0 \\le r < |d|)',
+        plain_text: 'N = d * q + r (0 <= r < |d|)',
+        note: 'Dividend equals divisor times quotient plus non-negative remainder strictly less than divisor.',
+      },
+      {
+        formula_no: 2,
+        title: 'Product of Two Numbers via HCF and LCM',
+        formula_latex: 'a \\times b = \\operatorname{HCF}(a, b) \\times \\operatorname{LCM}(a, b)',
+        plain_text: 'a * b = HCF(a, b) * LCM(a, b)',
+        note: 'Holds strictly for any two positive integers a and b.',
+      },
+      {
+        formula_no: 3,
+        title: 'HCF and LCM of Fractions',
+        formula_latex: '\\operatorname{HCF} = \\frac{\\operatorname{HCF}(\\text{numerators})}{\\operatorname{LCM}(\\text{denominators})}, \\qquad \\operatorname{LCM} = \\frac{\\operatorname{LCM}(\\text{numerators})}{\\operatorname{HCF}(\\text{denominators})}',
+        plain_text: 'HCF = HCF(numerators)/LCM(denominators); LCM = LCM(numerators)/HCF(denominators)',
+        note: 'Reduce all fractions to their simplest coprime form before applying.',
+      },
+      {
+        formula_no: 4,
+        title: 'Total Number of Positive Divisors',
+        formula_latex: 'N = p_{1}^{a_{1}} p_{2}^{a_{2}} \\cdots p_{k}^{a_{k}} \\implies d(N) = (a_{1} + 1)(a_{2} + 1)\\cdots(a_{k} + 1)',
+        plain_text: 'd(N) = (a1 + 1)(a2 + 1)...(ak + 1)',
+        note: 'Where p_1, p_2, ..., p_k are distinct prime factors of N.',
+      },
+      {
+        formula_no: 5,
+        title: 'Sum of All Positive Divisors',
+        formula_latex: '\\sigma(N) = \\prod_{i=1}^{k} \\frac{p_{i}^{a_{i} + 1} - 1}{p_{i} - 1}',
+        plain_text: 'sigma(N) = product((p_i^(a_i + 1) - 1) / (p_i - 1))',
+        note: 'Gives the sum of all positive factors of N including 1 and N itself.',
+      },
+      {
+        formula_no: 6,
+        title: 'Product of All Positive Divisors',
+        formula_latex: 'P(N) = N^{d(N) / 2}',
+        plain_text: 'P(N) = N^(d(N) / 2)',
+        note: 'Where d(N) is the total count of positive divisors of N.',
+      },
+      {
+        formula_no: 7,
+        title: 'Number of Ways to Write N as Product of Two Factors',
+        formula_latex: 'W = \\frac{d(N)}{2} \\; (\\text{non-square}), \\qquad W = \\frac{d(N) + 1}{2} \\; (\\text{perfect square})',
+        plain_text: 'W = d(N)/2 for non-square; W = (d(N)+1)/2 for perfect square',
+        note: 'Counts unordered factor pairs (u, v) such that u * v = N.',
+      },
+      {
+        formula_no: 8,
+        title: 'Euler’s Totient Function (Count of Coprimes <= N)',
+        formula_latex: '\\phi(N) = N \\prod_{p \\mid N} \\left(1 - \\frac{1}{p}\\right)',
+        plain_text: 'phi(N) = N * product(1 - 1/p)',
+        note: 'Counts positive integers up to N that are relatively prime to N.',
+      },
+      {
+        formula_no: 9,
+        title: 'Legendre’s Formula (Highest Power of Prime p in n!)',
+        formula_latex: 'E_{p}(n!) = \\sum_{k=1}^{\\infty} \\left\\lfloor \\frac{n}{p^{k}} \\right\\rfloor = \\left\\lfloor \\frac{n}{p} \\right\\rfloor + \\left\\lfloor \\frac{n}{p^{2}} \\right\\rfloor + \\cdots',
+        plain_text: 'E_p(n!) = floor(n/p) + floor(n/p^2) + floor(n/p^3) + ...',
+        note: 'For trailing zeros of n!, compute E_5(n!).',
+      },
+      {
+        formula_no: 10,
+        title: 'Fermat’s Little Theorem',
+        formula_latex: 'a^{p - 1} \\equiv 1 \\pmod{p} \\quad (p \\text{ prime},\\; \\gcd(a, p) = 1)',
+        plain_text: 'a^(p - 1) = 1 (mod p) for prime p not dividing a',
+        note: 'Fast remainder reduction for large prime moduli.',
+      },
+      {
+        formula_no: 11,
+        title: 'Euler’s Remainder Theorem',
+        formula_latex: 'a^{\\phi(n)} \\equiv 1 \\pmod{n} \\quad (\\gcd(a, n) = 1)',
+        plain_text: 'a^phi(n) = 1 (mod n) when gcd(a, n) = 1',
+        note: 'Generalizes Fermat’s Little Theorem to any composite modulus n.',
+      },
+      {
+        formula_no: 12,
+        title: 'Wilson’s Prime Remainder Theorem',
+        formula_latex: '(p - 1)! \\equiv -1 \\equiv p - 1 \\pmod{p} \\quad (p \\text{ prime})',
+        plain_text: '(p - 1)! = -1 = p - 1 (mod p)',
+        note: 'Also implies (p - 2)! is congruent to 1 modulo prime p.',
+      },
+    ],
+  },
+
+  // =========================================================================
+  // 2. BASIC MATHS — Chapter 2: Algebraic Identities (12 formulas)
+  // =========================================================================
+  {
+    id: 'chap_bm_algebraic-identities',
+    category_id: 'cat_basic-maths',
+    chapter_no: 2,
+    title: 'Algebraic Identities',
+    slug: 'algebraic-identities',
+    subtopics: 'Binomial Squares · Cubic Identities · Reciprocal Powers · Cyclic Factorizations',
+    sort_order: 2,
+    formulas: [
+      {
+        formula_no: 1,
+        title: 'Square of Sum and Difference',
+        formula_latex: '(a \\pm b)^{2} = a^{2} \\pm 2ab + b^{2}',
+        plain_text: '(a +/- b)^2 = a^2 +/- 2ab + b^2',
+        note: 'Core binomial expansion for squaring two-term expressions.',
+      },
+      {
+        formula_no: 2,
+        title: 'Difference of Squares Factorization',
+        formula_latex: 'a^{2} - b^{2} = (a - b)(a + b)',
+        plain_text: 'a^2 - b^2 = (a - b)(a + b)',
+        note: 'Used to simplify differences of squares and rationalize conjugate denominators.',
+      },
+      {
+        formula_no: 3,
+        title: 'Sum of Squares from Sum and Product',
+        formula_latex: 'a^{2} + b^{2} = (a + b)^{2} - 2ab = (a - b)^{2} + 2ab',
+        plain_text: 'a^2 + b^2 = (a + b)^2 - 2ab = (a - b)^2 + 2ab',
+        note: 'Directly evaluates a^2 + b^2 given (a + b) or (a - b) and ab.',
+      },
+      {
+        formula_no: 4,
+        title: 'Combined Square Sum & Difference Identity',
+        formula_latex: '(a + b)^{2} + (a - b)^{2} = 2(a^{2} + b^{2}), \\qquad (a + b)^{2} - (a - b)^{2} = 4ab',
+        plain_text: '(a+b)^2 + (a-b)^2 = 2(a^2+b^2); (a+b)^2 - (a-b)^2 = 4ab',
+        note: 'Connects (a + b)^2 and (a - b)^2 directly via 4ab.',
+      },
+      {
+        formula_no: 5,
+        title: 'Cube of a Binomial',
+        formula_latex: '(a \\pm b)^{3} = a^{3} \\pm b^{3} \\pm 3ab(a \\pm b)',
+        plain_text: '(a +/- b)^3 = a^3 +/- b^3 +/- 3ab(a +/- b)',
+        note: 'Expanded form: a^3 +/- 3a^2b + 3ab^2 +/- b^3.',
+      },
+      {
+        formula_no: 6,
+        title: 'Sum and Difference of Cubes',
+        formula_latex: 'a^{3} \\pm b^{3} = (a \\pm b)(a^{2} \\mp ab + b^{2})',
+        plain_text: 'a^3 +/- b^3 = (a +/- b)(a^2 -/+ ab + b^2)',
+        note: 'Note the opposite sign on the middle ab term inside the quadratic factor.',
+      },
+      {
+        formula_no: 7,
+        title: 'Square of a Trinomial',
+        formula_latex: '(a + b + c)^{2} = a^{2} + b^{2} + c^{2} + 2(ab + bc + ca)',
+        plain_text: '(a + b + c)^2 = a^2 + b^2 + c^2 + 2(ab + bc + ca)',
+        note: 'Relates the sum of three terms, sum of squares, and pairwise products.',
+      },
+      {
+        formula_no: 8,
+        title: 'Cyclic Sum of Cubes Identity',
+        formula_latex: 'a^{3} + b^{3} + c^{3} - 3abc = (a + b + c)(a^{2} + b^{2} + c^{2} - ab - bc - ca)',
+        plain_text: 'a^3 + b^3 + c^3 - 3abc = (a+b+c)(a^2+b^2+c^2-ab-bc-ca)',
+        note: 'Also equals (1/2)(a + b + c)[(a - b)^2 + (b - c)^2 + (c - a)^2].',
+      },
+      {
+        formula_no: 9,
+        title: 'Conditional Cubic Identity (When a + b + c = 0)',
+        formula_latex: 'a + b + c = 0 \\implies a^{3} + b^{3} + c^{3} = 3abc',
+        plain_text: 'If a + b + c = 0, then a^3 + b^3 + c^3 = 3abc',
+        note: 'High-frequency shortcut when three terms sum to zero.',
+      },
+      {
+        formula_no: 10,
+        title: 'Reciprocal Square Identity',
+        formula_latex: 'x + \\frac{1}{x} = k \\implies x^{2} + \\frac{1}{x^{2}} = k^{2} - 2',
+        plain_text: 'If x + 1/x = k, then x^2 + 1/x^2 = k^2 - 2',
+        note: 'If x - 1/x = k, then x^2 + 1/x^2 = k^2 + 2.',
+      },
+      {
+        formula_no: 11,
+        title: 'Reciprocal Cube Identity',
+        formula_latex: 'x + \\frac{1}{x} = k \\implies x^{3} + \\frac{1}{x^{3}} = k^{3} - 3k',
+        plain_text: 'If x + 1/x = k, then x^3 + 1/x^3 = k^3 - 3k',
+        note: 'If x - 1/x = k, then x^3 - 1/x^3 = k^3 + 3k.',
+      },
+      {
+        formula_no: 12,
+        title: 'Sophie Germain Biquadratic Factorization',
+        formula_latex: 'a^{4} + a^{2}b^{2} + b^{4} = (a^{2} + ab + b^{2})(a^{2} - ab + b^{2})',
+        plain_text: 'a^4 + a^2*b^2 + b^4 = (a^2 + ab + b^2)(a^2 - ab + b^2)',
+        note: 'Completes the square by adding and subtracting a^2b^2.',
+      },
+    ],
+  },
+
+  // =========================================================================
+  // 3. BASIC MATHS — Chapter 3: Exponents & Surds (12 formulas)
+  // =========================================================================
+  {
+    id: 'chap_bm_exponents-and-surds',
+    category_id: 'cat_basic-maths',
+    chapter_no: 3,
+    title: 'Exponents & Surds',
+    slug: 'exponents-and-surds',
+    subtopics: 'Laws of Indices · Fractional Exponents · Radical Operations · Conjugate Rationalization',
+    sort_order: 3,
+    formulas: [
+      {
+        formula_no: 1,
+        title: 'Product and Quotient Laws of Exponents',
+        formula_latex: 'a^{m} \\cdot a^{n} = a^{m + n}, \\qquad \\frac{a^{m}}{a^{n}} = a^{m - n} \\quad (a \\neq 0)',
+        plain_text: 'a^m * a^n = a^(m + n); a^m / a^n = a^(m - n)',
+        note: 'Add exponents when multiplying same bases; subtract exponents when dividing.',
+      },
+      {
+        formula_no: 2,
+        title: 'Power of a Power and Power of a Product',
+        formula_latex: '(a^{m})^{n} = a^{mn}, \\qquad (ab)^{n} = a^{n}b^{n}, \\qquad \\left(\\frac{a}{b}\\right)^{n} = \\frac{a^{n}}{b^{n}}',
+        plain_text: '(a^m)^n = a^(m*n); (ab)^n = a^n * b^n; (a/b)^n = a^n / b^n',
+        note: 'Note that a^(m^n) is evaluated top-down and does NOT equal (a^m)^n in general.',
+      },
+      {
+        formula_no: 3,
+        title: 'Zero and Negative Exponents',
+        formula_latex: 'a^{0} = 1 \\; (a \\neq 0), \\qquad a^{-n} = \\frac{1}{a^{n}}, \\qquad \\left(\\frac{a}{b}\\right)^{-n} = \\left(\\frac{b}{a}\\right)^{n}',
+        plain_text: 'a^0 = 1; a^(-n) = 1 / a^n; (a/b)^(-n) = (b/a)^n',
+        note: 'A negative exponent takes the reciprocal of the base.',
+      },
+      {
+        formula_no: 4,
+        title: 'Fractional Exponents (nth Root Definition)',
+        formula_latex: 'a^{m/n} = \\sqrt[n]{a^{m}} = \\left(\\sqrt[n]{a}\\right)^{m} \\quad (a > 0)',
+        plain_text: 'a^(m/n) = nth_root(a^m) = (nth_root(a))^m',
+        note: 'Denominator n is the root index and numerator m is the power.',
+      },
+      {
+        formula_no: 5,
+        title: 'Multiplication and Division of Same-Order Surds',
+        formula_latex: '\\sqrt[n]{a} \\cdot \\sqrt[n]{b} = \\sqrt[n]{ab}, \\qquad \\frac{\\sqrt[n]{a}}{\\sqrt[n]{b}} = \\sqrt[n]{\\frac{a}{b}}',
+        plain_text: 'nth_root(a) * nth_root(b) = nth_root(a*b); nth_root(a)/nth_root(b) = nth_root(a/b)',
+        note: 'Radicals of the same order n can be combined under a single root.',
+      },
+      {
+        formula_no: 6,
+        title: 'Nested Radical Index Law',
+        formula_latex: '\\sqrt[m]{\\sqrt[n]{a}} = \\sqrt[mn]{a} = a^{1/(mn)}',
+        plain_text: 'mth_root(nth_root(a)) = (m*n)th_root(a) = a^(1/(m*n))',
+        note: 'Successive radical indices multiply together.',
+      },
+      {
+        formula_no: 7,
+        title: 'Conjugate Rationalization of Quadratic Surds',
+        formula_latex: '\\frac{1}{\\sqrt{a} \\pm \\sqrt{b}} = \\frac{\\sqrt{a} \\mp \\sqrt{b}}{a - b} \\quad (a \\neq b)',
+        plain_text: '1 / (sqrt(a) +/- sqrt(b)) = (sqrt(a) -/+ sqrt(b)) / (a - b)',
+        note: 'Multiply numerator and denominator by the conjugate surd to eliminate radicals from the denominator.',
+      },
+      {
+        formula_no: 8,
+        title: 'Square Root of a Binomial Quadratic Surd',
+        formula_latex: '\\sqrt{(a + b) \\pm 2\\sqrt{ab}} = \\sqrt{a} \\pm \\sqrt{b} \\quad (a \\ge b > 0)',
+        plain_text: 'sqrt((a + b) +/- 2*sqrt(a*b)) = sqrt(a) +/- sqrt(b) for a >= b > 0',
+        note: 'Find two numbers a and b whose sum is the outer term and product is inside 2*sqrt(ab).',
+      },
+      {
+        formula_no: 9,
+        title: 'Infinite Nested Square Root Product',
+        formula_latex: '\\sqrt{a\\sqrt{a\\sqrt{a\\cdots}}} = a, \\qquad \\underbrace{\\sqrt{a\\sqrt{a\\cdots\\sqrt{a}}}}_{n \\text{ roots}} = a^{1 - 2^{-n}}',
+        plain_text: 'sqrt(a*sqrt(a*sqrt(a...))) = a; n nested roots = a^(1 - 1/2^n)',
+        note: 'For a > 0, the infinite product radical converges to a itself.',
+      },
+      {
+        formula_no: 10,
+        title: 'Infinite Nested Square Root Sum & Difference',
+        formula_latex: '\\sqrt{a \\pm \\sqrt{a \\pm \\sqrt{a \\pm \\cdots}}} = \\frac{\\sqrt{4a + 1} \\pm 1}{2}',
+        plain_text: 'sqrt(a +/- sqrt(a +/- ...)) = (sqrt(4a + 1) +/- 1) / 2',
+        note: 'If a = k(k + 1), the positive nested sum equals k + 1 and the negative difference equals k.',
+      },
+      {
+        formula_no: 11,
+        title: 'Exponential Equality Comparison Rules',
+        formula_latex: 'a^{x} = a^{y} \\implies x = y \\; (a > 0,\\, a \\neq 1); \\qquad x^{n} = y^{n} \\implies x = y \\; (n \\text{ odd})',
+        plain_text: 'a^x = a^y => x = y (a > 0, a != 1)',
+        note: 'For even n, x^n = y^n implies |x| = |y|.',
+      },
+      {
+        formula_no: 12,
+        title: 'Cubic Rationalizing Factor',
+        formula_latex: '\\frac{1}{\\sqrt[3]{a} \\pm \\sqrt[3]{b}} = \\frac{\\sqrt[3]{a^{2}} \\mp \\sqrt[3]{ab} + \\sqrt[3]{b^{2}}}{a \\pm b}',
+        plain_text: '1 / (cbrt(a) +/- cbrt(b)) = (cbrt(a^2) -/+ cbrt(ab) + cbrt(b^2)) / (a +/- b)',
+        note: 'Uses the sum/difference of cubes identity u^3 +/- v^3 = (u +/- v)(u^2 -/+ uv + v^2).',
+      },
+    ],
+  },
+
+  // =========================================================================
+  // 4. BASIC MATHS — Chapter 14: Percentages (16 formulas)
   // =========================================================================
   {
     id: 'chap_bm_percentages',
@@ -247,7 +544,7 @@ const RAW_SEED_CHAPTERS: SeedChapterSpec[] = [
     title: 'Percentages',
     slug: 'percentages',
     subtopics: 'Percent Change · Successive Change · Reverse Percentage · Profit & Discount',
-    sort_order: 1,
+    sort_order: 6,
     formulas: [
       {
         formula_no: 1,
@@ -1735,6 +2032,12 @@ export function buildInitialFormulaVaultSeed(): {
       updated_at: NOW_ISO,
     });
   }
+
+  chapters.sort(
+    (a, b) =>
+      Number(a.chapter_no) - Number(b.chapter_no) ||
+      Number(a.sort_order) - Number(b.sort_order)
+  );
 
   const categories: D1FormulaCategoryRow[] = SEED_FORMULA_CATEGORIES.map((cat) => {
     const catChapters = chapters.filter((c) => c.category_id === cat.id);

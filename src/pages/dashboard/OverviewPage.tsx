@@ -1152,8 +1152,8 @@ export function OverviewPage() {
         document.body &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1100] nt-quiz-shell select-none"
-            style={{ position: 'fixed', inset: 0, zIndex: 1100 }}
+            className="fixed inset-0 z-[9999] nt-quiz-shell select-none"
+            style={{ position: 'fixed', inset: 0, height: '100dvh', maxHeight: '100dvh', zIndex: 9999 }}
             data-fullscreen-modal="true"
             role="dialog"
             aria-modal="true"

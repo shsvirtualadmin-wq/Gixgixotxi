@@ -15,6 +15,7 @@ import {
   BellRing,
   Sparkles,
   RefreshCw,
+  Gift,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {

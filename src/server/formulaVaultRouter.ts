@@ -217,26 +217,177 @@ export function saveFormulaVaultStore(store: FormulaVaultStoreData): void {
   }
 }
 
+export function normalizeChapterMatchKey(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:chapter|chap|ch|sheet)?\s*\d+\s*[:.\-–—]?\s*/i, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function extractLeadingChapterNoAndTitle(
+  rawTitle: string,
+  fallbackNo?: number
+): { chapterNo: number | null; cleanTitle: string } {
+  const trimmed = String(rawTitle || '').trim();
+  const m = /^(?:chapter|chap|ch|sheet)?\s*(\d{1,3})\s*[:.\-–—\s]+\s*(.+)$/i.exec(trimmed);
+  if (m && m[2].trim()) {
+    const parsedNo = Number(m[1]);
+    return {
+      chapterNo: Number.isFinite(parsedNo) && parsedNo > 0 ? parsedNo : fallbackNo || null,
+      cleanTitle: m[2].trim(),
+    };
+  }
+  const fb = Number(fallbackNo);
+  return {
+    chapterNo: Number.isFinite(fb) && fb > 0 ? fb : null,
+    cleanTitle: trimmed,
+  };
+}
+
 export function recalculateFormulaVaultCounts(store: FormulaVaultStoreData): void {
-  const chapFormulaCounts = new Map<string, number>();
-  for (const f of store.formulas) {
-    if (f.status !== 'draft') {
-      chapFormulaCounts.set(f.chapter_id, (chapFormulaCounts.get(f.chapter_id) || 0) + 1);
+  // 1. Ensure seed chapters (including Basic Maths 1 Number System, 2 Algebraic Identities, 3 Exponents & Surds) exist
+  const seed = buildInitialFormulaVaultSeed();
+  let modifiedSeedOrHeal = false;
+
+  for (const seedCh of seed.chapters) {
+    const seedKey = normalizeChapterMatchKey(seedCh.title);
+    const existingCh = store.chapters.find(
+      (ch) =>
+        ch.id === seedCh.id ||
+        (ch.category_id === seedCh.category_id &&
+          (normalizeChapterMatchKey(ch.title) === seedKey ||
+            (Number(ch.chapter_no) === Number(seedCh.chapter_no) &&
+              normalizeChapterMatchKey(ch.title) === seedKey)))
+    );
+    if (!existingCh) {
+      store.chapters.push({ ...seedCh });
+      const seedFormulas = seed.formulas.filter((f) => f.chapter_id === seedCh.id);
+      for (const sf of seedFormulas) {
+        if (!store.formulas.some((ef) => ef.id === sf.id)) {
+          store.formulas.push({ ...sf });
+        }
+      }
+      modifiedSeedOrHeal = true;
+    } else {
+      // If existing chapter matches one of the seed chapters (e.g. 1 Number System, 2 Algebraic Identities, 3 Exponents & Surds)
+      // ensure any seed formulas that have seedCh.id are re-pointed to existingCh.id, or seeded if 0 formulas exist
+      const hasAnyFormulas = store.formulas.some(
+        (f) =>
+          f.category_id === existingCh.category_id &&
+          (f.chapter_id === existingCh.id || f.chapter_id === seedCh.id)
+      );
+      if (!hasAnyFormulas) {
+        const seedFormulas = seed.formulas.filter((f) => f.chapter_id === seedCh.id);
+        for (const sf of seedFormulas) {
+          store.formulas.push({
+            ...sf,
+            id: `form_${existingCh.id}_${sf.formula_no}`,
+            chapter_id: existingCh.id,
+            category_id: existingCh.category_id,
+          });
+        }
+        modifiedSeedOrHeal = true;
+      } else if (existingCh.id !== seedCh.id) {
+        for (const f of store.formulas) {
+          if (f.chapter_id === seedCh.id && f.category_id === existingCh.category_id) {
+            f.chapter_id = existingCh.id;
+            modifiedSeedOrHeal = true;
+          }
+        }
+      }
     }
   }
+
+  // 2. Deduplicate chapters within the same category that share the same normalized title
+  //    (e.g. "1 Number System" vs "Number System") and merge formulas into the canonical chapter
+  const canonicalByCatAndKey = new Map<string, D1FormulaChapterRow>();
+  const duplicateChapterIdToCanonicalId = new Map<string, string>();
+  const keptChapters: D1FormulaChapterRow[] = [];
+
   for (const ch of store.chapters) {
-    const liveCnt = chapFormulaCounts.get(ch.id) || 0;
-    const totalCnt = store.formulas.filter((f) => f.chapter_id === ch.id).length;
-    ch.formula_count = liveCnt > 0 ? liveCnt : totalCnt;
+    const extracted = extractLeadingChapterNoAndTitle(ch.title, ch.chapter_no);
+    if (extracted.cleanTitle && extracted.cleanTitle !== ch.title) {
+      if (!ch.chapter_no || ch.chapter_no <= 0) {
+        ch.chapter_no = extracted.chapterNo || 1;
+      }
+      ch.title = extracted.cleanTitle;
+    }
+    const key = `${ch.category_id}::${normalizeChapterMatchKey(ch.title)}`;
+    const existingCanonical = canonicalByCatAndKey.get(key);
+    if (!existingCanonical) {
+      canonicalByCatAndKey.set(key, ch);
+      keptChapters.push(ch);
+    } else {
+      duplicateChapterIdToCanonicalId.set(ch.id, existingCanonical.id);
+      if (!existingCanonical.subtopics && ch.subtopics) {
+        existingCanonical.subtopics = ch.subtopics;
+      }
+      modifiedSeedOrHeal = true;
+    }
+  }
+  if (duplicateChapterIdToCanonicalId.size > 0) {
+    store.chapters = keptChapters;
+    for (const f of store.formulas) {
+      const remapped = duplicateChapterIdToCanonicalId.get(f.chapter_id);
+      if (remapped) {
+        f.chapter_id = remapped;
+      }
+    }
+  }
+
+  // 3. Heal any formula whose chapter_id does not match a direct chapter.id in its category
+  const chapterIdsSet = new Set(store.chapters.map((c) => c.id));
+  for (const f of store.formulas) {
+    if (!chapterIdsSet.has(f.chapter_id)) {
+      const rawRef = String(f.chapter_id || '').trim();
+      const refKey = normalizeChapterMatchKey(rawRef);
+      const matched = store.chapters.find(
+        (ch) =>
+          ch.category_id === f.category_id &&
+          (ch.id.toLowerCase() === rawRef.toLowerCase() ||
+            ch.slug.toLowerCase() === rawRef.toLowerCase() ||
+            normalizeChapterMatchKey(ch.title) === refKey ||
+            String(ch.chapter_no) === rawRef)
+      );
+      if (matched) {
+        f.chapter_id = matched.id;
+        modifiedSeedOrHeal = true;
+      }
+    }
+  }
+
+  // 4. Sort chapters numerically by Number(chapter_no) first, then sort_order
+  store.chapters.sort(
+    (a, b) =>
+      Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+      Number(a.sort_order || 0) - Number(b.sort_order || 0)
+  );
+
+  // 5. Compute live formula counts matching chapter_id and category_id
+  for (const ch of store.chapters) {
+    const matchingAll = store.formulas.filter(
+      (f) => f.chapter_id === ch.id && f.category_id === ch.category_id
+    );
+    const liveCnt = matchingAll.filter((f) => f.status !== 'draft').length;
+    ch.formula_count = liveCnt > 0 ? liveCnt : matchingAll.length;
     ch.search_text = `${ch.chapter_no} ${ch.title} ${ch.subtopics}`.toLowerCase().trim();
   }
 
   for (const cat of store.categories) {
     const catChaps = store.chapters.filter((ch) => ch.category_id === cat.id);
     const catFormulas = store.formulas.filter((f) => f.category_id === cat.id);
+    const liveCatFormulas = catFormulas.filter((f) => f.status !== 'draft');
     cat.chapter_count = catChaps.length;
-    cat.formula_count = catFormulas.length;
+    cat.formula_count = liveCatFormulas.length > 0 ? liveCatFormulas.length : catFormulas.length;
     cat.search_text = `${cat.name} ${cat.slug} ${cat.description}`.toLowerCase().trim();
+  }
+
+  if (modifiedSeedOrHeal) {
+    saveFormulaVaultStore(store);
   }
 }
 
@@ -641,10 +792,22 @@ export function registerFormulaVaultRoutes(
 
     const chapters = store.chapters
       .filter((ch) => isAdmin || ch.status === 'live')
+      .map((ch) => {
+        const liveCount = store.formulas.filter(
+          (f) =>
+            f.chapter_id === ch.id &&
+            f.category_id === ch.category_id &&
+            (isAdmin || f.status === 'live')
+        ).length;
+        return {
+          ...ch,
+          formula_count: liveCount,
+        };
+      })
       .sort(
         (a, b) =>
-          Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
-          Number(a.chapter_no || 0) - Number(b.chapter_no || 0)
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
       );
 
     // Deterministic Formula of the Day based on UTC date
@@ -1580,9 +1743,18 @@ export function registerFormulaVaultRoutes(
       });
     }
 
+    const catChaptersInitial = store.chapters
+      .filter((c) => c.category_id === category.id)
+      .sort((a, b) => Number(a.chapter_no || 0) - Number(b.chapter_no || 0));
     const defaultChapterObj = defaultChapterId
-      ? store.chapters.find((c) => c.id === defaultChapterId && c.category_id === category.id)
-      : null;
+      ? store.chapters.find(
+          (c) =>
+            c.category_id === category.id &&
+            (c.id === defaultChapterId ||
+              c.slug.toLowerCase() === defaultChapterId.toLowerCase() ||
+              normalizeChapterMatchKey(c.title) === normalizeChapterMatchKey(defaultChapterId))
+        )
+      : catChaptersInitial[0] || null;
     const defaultChapterTitle = defaultChapterObj?.title || defaultChapterTitleInput || '';
 
     let csvR2Key = '';
@@ -1608,15 +1780,20 @@ export function registerFormulaVaultRoutes(
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i] || {};
       const rowNum = Number(r.rowNumber || r.rowIndex || chunkOffset + i + 1);
-      const chapterTitle = String(r.chapter || defaultChapterTitle || '').trim();
-      const chapterNoInput = Number(r.chapter_no);
-      const subtopicsInput = String(r.subtopics || '').trim();
-      const formulaNoInput = Number(r.formula_no);
-      const formulaLatex = String(r.formula_latex || '').trim();
-      const note = String(r.note || '').trim();
-      const titleInput = String(r.title || '').trim();
+      const rawChapterInput = String(
+        r.chapter_id ?? r.chapterId ?? r.chapter ?? r.chapter_title ?? defaultChapterTitle ?? ''
+      ).trim();
+      const chapterNoInput = Number(r.chapter_no ?? r.chapterNo ?? 0);
+      const extractedChap = extractLeadingChapterNoAndTitle(rawChapterInput, chapterNoInput);
+      const chapterTitle = extractedChap.cleanTitle || defaultChapterTitle;
+      const effectiveChapterNo = extractedChap.chapterNo || (chapterNoInput > 0 ? chapterNoInput : 0);
+      const subtopicsInput = String(r.subtopics ?? '').trim();
+      const formulaNoInput = Number(r.formula_no ?? r.formulaNo ?? 0);
+      const formulaLatex = String(r.formula_latex ?? r.formulaLatex ?? r.latex ?? r.formula ?? '').trim();
+      const note = String(r.note ?? r.notes ?? r.explanation ?? '').trim();
+      const titleInput = String(r.title ?? r.name ?? '').trim();
 
-      if (!chapterTitle) {
+      if (!chapterTitle && !defaultChapterObj) {
         failedCount++;
         const msg = 'Missing chapter name and no default chapter set.';
         errors.push({ rowNumber: rowNum, reason: msg, row: rowNum, message: msg });
@@ -1639,19 +1816,31 @@ export function registerFormulaVaultRoutes(
       }
 
       // Locate or auto-create chapter inside the locked category
-      let chapter = store.chapters.find(
-        (ch) =>
-          ch.category_id === category.id &&
-          (ch.title.toLowerCase() === chapterTitle.toLowerCase() ||
-            ch.slug === slugifyText(chapterTitle))
-      );
+      const targetMatchKey = normalizeChapterMatchKey(chapterTitle);
+      let chapter =
+        (rawChapterInput
+          ? store.chapters.find(
+              (ch) =>
+                ch.category_id === category.id &&
+                (ch.id === rawChapterInput ||
+                  ch.title.toLowerCase() === chapterTitle.toLowerCase() ||
+                  normalizeChapterMatchKey(ch.title) === targetMatchKey ||
+                  ch.slug === slugifyText(chapterTitle) ||
+                  (effectiveChapterNo > 0 &&
+                    Number(ch.chapter_no) === effectiveChapterNo &&
+                    (!targetMatchKey || normalizeChapterMatchKey(ch.title) === targetMatchKey)))
+            )
+          : null) ||
+        (!rawChapterInput && defaultChapterObj ? defaultChapterObj : undefined);
 
       if (!chapter) {
         const catChapters = store.chapters.filter((ch) => ch.category_id === category.id);
         const maxSort = catChapters.reduce((m, ch) => Math.max(m, Number(ch.sort_order || 0)), 0);
         const maxChapNo = catChapters.reduce((m, ch) => Math.max(m, Number(ch.chapter_no || 0)), 0);
         const resolvedChapNo =
-          Number.isFinite(chapterNoInput) && chapterNoInput > 0 ? chapterNoInput : maxChapNo + 1;
+          Number.isFinite(effectiveChapterNo) && effectiveChapterNo > 0
+            ? effectiveChapterNo
+            : maxChapNo + 1;
         const chSlug = slugifyText(chapterTitle);
         chapter = {
           id: `chap_${category.slug}_${chSlug}_${crypto.randomUUID().slice(0, 5)}`,
@@ -1659,7 +1848,7 @@ export function registerFormulaVaultRoutes(
           chapter_no: resolvedChapNo,
           title: chapterTitle,
           slug: chSlug,
-          subtopics: subtopicsInput,
+          subtopics: subtopicsInput || '',
           sort_order: maxSort + 1,
           formula_count: 0,
           status: 'live',

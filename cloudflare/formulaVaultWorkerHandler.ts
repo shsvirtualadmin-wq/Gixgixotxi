@@ -20,13 +20,99 @@ function checkEdgeRateLimit(ip: string, limit = 120, windowMs = 60_000): boolean
   return rec.count <= limit;
 }
 
+export function normalizeWorkerChapterMatchKey(raw: string): string {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:chapter|chap|ch|sheet)?\s*\d+\s*[:.\-–—]?\s*/i, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function extractWorkerLeadingChapterNoAndTitle(
+  rawTitle: string,
+  fallbackNo?: number
+): { chapterNo: number | null; cleanTitle: string } {
+  const trimmed = String(rawTitle || '').trim();
+  const m = /^(?:chapter|chap|ch|sheet)?\s*(\d{1,3})\s*[:.\-–—\s]+\s*(.+)$/i.exec(trimmed);
+  if (m && m[2].trim()) {
+    const parsedNo = Number(m[1]);
+    return {
+      chapterNo: Number.isFinite(parsedNo) && parsedNo > 0 ? parsedNo : fallbackNo || null,
+      cleanTitle: m[2].trim(),
+    };
+  }
+  const fb = Number(fallbackNo);
+  return {
+    chapterNo: Number.isFinite(fb) && fb > 0 ? fb : null,
+    cleanTitle: trimmed,
+  };
+}
+
+export async function recalculateFormulaVaultD1Counts(
+  db: any,
+  targetCategoryId?: string
+): Promise<void> {
+  try {
+    if (targetCategoryId) {
+      await db.batch([
+        db
+          .prepare(
+            `UPDATE chapters
+             SET formula_count = (
+               SELECT COUNT(*) FROM formulas f
+               WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id
+             )
+             WHERE category_id = ?`
+          )
+          .bind(targetCategoryId),
+        db
+          .prepare(
+            `UPDATE categories
+             SET chapter_count = (
+               SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id
+             ),
+             formula_count = (
+               SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id
+             )
+             WHERE id = ?`
+          )
+          .bind(targetCategoryId),
+      ]);
+    } else {
+      await db.batch([
+        db.prepare(
+          `UPDATE chapters
+           SET formula_count = (
+             SELECT COUNT(*) FROM formulas f
+             WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id
+           )`
+        ),
+        db.prepare(
+          `UPDATE categories
+           SET chapter_count = (
+             SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id
+           ),
+           formula_count = (
+             SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id
+           )`
+        ),
+      ]);
+    }
+  } catch (err) {
+    console.warn('[FormulaVaultWorker] recalculateFormulaVaultD1Counts warning:', err);
+  }
+}
+
 let formulaSchemaEnsured = false;
 
 async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
   if (formulaSchemaEnsured) return;
   try {
-    await db
-      .prepare(
+    await db.batch([
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS categories (
           id TEXT PRIMARY KEY,
           name TEXT NOT NULL,
@@ -41,11 +127,8 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )`
-      )
-      .run();
-
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS chapters (
           id TEXT PRIMARY KEY,
           category_id TEXT NOT NULL,
@@ -62,11 +145,8 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )`
-      )
-      .run();
-
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS formulas (
           id TEXT PRIMARY KEY,
           category_id TEXT NOT NULL,
@@ -84,11 +164,8 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )`
-      )
-      .run();
-
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS bookmarks (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id TEXT NOT NULL,
@@ -98,11 +175,8 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           UNIQUE(user_id, formula_id)
         )`
-      )
-      .run();
-
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS formula_reports (
           id TEXT PRIMARY KEY,
           formula_id TEXT NOT NULL,
@@ -117,11 +191,8 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )`
-      )
-      .run();
-
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS import_logs (
           id TEXT PRIMARY KEY,
           category_id TEXT NOT NULL,
@@ -139,42 +210,134 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
           status TEXT NOT NULL DEFAULT 'completed',
           created_at TEXT DEFAULT (datetime('now'))
         )`
-      )
-      .run();
+      ),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_fv_chapters_cat ON chapters(category_id, chapter_no)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_fv_formulas_chap ON formulas(chapter_id, category_id)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_fv_formulas_cat ON formulas(category_id)`),
+    ]);
 
-    const existingCat = await db
-      .prepare('SELECT COUNT(*) AS cnt FROM categories')
-      .first<{ cnt: number }>()
-      .catch(() => ({ cnt: 0 }));
+    // Ensure seed categories exist
+    const catStmts: any[] = [];
+    for (const c of FORMULA_VAULT_CATEGORIES_SEED) {
+      catStmts.push(
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO categories (
+              id, name, slug, description, sort_order, chapter_count, formula_count, status, guest_access, search_text, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            String(c.id || ''),
+            String(c.name || ''),
+            String(c.slug || ''),
+            String(c.description || ''),
+            Number(c.sort_order || 0),
+            Number(c.chapter_count || 0),
+            Number(c.formula_count || 0),
+            String(c.status || 'live'),
+            Number(c.guest_access ?? 1),
+            String(c.search_text || ''),
+            String(c.created_at || ''),
+            String(c.updated_at || '')
+          )
+      );
+    }
+    if (catStmts.length > 0) {
+      await db.batch(catStmts);
+    }
 
-    if (!existingCat || Number(existingCat.cnt || 0) === 0) {
-      const stmts: any[] = [];
-      for (const c of FORMULA_VAULT_CATEGORIES_SEED) {
-        stmts.push(
+    // Load current chapters & formula counts per chapter to heal any mismatched chapter_ids
+    // and ensure seed chapters (including 1 Number System, 2 Algebraic Identities, 3 Exponents & Surds) exist with formulas
+    const existingChaptersRes = await db
+      .prepare('SELECT * FROM chapters ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC')
+      .all()
+      .catch(() => ({ results: [] }));
+    const existingChapters: any[] = existingChaptersRes.results || [];
+
+    const canonicalByCatAndKey = new Map<string, any>();
+    const healStmts: any[] = [];
+
+    for (const ch of existingChapters) {
+      const extracted = extractWorkerLeadingChapterNoAndTitle(String(ch.title || ''), Number(ch.chapter_no || 0));
+      if (extracted.cleanTitle && extracted.cleanTitle !== ch.title) {
+        const nextNo = Number(ch.chapter_no) > 0 ? Number(ch.chapter_no) : extracted.chapterNo || 1;
+        ch.title = extracted.cleanTitle;
+        ch.chapter_no = nextNo;
+        healStmts.push(
           db
-            .prepare(
-              `INSERT OR IGNORE INTO categories (
-                id, name, slug, description, sort_order, chapter_count, formula_count, status, guest_access, search_text, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              c.id,
-              c.name,
-              c.slug,
-              c.description,
-              c.sort_order,
-              c.chapter_count,
-              c.formula_count,
-              c.status,
-              c.guest_access,
-              c.search_text,
-              c.created_at,
-              c.updated_at
-            )
+            .prepare('UPDATE chapters SET title = ?, chapter_no = ? WHERE id = ?')
+            .bind(String(ch.title), Number(ch.chapter_no), String(ch.id))
         );
       }
-      for (const ch of FORMULA_VAULT_CHAPTERS_SEED) {
-        stmts.push(
+      const key = `${ch.category_id}::${normalizeWorkerChapterMatchKey(ch.title)}`;
+      const canonical = canonicalByCatAndKey.get(key);
+      if (!canonical) {
+        canonicalByCatAndKey.set(key, ch);
+      } else if (canonical.id !== ch.id) {
+        // Re-point formulas from duplicate chapter to canonical chapter and remove duplicate chapter
+        healStmts.push(
+          db
+            .prepare('UPDATE formulas SET chapter_id = ? WHERE chapter_id = ? AND category_id = ?')
+            .bind(String(canonical.id), String(ch.id), String(ch.category_id)),
+          db.prepare('DELETE FROM chapters WHERE id = ?').bind(String(ch.id))
+        );
+      }
+    }
+
+    // Heal formulas whose chapter_id matches a chapter slug, title, or chapter_no instead of chapters.id
+    for (const [, canonical] of canonicalByCatAndKey.entries()) {
+      const normTitle = String(canonical.title || '').toLowerCase();
+      const numberedTitle = `${canonical.chapter_no} ${canonical.title}`.toLowerCase();
+      healStmts.push(
+        db
+          .prepare(
+            `UPDATE formulas
+             SET chapter_id = ?
+             WHERE category_id = ?
+               AND chapter_id != ?
+               AND (
+                 LOWER(chapter_id) = ?
+                 OR LOWER(chapter_id) = ?
+                 OR LOWER(chapter_id) = ?
+                 OR chapter_id = ?
+               )`
+          )
+          .bind(
+            String(canonical.id),
+            String(canonical.category_id),
+            String(canonical.id),
+            String(canonical.slug || '').toLowerCase(),
+            normTitle,
+            numberedTitle,
+            String(canonical.chapter_no)
+          )
+      );
+    }
+
+    if (healStmts.length > 0) {
+      for (let i = 0; i < healStmts.length; i += 50) {
+        await db.batch(healStmts.slice(i, i + 50)).catch(() => {});
+      }
+    }
+
+    // Check which seed chapters are missing or have 0 formulas in D1
+    const countByChapRes = await db
+      .prepare('SELECT chapter_id, COUNT(*) AS cnt FROM formulas GROUP BY chapter_id')
+      .all()
+      .catch(() => ({ results: [] }));
+    const formulaCountByChapId = new Map<string, number>();
+    for (const r of countByChapRes.results || []) {
+      formulaCountByChapId.set(String((r as any).chapter_id), Number((r as any).cnt || 0));
+    }
+
+    const seedStmts: any[] = [];
+    for (const seedCh of FORMULA_VAULT_CHAPTERS_SEED) {
+      const key = `${seedCh.category_id}::${normalizeWorkerChapterMatchKey(seedCh.title)}`;
+      const existingCanonical = canonicalByCatAndKey.get(key);
+      const targetChapterId = existingCanonical ? String(existingCanonical.id) : String(seedCh.id);
+
+      if (!existingCanonical) {
+        seedStmts.push(
           db
             .prepare(
               `INSERT OR IGNORE INTO chapters (
@@ -182,54 +345,64 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
-              ch.id,
-              ch.category_id,
-              ch.chapter_no,
-              ch.title,
-              ch.slug,
-              ch.subtopics,
-              ch.sort_order,
-              ch.formula_count,
-              ch.status,
-              ch.pdf_r2_key,
-              ch.pdf_updated_at,
-              ch.search_text,
-              ch.created_at,
-              ch.updated_at
+              String(seedCh.id),
+              String(seedCh.category_id),
+              Number(seedCh.chapter_no || 1),
+              String(seedCh.title || ''),
+              String(seedCh.slug || ''),
+              String(seedCh.subtopics || ''),
+              Number(seedCh.sort_order || 1),
+              Number(seedCh.formula_count || 0),
+              String(seedCh.status || 'live'),
+              String(seedCh.pdf_r2_key || ''),
+              String(seedCh.pdf_updated_at || ''),
+              String(seedCh.search_text || ''),
+              String(seedCh.created_at || ''),
+              String(seedCh.updated_at || '')
             )
         );
       }
-      for (const f of FORMULA_VAULT_ITEMS_SEED) {
-        stmts.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO formulas (
-                id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            )
-            .bind(
-              f.id,
-              f.category_id,
-              f.chapter_id,
-              f.formula_no,
-              f.title,
-              f.formula_latex,
-              f.plain_text,
-              f.note,
-              f.status,
-              f.sort_order,
-              f.is_render_valid,
-              f.render_error,
-              f.search_text,
-              f.created_at,
-              f.updated_at
-            )
-        );
-      }
-      for (let i = 0; i < stmts.length; i += 50) {
-        await db.batch(stmts.slice(i, i + 50));
+
+      const currentCnt = formulaCountByChapId.get(targetChapterId) || 0;
+      if (currentCnt === 0) {
+        const seedItems = FORMULA_VAULT_ITEMS_SEED.filter((f) => f.chapter_id === seedCh.id);
+        for (const f of seedItems) {
+          const fId =
+            targetChapterId === seedCh.id ? String(f.id) : `form_${targetChapterId}_${f.formula_no}`;
+          seedStmts.push(
+            db
+              .prepare(
+                `INSERT OR IGNORE INTO formulas (
+                  id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .bind(
+                fId,
+                String(seedCh.category_id),
+                targetChapterId,
+                Number(f.formula_no || 1),
+                String(f.title || ''),
+                String(f.formula_latex || ''),
+                String(f.plain_text || ''),
+                String(f.note || ''),
+                String(f.status || 'live'),
+                Number(f.sort_order || 1),
+                Number(f.is_render_valid ?? 1),
+                String(f.render_error || ''),
+                String(f.search_text || ''),
+                String(f.created_at || ''),
+                String(f.updated_at || '')
+              )
+          );
+        }
       }
     }
+
+    for (let i = 0; i < seedStmts.length; i += 50) {
+      await db.batch(seedStmts.slice(i, i + 50)).catch(() => {});
+    }
+
+    await recalculateFormulaVaultD1Counts(db);
     formulaSchemaEnsured = true;
   } catch (err) {
     console.warn('[FormulaVaultWorker] Schema/seed check warning:', err);
@@ -271,28 +444,58 @@ export async function handleFormulaVaultWorkerRequest(params: {
     );
   }
 
-  // GET /api/formulas/overview
+  // GET /api/formulas/overview — Live formula_count from formulas table + numeric chapter_no sort
   if (sub === '/overview' && method === 'GET') {
     const includeDrafts = url.searchParams.get('include_drafts') === '1' && isAdmin;
-    const catRes = await env.DB.prepare(
-      includeDrafts
-        ? 'SELECT * FROM categories ORDER BY sort_order ASC, name ASC'
-        : "SELECT * FROM categories WHERE status = 'live' ORDER BY sort_order ASC, name ASC"
-    ).all();
-    const chRes = await env.DB.prepare(
-      includeDrafts
-        ? 'SELECT * FROM chapters ORDER BY sort_order ASC, chapter_no ASC'
-        : "SELECT * FROM chapters WHERE status = 'live' ORDER BY sort_order ASC, chapter_no ASC"
-    ).all();
-    const featuredRes = await env.DB.prepare(
-      "SELECT * FROM formulas WHERE status = 'live' ORDER BY sort_order ASC LIMIT 40"
-    ).all();
+    const catSql = includeDrafts
+      ? `SELECT categories.*,
+           (SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id) AS chapter_count,
+           (SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id) AS formula_count
+         FROM categories
+         ORDER BY sort_order ASC, name ASC`
+      : `SELECT categories.*,
+           (SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id AND ch.status = 'live') AS chapter_count,
+           (SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id AND f.status = 'live') AS formula_count
+         FROM categories
+         WHERE status = 'live'
+         ORDER BY sort_order ASC, name ASC`;
+
+    const chSql = includeDrafts
+      ? `SELECT chapters.*,
+           (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id) AS formula_count
+         FROM chapters
+         ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC`
+      : `SELECT chapters.*,
+           (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
+         FROM chapters
+         WHERE status = 'live'
+         ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC`;
+
+    const [catRes, chRes, featuredRes] = await Promise.all([
+      env.DB.prepare(catSql).all(),
+      env.DB.prepare(chSql).all(),
+      env.DB.prepare("SELECT * FROM formulas WHERE status = 'live' ORDER BY sort_order ASC LIMIT 40").all(),
+    ]);
 
     const featuredPool = featuredRes.results || [];
     const daySeed = Math.floor(Date.now() / 86_400_000);
     const fotdItem = featuredPool.length > 0 ? featuredPool[daySeed % featuredPool.length] : null;
-    const categories = catRes.results || [];
-    const chapters = chRes.results || [];
+    const categories = (catRes.results || []).map((c: any) => ({
+      ...c,
+      chapter_count: Number(c.chapter_count || 0),
+      formula_count: Number(c.formula_count || 0),
+    }));
+    const chapters = (chRes.results || [])
+      .map((ch: any) => ({
+        ...ch,
+        chapter_no: Number(ch.chapter_no || 1),
+        formula_count: Number(ch.formula_count || 0),
+      }))
+      .sort(
+        (a: any, b: any) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
 
     const fotdChapter = fotdItem ? chapters.find((c: any) => c.id === fotdItem.chapter_id) : null;
     const fotdCategory = fotdItem ? categories.find((c: any) => c.id === fotdItem.category_id) : null;
@@ -308,9 +511,10 @@ export async function handleFormulaVaultWorkerRequest(params: {
       bookmarkedIds = (bmRes.results || []).map((r: any) => String(r.formula_id));
     }
 
-    const cacheHeader = !user && !includeDrafts
-      ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
-      : 'private, no-cache';
+    const cacheHeader =
+      !user && !includeDrafts
+        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+        : 'private, no-cache';
 
     return jsonResponse(
       {
@@ -339,10 +543,17 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const chapterId = decodeURIComponent(chapterMatch[1]);
     const includeDrafts = url.searchParams.get('include_drafts') === '1' && isAdmin;
     const page = Math.max(1, Number(url.searchParams.get('page') || 1));
-    const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get('page_size') || 100)));
-    const offset = (page - 1) * pageSize;
+    const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get('page_size') || url.searchParams.get('limit') || 100)));
+    const offset = Number(url.searchParams.get('offset') ?? (page - 1) * pageSize);
 
-    const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ? OR slug = ?')
+    const chapter = await env.DB.prepare(
+      `SELECT chapters.*,
+         (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id${
+           includeDrafts ? '' : " AND f.status = 'live'"
+         }) AS formula_count
+       FROM chapters
+       WHERE id = ? OR slug = ?`
+    )
       .bind(chapterId, chapterId.toLowerCase())
       .first();
 
@@ -362,18 +573,22 @@ export async function handleFormulaVaultWorkerRequest(params: {
       .bind(chapter.id, pageSize, offset)
       .all();
 
-    const cacheHeader = !user && !includeDrafts
-      ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
-      : 'private, no-cache';
+    const cacheHeader =
+      !user && !includeDrafts
+        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+        : 'private, no-cache';
 
     const formulas = itemsRes.results || [];
     return jsonResponse(
       {
         success: true,
-        chapter,
+        chapter: {
+          ...chapter,
+          formula_count: Number(chapter.formula_count ?? formulas.length),
+        },
         category,
         formulas,
-        total: formulas.length,
+        total: Number(chapter.formula_count ?? formulas.length),
         page,
         pageSize,
         hasMore: formulas.length === pageSize,
@@ -393,8 +608,16 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const likePattern = `%${q}%`;
     const chRes = await env.DB.prepare(
       categoryId
-        ? "SELECT * FROM chapters WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
-        : "SELECT * FROM chapters WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 25"
+        ? `SELECT chapters.*,
+             (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
+           FROM chapters
+           WHERE status = 'live' AND category_id = ? AND search_text LIKE ?
+           ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC LIMIT 25`
+        : `SELECT chapters.*,
+             (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
+           FROM chapters
+           WHERE status = 'live' AND search_text LIKE ?
+           ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC LIMIT 25`
     )
       .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
       .all();
@@ -472,7 +695,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
       await env.DB.prepare(
         'INSERT OR IGNORE INTO bookmarks (user_id, formula_id, category_id, chapter_id) VALUES (?, ?, ?, ?)'
       )
-        .bind(user.uid, formulaId, formula.category_id, formula.chapter_id)
+        .bind(user.uid, formulaId, String(formula.category_id || ''), String(formula.chapter_id || ''))
         .run();
     }
     const allBm = await env.DB.prepare('SELECT formula_id FROM bookmarks WHERE user_id = ?')
@@ -508,35 +731,447 @@ export async function handleFormulaVaultWorkerRequest(params: {
     )
       .bind(
         id,
-        formula.id,
-        formula.category_id,
-        formula.chapter_id,
-        user?.uid || 'guest',
+        String(formula.id),
+        String(formula.category_id || ''),
+        String(formula.chapter_id || ''),
+        String(user?.uid || 'guest'),
         reason,
         details,
-        formula.formula_latex
+        String(formula.formula_latex || '')
       )
       .run();
     return jsonResponse({ success: true, reportId: id }, 201, cors);
   }
 
-  // POST /api/formulas/import-chunk (Admin)
+  // GET /api/formulas/reports (Admin)
+  if (sub === '/reports' && method === 'GET') {
+    if (!isAdmin) {
+      return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    }
+    const statusFilter = String(url.searchParams.get('status') || 'all').trim();
+    const repRes = await env.DB.prepare(
+      statusFilter !== 'all'
+        ? `SELECT r.*, f.formula_no, f.formula_latex, ch.title AS chapter_title, c.name AS category_name
+           FROM formula_reports r
+           LEFT JOIN formulas f ON f.id = r.formula_id
+           LEFT JOIN chapters ch ON ch.id = r.chapter_id
+           LEFT JOIN categories c ON c.id = r.category_id
+           WHERE r.status = ?
+           ORDER BY r.created_at DESC LIMIT 200`
+        : `SELECT r.*, f.formula_no, f.formula_latex, ch.title AS chapter_title, c.name AS category_name
+           FROM formula_reports r
+           LEFT JOIN formulas f ON f.id = r.formula_id
+           LEFT JOIN chapters ch ON ch.id = r.chapter_id
+           LEFT JOIN categories c ON c.id = r.category_id
+           ORDER BY r.created_at DESC LIMIT 200`
+    )
+      .bind(...(statusFilter !== 'all' ? [statusFilter] : []))
+      .all()
+      .catch(() => ({ results: [] }));
+    const logRes = await env.DB.prepare(
+      `SELECT l.*, c.name AS category_name
+       FROM import_logs l
+       LEFT JOIN categories c ON c.id = l.category_id
+       ORDER BY l.created_at DESC LIMIT 100`
+    )
+      .all()
+      .catch(() => ({ results: [] }));
+    return jsonResponse(
+      {
+        success: true,
+        reports: repRes.results || [],
+        importLogs: logRes.results || [],
+      },
+      200,
+      cors
+    );
+  }
+
+  // PATCH /api/formulas/reports/:id (Admin)
+  const repMatch = /^\/reports\/([^/]+)$/.exec(sub);
+  if (repMatch && method === 'PATCH') {
+    if (!isAdmin) {
+      return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    }
+    const repId = decodeURIComponent(repMatch[1]);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const status = String(body.status || 'resolved').trim();
+    await env.DB.prepare(
+      "UPDATE formula_reports SET status = ?, resolved_by = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+      .bind(status, String(user?.email || user?.uid || 'admin'), repId)
+      .run();
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  // GET /api/formulas/health & POST /api/formulas/health/fix (Admin)
+  if (sub === '/health' && method === 'GET') {
+    if (!isAdmin) {
+      return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    }
+    await recalculateFormulaVaultD1Counts(env.DB);
+    const [catsRes, chapsRes, formsRes] = await Promise.all([
+      env.DB.prepare('SELECT * FROM categories').all(),
+      env.DB.prepare('SELECT * FROM chapters').all(),
+      env.DB.prepare('SELECT * FROM formulas').all(),
+    ]);
+    const cats = catsRes.results || [];
+    const chaps = chapsRes.results || [];
+    const forms = formsRes.results || [];
+    const chapMap = new Map<string, any>(chaps.map((c: any) => [String(c.id), c]));
+    const catMap = new Map<string, any>(cats.map((c: any) => [String(c.id), c]));
+
+    const emptyChapters = chaps
+      .filter((ch: any) => !forms.some((f: any) => f.chapter_id === ch.id))
+      .map((ch: any) => ({
+        id: ch.id,
+        title: ch.title,
+        chapter_no: Number(ch.chapter_no || 1),
+        category_id: ch.category_id,
+        category_name: catMap.get(String(ch.category_id))?.name || '',
+      }));
+
+    const brokenLatexFormulas: any[] = [];
+    const missingNoteFormulas: any[] = [];
+    for (const f of forms as any[]) {
+      const check = validateMath(String(f.formula_latex || ''));
+      if (!check.valid) {
+        brokenLatexFormulas.push({
+          id: f.id,
+          formula_no: Number(f.formula_no || 1),
+          formula_latex: f.formula_latex,
+          render_error: check.error || 'Invalid LaTeX',
+          chapter_id: f.chapter_id,
+          chapter_title: chapMap.get(String(f.chapter_id))?.title || '',
+          category_id: f.category_id,
+          category_name: catMap.get(String(f.category_id))?.name || '',
+        });
+      }
+      if (!String(f.note || '').trim()) {
+        missingNoteFormulas.push({
+          id: f.id,
+          formula_no: Number(f.formula_no || 1),
+          formula_latex: f.formula_latex,
+          chapter_id: f.chapter_id,
+          chapter_title: chapMap.get(String(f.chapter_id))?.title || '',
+          category_id: f.category_id,
+          category_name: catMap.get(String(f.category_id))?.name || '',
+        });
+      }
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        health: {
+          totalCategories: cats.length,
+          totalChapters: chaps.length,
+          totalFormulas: forms.length,
+          emptyChaptersCount: emptyChapters.length,
+          brokenLatexCount: brokenLatexFormulas.length,
+          duplicateNumbersCount: 0,
+          missingNoteCount: missingNoteFormulas.length,
+          stalePdfCount: 0,
+          emptyChapters,
+          brokenLatexFormulas,
+          duplicateNumbers: [],
+          missingNoteFormulas: missingNoteFormulas.slice(0, 50),
+          stalePdfChapters: [],
+        },
+      },
+      200,
+      cors
+    );
+  }
+
+  if (sub === '/health/fix' && method === 'POST') {
+    if (!isAdmin) {
+      return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    }
+    await recalculateFormulaVaultD1Counts(env.DB);
+    return jsonResponse(
+      {
+        success: true,
+        message: 'Recalculated live chapter & category formula counts and verified ordering.',
+      },
+      200,
+      cors
+    );
+  }
+
+  // ADMIN CRUD: Categories (/api/formulas/categories, /api/formulas/categories/:id, /api/formulas/categories/reorder)
+  if (sub === '/categories' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const name = String(body.name || '').trim();
+    if (!name) return jsonResponse({ success: false, error: 'Category name is required.' }, 400, cors);
+    const slug = buildFormulaSlug(name);
+    const id = `cat_${slug}`;
+    const description = String(body.description || '').trim();
+    const status = body.status === 'draft' ? 'draft' : 'live';
+    const guestAccess = body.guest_access === 0 || body.guest_access === false ? 0 : 1;
+    const searchText = buildFormulaSearchText([name, slug, description]);
+    await env.DB.prepare(
+      `INSERT INTO categories (id, name, slug, description, sort_order, chapter_count, formula_count, status, guest_access, search_text)
+       VALUES (?, ?, ?, ?, 99, 0, 0, ?, ?, ?)`
+    )
+      .bind(id, name, slug, description, status, guestAccess, searchText)
+      .run();
+    const category = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(id).first();
+    return jsonResponse({ success: true, category }, 201, cors);
+  }
+
+  if (sub === '/categories/reorder' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const ids: string[] = Array.isArray(body.orderedIds) ? body.orderedIds : [];
+    const stmts = ids.map((id, idx) =>
+      env.DB.prepare('UPDATE categories SET sort_order = ? WHERE id = ?').bind(idx + 1, String(id))
+    );
+    if (stmts.length > 0) await env.DB.batch(stmts);
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  const catIdMatch = /^\/categories\/([^/]+)$/.exec(sub);
+  if (catIdMatch && (method === 'PUT' || method === 'PATCH')) {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const catId = decodeURIComponent(catIdMatch[1]);
+    const existing = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(catId).first();
+    if (!existing) return jsonResponse({ success: false, error: 'Category not found.' }, 404, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const name = body.name !== undefined ? String(body.name).trim() : String(existing.name);
+    const description = body.description !== undefined ? String(body.description).trim() : String(existing.description || '');
+    const status = body.status !== undefined ? (body.status === 'draft' ? 'draft' : 'live') : String(existing.status || 'live');
+    const guestAccess =
+      body.guest_access !== undefined
+        ? body.guest_access === 0 || body.guest_access === false
+          ? 0
+          : 1
+        : Number(existing.guest_access ?? 1);
+    await env.DB.prepare(
+      "UPDATE categories SET name = ?, description = ?, status = ?, guest_access = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+      .bind(name, description, status, guestAccess, catId)
+      .run();
+    const category = await env.DB.prepare('SELECT * FROM categories WHERE id = ?').bind(catId).first();
+    return jsonResponse({ success: true, category }, 200, cors);
+  }
+
+  if (catIdMatch && method === 'DELETE') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const catId = decodeURIComponent(catIdMatch[1]);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM formulas WHERE category_id = ?').bind(catId),
+      env.DB.prepare('DELETE FROM chapters WHERE category_id = ?').bind(catId),
+      env.DB.prepare('DELETE FROM categories WHERE id = ?').bind(catId),
+    ]);
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  // ADMIN CRUD: Chapters (/api/formulas/chapters, /api/formulas/chapters/:id, /api/formulas/chapters/reorder)
+  if (sub === '/chapters' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const categoryId = String(body.category_id || '').trim();
+    const rawTitle = String(body.title || '').trim();
+    if (!categoryId || !rawTitle) {
+      return jsonResponse({ success: false, error: 'category_id and title are required.' }, 400, cors);
+    }
+    const extracted = extractWorkerLeadingChapterNoAndTitle(rawTitle, Number(body.chapter_no || 1));
+    const title = extracted.cleanTitle || rawTitle;
+    const chapterNo = Number(body.chapter_no) > 0 ? Number(body.chapter_no) : extracted.chapterNo || 1;
+    const subtopics = String(body.subtopics || '').trim();
+    const status = body.status === 'draft' ? 'draft' : 'live';
+    const slug = buildFormulaSlug(title);
+    const id = `chap_${buildFormulaSlug(categoryId)}_${slug}_${Date.now().toString(36)}`;
+    const searchText = buildFormulaSearchText([chapterNo, title, subtopics]);
+    await env.DB.prepare(
+      `INSERT INTO chapters (
+        id, category_id, chapter_no, title, slug, subtopics, sort_order, formula_count, status, search_text
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+    )
+      .bind(id, categoryId, chapterNo, title, slug, subtopics, chapterNo, status, searchText)
+      .run();
+    await recalculateFormulaVaultD1Counts(env.DB, categoryId);
+    const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(id).first();
+    return jsonResponse({ success: true, chapter }, 201, cors);
+  }
+
+  if (sub === '/chapters/reorder' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const ids: string[] = Array.isArray(body.orderedIds) ? body.orderedIds : [];
+    const stmts = ids.map((id, idx) =>
+      env.DB.prepare('UPDATE chapters SET sort_order = ? WHERE id = ?').bind(idx + 1, String(id))
+    );
+    if (stmts.length > 0) await env.DB.batch(stmts);
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  if (chapterMatch && (method === 'PUT' || method === 'PATCH')) {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const chapId = decodeURIComponent(chapterMatch[1]);
+    const existing = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapId).first();
+    if (!existing) return jsonResponse({ success: false, error: 'Chapter not found.' }, 404, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const title = body.title !== undefined ? String(body.title).trim() : String(existing.title);
+    const chapterNo =
+      body.chapter_no !== undefined && Number.isFinite(Number(body.chapter_no))
+        ? Math.max(1, Number(body.chapter_no))
+        : Number(existing.chapter_no || 1);
+    const subtopics =
+      body.subtopics !== undefined ? String(body.subtopics).trim() : String(existing.subtopics || '');
+    const status =
+      body.status !== undefined
+        ? body.status === 'draft'
+          ? 'draft'
+          : 'live'
+        : String(existing.status || 'live');
+    const searchText = buildFormulaSearchText([chapterNo, title, subtopics]);
+    await env.DB.prepare(
+      "UPDATE chapters SET chapter_no = ?, title = ?, subtopics = ?, status = ?, search_text = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+      .bind(chapterNo, title, subtopics, status, searchText, chapId)
+      .run();
+    await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
+    const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapId).first();
+    return jsonResponse({ success: true, chapter }, 200, cors);
+  }
+
+  if (chapterMatch && method === 'DELETE') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const chapId = decodeURIComponent(chapterMatch[1]);
+    const existing = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapId).first();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM formulas WHERE chapter_id = ?').bind(chapId),
+      env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(chapId),
+    ]);
+    if (existing?.category_id) {
+      await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
+    }
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  // ADMIN CRUD: Formula Items (/api/formulas/items, /api/formulas/items/:id, /api/formulas/items/reorder)
+  if (sub === '/items' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const categoryId = String(body.category_id || '').trim();
+    const chapterId = String(body.chapter_id || '').trim();
+    const formulaLatex = String(body.formula_latex || '').trim();
+    if (!categoryId || !chapterId || !formulaLatex) {
+      return jsonResponse({ success: false, error: 'category_id, chapter_id and formula_latex are required.' }, 400, cors);
+    }
+    const mathCheck = validateMath(formulaLatex);
+    if (!mathCheck.valid) {
+      return jsonResponse({ success: false, error: `Invalid LaTeX: ${mathCheck.error || 'syntax error'}` }, 400, cors);
+    }
+    const formulaNo = Math.max(1, Number(body.formula_no || 1));
+    const title = String(body.title || '').trim();
+    const note = String(body.note || '').trim();
+    const plainText = String(body.plain_text || formulaLatex).trim();
+    const status = body.status === 'draft' ? 'draft' : 'live';
+    const id = `form_${chapterId}_${formulaNo}_${Date.now().toString(36)}`;
+    const searchText = buildFormulaSearchText([title, formulaLatex, plainText, note]);
+    await env.DB.prepare(
+      `INSERT INTO formulas (
+        id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '', ?)`
+    )
+      .bind(id, categoryId, chapterId, formulaNo, title, formulaLatex, plainText, note, status, formulaNo, searchText)
+      .run();
+    await recalculateFormulaVaultD1Counts(env.DB, categoryId);
+    const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(id).first();
+    return jsonResponse({ success: true, formula }, 201, cors);
+  }
+
+  if (sub === '/items/reorder' && method === 'POST') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const ids: string[] = Array.isArray(body.orderedIds) ? body.orderedIds : [];
+    const stmts = ids.map((id, idx) =>
+      env.DB.prepare('UPDATE formulas SET sort_order = ?, formula_no = ? WHERE id = ?').bind(
+        idx + 1,
+        idx + 1,
+        String(id)
+      )
+    );
+    if (stmts.length > 0) await env.DB.batch(stmts);
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  const itemMatch = /^\/items\/([^/]+)$/.exec(sub);
+  if (itemMatch && (method === 'PUT' || method === 'PATCH')) {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const itemId = decodeURIComponent(itemMatch[1]);
+    const existing = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(itemId).first();
+    if (!existing) return jsonResponse({ success: false, error: 'Formula not found.' }, 404, cors);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const formulaLatex =
+      body.formula_latex !== undefined ? String(body.formula_latex).trim() : String(existing.formula_latex);
+    const mathCheck = validateMath(formulaLatex);
+    if (!mathCheck.valid) {
+      return jsonResponse({ success: false, error: `Invalid LaTeX: ${mathCheck.error || 'syntax error'}` }, 400, cors);
+    }
+    const formulaNo =
+      body.formula_no !== undefined && Number.isFinite(Number(body.formula_no))
+        ? Math.max(1, Number(body.formula_no))
+        : Number(existing.formula_no || 1);
+    const title = body.title !== undefined ? String(body.title).trim() : String(existing.title || '');
+    const note = body.note !== undefined ? String(body.note).trim() : String(existing.note || '');
+    const plainText =
+      body.plain_text !== undefined ? String(body.plain_text).trim() : String(existing.plain_text || formulaLatex);
+    const status =
+      body.status !== undefined
+        ? body.status === 'draft'
+          ? 'draft'
+          : 'live'
+        : String(existing.status || 'live');
+    const chapterId =
+      body.chapter_id !== undefined ? String(body.chapter_id).trim() : String(existing.chapter_id);
+    const categoryId =
+      body.category_id !== undefined ? String(body.category_id).trim() : String(existing.category_id);
+    const searchText = buildFormulaSearchText([title, formulaLatex, plainText, note]);
+    await env.DB.prepare(
+      `UPDATE formulas
+       SET category_id = ?, chapter_id = ?, formula_no = ?, title = ?, formula_latex = ?, plain_text = ?, note = ?, status = ?, search_text = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+      .bind(categoryId, chapterId, formulaNo, title, formulaLatex, plainText, note, status, searchText, itemId)
+      .run();
+    await recalculateFormulaVaultD1Counts(env.DB, categoryId);
+    const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(itemId).first();
+    return jsonResponse({ success: true, formula }, 200, cors);
+  }
+
+  if (itemMatch && method === 'DELETE') {
+    if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
+    const itemId = decodeURIComponent(itemMatch[1]);
+    const existing = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(itemId).first();
+    await env.DB.prepare('DELETE FROM formulas WHERE id = ?').bind(itemId).run();
+    if (existing?.category_id) {
+      await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
+    }
+    return jsonResponse({ success: true }, 200, cors);
+  }
+
+  // POST /api/formulas/import-chunk (Admin) — Batched D1 writes (<500 limit) + live count update
   if (sub === '/import-chunk' && method === 'POST') {
     if (!isAdmin) {
       return jsonResponse({ success: false, error: 'Forbidden: Admin access required.' }, user ? 403 : 401, cors);
     }
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
-    const categoryId = String(body.category_id || body.categoryId || '').trim();
-    const defaultChapterId = String(body.default_chapter_id || body.defaultChapterId || '').trim();
+    const categoryId = String(body.category_id ?? body.categoryId ?? '').trim();
+    const defaultChapterId = String(body.default_chapter_id ?? body.defaultChapterId ?? '').trim();
     const duplicateStrategy: 'skip' | 'update' =
-      String(body.duplicate_strategy || body.duplicateStrategy || 'skip').toLowerCase() === 'update'
+      String(body.duplicate_strategy ?? body.duplicateStrategy ?? 'skip').toLowerCase() === 'update'
         ? 'update'
         : 'skip';
     const chunkOffset = Math.max(0, Number(body.chunk_offset ?? body.chunkOffset ?? 0));
     const rows = Array.isArray(body.rows) ? body.rows : [];
     const rawCsvText = typeof body.raw_csv_text === 'string' ? body.raw_csv_text : '';
-    const fileName = String(body.file_name || 'bulk_import.csv').trim();
-    const sourceType = String(body.source_type || 'csv').trim();
+    const fileName = String(body.file_name ?? 'bulk_import.csv').trim();
+    const sourceType = String(body.source_type ?? 'csv').trim();
 
     const cat = await env.DB.prepare('SELECT * FROM categories WHERE id = ? OR slug = ?')
       .bind(categoryId, categoryId.toLowerCase())
@@ -553,18 +1188,46 @@ export async function handleFormulaVaultWorkerRequest(params: {
       }).catch(() => {});
     }
 
+    // Preload all chapters and formulas for this category in 2 fast SELECT queries
+    const [existingChRes, existingFormRes] = await Promise.all([
+      env.DB.prepare(
+        'SELECT * FROM chapters WHERE category_id = ? ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC'
+      )
+        .bind(String(cat.id))
+        .all(),
+      env.DB.prepare('SELECT id, chapter_id, formula_no, formula_latex FROM formulas WHERE category_id = ?')
+        .bind(String(cat.id))
+        .all(),
+    ]);
+
+    const catChapters: any[] = [...(existingChRes.results || [])];
+    const catFormulas: any[] = [...(existingFormRes.results || [])];
+
+    const defaultChapterObj = defaultChapterId
+      ? catChapters.find(
+          (c) =>
+            String(c.id) === defaultChapterId ||
+            String(c.slug || '').toLowerCase() === defaultChapterId.toLowerCase() ||
+            normalizeWorkerChapterMatchKey(String(c.title || '')) ===
+              normalizeWorkerChapterMatchKey(defaultChapterId)
+        )
+      : catChapters[0] || null;
+
     let importedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
     const rowErrors: Array<{ rowNumber: number; reason: string }> = [];
+    const writeStmts: any[] = [];
 
     for (let i = 0; i < rows.length; i++) {
-      const rowNum = chunkOffset + i + 1;
       const r = rows[i] || {};
+      const rowNum = Number(r.rowNumber ?? r.rowIndex ?? chunkOffset + i + 1);
       const rawLatex = String(r.formula_latex ?? r.formulaLatex ?? r.latex ?? r.formula ?? '').trim();
       const rawTitle = String(r.title ?? r.name ?? '').trim();
       const rawNote = String(r.note ?? r.notes ?? r.explanation ?? '').trim();
-      const rawChapterTitle = String(r.chapter ?? r.chapter_title ?? '').trim();
+      const rawChapterInput = String(
+        r.chapter_id ?? r.chapterId ?? r.chapter ?? r.chapter_title ?? ''
+      ).trim();
       const rawSubtopics = String(r.subtopics ?? '').trim();
       const rawChapterNo = Number(r.chapter_no ?? r.chapterNo ?? 0);
       const rawFormulaNo = Number(r.formula_no ?? r.formulaNo ?? 0);
@@ -575,48 +1238,85 @@ export async function handleFormulaVaultWorkerRequest(params: {
       }
       const mathCheck = validateMath(rawLatex);
       if (!mathCheck.valid) {
-        rowErrors.push({ rowNumber: rowNum, reason: `Broken LaTeX: ${mathCheck.error || 'syntax error'}` });
+        rowErrors.push({
+          rowNumber: rowNum,
+          reason: `Broken LaTeX: ${mathCheck.error || 'syntax error'}`,
+        });
         continue;
       }
 
+      const extracted = extractWorkerLeadingChapterNoAndTitle(rawChapterInput, rawChapterNo);
+      const cleanChapterTitle = extracted.cleanTitle || String(defaultChapterObj?.title || '').trim();
+      const effectiveChapterNo =
+        extracted.chapterNo || (Number.isFinite(rawChapterNo) && rawChapterNo > 0 ? rawChapterNo : 0);
+
       let chapter: any = null;
-      if (rawChapterTitle) {
-        chapter = await env.DB.prepare(
-          'SELECT * FROM chapters WHERE category_id = ? AND LOWER(title) = ?'
-        )
-          .bind(cat.id, rawChapterTitle.toLowerCase())
-          .first();
-        if (!chapter) {
-          const newChId = `chap_${cat.slug}_${Date.now()}_${i}`;
-          const newChNo = rawChapterNo > 0 ? rawChapterNo : 1;
-          const slug = buildFormulaSlug(rawChapterTitle);
-          const searchText = buildFormulaSearchText([cat.name, rawChapterTitle, rawSubtopics]);
-          await env.DB.prepare(
-            `INSERT INTO chapters (
-              id, category_id, chapter_no, slug, title, subtopics, formula_count, sort_order, status, search_text
-            ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'live', ?)`
-          )
-            .bind(newChId, cat.id, newChNo, slug, rawChapterTitle, rawSubtopics, newChNo, searchText)
-            .run();
-          chapter = { id: newChId, title: rawChapterTitle, subtopics: rawSubtopics, chapter_no: newChNo };
+      if (rawChapterInput) {
+        const targetKey = normalizeWorkerChapterMatchKey(cleanChapterTitle);
+        const targetSlug = buildFormulaSlug(cleanChapterTitle);
+        chapter = catChapters.find(
+          (ch) =>
+            String(ch.id) === rawChapterInput ||
+            String(ch.title || '').toLowerCase() === cleanChapterTitle.toLowerCase() ||
+            normalizeWorkerChapterMatchKey(String(ch.title || '')) === targetKey ||
+            String(ch.slug || '').toLowerCase() === targetSlug ||
+            (effectiveChapterNo > 0 &&
+              Number(ch.chapter_no) === effectiveChapterNo &&
+              (!targetKey || normalizeWorkerChapterMatchKey(String(ch.title || '')) === targetKey))
+        );
+        if (!chapter && cleanChapterTitle) {
+          const maxChapNo = catChapters.reduce((m, c) => Math.max(m, Number(c.chapter_no || 0)), 0);
+          const newChNo = effectiveChapterNo > 0 ? effectiveChapterNo : maxChapNo + 1;
+          const slug = buildFormulaSlug(cleanChapterTitle);
+          const newChId = `chap_${cat.slug}_${slug}_${Date.now().toString(36)}_${i}`;
+          const searchText = buildFormulaSearchText([cat.name, newChNo, cleanChapterTitle, rawSubtopics]);
+          writeStmts.push(
+            env.DB.prepare(
+              `INSERT INTO chapters (
+                id, category_id, chapter_no, slug, title, subtopics, formula_count, sort_order, status, search_text
+              ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'live', ?)`
+            ).bind(
+              String(newChId),
+              String(cat.id),
+              Number(newChNo),
+              String(slug),
+              String(cleanChapterTitle),
+              String(rawSubtopics || ''),
+              Number(newChNo),
+              String(searchText || '')
+            )
+          );
+          chapter = {
+            id: newChId,
+            category_id: String(cat.id),
+            title: cleanChapterTitle,
+            subtopics: rawSubtopics || '',
+            chapter_no: newChNo,
+            slug,
+          };
+          catChapters.push(chapter);
         }
-      } else if (defaultChapterId) {
-        chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ? AND category_id = ?')
-          .bind(defaultChapterId, cat.id)
-          .first();
+      } else if (defaultChapterObj) {
+        chapter = defaultChapterObj;
       }
 
       if (!chapter) {
-        rowErrors.push({ rowNumber: rowNum, reason: 'Missing chapter and no default chapter selected' });
+        rowErrors.push({
+          rowNumber: rowNum,
+          reason: 'Missing chapter and no default chapter selected',
+        });
         continue;
       }
 
-      const formulaNo = rawFormulaNo > 0 ? rawFormulaNo : i + 1;
-      const existingDup = await env.DB.prepare(
-        'SELECT id FROM formulas WHERE chapter_id = ? AND (formula_no = ? OR LOWER(formula_latex) = ?)'
-      )
-        .bind(chapter.id, formulaNo, rawLatex.toLowerCase())
-        .first();
+      const chapFormulas = catFormulas.filter((f) => String(f.chapter_id) === String(chapter.id));
+      const maxFormulaNo = chapFormulas.reduce((m, f) => Math.max(m, Number(f.formula_no || 0)), 0);
+      const formulaNo = Number.isFinite(rawFormulaNo) && rawFormulaNo > 0 ? rawFormulaNo : maxFormulaNo + 1;
+
+      const existingDup = chapFormulas.find(
+        (f) =>
+          Number(f.formula_no) === formulaNo ||
+          String(f.formula_latex || '').trim().toLowerCase() === rawLatex.toLowerCase()
+      );
 
       const searchText = buildFormulaSearchText([
         cat.name,
@@ -632,45 +1332,83 @@ export async function handleFormulaVaultWorkerRequest(params: {
           skippedCount += 1;
           continue;
         }
-        await env.DB.prepare(
-          `UPDATE formulas
-           SET formula_no = ?, title = ?, formula_latex = ?, plain_text = ?, note = ?, search_text = ?, updated_at = datetime('now')
-           WHERE id = ?`
-        )
-          .bind(formulaNo, rawTitle, rawLatex, rawLatex, rawNote, searchText, existingDup.id)
-          .run();
+        writeStmts.push(
+          env.DB.prepare(
+            `UPDATE formulas
+             SET category_id = ?, chapter_id = ?, formula_no = ?, title = ?, formula_latex = ?, plain_text = ?, note = ?, search_text = ?, updated_at = datetime('now')
+             WHERE id = ?`
+          ).bind(
+            String(cat.id),
+            String(chapter.id),
+            Number(formulaNo),
+            String(rawTitle || ''),
+            String(rawLatex),
+            String(rawLatex),
+            String(rawNote || ''),
+            String(searchText || ''),
+            String(existingDup.id)
+          )
+        );
+        existingDup.formula_no = formulaNo;
+        existingDup.formula_latex = rawLatex;
         updatedCount += 1;
       } else {
-        const newId = `form_${chapter.id}_${Date.now()}_${i}`;
-        await env.DB.prepare(
-          `INSERT INTO formulas (
-            id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, 1, '', ?)`
-        )
-          .bind(newId, cat.id, chapter.id, formulaNo, rawTitle, rawLatex, rawLatex, rawNote, formulaNo, searchText)
-          .run();
+        const newId = `form_${chapter.id}_${formulaNo}_${Date.now().toString(36)}_${i}`;
+        writeStmts.push(
+          env.DB.prepare(
+            `INSERT INTO formulas (
+              id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, search_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, 1, '', ?)`
+          ).bind(
+            String(newId),
+            String(cat.id),
+            String(chapter.id),
+            Number(formulaNo),
+            String(rawTitle || ''),
+            String(rawLatex),
+            String(rawLatex),
+            String(rawNote || ''),
+            Number(formulaNo),
+            String(searchText || '')
+          )
+        );
+        catFormulas.push({
+          id: newId,
+          chapter_id: String(chapter.id),
+          formula_no: formulaNo,
+          formula_latex: rawLatex,
+        });
         importedCount += 1;
       }
     }
 
+    // Execute batched writes in chunks of 50 statements (well under 500-write limit)
+    for (let i = 0; i < writeStmts.length; i += 50) {
+      await env.DB.batch(writeStmts.slice(i, i + 50));
+    }
+
+    // Refresh live chapter and category formula counts immediately
+    await recalculateFormulaVaultD1Counts(env.DB, String(cat.id));
+
     await env.DB.prepare(
       `INSERT INTO import_logs (
         id, category_id, chapter_id, admin_uid, source_type, file_name, csv_r2_key, duplicate_strategy, total_rows, imported_rows, updated_rows, skipped_rows, failed_rows, status
-      ) VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed')`
     )
       .bind(
         `fimp_${Date.now()}_${crypto.randomUUID().slice(0, 5)}`,
-        cat.id,
-        user?.uid || 'admin',
-        sourceType,
-        fileName,
-        csvR2Key,
-        duplicateStrategy,
-        rows.length,
-        importedCount,
-        updatedCount,
-        skippedCount,
-        rowErrors.length
+        String(cat.id),
+        String(defaultChapterObj?.id || ''),
+        String(user?.uid || 'admin'),
+        String(sourceType || 'csv'),
+        String(fileName || 'bulk_import.csv'),
+        String(csvR2Key || ''),
+        String(duplicateStrategy || 'skip'),
+        Number(rows.length),
+        Number(importedCount),
+        Number(updatedCount),
+        Number(skippedCount),
+        Number(rowErrors.length)
       )
       .run()
       .catch(() => {});

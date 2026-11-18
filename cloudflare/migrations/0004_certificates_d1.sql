@@ -54,8 +54,12 @@ CREATE TABLE IF NOT EXISTS certificates (
 CREATE INDEX IF NOT EXISTS idx_certificates_student_uid
   ON certificates(student_uid, issued_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_certificates_student_uid_status
+  ON certificates(student_uid, status, issued_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_certificates_grand_line_id
   ON certificates(grand_line_id, rank ASC);
 
 CREATE INDEX IF NOT EXISTS idx_certificates_serial
   ON certificates(serial);
+

@@ -2338,6 +2338,57 @@ export default {
       return handleHealthCheck(req, env);
     }
 
+    // 0a. Fast-path Student My Certificates: GET /api/certificates/mine (avoids cold-start schema batch timeout)
+    if (url.pathname === '/api/certificates/mine' && req.method === 'GET' && env.DB) {
+      const user = await verifyFirebaseIdToken(req, env).catch(() => null);
+      if (!user) {
+        return jsonResponse({ success: false, error: 'Authentication required.' }, 401, cors);
+      }
+      if (ctx && typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(ensureD1Schema(env.DB).catch(() => {}));
+      }
+      let rows: Record<string, any>[] = [];
+      try {
+        const queryPromise = env.DB
+          .prepare(
+            `SELECT id, cert_number, user_id, recipient_name, recipient_email, role_or_course,
+                    achievement_text, issue_date, status, revoke_reason, pdf_r2_key, verify_url,
+                    issued_by_name, issued_by_role, created_at
+             FROM certificates
+             WHERE user_id = ?1
+             ORDER BY issued_at DESC, created_at DESC
+             LIMIT 100`
+          )
+          .bind(user.uid)
+          .all<Record<string, any>>();
+        const timeoutPromise = new Promise<{ results: Record<string, any>[] }>((resolve) =>
+          setTimeout(() => resolve({ results: [] }), 4000)
+        );
+        const res = await Promise.race([queryPromise, timeoutPromise]);
+        rows = res?.results || [];
+      } catch {
+        rows = [];
+      }
+      const certificates = rows.map((row) => ({
+        id: row.id,
+        certNumber: row.cert_number,
+        userId: row.user_id,
+        recipientName: row.recipient_name,
+        recipientEmail: row.recipient_email,
+        roleOrCourse: row.role_or_course,
+        achievementText: row.achievement_text,
+        issueDate: row.issue_date,
+        status: row.status,
+        revokeReason: row.revoke_reason || null,
+        pdfUrl: row.pdf_r2_key ? `/api/certificates/${encodeURIComponent(String(row.id))}/pdf` : null,
+        verifyUrl: row.verify_url,
+        issuedByName: row.issued_by_name,
+        issuedByRole: row.issued_by_role,
+        createdAt: Number(row.created_at || 0),
+      }));
+      return jsonResponse({ success: true, certificates }, 200, { ...cors, 'Cache-Control': 'no-store' });
+    }
+
     if (env.DB) {
       await ensureD1Schema(env.DB);
     }

@@ -84,6 +84,7 @@ import {
   fetchAdminUniversityMcqsSWR,
 } from '../../services/adminTabCache';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBodyScrollLock } from '../../utils/scrollLock';
 
 type ActiveTab = 'questions' | 'health' | 'reports';
 type BulkSourceTab = 'csv' | 'gsheet' | 'paste';
@@ -601,6 +602,19 @@ export const AdminQuestionsPage: React.FC = () => {
     }
     setBulkModalOpen(false);
   }, [importingChunked, bulkRawInput, importProgress]);
+
+  const anyQuestionBankSheetOpen = Boolean(mcqModalOpen || bulkModalOpen || uniSheetOpen || filterSheetOpen);
+  useBodyScrollLock(anyQuestionBankSheetOpen);
+
+  useEffect(() => {
+    if (!anyQuestionBankSheetOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      document.querySelectorAll<HTMLElement>('.aqb-sheet-body').forEach((el) => {
+        el.scrollTop = 0;
+      });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [anyQuestionBankSheetOpen, mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, bulkWizardStep]);
 
   useEffect(() => {
     const anySheetOpen = mcqModalOpen || bulkModalOpen || uniSheetOpen || filterSheetOpen;

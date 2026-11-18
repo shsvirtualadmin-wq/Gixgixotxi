@@ -4718,7 +4718,7 @@ html[data-tab-hidden="true"] *::after {
   width: 100%;
   max-width: 720px;
   height: 92dvh;
-  max-height: 92dvh;
+  max-height: 100dvh;
   min-width: 0;
   box-sizing: border-box;
   border-radius: 28px 28px 0 0;
@@ -4734,12 +4734,13 @@ html[data-tab-hidden="true"] *::after {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
   animation: aqbSheetSlideUp 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .aqb-sheet--compact {
   height: auto;
-  max-height: 86dvh;
+  max-height: min(88dvh, 100dvh);
 }
 
 @keyframes aqbSheetSlideUp {
@@ -4790,6 +4791,7 @@ html[data-tab-hidden="true"] *::after {
   width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: 16px 18px 24px;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
@@ -10553,25 +10555,28 @@ html.smooth-mode .stg-shell .fsm-back-btn,
   --nt-dock-bg: rgba(255, 255, 255, 0.76);
   --nt-sys-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Inter', sans-serif;
 
+  position: fixed !important;
+  inset: 0 !important;
   width: 100vw;
   height: 100dvh;
   max-height: 100dvh;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
   background-color: var(--nt-bg);
   background-image: radial-gradient(var(--nt-dot-grid) 1px, transparent 1px);
   background-size: 14px 14px;
   color: var(--nt-text);
   font-family: var(--nt-sys-font);
   box-sizing: border-box;
-  position: relative;
 }
 
 .nt-quiz-shell.fixed {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 1100;
+  z-index: 9999;
 }
 
 :is(.dark, [data-theme="dark"]) .nt-quiz-shell,
@@ -10834,6 +10839,7 @@ html.smooth-mode .stg-shell .fsm-back-btn,
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: none;
   color: var(--nt-text);
   font-size: clamp(0.92rem, 1.95vh, 1.08rem);
@@ -11927,9 +11933,23 @@ input[type="search"],
   scrollbar-width: thin;
 }
 
+.formula-math-scroll--overflow {
+  mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 calc(100% - 28px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0%,
+    #000 calc(100% - 28px),
+    transparent 100%
+  );
+}
+
 .formula-modal-backdrop {
   background-color: color-mix(in srgb, var(--bg) 76%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
-

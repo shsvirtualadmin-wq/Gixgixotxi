@@ -155,20 +155,28 @@ export function normalizeCertificateRecord(raw: any): StudentCertificateRecord {
 
 /**
  * Fetch the logged-in student's active certificates (`GET /api/certificates/mine`).
+ * Automatically retries once on transient network/timeout failure.
  */
 export async function fetchMyCertificates(): Promise<StudentCertificateRecord[]> {
   const endpoint = '/api/certificates/mine';
-  try {
-    const data = await apiFetch<{ certificates: StudentCertificateRecord[] }>(endpoint, {
-      requireAuth: true,
-    });
-    return Array.isArray(data?.certificates)
-      ? data.certificates.map(normalizeCertificateRecord)
-      : [];
-  } catch (err: any) {
-    console.error(`[CertificateService] Error (${err?.code || 'API_ERROR'}) at ${endpoint}:`, err);
-    throw err;
+  let lastErr: any = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const data = await apiFetch<{ certificates: StudentCertificateRecord[] }>(endpoint, {
+        requireAuth: true,
+        timeoutMs: 8000,
+      });
+      return Array.isArray(data?.certificates)
+        ? data.certificates.map(normalizeCertificateRecord)
+        : [];
+    } catch (err: any) {
+      lastErr = err;
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
   }
+  throw lastErr;
 }
 
 /**

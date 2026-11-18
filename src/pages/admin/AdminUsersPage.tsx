@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
+import { UserOverrideDrawer, type UserOverrideSection } from '@/components/admin/UserOverrideDrawer';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { AdminNameRequestsSection } from '@/components/admin/AdminNameRequestsSection';
@@ -50,7 +50,7 @@ interface UserRowProps {
   user: UserProfile;
   badge2fa: UserTwoFactorBadgeLabel;
   isSuperAdmin: boolean;
-  onSelect: (user: UserProfile) => void;
+  onSelect: (user: UserProfile, section?: UserOverrideSection) => void;
 }
 
 function formatUserTimestamp(raw: any, fallback: string | null = 'Recent'): string | null {
@@ -127,7 +127,13 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
           </div>
         </div>
 
-        <div className="text-right shrink-0">
+        <div
+          className="text-right shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(u, 'attempts');
+          }}
+        >
           <span className="font-mono font-bold text-xs text-[var(--text)] block">
             {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '— MCQs'}
           </span>
@@ -164,24 +170,46 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
             </span>
           ) : (
             <>
-              <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(u, 'role');
+                }}
+                className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize hover:border-[var(--text)]"
+              >
                 {u.role || 'Student'}
               </span>
               {isPro ? (
-                <>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(u, 'plan');
+                  }}
+                  className="inline-flex items-center gap-1"
+                >
                   <ProBadge design={(u as any).proBadge || (u as any).proBadgeDesign || 'ember'} size="sm" listMode />
                   <span className="text-[10px] font-mono text-[var(--muted)]">
                     badge: {(u as any).proBadgeDesign || (u as any).proBadge || 'ember'}
                     {(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
                   </span>
-                </>
+                </span>
               ) : (
-                <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(u, 'plan');
+                  }}
+                  className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] hover:border-[var(--text)]"
+                >
                   Free
                 </span>
               )}
               <span
                 data-testid={`user-2fa-badge-${u.uid}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(u, 'security');
+                }}
                 className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
                   badge2fa === 'Recovery pending'
                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
@@ -274,7 +302,13 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       </td>
 
       {/* 5. Total Questions Solved */}
-      <td className="py-3.5 px-4 font-mono font-bold text-[13px] text-[var(--text)]">
+      <td
+        className="py-3.5 px-4 font-mono font-bold text-[13px] text-[var(--text)]"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(u, 'attempts');
+        }}
+      >
         {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '—'}
       </td>
 
@@ -284,7 +318,15 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       </td>
 
       {/* 6b. 2FA Status Badge (Off, Authenticator, Email code, Both, or Recovery pending) */}
-      <td className="py-3.5 px-4 text-[12px]">
+      <td
+        className="py-3.5 px-4 text-[12px]"
+        onClick={(e) => {
+          if (!isGuestUser) {
+            e.stopPropagation();
+            onSelect(u, 'security');
+          }
+        }}
+      >
         {isGuestUser ? (
           <span className="text-[11px] text-[var(--text-faint)]">—</span>
         ) : (
@@ -378,6 +420,18 @@ export function AdminUsersPage() {
 
   // Selected user for drawer/sheet
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [selectedUserSection, setSelectedUserSection] = useState<UserOverrideSection>('top');
+
+  const handleSelectUser = useCallback((u: UserProfile, section: UserOverrideSection = 'top') => {
+    setSelectedUserSection(section);
+    setSelectedUser(u);
+  }, []);
+  const [selectedUserSection, setSelectedUserSection] = useState<UserOverrideSection>('top');
+
+  const handleSelectUser = useCallback((u: UserProfile, section: UserOverrideSection = 'top') => {
+    setSelectedUserSection(section);
+    setSelectedUser(u);
+  }, []);
 
   // Backfill names state
   const [backfilling, setBackfilling] = useState(false);
@@ -1081,7 +1135,7 @@ export function AdminUsersPage() {
                     user={u}
                     badge2fa={badge2fa}
                     isSuperAdmin={isSuperAdmin}
-                    onSelect={setSelectedUser}
+                    onSelect={handleSelectUser}
                   />
                 );
               })
@@ -1194,7 +1248,7 @@ export function AdminUsersPage() {
                         user={u}
                         badge2fa={badge2fa}
                         isSuperAdmin={isSuperAdmin}
-                        onSelect={setSelectedUser}
+                        onSelect={handleSelectUser}
                       />
                     );
                   })
@@ -1259,6 +1313,7 @@ export function AdminUsersPage() {
         <UserOverrideDrawer
           user={selectedUser}
           adminEmail={user?.email || ''}
+          initialSection={selectedUserSection}
           initialTwoFactorStatus={user2faMap[selectedUser.uid] || selectedUser.twoFactorStatus}
           onUpdate2faStatus={handleUpdateUser2faInState}
           onUserUpdated={(updatedUser) => {
@@ -1269,7 +1324,10 @@ export function AdminUsersPage() {
               prev && prev.uid === updatedUser.uid ? { ...prev, ...updatedUser } : prev
             );
           }}
-          onClose={() => setSelectedUser(null)}
+          onClose={() => {
+            setSelectedUser(null);
+            setSelectedUserSection('top');
+          }}
           onSuccess={() => {
             void loadUsers({ force: true });
           }}

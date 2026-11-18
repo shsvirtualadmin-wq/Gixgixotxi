@@ -166,9 +166,16 @@ export async function fetchFormulaVaultOverview(options?: {
     if (res.ok) {
       const data = await res.json();
       if (data && data.success) {
+        const sortedChapters = (
+          Array.isArray(data.chapters) ? [...data.chapters] : [...FORMULA_VAULT_CHAPTERS_SEED]
+        ).sort(
+          (a, b) =>
+            Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        );
         const result: FormulaVaultOverviewResponse = {
           categories: Array.isArray(data.categories) ? data.categories : FORMULA_VAULT_CATEGORIES_SEED,
-          chapters: Array.isArray(data.chapters) ? data.chapters : FORMULA_VAULT_CHAPTERS_SEED,
+          chapters: sortedChapters,
           formulaOfTheDay: data.formulaOfTheDay || null,
           bookmarkedIds: Array.isArray(data.bookmarkedIds) ? data.bookmarkedIds : [],
           isGuest: Boolean(data.isGuest),
@@ -902,11 +909,53 @@ export function parseFormulaImportInput(
     }
   }
 
-  // Build existing lookup for duplicate detection
-  const existingChaptersByTitle = new Map<string, D1FormulaChapterRow>();
-  for (const ch of options.existingChaptersInCategory || []) {
-    existingChaptersByTitle.set(ch.title.trim().toLowerCase(), ch);
+  const normalizeChapKey = (raw: string): string =>
+    String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^(?:chapter|chap|ch|sheet)?\s*\d+\s*[:.\-–—]?\s*/i, '')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const extractChapNoAndTitle = (
+    rawTitle: string,
+    fallbackNo?: number
+  ): { chapterNo: number | null; cleanTitle: string } => {
+    const t = String(rawTitle || '').trim();
+    const m = /^(?:chapter|chap|ch|sheet)?\s*(\d{1,3})\s*[:.\-–—\s]+\s*(.+)$/i.exec(t);
+    if (m && m[2].trim()) {
+      const parsed = Number(m[1]);
+      return {
+        chapterNo: Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackNo || null,
+        cleanTitle: m[2].trim(),
+      };
+    }
+    const fb = Number(fallbackNo);
+    return {
+      chapterNo: Number.isFinite(fb) && fb > 0 ? fb : null,
+      cleanTitle: t,
+    };
+  };
+
+  // Build existing lookup for duplicate detection and chapter matching
+  const existingChaptersList = [...(options.existingChaptersInCategory || [])].sort(
+    (a, b) =>
+      Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+      Number(a.sort_order || 0) - Number(b.sort_order || 0)
+  );
+  const existingChaptersByKey = new Map<string, D1FormulaChapterRow>();
+  for (const ch of existingChaptersList) {
+    existingChaptersByKey.set(ch.title.trim().toLowerCase(), ch);
+    existingChaptersByKey.set(normalizeChapKey(ch.title), ch);
+    existingChaptersByKey.set(ch.id.toLowerCase(), ch);
+    existingChaptersByKey.set(ch.slug.toLowerCase(), ch);
   }
+  const fallbackDefaultChapterTitle =
+    String(options.defaultChapterTitle || '').trim() ||
+    existingChaptersList[0]?.title ||
+    '';
   const existingFormulas = options.existingFormulasInCategory || [];
   const seenInBatch = new Set<string>();
 
@@ -916,14 +965,36 @@ export function parseFormulaImportInput(
   let duplicateCount = 0;
 
   for (let i = 0; i < rawObjects.length; i++) {
-    const r = rawObjects[i];
+    const r = rawObjects[i] || {};
     const rowNumber = i + 1;
-    const chapter = String(
-      r.chapter ?? r.chapter_title ?? r.chaptertitle ?? options.defaultChapterTitle ?? ''
+    const rawChapterInput = String(
+      r.chapter ?? r.chapter_title ?? r.chaptertitle ?? r.chapter_id ?? fallbackDefaultChapterTitle ?? ''
     ).trim();
-    const subtopics = String(r.subtopics ?? r.subtopic ?? '').trim();
-    const chapterNoRaw = Number(r.chapter_no ?? r.chapterno ?? 0);
-    const chapter_no = Number.isFinite(chapterNoRaw) && chapterNoRaw > 0 ? chapterNoRaw : 1;
+    const chapterNoRaw = Number(r.chapter_no ?? r.chapterno ?? r.chapter_number ?? 0);
+    const extracted = extractChapNoAndTitle(rawChapterInput, chapterNoRaw);
+    const matchedExistingCh =
+      existingChaptersByKey.get(rawChapterInput.toLowerCase()) ||
+      existingChaptersByKey.get(normalizeChapKey(extracted.cleanTitle)) ||
+      (extracted.chapterNo
+        ? existingChaptersList.find(
+            (c) =>
+              Number(c.chapter_no) === extracted.chapterNo &&
+              (!extracted.cleanTitle ||
+                normalizeChapKey(c.title) === normalizeChapKey(extracted.cleanTitle))
+          )
+        : undefined);
+
+    const chapter = matchedExistingCh
+      ? matchedExistingCh.title
+      : extracted.cleanTitle || fallbackDefaultChapterTitle;
+    const chapter_no = matchedExistingCh
+      ? Number(matchedExistingCh.chapter_no || 1)
+      : extracted.chapterNo && extracted.chapterNo > 0
+      ? extracted.chapterNo
+      : 1;
+    const subtopics = String(
+      r.subtopics ?? r.subtopic ?? matchedExistingCh?.subtopics ?? ''
+    ).trim();
     const formulaNoRaw = Number(r.formula_no ?? r.formulano ?? 0);
     const formula_no = Number.isFinite(formulaNoRaw) && formulaNoRaw > 0 ? formulaNoRaw : rowNumber;
     const formula_latex = String(
@@ -946,8 +1017,9 @@ export function parseFormulaImportInput(
 
     let isDuplicate = false;
     let duplicateReason: string | undefined;
-    const batchKeyNo = `${chapter.toLowerCase()}::no::${formula_no}`;
-    const batchKeyLatex = `${chapter.toLowerCase()}::latex::${formula_latex.toLowerCase()}`;
+    const normKey = normalizeChapKey(chapter) || chapter.toLowerCase();
+    const batchKeyNo = `${normKey}::no::${formula_no}`;
+    const batchKeyLatex = `${normKey}::latex::${formula_latex.toLowerCase()}`;
 
     if (!error) {
       if (seenInBatch.has(batchKeyNo) || seenInBatch.has(batchKeyLatex)) {
@@ -956,7 +1028,7 @@ export function parseFormulaImportInput(
       } else {
         seenInBatch.add(batchKeyNo);
         seenInBatch.add(batchKeyLatex);
-        const targetCh = existingChaptersByTitle.get(chapter.toLowerCase());
+        const targetCh = matchedExistingCh || existingChaptersByKey.get(normKey);
         if (targetCh) {
           const matchExisting = existingFormulas.find(
             (ef) =>
@@ -985,7 +1057,7 @@ export function parseFormulaImportInput(
 
     rows.push({
       rowNumber,
-      category: options.lockedCategoryName,
+      category: String(options.lockedCategoryName || ''),
       chapter_no,
       chapter,
       subtopics,
@@ -995,8 +1067,8 @@ export function parseFormulaImportInput(
       note,
       isValid,
       isDuplicate,
-      error,
-      duplicateReason,
+      ...(error ? { error } : {}),
+      ...(duplicateReason ? { duplicateReason } : {}),
     });
   }
 
@@ -1015,7 +1087,7 @@ export async function runChunkedFormulaImport(params: {
   initialProgress?: Partial<FormulaChunkImportProgress>;
   onProgress?: (progress: FormulaChunkImportProgress) => void;
 }): Promise<FormulaChunkImportProgress> {
-  const CHUNK_SIZE = 100;
+  const CHUNK_SIZE = 50;
   const totalRows = params.rows.length;
   const totalChunks = Math.max(1, Math.ceil(totalRows / CHUNK_SIZE));
   const startChunk = Math.max(0, Number(params.startChunkIndex || 0));
@@ -1029,7 +1101,19 @@ export async function runChunkedFormulaImport(params: {
 
   for (let chunkIdx = startChunk; chunkIdx < totalChunks; chunkIdx++) {
     const offset = chunkIdx * CHUNK_SIZE;
-    const slice = params.rows.slice(offset, offset + CHUNK_SIZE);
+    const slice = params.rows.slice(offset, offset + CHUNK_SIZE).map((r) => ({
+      rowNumber: Number(r.rowNumber || 1),
+      category: String(r.category ?? ''),
+      chapter_no: Number(r.chapter_no || 1),
+      chapter: String(r.chapter ?? ''),
+      subtopics: String(r.subtopics ?? ''),
+      formula_no: Number(r.formula_no || 1),
+      title: String(r.title ?? ''),
+      formula_latex: String(r.formula_latex ?? ''),
+      note: String(r.note ?? ''),
+      isValid: Boolean(r.isValid),
+      isDuplicate: Boolean(r.isDuplicate),
+    }));
     const isLastChunk = chunkIdx === totalChunks - 1;
 
     try {
@@ -1038,12 +1122,12 @@ export async function runChunkedFormulaImport(params: {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          category_id: params.categoryId,
-          default_chapter_id: params.defaultChapterId || '',
-          duplicate_strategy: params.duplicateStrategy,
-          source_type: params.sourceType,
-          file_name: params.fileName || '',
-          raw_csv_text: chunkIdx === 0 ? params.rawCsvText : undefined,
+          category_id: String(params.categoryId || ''),
+          default_chapter_id: String(params.defaultChapterId || ''),
+          duplicate_strategy: params.duplicateStrategy === 'update' ? 'update' : 'skip',
+          source_type: params.sourceType || 'csv',
+          file_name: String(params.fileName || 'bulk_import.csv'),
+          raw_csv_text: chunkIdx === 0 && params.rawCsvText ? String(params.rawCsvText) : '',
           chunk_offset: offset,
           is_final_chunk: isLastChunk,
           import_batch_id: importBatchId,

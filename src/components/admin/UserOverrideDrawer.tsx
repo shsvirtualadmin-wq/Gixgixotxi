@@ -40,7 +40,10 @@ import {
   type CanonicalUserRole,
   type PermissionKey,
 } from '@/constants/permissions';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import { RequestAccessSheet } from './RequestAccessSheet';
+
+export type UserOverrideSection = 'top' | 'plan' | 'role' | 'attempts' | 'security';
 
 interface RecentAttemptItem {
   id: string;
@@ -53,6 +56,7 @@ interface RecentAttemptItem {
 interface UserOverrideDrawerProps {
   user: UserProfile | null;
   adminEmail: string;
+  initialSection?: UserOverrideSection;
   initialTwoFactorStatus?: Partial<UserTwoFactorSummary> | null;
   onUpdate2faStatus?: (uid: string, status: UserTwoFactorSummary) => void;
   onUserUpdated?: (updatedUser: UserProfile) => void;
@@ -101,6 +105,7 @@ function formatPlanExpiry(plan?: string, planExpiresAt?: unknown): string {
 export function UserOverrideDrawer({
   user,
   adminEmail,
+  initialSection = 'top',
   initialTwoFactorStatus,
   onUpdate2faStatus,
   onUserUpdated,
@@ -110,6 +115,38 @@ export function UserOverrideDrawer({
   const { isSuperAdmin: authIsSuperAdmin, hasPermission, refreshActiveGrants } = useAuth();
   // SECURITY: SuperAdmin comes strictly from verified Firebase Auth custom claims (token.superAdmin === true)
   const isSuperAdmin = Boolean(authIsSuperAdmin);
+
+  useBodyScrollLock(Boolean(user), 'user-override-drawer');
+
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const planSectionRef = useRef<HTMLElement | null>(null);
+  const roleSectionRef = useRef<HTMLElement | null>(null);
+  const attemptsSectionRef = useRef<HTMLElement | null>(null);
+  const securitySectionRef = useRef<HTMLElement | null>(null);
+  const [activeJumpChip, setActiveJumpChip] = useState<UserOverrideSection>(initialSection || 'top');
+
+  const scrollToSection = useCallback(
+    (section: UserOverrideSection, behavior: ScrollBehavior = 'smooth') => {
+      setActiveJumpChip(section);
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      if (section === 'top') {
+        container.scrollTo({ top: 0, behavior });
+        return;
+      }
+      const refMap: Record<Exclude<UserOverrideSection, 'top'>, HTMLElement | null> = {
+        plan: planSectionRef.current,
+        role: roleSectionRef.current,
+        attempts: attemptsSectionRef.current,
+        security: securitySectionRef.current,
+      };
+      const targetEl = refMap[section];
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior, block: 'start' });
+      }
+    },
+    []
+  );
 
   const canChangePlan = hasPermission('users.plan', user?.uid);
   const canChangeRole = isSuperAdmin && hasPermission('users.role', user?.uid);
@@ -220,16 +257,27 @@ export function UserOverrideDrawer({
   const [admin2faModalError, setAdmin2faModalError] = useState<string | null>(null);
   const [submitting2faAction, setSubmitting2faAction] = useState<boolean>(false);
 
-  // Hide floating bottom nav while sheet is open
+  // Hide floating bottom nav while sheet is open and scroll to initial section (or top)
   useEffect(() => {
     if (!user) return;
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new CustomEvent('boardly:modal-change'));
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+    setActiveJumpChip(initialSection || 'top');
+    let rafId = 0;
+    if (initialSection && initialSection !== 'top') {
+      rafId = window.requestAnimationFrame(() => {
+        scrollToSection(initialSection, 'auto');
+      });
+    }
     return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     };
-  }, [user]);
+  }, [user?.uid, initialSection, scrollToSection]);
 
   // Initialize form state ONLY when opening a different user (prevents background refetches from snapping plan back to Free)
   useEffect(() => {
@@ -735,44 +783,81 @@ export function UserOverrideDrawer({
         onClick={() => !saving && onClose()}
       />
 
-      {/* Flex Column Sheet: Fixed Header + Scrollable Body + Sticky Footer using dvh units */}
-      <div className="relative w-full md:w-[480px] max-h-[92dvh] md:max-h-[100dvh] h-[92dvh] md:h-[100dvh] bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl">
+      {/* Flex Column Sheet: Fixed Header + Quick-Jump Chips + Scrollable Body + Sticky Footer using 100dvh */}
+      <div className="relative w-full md:max-w-[720px] max-h-[100dvh] h-[100dvh] bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl">
         {/* Mobile grab handle */}
         <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto mt-2.5 shrink-0" />
 
         {/* 1. FIXED HEADER */}
-        <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between shrink-0 bg-[var(--card)]">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
-              {userInitial}
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] truncate">
-                  {displayName}
-                </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] shrink-0">
-                  {selectedRoleOption.shortLabel}
-                </span>
+        <div className="px-5 py-3.5 border-b border-[var(--border)] flex flex-col gap-2.5 shrink-0 bg-[var(--card)]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
+                {userInitial}
               </div>
-              <p className="font-heading text-[12px] text-[var(--muted)] truncate">
-                {isSuperAdmin ? user.email || 'No email' : maskEmail(user.email)}
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] truncate">
+                    {displayName}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] shrink-0">
+                    {selectedRoleOption.shortLabel}
+                  </span>
+                </div>
+                <p className="font-heading text-[12px] text-[var(--muted)] truncate">
+                  {isSuperAdmin ? user.email || 'No email' : maskEmail(user.email)}
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="p-2 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer shrink-0"
+              aria-label="Close user detail sheet"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="p-2 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer shrink-0"
-            aria-label="Close user detail sheet"
+
+          {/* Quick-Jump Section Chips */}
+          <div
+            data-testid="user-override-quick-jump-chips"
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5"
           >
-            <X size={18} />
-          </button>
+            {(
+              [
+                { id: 'plan', label: 'Plan' },
+                { id: 'role', label: 'Role' },
+                { id: 'attempts', label: 'Attempts' },
+                ...(!targetIsGuest ? [{ id: 'security', label: 'Security' } as const] : []),
+              ] as const
+            ).map((chip) => {
+              const isActive = activeJumpChip === chip.id;
+              return (
+                <button
+                  key={chip.id}
+                  type="button"
+                  data-testid={`user-override-jump-${chip.id}`}
+                  onClick={() => scrollToSection(chip.id, 'smooth')}
+                  className={`px-3 py-1 rounded-full text-[11px] font-heading font-semibold border transition-colors shrink-0 cursor-pointer ${
+                    isActive
+                      ? 'border-[#D71921] bg-[#D71921]/15 text-[var(--text)]'
+                      : 'border-[var(--border)] bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 2. SCROLLABLE BODY (padded for sticky footer + safe-area-inset-bottom) */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-5 pt-4 pb-[calc(92px+env(safe-area-inset-bottom,0px))] space-y-5">
+        <div
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 pt-4 pb-[calc(92px+env(safe-area-inset-bottom,0px))] space-y-5"
+        >
           {error && (
             <div
               data-testid="user-override-error"
@@ -944,7 +1029,7 @@ export function UserOverrideDrawer({
           </section>
 
           {/* SECTION 2: SUBSCRIPTION PLAN */}
-          <section className="space-y-2 pt-1 border-t border-[var(--border)]">
+          <section ref={planSectionRef} className="space-y-2 pt-1 border-t border-[var(--border)] scroll-mt-3">
             <div className="flex items-center justify-between">
               <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
                 Subscription plan
@@ -1089,7 +1174,7 @@ export function UserOverrideDrawer({
           </section>
 
           {/* SECTION 3: SYSTEM ROLE */}
-          <section className="space-y-2.5 pt-1 border-t border-[var(--border)]">
+          <section ref={roleSectionRef} className="space-y-2.5 pt-1 border-t border-[var(--border)] scroll-mt-3">
             <div className="flex items-center justify-between">
               <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
                 System role
@@ -1143,7 +1228,7 @@ export function UserOverrideDrawer({
           </section>
 
           {/* SECTION 4: TEST ATTEMPTS */}
-          <section className="space-y-2 pt-1 border-t border-[var(--border)]">
+          <section ref={attemptsSectionRef} className="space-y-2 pt-1 border-t border-[var(--border)] scroll-mt-3">
             <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
               Test attempts
             </h3>
@@ -1192,7 +1277,7 @@ export function UserOverrideDrawer({
 
           {/* SECTION 5: SECURITY (2FA) */}
           {!user.isGuest && user.accountType !== 'guest' && (
-            <section className="pt-1 border-t border-[var(--border)] space-y-3">
+            <section ref={securitySectionRef} className="pt-1 border-t border-[var(--border)] space-y-3 scroll-mt-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider font-semibold text-[var(--muted)]">
                   <Shield size={13} className="text-[var(--muted)]" />

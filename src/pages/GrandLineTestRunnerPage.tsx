@@ -47,6 +47,7 @@ import {
   recordServerTimeOffset,
 } from '@/utils/grandLineSchedule';
 import { useServerSyncedClock } from '@/components/admin/GrandLineScheduleSheet';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'Each Grand Line test can only be attempted once.';
@@ -104,6 +105,34 @@ export function GrandLineTestRunnerPage() {
   } | null>(null);
   const [timeLeftSec, setTimeLeftSec] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
+
+  const isActivelyRunning = Boolean(
+    !loading &&
+      !notFound &&
+      !notLiveInfo &&
+      !alreadyAttemptedInfo &&
+      !submitted &&
+      !loadError &&
+      test &&
+      test.questions.length > 0
+  );
+
+  useBodyScrollLock(isActivelyRunning, 'grand-line-test-runner');
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (isActivelyRunning) {
+      document.body.setAttribute('data-fullscreen-modal-open', 'true');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+      return () => {
+        document.body.removeAttribute('data-fullscreen-modal-open');
+        window.dispatchEvent(new Event('boardly:modal-change'));
+      };
+    } else {
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    }
+  }, [isActivelyRunning]);
 
   const resolveStudentProfileName = useCallback((): string => {
     const fromProfile = String(profile?.displayName || '').trim();
@@ -919,9 +948,12 @@ export function GrandLineTestRunnerPage() {
   const secs = timeLeftSec % 60;
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col">
+    <div
+      data-fullscreen-modal="true"
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] w-full z-[9999] overflow-hidden bg-[var(--bg)] text-[var(--text)] flex flex-col"
+    >
       {/* Top Bar */}
-      <header className="sticky top-0 z-20 floating-blur backdrop-blur-lg border-b border-[var(--border)] px-4 sm:px-6 py-3">
+      <header className="shrink-0 z-20 floating-blur backdrop-blur-lg border-b border-[var(--border)] px-4 sm:px-6 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -971,67 +1003,68 @@ export function GrandLineTestRunnerPage() {
         </div>
       </header>
 
-      {/* Main Question Area */}
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col justify-between gap-6">
-        <div className="space-y-5">
-          {/* Progress */}
-          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-            <span className="font-mono font-semibold tabular-nums">
-              Question {currentIndex + 1} of {totalQ}
-            </span>
-            <span className="tabular-nums">
-              {Object.keys(answers).length} / {totalQ} answered
-            </span>
-          </div>
-          <div className="w-full h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
-            <div
-              className="h-full bg-[var(--accent)] transition-all duration-200"
-              style={{ width: `${((currentIndex + 1) / totalQ) * 100}%` }}
-            />
+      {/* Fixed Progress Bar */}
+      <div className="shrink-0 max-w-3xl w-full mx-auto px-4 sm:px-6 pt-4 pb-2 space-y-2">
+        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+          <span className="font-mono font-semibold tabular-nums">
+            Question {currentIndex + 1} of {totalQ}
+          </span>
+          <span className="tabular-nums">
+            {Object.keys(answers).length} / {totalQ} answered
+          </span>
+        </div>
+        <div className="w-full h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+          <div
+            className="h-full bg-[var(--accent)] transition-all duration-200"
+            style={{ width: `${((currentIndex + 1) / totalQ) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Scrollable Question Area */}
+      <main className="flex-1 min-h-0 overflow-y-auto overscroll-contain max-w-3xl w-full mx-auto px-4 sm:px-6 py-4">
+        <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-5">
+          <div dir="ltr" className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
+            <MathText text={currentQ.question} />
           </div>
 
-          {/* Question Stem */}
-          <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-5">
-            <div dir="ltr" className="text-base sm:text-lg font-medium text-[var(--text)] leading-relaxed">
-              <MathText text={currentQ.question} />
-            </div>
-
-            <div className="space-y-2.5">
-              {repairSplitOrGarbledMcqOptions(currentQ.options).map((opt, idx) => {
-                const selected = answers[currentIndex] === idx;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    dir="ltr"
-                    onClick={() => setAnswers((prev) => ({ ...prev, [currentIndex]: idx }))}
-                    className={`w-full text-left p-3.5 sm:p-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
+          <div className="space-y-2.5">
+            {repairSplitOrGarbledMcqOptions(currentQ.options).map((opt, idx) => {
+              const selected = answers[currentIndex] === idx;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  dir="ltr"
+                  onClick={() => setAnswers((prev) => ({ ...prev, [currentIndex]: idx }))}
+                  className={`w-full text-left p-3.5 sm:p-4 rounded-xl border transition-all flex items-center gap-3 cursor-pointer ${
+                    selected
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--text)] font-semibold'
+                      : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]/40'
+                  }`}
+                >
+                  <span
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
                       selected
-                        ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--text)] font-semibold'
-                        : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] hover:border-[var(--accent)]/40'
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'bg-[var(--card)] border border-[var(--border)] text-[var(--muted)]'
                     }`}
                   >
-                    <span
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
-                        selected
-                          ? 'bg-[var(--accent)] text-white'
-                          : 'bg-[var(--card)] border border-[var(--border)] text-[var(--muted)]'
-                      }`}
-                    >
-                      {String.fromCharCode(65 + idx)}
-                    </span>
-                    <span className="text-xs sm:text-sm">
-                      <MathText text={opt} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                    {String.fromCharCode(65 + idx)}
+                  </span>
+                  <span className="text-xs sm:text-sm">
+                    <MathText text={opt} />
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
+      </main>
 
-        {/* Navigation Footer */}
-        <div className="flex items-center justify-between gap-3 pt-4 border-t border-[var(--border)]">
+      {/* Fixed Navigation Footer */}
+      <footer className="shrink-0 bg-[var(--bg)] border-t border-[var(--border)] px-4 sm:px-6 py-3.5 pb-[max(14px,env(safe-area-inset-bottom,14px))]">
+        <div className="max-w-3xl w-full mx-auto flex items-center justify-between gap-3">
           <button
             type="button"
             disabled={currentIndex === 0}
@@ -1071,7 +1104,7 @@ export function GrandLineTestRunnerPage() {
             </button>
           )}
         </div>
-      </main>
+      </footer>
     </div>
   );
 }

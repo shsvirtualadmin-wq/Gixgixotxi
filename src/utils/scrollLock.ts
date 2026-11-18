@@ -123,6 +123,9 @@ export function acquireBodyScrollLock(ownerId: string): () => void {
   }
   activeScrollLockOwners.add(ownerId);
   document.body.style.overflow = 'hidden';
+  if (document.documentElement) {
+    document.documentElement.style.overflow = 'hidden';
+  }
 
   return () => {
     releaseBodyScrollLock(ownerId);

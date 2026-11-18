@@ -108,6 +108,7 @@ export function AdminLayout() {
   useEffect(() => {
     setIsMoreOpen(false);
     safetyCleanupScrollLocks();
+    window.scrollTo(0, 0);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -213,7 +214,7 @@ export function AdminLayout() {
   return (
     <div
       data-admin-shell="true"
-      className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip"
+      className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip"
     >
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
       <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 glass border-r border-[var(--glass-border)] z-30">
@@ -362,7 +363,7 @@ export function AdminLayout() {
       </header>
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
-      <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
+      <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100dvh-3.5rem)] md:min-h-[100dvh] p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
         {profileLoading || otpVerificationState.status === 'checking' ? (
           <LineLoader context="admin" variant="section" />
         ) : !user || !isSessionVerified ? (
@@ -390,7 +391,7 @@ export function AdminLayout() {
         ) : (
           <div
             key={location.pathname}
-            className="w-full min-h-[calc(100vh-5rem)] bg-transparent relative isolate page-slide-right"
+            className="w-full min-h-[calc(100dvh-5rem)] bg-transparent relative isolate page-slide-right"
           >
             <Suspense
               fallback={

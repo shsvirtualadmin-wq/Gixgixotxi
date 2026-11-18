@@ -41,10 +41,9 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
       }
       setErrorMsg(null);
       try {
-        const [rows, myAttempts] = await Promise.all([
-          fetchMyCertificates(),
-          getMyTestAttempts().catch(() => []),
-        ]);
+        const rows = await fetchMyCertificates();
+        const myAttempts =
+          rows.length > 0 ? await getMyTestAttempts().catch(() => []) : [];
 
         const fallbackProfileName = String(
           (profile as any)?.full_name ||
@@ -124,10 +123,9 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
           maxStaleMs: 15 * 60_000,
           persist: true,
         });
-      } catch (err: any) {
-        if (!background) {
-          setErrorMsg(err?.message || 'Unable to load your certificates right now.');
-        }
+      } catch {
+        // Retry already attempted in fetchMyCertificates(); fail silently with no red banner
+        setErrorMsg(null);
       } finally {
         setLoading(false);
       }
@@ -193,7 +191,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
         </div>
       </div>
 
-      {errorMsg && (
+      {!compact && errorMsg && (
         <div className="cockpit-surface-card p-4 text-xs text-red-400 border border-red-500/30">
           {errorMsg}
         </div>

@@ -65,6 +65,7 @@ import {
 import { convertGoogleSheetToCsvUrl } from '../../services/universityMcqService';
 import { MathText, validateMath } from '../../components/ui/MathText';
 import { ButtonLineLoader } from '../../components/ui/LineLoader';
+import { useBodyScrollLock } from '../../utils/scrollLock';
 
 type PrimaryTab = 'formulas' | 'health' | 'reports';
 
@@ -163,6 +164,34 @@ export const AdminFormulasPage: React.FC = () => {
   const [reportFilter, setReportFilter] = useState<'all' | 'open' | 'resolved' | 'ignored'>('all');
   const [loadingReports, setLoadingReports] = useState(false);
 
+  // Lock body scroll and reset modal scroll container to top whenever any modal/sheet/wizard opens
+  const anyModalOpen =
+    formulaModalOpen ||
+    bulkModalOpen ||
+    categorySheetOpen ||
+    categoryModalOpen ||
+    chapterModalOpen;
+
+  useBodyScrollLock(anyModalOpen, 'admin-formulas-modal');
+
+  useEffect(() => {
+    if (!anyModalOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      document.querySelectorAll('.aqb-sheet-body').forEach((el) => {
+        (el as HTMLElement).scrollTop = 0;
+      });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [
+    formulaModalOpen,
+    bulkModalOpen,
+    bulkStep,
+    categorySheetOpen,
+    categoryModalOpen,
+    chapterModalOpen,
+    anyModalOpen,
+  ]);
+
   // Feedback Banner
   const [banner, setBanner] = useState<{
     type: 'success' | 'error' | 'info';
@@ -228,7 +257,11 @@ export const AdminFormulasPage: React.FC = () => {
     () =>
       chapters
         .filter((ch) => ch.category_id === (selectedCategory?.id || ''))
-        .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no),
+        .sort(
+          (a, b) =>
+            Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        ),
     [chapters, selectedCategory]
   );
 
@@ -337,6 +370,27 @@ export const AdminFormulasPage: React.FC = () => {
     () => categories.reduce((sum, c) => sum + Number(c.formula_count || 0), 0),
     [categories]
   );
+
+  const openReportsCount = useMemo(
+    () => reports.filter((r) => r.status === 'open').length,
+    [reports]
+  );
+
+  const lastImportTimeLabel = useMemo(() => {
+    if (!chapterFormulas.length) return 'Ready';
+    const latest = chapterFormulas.reduce((acc, f) => {
+      if (!f.updated_at) return acc;
+      return f.updated_at > acc ? f.updated_at : acc;
+    }, '');
+    if (!latest) return 'Recent';
+    try {
+      const d = new Date(latest);
+      if (Number.isNaN(d.getTime())) return 'Recent';
+      return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch {
+      return 'Recent';
+    }
+  }, [chapterFormulas]);
 
   // ── Category Handlers ─────────────────────────────────────────────────────
   const openAddCategoryModal = () => {
@@ -640,7 +694,13 @@ export const AdminFormulasPage: React.FC = () => {
   const openBulkImportModal = () => {
     const targetCat = selectedCategory?.id || categories[0]?.id || '';
     setBulkTargetCatId(targetCat);
-    const catChs = chapters.filter((c) => c.category_id === targetCat);
+    const catChs = chapters
+      .filter((c) => c.category_id === targetCat)
+      .sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
     setBulkDefaultChapterId(selectedChapter?.id || catChs[0]?.id || '');
     setBulkChangingCat(false);
     setBulkStep(1);
@@ -662,7 +722,11 @@ export const AdminFormulasPage: React.FC = () => {
     () =>
       chapters
         .filter((c) => c.category_id === (bulkModalCategory?.id || ''))
-        .sort((a, b) => a.sort_order - b.sort_order || a.chapter_no - b.chapter_no),
+        .sort(
+          (a, b) =>
+            Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        ),
     [chapters, bulkModalCategory]
   );
 
@@ -763,9 +827,10 @@ export const AdminFormulasPage: React.FC = () => {
 
       setImportProgress(finalProgress);
       if (finalProgress.failedChunkIndex === null || finalProgress.failedChunkIndex === undefined) {
+        const savedRows = finalProgress.importedCount + finalProgress.updatedCount;
         showBanner(
           'success',
-          `Import complete: ${finalProgress.importedCount} imported, ${finalProgress.updatedCount} updated, ${finalProgress.skippedCount} skipped.`
+          `Saved ${savedRows.toLocaleString()} formulas (${finalProgress.importedCount} imported, ${finalProgress.updatedCount} updated, ${finalProgress.skippedCount} skipped).`
         );
         await loadOverview(true);
         if (selectedChapter?.id) {
@@ -774,95 +839,99 @@ export const AdminFormulasPage: React.FC = () => {
       } else {
         showBanner('error', finalProgress.failedChunkMessage || 'A chunk failed during import. Use Retry below.');
       }
+    } catch (err: any) {
+      showBanner('error', err?.message || 'Bulk import failed.');
     } finally {
       setImportingChunked(false);
     }
   };
 
   return (
-    <div className="aqb-page">
-      <div className="aqb-container">
-        {/* 1. Compact Header */}
-        <header className="aqb-header">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
-              <h1 className="aqb-title truncate">Formula Bank</h1>
-              <span className="aqb-pill aqb-pill--admin">Admin</span>
-            </div>
-            <div className="text-xs font-mono font-bold text-[var(--text-muted)] tabular-nums">
-              {totalFormulasAllCategories.toLocaleString()} Formulas · {categories.length} Categories
-            </div>
-          </div>
-          <p className="aqb-subtitle">
-            Category &amp; chapter formula sheets with live KaTeX validation and R2 PDF generation
-          </p>
-        </header>
+    <div data-admin-page="formulas" className="aqb-page-shell">
+      {/* Ambient red glassmorphism background blobs (exact match to Question Bank) */}
+      <div className="aqb-ambient-blobs" aria-hidden="true">
+        <div className="aqb-blob aqb-blob--top" />
+        <div className="aqb-blob aqb-blob--bottom" />
+      </div>
 
+      <div className="aqb-container">
         {/* Feedback Banner */}
         {banner && (
           <div
             role="status"
-            className={`aqb-glass-card px-4 py-3 flex items-center justify-between gap-3 text-xs font-semibold ${
+            className={`aqb-glass-card px-4 py-3 flex items-center justify-between gap-3 text-sm font-semibold ${
               banner.type === 'error'
-                ? 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300'
+                ? 'border-red-500/40 text-red-700 dark:text-red-300'
                 : banner.type === 'success'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200'
-                : 'border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200'
+                ? 'border-emerald-500/40 text-emerald-800 dark:text-emerald-300'
+                : 'text-[var(--text)]'
             }`}
           >
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0">
               {banner.type === 'error' ? (
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <AlertTriangle className="w-4 h-4 shrink-0 text-[var(--accent)]" />
               ) : (
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               )}
               <span className="break-words">{banner.message}</span>
             </div>
             <button
               type="button"
               onClick={() => setBanner(null)}
-              className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 shrink-0"
+              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 shrink-0"
               aria-label="Dismiss notification"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        {/* 2. Primary Segmented Tabs: Formulas | Health | Reports */}
-        <div className="flex items-center gap-2">
-          <nav className="aqb-segmented flex-1" aria-label="Formula Bank sections">
+        {/* 1. Compact Glass Header (exact match to Question Bank) */}
+        <header className="aqb-glass-card p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <h1 className="aqb-page-title">Formula Bank</h1>
+            <span className="aqb-admin-chip">Admin</span>
+          </div>
+          <p className="mt-1 text-[13.5px] text-[var(--text-secondary)] leading-snug">
+            Manage formula sheets by category &amp; chapter.
+          </p>
+          <p className="mt-2.5 text-xs font-bold tracking-tight text-[var(--text-muted)] tabular-nums">
+            {categories.length} categories · {chapters.length} chapters ·{' '}
+            {totalFormulasAllCategories.toLocaleString()} formulas
+          </p>
+        </header>
+
+        {/* 2. Segmented Glass Tabs + Right-End Refresh Icon Button (exact match to Question Bank) */}
+        <div className="aqb-tabs-row">
+          <nav className="aqb-segmented-tabs" aria-label="Formula bank sections">
             <button
               type="button"
               onClick={() => setActiveTab('formulas')}
-              className={`aqb-segmented-tab ${
-                activeTab === 'formulas' ? 'aqb-segmented-tab--active' : ''
-              }`}
+              className={`aqb-tab-btn ${activeTab === 'formulas' ? 'aqb-tab-btn--active' : ''}`}
             >
-              <Layers className="w-3.5 h-3.5 shrink-0" />
-              <span>Formulas</span>
+              <Layers className="w-4 h-4 shrink-0" />
+              <span className="truncate">Formulas</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('health')}
-              className={`aqb-segmented-tab ${
-                activeTab === 'health' ? 'aqb-segmented-tab--active' : ''
-              }`}
+              className={`aqb-tab-btn ${activeTab === 'health' ? 'aqb-tab-btn--active' : ''}`}
             >
-              <Activity className="w-3.5 h-3.5 shrink-0" />
-              <span>Health</span>
+              <Activity className="w-4 h-4 shrink-0" />
+              <span className="truncate">Health</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('reports')}
-              className={`aqb-segmented-tab ${
-                activeTab === 'reports' ? 'aqb-segmented-tab--active' : ''
-              }`}
+              className={`aqb-tab-btn ${activeTab === 'reports' ? 'aqb-tab-btn--active' : ''}`}
             >
-              <Flag className="w-3.5 h-3.5 shrink-0" />
-              <span>Reports</span>
+              <Flag className="w-4 h-4 shrink-0" />
+              <span className="truncate">Reports</span>
+              {openReportsCount > 0 && (
+                <span className="aqb-tab-badge">{openReportsCount}</span>
+              )}
             </button>
           </nav>
 
@@ -876,14 +945,18 @@ export const AdminFormulasPage: React.FC = () => {
             }}
             aria-label="Refresh Formula Bank"
             title="Refresh Formula Bank"
-            className="aqb-icon-btn shrink-0"
+            className="aqb-icon-btn"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw
+              className={`w-4 h-4 ${
+                loadingInitial || loadingChapterFormulas ? 'animate-spin' : ''
+              }`}
+            />
           </button>
         </div>
 
-        {/* 3. Top Action Row: Red "Add formulas" button + "..." overflow menu */}
-        <div className="aqb-action-row">
+        {/* 3. Sticky Primary Action Bar: Red "Add formulas" button + "..." overflow menu in one flex row */}
+        <div className="aqb-sticky-action-bar flex items-center gap-2 flex-nowrap">
           <div ref={addMenuRef} className="relative flex-1 min-w-0">
             <button
               type="button"
@@ -928,9 +1001,9 @@ export const AdminFormulasPage: React.FC = () => {
                 >
                   <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
                   <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Bulk Import Formulas</div>
+                    <div className="font-bold text-[13px] truncate">Bulk import</div>
                     <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      CSV/XLSX, Google Sheet, or Paste
+                      CSV, Google Sheet, or Paste
                     </div>
                   </div>
                 </button>
@@ -1021,6 +1094,18 @@ export const AdminFormulasPage: React.FC = () => {
                     <span>Export category CSV ({selectedCategory.name})</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOverflowMenuOpen(false);
+                    loadOverview(true);
+                    if (selectedChapter?.id) loadChapterFormulas(selectedChapter.id, true);
+                  }}
+                  className="aqb-dropdown-item"
+                >
+                  <RefreshCw className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                  <span>Refresh</span>
+                </button>
               </div>
             )}
           </div>
@@ -1031,7 +1116,7 @@ export const AdminFormulasPage: React.FC = () => {
             ==================================================================== */}
         {activeTab === 'formulas' && (
           <div className="flex flex-col gap-3.5 min-w-0">
-            {/* 4. "Working in" Category Card */}
+            {/* 4. "Working in" Category Card (exact match to Question Bank) */}
             {selectedCategory && (
               <div className="aqb-glass-card aqb-glass-card--selected p-4">
                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -1040,7 +1125,7 @@ export const AdminFormulasPage: React.FC = () => {
                   </span>
                   <div className="flex items-center gap-1.5">
                     <span className="aqb-pill aqb-pill--live">
-                      {selectedCategory.guest_access !== 0 ? 'GUEST OPEN' : 'SIGNED-IN ONLY'}
+                      {selectedCategory.guest_access !== 0 ? 'LIVE' : 'SIGNED-IN ONLY'}
                     </span>
                     <span className="aqb-pill aqb-pill--tag tabular-nums font-bold">
                       {selectedCategory.formula_count.toLocaleString()} formulas
@@ -1079,10 +1164,18 @@ export const AdminFormulasPage: React.FC = () => {
               </div>
             )}
 
-            {/* 5. Category Stats + Quick Actions Panel */}
+            {/* 5. Selected Category Panel: 2x2 Stat Grid + Scoped "Add formula" & "Bulk import" Buttons */}
             {selectedCategory && (
               <div className="aqb-glass-card p-4 flex flex-col gap-3">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
+                    <div className="text-[11px] font-semibold text-[var(--text-muted)]">
+                      Total Formulas
+                    </div>
+                    <div className="text-base font-extrabold text-[var(--text)] tabular-nums mt-0.5">
+                      {selectedCategory.formula_count.toLocaleString()}
+                    </div>
+                  </div>
                   <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
                     <div className="text-[11px] font-semibold text-[var(--text-muted)]">
                       Chapters
@@ -1093,332 +1186,347 @@ export const AdminFormulasPage: React.FC = () => {
                   </div>
                   <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
                     <div className="text-[11px] font-semibold text-[var(--text-muted)]">
-                      Formulas
+                      Guest access
                     </div>
-                    <div className="text-base font-extrabold text-[var(--text)] tabular-nums mt-0.5">
-                      {selectedCategory.formula_count.toLocaleString()}
+                    <div className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 truncate mt-0.5">
+                      {selectedCategory.guest_access !== 0 ? 'Enabled' : 'Disabled'}
                     </div>
                   </div>
                   <div className="rounded-2xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)]">
                     <div className="text-[11px] font-semibold text-[var(--text-muted)]">
-                      Guest access
+                      Last update
                     </div>
-                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 truncate mt-1">
-                      {selectedCategory.guest_access !== 0 ? 'Enabled' : 'Disabled'}
+                    <div className="text-sm font-extrabold text-[var(--text)] truncate mt-0.5">
+                      {lastImportTimeLabel}
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={openAddFormulaModal}
-                    className="aqb-btn aqb-btn--primary !min-h-[44px] text-xs"
-                  >
-                    <Plus className="w-4 h-4 shrink-0" />
-                    <span className="truncate">Add formula</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openBulkImportModal}
-                    className="aqb-btn aqb-btn--glass !min-h-[44px] text-xs"
-                  >
-                    <Upload className="w-4 h-4 shrink-0" />
-                    <span className="truncate">Import CSV</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openAddChapterModal}
-                    className="aqb-btn aqb-btn--glass !min-h-[44px] text-xs col-span-2 sm:col-span-1"
-                  >
-                    <BookOpen className="w-4 h-4 shrink-0" />
-                    <span className="truncate">Add chapter</span>
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-[var(--border)]">
+                  <div className="text-xs font-semibold text-[var(--text-secondary)] truncate">
+                    Importing into:{' '}
+                    <span className="font-extrabold text-[var(--text)]">
+                      {selectedCategory.name}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={openAddFormulaModal}
+                      className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                    >
+                      <Plus className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                      <span>Add formula</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openBulkImportModal}
+                      className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                    >
+                      <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                      <span>Bulk import</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* 6. Chapters Management List for Current Category */}
-            <div className="aqb-glass-card p-4 flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-extrabold text-[var(--text)]">
-                    Chapters in {selectedCategory?.name} ({categoryChapters.length})
-                  </h2>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    Select a chapter to manage its formulas, reorder, or export as CSV
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={openAddChapterModal}
-                  className="aqb-btn aqb-btn--glass !min-h-[38px] !px-3 text-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>New Chapter</span>
-                </button>
-              </div>
-
-              {loadingInitial ? (
-                <div className="h-20 animate-pulse rounded-2xl bg-[var(--surface-2)]" />
-              ) : categoryChapters.length === 0 ? (
-                <div className="rounded-2xl border border-[var(--border)] p-4 text-center text-xs text-[var(--text-muted)]">
-                  No chapters in this category yet. Click &ldquo;New Chapter&rdquo; or use Bulk Import.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2">
-                  {categoryChapters.map((ch, idx) => {
-                    const isSelected = selectedChapter?.id === ch.id;
-                    return (
-                      <div
-                        key={ch.id}
-                        onClick={() => setSelectedChapterId(ch.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setSelectedChapterId(ch.id);
-                          }
-                        }}
-                        className={`rounded-2xl border p-3 transition cursor-pointer flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 ${
-                          isSelected
-                            ? 'border-[var(--accent)] bg-[var(--accent)]/[0.06]'
-                            : 'border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.02] hover:border-[var(--accent)]/40'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center font-display text-xs font-black shrink-0 ${
-                              isSelected
-                                ? 'bg-[var(--accent)] text-white'
-                                : 'bg-black/10 dark:bg-white/10 text-[var(--text)]'
-                            }`}
-                          >
-                            {String(ch.chapter_no).padStart(2, '0')}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-extrabold text-[var(--text)] truncate">
-                                {ch.chapter_no} {ch.title}
-                              </span>
-                              <span
-                                className={`aqb-pill ${
-                                  ch.status === 'live' ? 'aqb-pill--live' : 'aqb-pill--coming-soon'
-                                }`}
-                              >
-                                {ch.status.toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-[var(--text-muted)] truncate">
-                              {ch.subtopics || 'No subtopics listed'} · {ch.formula_count} formulas
-                            </div>
-                          </div>
-                        </div>
-
-                        <div
-                          className="flex items-center gap-1 shrink-0 ml-auto"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            disabled={idx === 0}
-                            onClick={() => handleMoveChapter(idx, -1)}
-                            title="Move chapter up"
-                            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={idx === categoryChapters.length - 1}
-                            onClick={() => handleMoveChapter(idx, 1)}
-                            title="Move chapter down"
-                            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadFormulaCsvExport({
-                                chapterId: ch.id,
-                                filenameHint: `chapter_${ch.chapter_no}_${ch.slug}`,
-                              })
-                            }
-                            title="Export chapter CSV"
-                            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEditChapterModal(ch)}
-                            title="Edit chapter"
-                            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteChapter(ch)}
-                            title="Delete chapter"
-                            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] text-red-500"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* 7. Formulas List in Selected Chapter */}
-            {selectedChapter && (
-              <div className="flex flex-col gap-3">
-                <div className="aqb-glass-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
-                      Active Chapter #{selectedChapter.chapter_no}
-                    </div>
-                    <h3 className="text-base font-extrabold text-[var(--text)]">
-                      {selectedChapter.title} ({filteredFormulas.length} formulas)
-                    </h3>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative flex-1 sm:w-56">
-                      <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Filter formulas in chapter..."
-                        className="aqb-input !min-h-[38px] !pl-8 !pr-3 !py-1.5 text-xs"
-                      />
-                    </div>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value as any)}
-                      className="aqb-input !w-auto !min-h-[38px] !py-1.5 text-xs"
-                    >
-                      <option value="all">All status</option>
-                      <option value="live">Live only</option>
-                      <option value="draft">Draft only</option>
-                    </select>
-                  </div>
-                </div>
-
-                {loadingChapterFormulas ? (
-                  <div className="space-y-2.5">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="h-24 animate-pulse aqb-glass-card" />
-                    ))}
-                  </div>
-                ) : filteredFormulas.length === 0 ? (
-                  <div className="aqb-glass-card p-6 text-center">
-                    <p className="text-sm font-bold text-[var(--text)]">
-                      No formulas match in this chapter
+            {/* 6. Responsive Layout: stacked on mobile, 2 cols on tablet, chapters list & chapter details side-by-side on laptop */}
+            <div className="flex flex-col lg:grid lg:grid-cols-12 gap-3.5 items-start min-w-0">
+              {/* Left Column on Laptop: Chapters Management List */}
+              <div className="w-full lg:col-span-5 aqb-glass-card p-4 flex flex-col gap-3 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-extrabold text-[var(--text)] truncate">
+                      Chapters in {selectedCategory?.name} ({categoryChapters.length})
+                    </h2>
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      Select a chapter to manage its formulas, reorder, or export CSV
                     </p>
-                    <p className="text-xs text-[var(--text-muted)] mt-1 mb-3">
-                      Add a formula with live KaTeX preview or import a CSV sheet.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={openAddFormulaModal}
-                      className="aqb-btn aqb-btn--primary !min-h-[42px] text-xs"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Formula to {selectedChapter.title}</span>
-                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openAddChapterModal}
+                    className="aqb-btn aqb-btn--glass !min-h-[38px] !px-3 text-xs shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    <span>New Chapter</span>
+                  </button>
+                </div>
+
+                {loadingInitial ? (
+                  <div className="h-24 animate-pulse rounded-2xl bg-black/5 dark:bg-white/5" />
+                ) : categoryChapters.length === 0 ? (
+                  <div className="rounded-2xl border border-[var(--border)] p-4 text-center text-xs text-[var(--text-muted)]">
+                    No chapters in this category yet. Click &ldquo;New Chapter&rdquo; or use Bulk Import.
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-2.5">
-                    {filteredFormulas.map((formula, idx) => (
-                      <article key={formula.id} className="aqb-mcq-card">
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="aqb-pill aqb-pill--admin tabular-nums">
-                              #{formula.formula_no}
-                            </span>
-                            {formula.title && (
-                              <span className="text-xs font-extrabold text-[var(--text)]">
-                                {formula.title}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleToggleFormulaStatus(formula)}
-                              title="Click to toggle Live / Draft"
-                              className={`aqb-pill cursor-pointer ${
-                                formula.status === 'live'
-                                  ? 'aqb-pill--live'
-                                  : 'aqb-pill--coming-soon'
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-2">
+                    {categoryChapters.map((ch, idx) => {
+                      const isSelected = selectedChapter?.id === ch.id;
+                      const liveCountForCh =
+                        isSelected && !loadingChapterFormulas
+                          ? chapterFormulas.length
+                          : Number(ch.formula_count || 0);
+                      return (
+                        <div
+                          key={ch.id}
+                          onClick={() => setSelectedChapterId(ch.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedChapterId(ch.id);
+                            }
+                          }}
+                          className={`rounded-2xl border p-3 transition cursor-pointer flex flex-wrap items-center justify-between gap-2.5 ${
+                            isSelected
+                              ? 'border-[var(--accent)] bg-[var(--accent)]/[0.06]'
+                              : 'border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.02] hover:border-[var(--accent)]/40'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span
+                              className={`w-9 h-9 rounded-xl flex items-center justify-center font-display text-xs font-black shrink-0 ${
+                                isSelected
+                                  ? 'bg-[var(--accent)] text-white'
+                                  : 'bg-black/10 dark:bg-white/10 text-[var(--text)]'
                               }`}
                             >
-                              {formula.status.toUpperCase()}
-                            </button>
-                            {formula.is_featured === 1 && (
-                              <span className="aqb-pill aqb-pill--tag">Formula of Day Pool</span>
-                            )}
+                              {String(ch.chapter_no).padStart(2, '0')}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-extrabold text-[var(--text)] truncate">
+                                  {ch.chapter_no} {ch.title}
+                                </span>
+                                <span
+                                  className={`aqb-pill ${
+                                    ch.status === 'live' ? 'aqb-pill--live' : 'aqb-pill--coming-soon'
+                                  }`}
+                                >
+                                  {ch.status.toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-[var(--text-muted)] truncate">
+                                {ch.subtopics || 'No subtopics listed'} · {liveCountForCh} formulas
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div
+                            className="flex items-center gap-1 shrink-0 ml-auto"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <button
                               type="button"
                               disabled={idx === 0}
-                              onClick={() => handleMoveFormula(idx, -1)}
+                              onClick={() => handleMoveChapter(idx, -1)}
+                              title="Move chapter up"
                               className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                              title="Move up"
                             >
                               <ArrowUp className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
-                              disabled={idx === filteredFormulas.length - 1}
-                              onClick={() => handleMoveFormula(idx, 1)}
+                              disabled={idx === categoryChapters.length - 1}
+                              onClick={() => handleMoveChapter(idx, 1)}
+                              title="Move chapter down"
                               className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                              title="Move down"
                             >
                               <ArrowDown className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
-                              onClick={() => openEditFormulaModal(formula)}
+                              onClick={() =>
+                                downloadFormulaCsvExport({
+                                  chapterId: ch.id,
+                                  filenameHint: `chapter_${ch.chapter_no}_${ch.slug}`,
+                                })
+                              }
+                              title="Export chapter CSV"
                               className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
-                              title="Edit formula"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditChapterModal(ch)}
+                              title="Edit chapter"
+                              className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteFormula(formula)}
+                              onClick={() => handleDeleteChapter(ch)}
+                              title="Delete chapter"
                               className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] text-red-500"
-                              title="Delete formula"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
-
-                        <div className="rounded-2xl border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] px-4 py-3 overflow-x-auto text-sm text-[var(--text)]">
-                          <MathText text={`$$${formula.formula_latex}$$`} />
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
-                          <span className="truncate">{formula.note || 'No note'}</span>
-                          <code className="font-mono text-[11px] opacity-75 truncate max-w-xs">
-                            {formula.formula_latex}
-                          </code>
-                        </div>
-                      </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            )}
+
+              {/* Right Column on Laptop: Formulas List in Selected Chapter */}
+              <div className="w-full lg:col-span-7 flex flex-col gap-3 min-w-0">
+                {selectedChapter ? (
+                  <>
+                    <div className="aqb-glass-card p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
+                          Active Chapter #{selectedChapter.chapter_no}
+                        </div>
+                        <h3 className="text-base font-extrabold text-[var(--text)]">
+                          {selectedChapter.title} ({filteredFormulas.length} formulas)
+                        </h3>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative flex-1 sm:w-56">
+                          <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Filter formulas in chapter..."
+                            className="aqb-input !min-h-[38px] !pl-8 !pr-3 !py-1.5 text-xs"
+                          />
+                        </div>
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => setStatusFilter(e.target.value as any)}
+                          className="aqb-input !w-auto !min-h-[38px] !py-1.5 text-xs"
+                        >
+                          <option value="all">All status</option>
+                          <option value="live">Live only</option>
+                          <option value="draft">Draft only</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {loadingChapterFormulas ? (
+                      <div className="space-y-2.5">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <div key={i} className="h-24 animate-pulse aqb-glass-card" />
+                        ))}
+                      </div>
+                    ) : filteredFormulas.length === 0 ? (
+                      <div className="aqb-glass-card p-6 text-center">
+                        <p className="text-sm font-bold text-[var(--text)]">
+                          No formulas match in this chapter
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] mt-1 mb-3">
+                          Add a formula with live KaTeX preview or import a CSV sheet.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={openAddFormulaModal}
+                          className="aqb-btn aqb-btn--primary !min-h-[42px] text-xs"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Add Formula to {selectedChapter.title}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-2.5">
+                        {filteredFormulas.map((formula, idx) => (
+                          <article key={formula.id} className="aqb-glass-card p-3.5">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="aqb-pill aqb-pill--admin tabular-nums">
+                                  #{formula.formula_no}
+                                </span>
+                                {formula.title && (
+                                  <span className="text-xs font-extrabold text-[var(--text)]">
+                                    {formula.title}
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleFormulaStatus(formula)}
+                                  title="Click to toggle Live / Draft"
+                                  className={`aqb-pill cursor-pointer ${
+                                    formula.status === 'live'
+                                      ? 'aqb-pill--live'
+                                      : 'aqb-pill--coming-soon'
+                                  }`}
+                                >
+                                  {formula.status.toUpperCase()}
+                                </button>
+                                {formula.is_featured === 1 && (
+                                  <span className="aqb-pill aqb-pill--tag">
+                                    Formula of Day Pool
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => handleMoveFormula(idx, -1)}
+                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
+                                  title="Move up"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === filteredFormulas.length - 1}
+                                  onClick={() => handleMoveFormula(idx, 1)}
+                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
+                                  title="Move down"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditFormulaModal(formula)}
+                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
+                                  title="Edit formula"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteFormula(formula)}
+                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] text-red-500"
+                                  title="Delete formula"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] px-4 py-3 overflow-x-auto text-sm text-[var(--text)]">
+                              <MathText text={`$$${formula.formula_latex}$$`} />
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+                              <span className="truncate">{formula.note || 'No note'}</span>
+                              <code className="font-mono text-[11px] opacity-75 truncate max-w-xs">
+                                {formula.formula_latex}
+                              </code>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="aqb-glass-card p-6 text-center text-xs text-[var(--text-muted)]">
+                    Select or create a chapter to view and manage its formulas.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1745,7 +1853,9 @@ export const AdminFormulasPage: React.FC = () => {
           aria-label="Bulk Import Formulas"
         >
           <div className="aqb-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="aqb-sheet-handle" />
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
             <div className="aqb-sheet-header">
               <div className="min-w-0">
                 <div className="text-base font-extrabold text-[var(--text)]">
@@ -1833,7 +1943,13 @@ export const AdminFormulasPage: React.FC = () => {
                             type="button"
                             onClick={() => {
                               setBulkTargetCatId(cat.id);
-                              const firstCh = chapters.find((c) => c.category_id === cat.id);
+                              const firstCh = chapters
+                                .filter((c) => c.category_id === cat.id)
+                                .sort(
+                                  (a, b) =>
+                                    Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+                                    Number(a.sort_order || 0) - Number(b.sort_order || 0)
+                                )[0];
                               setBulkDefaultChapterId(firstCh?.id || '');
                               setBulkChangingCat(false);
                             }}
@@ -1959,7 +2075,7 @@ export const AdminFormulasPage: React.FC = () => {
                         {bulkCsvFileName || 'Tap to choose file'}
                       </div>
                       <div className="text-xs text-[var(--text-muted)]">
-                        UTF-8 CSV or TSV/XLSX text, unlimited rows, imported in 100-row chunks
+                        UTF-8 CSV or TSV/XLSX text, unlimited rows, imported in 50-row batches
                       </div>
                       <input
                         type="file"
@@ -2148,7 +2264,7 @@ export const AdminFormulasPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Progress Bar by 100-Row Chunk + Retry + Final Summary */}
+                  {/* Progress Bar by 50-Row Chunk + Retry + Final Summary */}
                   {importProgress && (
                     <div className="aqb-glass-card p-4 flex flex-col gap-3">
                       <div className="flex items-center justify-between text-xs font-extrabold">
@@ -2205,6 +2321,24 @@ export const AdminFormulasPage: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* Inline Completion Banner showing exact saved row count */}
+                      {!importingChunked &&
+                        (importProgress.failedChunkIndex === null ||
+                          importProgress.failedChunkIndex === undefined) && (
+                          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                              Saved{' '}
+                              {(
+                                importProgress.importedCount + importProgress.updatedCount
+                              ).toLocaleString()}{' '}
+                              rows to {bulkModalCategory?.name} (
+                              {importProgress.importedCount} new, {importProgress.updatedCount}{' '}
+                              updated, {importProgress.skippedCount} skipped).
+                            </span>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          </div>
+                        )}
+
                       {/* Retry on Failed Chunk */}
                       {importProgress.failedChunkIndex !== null &&
                         importProgress.failedChunkIndex !== undefined && (
@@ -2258,7 +2392,7 @@ export const AdminFormulasPage: React.FC = () => {
               )}
             </div>
 
-            {/* Sticky Bulk Wizard Footer — Extra bottom padding so floating bottom nav never covers it */}
+            {/* Sticky Bulk Wizard Footer */}
             <div className="aqb-sheet-footer">
               {bulkStep > 1 && (
                 <button
@@ -2313,7 +2447,9 @@ export const AdminFormulasPage: React.FC = () => {
           onClick={() => setCategorySheetOpen(false)}
         >
           <div className="aqb-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="aqb-sheet-handle" />
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
             <div className="aqb-sheet-header">
               <div className="text-base font-extrabold text-[var(--text)]">
                 {categorySheetMode === 'switch' ? 'Switch Category' : 'Manage Categories'}
@@ -2436,7 +2572,9 @@ export const AdminFormulasPage: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             className="aqb-sheet"
           >
-            <div className="aqb-sheet-handle" />
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
             <div className="aqb-sheet-header">
               <div className="text-base font-extrabold text-[var(--text)]">
                 {editingCategory ? `Edit Category (${editingCategory.name})` : 'Add Category'}
@@ -2520,7 +2658,9 @@ export const AdminFormulasPage: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             className="aqb-sheet"
           >
-            <div className="aqb-sheet-handle" />
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
             <div className="aqb-sheet-header">
               <div className="text-base font-extrabold text-[var(--text)]">
                 {editingChapter ? `Edit Chapter (${editingChapter.title})` : 'Add Chapter'}
@@ -2612,7 +2752,9 @@ export const AdminFormulasPage: React.FC = () => {
             onClick={(e) => e.stopPropagation()}
             className="aqb-sheet"
           >
-            <div className="aqb-sheet-handle" />
+            <div className="aqb-sheet-handle-bar">
+              <div className="aqb-sheet-handle-pill" />
+            </div>
             <div className="aqb-sheet-header">
               <div>
                 <div className="text-base font-extrabold text-[var(--text)]">

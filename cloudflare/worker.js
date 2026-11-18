@@ -659,6 +659,8 @@ function requireRole(user, allowedRoles) {
   }
 }
 
+let certificateD1TablesEnsured = false;
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -674,6 +676,7 @@ export default {
       await ensureCaptainSchema(db);
 
       async function ensureCertificateD1Tables(database) {
+        if (certificateD1TablesEnsured) return;
         await database
           .prepare(
             `CREATE TABLE IF NOT EXISTS certificate_signatures (
@@ -714,6 +717,12 @@ export default {
             )`
           )
           .run();
+        await database
+          .prepare(
+            'CREATE INDEX IF NOT EXISTS idx_certificates_student_uid_status ON certificates(student_uid, status, issued_at DESC)'
+          )
+          .run()
+          .catch(() => {});
 
         await db
           .prepare('ALTER TABLE captain_tests ADD COLUMN certificate_theme_id TEXT DEFAULT NULL')
@@ -747,6 +756,7 @@ export default {
           .prepare('ALTER TABLE captain_tests ADD COLUMN force_close_attempts_at INTEGER DEFAULT NULL')
           .run()
           .catch(() => {});
+        certificateD1TablesEnsured = true;
       }
 
       function uint8ArrayToBase64(bytes) {
@@ -3757,12 +3767,20 @@ export default {
         await ensureCertificateD1Tables(db);
         const { results } = await db
           .prepare(
-            `SELECT * FROM certificates
+            `SELECT id, serial, student_uid, student_name, student_email, grand_line_id, grand_line_title,
+                    edition_label, rank, score, total_questions, percentage, participants_count,
+                    theme_id, signature_version, issued_at, status
+             FROM certificates
              WHERE student_uid = ?1 AND status = 'active'
-             ORDER BY issued_at DESC`
+             ORDER BY issued_at DESC
+             LIMIT 50`
           )
           .bind(user.uid)
           .all();
+
+        if (!results || results.length === 0) {
+          return jsonResponse(request, env, { certificates: [] });
+        }
 
         const activeSig = await db
           .prepare('SELECT * FROM certificate_signatures WHERE active = 1 ORDER BY version DESC LIMIT 1')

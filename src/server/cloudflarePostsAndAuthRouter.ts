@@ -10800,13 +10800,18 @@ ${postSitemaps}
     const store = loadD1Store() as any;
     ensureCertificateStoreArrays(store);
 
+    const rawMyCerts = (store.certificates || [])
+      .filter((c: any) => c.student_uid === user.uid && c.status === 'active')
+      .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0));
+
+    if (rawMyCerts.length === 0) {
+      return res.status(200).json({ certificates: [] });
+    }
+
     const { signatureRow: activeSig, dataUrl: activeSigDataUrl } = getActiveSignatureRecord(store);
     let dirty = false;
 
-    const myCerts = store.certificates
-      .filter((c: any) => c.student_uid === user.uid && c.status === 'active')
-      .sort((a: any, b: any) => Number(b.issued_at || 0) - Number(a.issued_at || 0))
-      .map((c: any) => {
+    const myCerts = rawMyCerts.map((c: any) => {
         let score = Math.max(0, Number(c.score || 0));
         let totalQuestions = Math.max(0, Number(c.total_questions || 0));
         let studentName = String(c.student_name || '').trim();

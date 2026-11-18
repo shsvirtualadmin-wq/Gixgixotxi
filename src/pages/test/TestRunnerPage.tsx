@@ -35,6 +35,7 @@ import {
   getInitialCachedUniversities,
 } from '@/services/universityMcqService';
 import type { D1UniversityRow } from '@/constants/d1Universities';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -55,6 +56,24 @@ export function TestRunnerPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const isRunningActive = !error;
+  useBodyScrollLock(isRunningActive, 'test-runner-page');
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.body) return;
+    if (isRunningActive) {
+      document.body.setAttribute('data-fullscreen-modal-open', 'true');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+      return () => {
+        document.body.removeAttribute('data-fullscreen-modal-open');
+        window.dispatchEvent(new Event('boardly:modal-change'));
+      };
+    } else {
+      document.body.removeAttribute('data-fullscreen-modal-open');
+      window.dispatchEvent(new Event('boardly:modal-change'));
+    }
+  }, [isRunningActive]);
 
   // PDF Download state
   const [pdfUpgradeModalOpen, setPdfUpgradeModalOpen] = useState(false);
