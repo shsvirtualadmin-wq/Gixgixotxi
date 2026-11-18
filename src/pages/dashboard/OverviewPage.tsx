@@ -51,18 +51,7 @@ import type { AttemptQuestion } from '@/types/index';
 import type { GradedAttemptQuestion } from '@/services/ambassadorTestService';
 
 import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
-
-function getUniversityInitials(name: string): string {
-  const cleaned = (name || '').replace(/\(.*?\)/g, '').trim();
-  const words = cleaned.split(/[\s-]+/).filter(Boolean);
-  if (words.length === 0) return 'UN';
-  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
-  return words
-    .slice(0, 3)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-}
+import { UniversityLogoBox } from '@/components/ui/UniversityLogoBox';
 
 const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
   const { smoothMode } = useSmoothMode();
@@ -93,46 +82,6 @@ const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
   }, [target, smoothMode]);
 
   return <>{displayVal.toLocaleString()}</>;
-});
-
-const UniversityLogoBox = memo(function UniversityLogoBox({
-  logoUrl,
-  name,
-}: {
-  logoUrl?: string | null;
-  name: string;
-}) {
-  const [imgError, setImgError] = useState(false);
-  const initials = getUniversityInitials(name);
-  const showImg = Boolean(logoUrl && !imgError);
-
-  return (
-    <div
-      className="w-11 h-11 rounded-[14px] flex items-center justify-center p-1.5 shrink-0 overflow-hidden"
-      style={{
-        backgroundColor: 'var(--uni-logo-box-bg)',
-        color: 'var(--uni-logo-box-text)',
-      }}
-    >
-      {showImg ? (
-        <img
-          src={logoUrl!}
-          alt={name}
-          onError={() => setImgError(true)}
-          className="w-full h-full"
-          style={{ objectFit: 'contain' }}
-          loading="lazy"
-        />
-      ) : (
-        <span
-          className="text-xs font-black tracking-tight"
-          style={{ fontFamily: 'var(--font-dot)', color: 'var(--uni-logo-box-text)' }}
-        >
-          {initials}
-        </span>
-      )}
-    </div>
-  );
 });
 
 const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
@@ -990,33 +939,25 @@ export function OverviewPage() {
                     className="flex flex-wrap items-center gap-2 pt-1"
                     data-testid="coming-soon-chips"
                   >
-                    {soonUniversities.map((uni) => {
-                      const initials = getUniversityInitials(uni.name);
-                      return (
-                        <span
-                          key={uni.id}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                          style={{
-                            fontFamily: 'var(--font-heading)',
-                            backgroundColor: 'var(--pill-card-bg)',
-                            border: '1px solid var(--pill-card-border)',
-                            color: 'var(--text)',
-                          }}
-                        >
-                          <span
-                            className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] font-bold shrink-0"
-                            style={{
-                              fontFamily: 'var(--font-mono)',
-                              backgroundColor: 'var(--pill-chip-bg)',
-                              color: 'var(--text)',
-                            }}
-                          >
-                            {initials.slice(0, 2)}
-                          </span>
-                          <span className="truncate max-w-[180px]">{uni.name}</span>
-                        </span>
-                      );
-                    })}
+                    {soonUniversities.map((uni) => (
+                      <span
+                        key={uni.id}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
+                        style={{
+                          fontFamily: 'var(--font-heading)',
+                          backgroundColor: 'var(--pill-card-bg)',
+                          border: '1px solid var(--pill-card-border)',
+                          color: 'var(--text)',
+                        }}
+                      >
+                        <UniversityLogoBox
+                          name={uni.name}
+                          logoUrl={uni.logo_url}
+                          size="xs"
+                        />
+                        <span className="truncate max-w-[180px]">{uni.name}</span>
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1224,7 +1165,13 @@ export function OverviewPage() {
               <div className="nt-quiz-main">
                 {/* 1. TOP BAR: round "SAT" chip (red text), timer chip, PDF icon button, close icon button */}
                 <header className="nt-topbar">
-                  <div className="nt-chip nt-chip--exam" title={activeUni.name}>
+                  <div className="nt-chip nt-chip--exam inline-flex items-center gap-2" title={activeUni.name}>
+                    <UniversityLogoBox
+                      name={activeUni.name}
+                      logoUrl={activeUni.logo_url}
+                      size="xs"
+                      eager
+                    />
                     <span>
                       {activeUni.name.replace(/\s*\(.*?\)\s*/g, '').trim() || activeUni.name}
                     </span>
@@ -1493,7 +1440,13 @@ export function OverviewPage() {
                 }}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="nt-chip nt-chip--exam">
+                  <div className="nt-chip nt-chip--exam inline-flex items-center gap-2">
+                    <UniversityLogoBox
+                      name={activeUni.name}
+                      logoUrl={activeUni.logo_url}
+                      size="xs"
+                      eager
+                    />
                     <span>
                       {activeUni.name.replace(/\s*\(.*?\)\s*/g, '').trim() || activeUni.name}
                     </span>
@@ -1521,19 +1474,27 @@ export function OverviewPage() {
                     {/* STAGE A: OVERVIEW / SUBJECT FILTER SETUP */}
                     {testStage === 'overview' && (
                       <div className="cockpit-surface-card p-5 sm:p-7 space-y-6">
-                        <div className="space-y-1">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                            Official Test Configuration
-                          </span>
-                          <h3
-                            className="text-lg sm:text-xl font-bold text-[var(--text)]"
-                            style={{ fontFamily: 'var(--font-dot)' }}
-                          >
-                            {activeUni.name} Entry Test
-                          </h3>
-                          <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                            {getUniversityTestSpec(activeUni).patternLabel}
-                          </p>
+                        <div className="flex items-center gap-3.5">
+                          <UniversityLogoBox
+                            name={activeUni.name}
+                            logoUrl={activeUni.logo_url}
+                            size="md"
+                            eager
+                          />
+                          <div className="space-y-0.5 min-w-0">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
+                              Official Test Configuration
+                            </span>
+                            <h3
+                              className="text-lg sm:text-xl font-bold text-[var(--text)] truncate"
+                              style={{ fontFamily: 'var(--font-dot)' }}
+                            >
+                              {activeUni.name} Entry Test
+                            </h3>
+                            <p className="text-xs sm:text-sm text-[var(--text-muted)] truncate">
+                              {getUniversityTestSpec(activeUni).patternLabel}
+                            </p>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-3">

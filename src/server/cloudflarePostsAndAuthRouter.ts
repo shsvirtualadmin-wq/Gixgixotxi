@@ -2047,6 +2047,8 @@ ${postSitemaps}
           ? 'image/jpeg'
           : ext === '.webp'
           ? 'image/webp'
+          : ext === '.svg'
+          ? 'image/svg+xml'
           : ext === '.gif'
           ? 'image/gif'
           : 'application/octet-stream';
@@ -2088,6 +2090,8 @@ ${postSitemaps}
           ? 'image/jpeg'
           : ext === '.webp'
           ? 'image/webp'
+          : ext === '.svg'
+          ? 'image/svg+xml'
           : ext === '.gif'
           ? 'image/gif'
           : 'application/octet-stream';
@@ -6812,7 +6816,11 @@ ${postSitemaps}
       uni.slug = nextSlug;
     }
     if (body.logo_url !== undefined) {
-      uni.logo_url = String(body.logo_url || '').trim();
+      const nextLogoUrl = String(body.logo_url || '').trim();
+      if (uni.logo_url && uni.logo_url !== nextLogoUrl) {
+        await deleteOldUniversityLogoFile(uni.logo_url);
+      }
+      uni.logo_url = nextLogoUrl;
     }
     if (body.sort_order !== undefined && Number.isFinite(Number(body.sort_order))) {
       uni.sort_order = Number(body.sort_order);
@@ -6823,6 +6831,241 @@ ${postSitemaps}
 
     return res.status(200).json({ success: true, university: uni });
   };
+
+  const UNIVERSITY_LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+  const ALLOWED_UNIVERSITY_LOGO_MIMES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/svg+xml',
+  ]);
+
+  const extractR2KeyFromLogoUrl = (rawUrl?: string | null): string | null => {
+    const clean = String(rawUrl || '').trim();
+    if (!clean) return null;
+    if (clean.startsWith('/api/r2/')) {
+      const key = decodeURIComponent(clean.slice('/api/r2/'.length)).replace(/\.\./g, '').replace(/^\/+/, '');
+      return key || null;
+    }
+    if (clean.includes('/api/posts/file')) {
+      try {
+        const u = new URL(clean, 'http://localhost');
+        const key = String(u.searchParams.get('key') || '').replace(/\.\./g, '').replace(/^\/+/, '');
+        return key || null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const deleteOldUniversityLogoFile = async (oldLogoUrl?: string | null): Promise<void> => {
+    const oldKey = extractR2KeyFromLogoUrl(oldLogoUrl);
+    if (!oldKey || !oldKey.startsWith('universities/logos/')) return;
+
+    const candidatePaths = [
+      path.join(R2_LOCAL_DIR, oldKey),
+      path.join(process.cwd(), 'public', 'api', 'r2', oldKey),
+    ];
+    for (const p of candidatePaths) {
+      try {
+        if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+          fs.unlinkSync(p);
+        }
+      } catch {
+        // Non-fatal local delete error
+      }
+    }
+
+    const r2AccountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || '';
+    const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID || '';
+    const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
+    const r2BucketName = process.env.R2_BUCKET_NAME || 'boardly-commons-media';
+    if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
+      try {
+        const s3Mod = await import('@aws-sdk/client-s3');
+        const s3 = new s3Mod.S3Client({
+          region: 'auto',
+          endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+          credentials: {
+            accessKeyId: r2AccessKeyId,
+            secretAccessKey: r2SecretAccessKey,
+          },
+        });
+        await s3.send(
+          new s3Mod.DeleteObjectCommand({
+            Bucket: r2BucketName,
+            Key: oldKey,
+          })
+        );
+      } catch {
+        // Non-fatal remote R2 delete error
+      }
+    }
+  };
+
+  // POST /api/universities/:id/logo — Admin/Superadmin: Upload or Replace university logo
+  app.post('/api/universities/:id/logo', async (req: Request, res: Response) => {
+    try {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      const store = loadD1Store();
+      if (!isAdminOrSuperadmin(user, store)) {
+        return res.status(user ? 403 : 401).json({
+          success: false,
+          error: 'Forbidden: Only admins and super admins can upload or replace university logos.',
+        });
+      }
+
+      const targetId = decodeURIComponent(String(req.params.id || '').trim());
+      if (!Array.isArray(store.universities)) store.universities = [];
+      const uni = store.universities.find((u) => u.id === targetId || u.slug === targetId);
+      if (!uni) {
+        return res.status(404).json({ success: false, error: 'University not found.' });
+      }
+
+      const body = req.body || {};
+      const rawName = String(body.fileName || body.name || 'logo.webp').trim();
+      const mimeType = String(body.mimeType || body.fileType || body.type || '').trim().toLowerCase();
+      const dataBase64 = String(body.dataBase64 || '').trim();
+
+      if (!dataBase64) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing logo image payload.',
+        });
+      }
+
+      const lowerName = rawName.toLowerCase();
+      const hasValidExt = ['.png', '.jpg', '.jpeg', '.webp', '.svg'].some((ext) =>
+        lowerName.endsWith(ext)
+      );
+      if (!ALLOWED_UNIVERSITY_LOGO_MIMES.has(mimeType) || !hasValidExt) {
+        return res.status(415).json({
+          success: false,
+          error: 'Unsupported file type. Allowed formats: PNG, JPG, WEBP, and SVG.',
+        });
+      }
+
+      const cleanBase64 = dataBase64.includes(',')
+        ? dataBase64.slice(dataBase64.indexOf(',') + 1)
+        : dataBase64;
+      const buffer = Buffer.from(cleanBase64, 'base64');
+
+      if (buffer.length === 0) {
+        return res.status(400).json({ success: false, error: 'Uploaded logo file is empty (0 bytes).' });
+      }
+      if (buffer.length > UNIVERSITY_LOGO_MAX_BYTES) {
+        return res.status(413).json({
+          success: false,
+          error: 'Logo file exceeds the 2 MB maximum size limit.',
+        });
+      }
+
+      const ext =
+        mimeType === 'image/svg+xml'
+          ? 'svg'
+          : mimeType === 'image/png'
+          ? 'png'
+          : mimeType === 'image/jpeg'
+          ? 'jpg'
+          : 'webp';
+      const safeUniKey = uni.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const randId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      const r2Key = `universities/logos/${safeUniKey}/${randId}-logo.${ext}`;
+
+      // Delete old logo file before saving the replacement
+      if (uni.logo_url) {
+        await deleteOldUniversityLogoFile(uni.logo_url);
+      }
+
+      const localPath = path.join(R2_LOCAL_DIR, r2Key);
+      fs.mkdirSync(path.dirname(localPath), { recursive: true });
+      fs.writeFileSync(localPath, buffer);
+
+      const r2AccountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID || '';
+      const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID || '';
+      const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
+      const r2BucketName = process.env.R2_BUCKET_NAME || 'boardly-commons-media';
+      if (r2AccountId && r2AccessKeyId && r2SecretAccessKey) {
+        try {
+          const s3Mod = await import('@aws-sdk/client-s3');
+          const s3 = new s3Mod.S3Client({
+            region: 'auto',
+            endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+            credentials: {
+              accessKeyId: r2AccessKeyId,
+              secretAccessKey: r2SecretAccessKey,
+            },
+          });
+          await s3.send(
+            new s3Mod.PutObjectCommand({
+              Bucket: r2BucketName,
+              Key: r2Key,
+              Body: buffer,
+              ContentType: mimeType,
+              CacheControl: 'public, max-age=31536000, immutable',
+            })
+          );
+        } catch (r2Err) {
+          console.warn('[UniversityLogoUpload] Remote R2 upload notice:', r2Err);
+        }
+      }
+
+      const logoUrl = `/api/r2/${r2Key}`;
+      uni.logo_url = logoUrl;
+      recalculateUniversityMcqCount(store, uni.id);
+      saveD1Store(store);
+
+      return res.status(200).json({
+        success: true,
+        logo_url: logoUrl,
+        university: uni,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Failed to upload university logo.',
+      });
+    }
+  });
+
+  // DELETE /api/universities/:id/logo — Admin/Superadmin: Remove university logo and delete file
+  app.delete('/api/universities/:id/logo', async (req: Request, res: Response) => {
+    try {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      const store = loadD1Store();
+      if (!isAdminOrSuperadmin(user, store)) {
+        return res.status(user ? 403 : 401).json({
+          success: false,
+          error: 'Forbidden: Only admins and super admins can remove university logos.',
+        });
+      }
+
+      const targetId = decodeURIComponent(String(req.params.id || '').trim());
+      if (!Array.isArray(store.universities)) store.universities = [];
+      const uni = store.universities.find((u) => u.id === targetId || u.slug === targetId);
+      if (!uni) {
+        return res.status(404).json({ success: false, error: 'University not found.' });
+      }
+
+      if (uni.logo_url) {
+        await deleteOldUniversityLogoFile(uni.logo_url);
+      }
+      uni.logo_url = '';
+      recalculateUniversityMcqCount(store, uni.id);
+      saveD1Store(store);
+
+      return res.status(200).json({
+        success: true,
+        university: uni,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Failed to remove university logo.',
+      });
+    }
+  });
 
   app.put('/api/universities/:id', handleUpdateUniversity);
   app.patch('/api/universities/:id', handleUpdateUniversity);
@@ -6845,6 +7088,10 @@ ${postSitemaps}
     const uni = store.universities.find((u) => u.id === targetId || u.slug === targetId);
     if (!uni) {
       return res.status(404).json({ success: false, error: 'University not found.' });
+    }
+
+    if (uni.logo_url) {
+      await deleteOldUniversityLogoFile(uni.logo_url);
     }
 
     const deletedMcqs = store.mcqs.filter((m) => m.university_id === uni.id).length;

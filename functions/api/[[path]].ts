@@ -29,11 +29,40 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  // Serve static R2 mirror files (/api/r2/* and legacy /api/commons/r2/*) from Pages static assets
+  // Serve R2 objects from R2_BUCKET (e.g. university logos) or static R2 mirror files from Pages static assets
   if (path.startsWith('/api/r2/') || path.startsWith('/api/commons/r2/')) {
     const normalizedPath = path.startsWith('/api/commons/r2/')
       ? `/api/r2/${path.slice('/api/commons/r2/'.length)}`
       : path;
+    const rawKey = decodeURIComponent(normalizedPath.slice('/api/r2/'.length))
+      .replace(/\.\./g, '')
+      .replace(/^\/+/, '');
+    if (env.R2_BUCKET && rawKey && !rawKey.startsWith('signatures/') && !rawKey.startsWith('certificates/')) {
+      const obj = await env.R2_BUCKET.get(rawKey);
+      if (obj) {
+        const lower = rawKey.toLowerCase();
+        const contentType =
+          obj.httpMetadata?.contentType ||
+          (lower.endsWith('.svg')
+            ? 'image/svg+xml'
+            : lower.endsWith('.png')
+            ? 'image/png'
+            : lower.endsWith('.jpg') || lower.endsWith('.jpeg')
+            ? 'image/jpeg'
+            : lower.endsWith('.webp')
+            ? 'image/webp'
+            : lower.endsWith('.pdf')
+            ? 'application/pdf'
+            : 'application/octet-stream');
+        return new Response(obj.body, {
+          status: 200,
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000, immutable',
+          },
+        });
+      }
+    }
     const assetUrl = new URL(normalizedPath, url.origin);
     if (typeof (context as any).next === 'function' && normalizedPath === path) {
       return (context as any).next();

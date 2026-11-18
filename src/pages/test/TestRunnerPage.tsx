@@ -29,6 +29,12 @@ import {
 } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 import { notifyTestStarted } from '@/services/emailNotificationService';
+import { UniversityLogoBox } from '@/components/ui/UniversityLogoBox';
+import {
+  fetchUniversities,
+  getInitialCachedUniversities,
+} from '@/services/universityMcqService';
+import type { D1UniversityRow } from '@/constants/d1Universities';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -55,6 +61,19 @@ export function TestRunnerPage() {
   const [pdfLimitMessage, setPdfLimitMessage] = useState<string | null>(null);
   const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
   const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
+  const [d1Unis, setD1Unis] = useState<D1UniversityRow[]>(() => getInitialCachedUniversities() || []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchUniversities()
+      .then((rows) => {
+        if (mounted && Array.isArray(rows)) setD1Unis(rows);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const effectivePlan = useEffectivePlan();
   const isPro = Boolean(effectivePlan.isPro || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin);
@@ -551,13 +570,31 @@ export function TestRunnerPage() {
   const isTimerUrgent =
     attempt.timed && secondsRemaining !== null && secondsRemaining > 0 && secondsRemaining < 300;
 
+  const matchedUniRow =
+    attempt.university && attempt.university !== 'Any'
+      ? d1Unis.find(
+          (u) =>
+            u.name.toLowerCase() === attempt.university!.toLowerCase() ||
+            u.slug.toLowerCase() === attempt.university!.toLowerCase() ||
+            u.id.toLowerCase() === attempt.university!.toLowerCase()
+        )
+      : undefined;
+
   return (
     <div className="nt-quiz-shell select-none">
       {/* 1–4. CENTERED MAIN COLUMN (max-w 760px, fits 100dvh with no scrolling) */}
       <main className="nt-quiz-main">
         {/* 1. TOP BAR: round "SAT" chip (red text), timer chip, PDF icon button, close icon button */}
         <header className="nt-topbar">
-          <div className="nt-chip nt-chip--exam" title={examChipLabel}>
+          <div className="nt-chip nt-chip--exam inline-flex items-center gap-2" title={examChipLabel}>
+            {matchedUniRow && (
+              <UniversityLogoBox
+                name={matchedUniRow.name}
+                logoUrl={matchedUniRow.logo_url}
+                size="xs"
+                eager
+              />
+            )}
             <span>{examChipLabel}</span>
           </div>
 

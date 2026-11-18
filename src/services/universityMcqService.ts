@@ -12,6 +12,10 @@ import {
   repairD1McqRow,
   repairSplitOrGarbledMcqOptions,
 } from '../lib/math';
+import {
+  primeUniversityLogoCache,
+  markUniversityLogoCached,
+} from '../components/ui/UniversityLogoBox';
 
 export interface ParsedImportMcqRow {
   rowIndex: number;
@@ -65,6 +69,7 @@ export interface BankHealthData {
     id: string;
     name: string;
     slug: string;
+    logo_url?: string;
     mcq_count: number;
     is_live: number;
   }>;
@@ -272,6 +277,9 @@ export async function fetchUniversities(forceRefresh = false): Promise<D1Univers
         const mirror = loadLocalD1Mirror();
         mirror.universities = res.universities;
         saveLocalD1Mirror(mirror);
+        for (const u of res.universities) {
+          if (u.logo_url) primeUniversityLogoCache(u.logo_url);
+        }
         universitiesMemoryCache = {
           data: res.universities,
           expiresAt: Date.now() + UNIVERSITIES_CACHE_TTL_MS,
@@ -404,6 +412,206 @@ export async function deleteUniversity(id: string): Promise<void> {
     mirror.mcqs = mirror.mcqs.filter((m) => m.university_id !== id);
     saveLocalD1Mirror(mirror);
   }
+}
+
+export const UNIVERSITY_LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+export const UNIVERSITY_LOGO_MAX_DIMENSION = 256; // 256x256
+export const ALLOWED_UNIVERSITY_LOGO_MIMES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+]);
+
+export interface PreparedUniversityLogo {
+  previewDataUrl: string;
+  dataBase64: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  width: number;
+  height: number;
+}
+
+export function validateUniversityLogoFile(file: File): { valid: boolean; error?: string } {
+  if (!file) {
+    return { valid: false, error: 'Please choose an image file.' };
+  }
+  if (file.size <= 0) {
+    return { valid: false, error: 'Selected file is empty (0 bytes).' };
+  }
+  if (file.size > UNIVERSITY_LOGO_MAX_BYTES) {
+    return {
+      valid: false,
+      error: `Logo file is too large (${(file.size / (1024 * 1024)).toFixed(2)} MB). Maximum size is 2 MB.`,
+    };
+  }
+  const lowerName = (file.name || '').toLowerCase();
+  const hasAllowedExt = ['.png', '.jpg', '.jpeg', '.webp', '.svg'].some((ext) =>
+    lowerName.endsWith(ext)
+  );
+  const cleanMime = (file.type || '').toLowerCase().trim();
+  if (!ALLOWED_UNIVERSITY_LOGO_MIMES.has(cleanMime) && !hasAllowedExt) {
+    return {
+      valid: false,
+      error: 'Unsupported format. Please upload a PNG, JPG, WEBP, or SVG image (max 2 MB).',
+    };
+  }
+  return { valid: true };
+}
+
+export async function prepareUniversityLogoForUpload(
+  file: File
+): Promise<PreparedUniversityLogo> {
+  const check = validateUniversityLogoFile(file);
+  if (!check.valid) {
+    throw new Error(check.error || 'Invalid logo file.');
+  }
+
+  const lowerName = (file.name || 'logo.png').toLowerCase();
+  const isSvg =
+    file.type === 'image/svg+xml' || lowerName.endsWith('.svg');
+
+  if (isSvg) {
+    const rawSvg = await file.text();
+    const cleanedSvg = rawSvg
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '');
+    if (!cleanedSvg.includes('<svg')) {
+      throw new Error('Invalid SVG file.');
+    }
+    const utf8Bytes = new TextEncoder().encode(cleanedSvg);
+    let binary = '';
+    for (let i = 0; i < utf8Bytes.length; i++) {
+      binary += String.fromCharCode(utf8Bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const dataUrl = `data:image/svg+xml;base64,${base64}`;
+    const safeBase =
+      file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'logo';
+    return {
+      previewDataUrl: dataUrl,
+      dataBase64: base64,
+      fileName: `${safeBase}.svg`,
+      mimeType: 'image/svg+xml',
+      fileSize: utf8Bytes.byteLength,
+      width: UNIVERSITY_LOGO_MAX_DIMENSION,
+      height: UNIVERSITY_LOGO_MAX_DIMENSION,
+    };
+  }
+
+  // Raster image (PNG, JPG, WEBP): resize/compress to max 256x256
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not decode image file.'));
+      el.src = objectUrl;
+    });
+
+    const srcW = Math.max(1, img.naturalWidth || img.width || UNIVERSITY_LOGO_MAX_DIMENSION);
+    const srcH = Math.max(1, img.naturalHeight || img.height || UNIVERSITY_LOGO_MAX_DIMENSION);
+    const scale = Math.min(1, UNIVERSITY_LOGO_MAX_DIMENSION / Math.max(srcW, srcH));
+    const targetW = Math.max(1, Math.round(srcW * scale));
+    const targetH = Math.max(1, Math.round(srcH * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvas context unavailable for image compression.');
+    }
+    ctx.clearRect(0, 0, targetW, targetH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+
+    let outMime = 'image/webp';
+    let dataUrl = canvas.toDataURL(outMime, 0.88);
+    if (!dataUrl.startsWith('data:image/webp')) {
+      outMime = 'image/png';
+      dataUrl = canvas.toDataURL(outMime);
+    }
+    const commaIdx = dataUrl.indexOf(',');
+    const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+    const byteLength = Math.ceil((base64.length * 3) / 4);
+    const ext = outMime === 'image/webp' ? 'webp' : 'png';
+    const safeBase =
+      file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'logo';
+
+    return {
+      previewDataUrl: dataUrl,
+      dataBase64: base64,
+      fileName: `${safeBase}.${ext}`,
+      mimeType: outMime,
+      fileSize: byteLength,
+      width: targetW,
+      height: targetH,
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export async function uploadUniversityLogo(
+  universityId: string,
+  prepared: PreparedUniversityLogo
+): Promise<D1UniversityRow> {
+  invalidateUniversitiesCache();
+  const res = await apiRequest<{ ok?: boolean; success?: boolean; university?: D1UniversityRow }>(
+    `/api/universities/${encodeURIComponent(universityId)}/logo`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        dataBase64: prepared.dataBase64,
+        fileSize: prepared.fileSize,
+      }),
+    }
+  );
+  if (!res.university) {
+    throw new Error('Server did not return updated university record.');
+  }
+  const mirror = loadLocalD1Mirror();
+  const idx = mirror.universities.findIndex(
+    (u) => u.id === res.university!.id || u.id === universityId || u.slug === universityId
+  );
+  if (idx >= 0) {
+    mirror.universities[idx] = res.university;
+  } else {
+    mirror.universities.push(res.university);
+  }
+  saveLocalD1Mirror(mirror);
+  if (res.university.logo_url) {
+    markUniversityLogoCached(res.university.logo_url);
+    primeUniversityLogoCache(res.university.logo_url);
+  }
+  return res.university;
+}
+
+export async function removeUniversityLogo(universityId: string): Promise<D1UniversityRow> {
+  invalidateUniversitiesCache();
+  const res = await apiRequest<{ ok?: boolean; success?: boolean; university?: D1UniversityRow }>(
+    `/api/universities/${encodeURIComponent(universityId)}/logo`,
+    {
+      method: 'DELETE',
+    }
+  );
+  if (!res.university) {
+    throw new Error('Server did not return updated university record.');
+  }
+  const mirror = loadLocalD1Mirror();
+  const idx = mirror.universities.findIndex(
+    (u) => u.id === res.university!.id || u.id === universityId || u.slug === universityId
+  );
+  if (idx >= 0) {
+    mirror.universities[idx] = res.university;
+  }
+  saveLocalD1Mirror(mirror);
+  return res.university;
 }
 
 // ============================================================================

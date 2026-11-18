@@ -31,27 +31,13 @@ import {
   GripVertical,
   HelpCircle,
   Copy,
+  Image as ImageIcon,
 } from 'lucide-react';
 import {
   D1UniversityRow,
   D1McqRow,
   D1McqReportRow,
-  PRE_SEEDED_UNIVERSITIES,
 } from '../../constants/d1Universities';
-
-function getUniversityInitials(name: string): string {
-  const trimmed = String(name || '').trim();
-  const preset = PRE_SEEDED_UNIVERSITIES.find(
-    (u) => u.name.toLowerCase() === trimmed.toLowerCase()
-  );
-  if (preset?.shortName) return preset.shortName.slice(0, 4).toUpperCase();
-  const words = trimmed.replace(/[()]/g, '').split(/[\s-]+/).filter(Boolean);
-  if (words.length === 1) return words[0].slice(0, 4).toUpperCase();
-  return words
-    .slice(0, 3)
-    .map((w) => w[0]?.toUpperCase() || '')
-    .join('');
-}
 import {
   fetchUniversities,
   createUniversity,
@@ -78,7 +64,16 @@ import {
   ChunkImportProgress,
   ResumableImportState,
   BankHealthData,
+  prepareUniversityLogoForUpload,
+  uploadUniversityLogo,
+  removeUniversityLogo,
+  PreparedUniversityLogo,
 } from '../../services/universityMcqService';
+import {
+  UniversityLogoBox,
+  primeUniversityLogoCache,
+  markUniversityLogoCached,
+} from '../../components/ui/UniversityLogoBox';
 import { MathText, validateMath } from '../../components/ui/MathText';
 import { ButtonLineLoader } from '../../components/ui/LineLoader';
 import { AdminQuestionsPageSkeleton, AdminQuestionsMcqListSkeleton } from '../../components/ui/Skeleton';
@@ -309,6 +304,11 @@ export const AdminQuestionsPage: React.FC = () => {
   const [uniNameInput, setUniNameInput] = useState('');
   const [uniSlugInput, setUniSlugInput] = useState('');
   const [uniLogoInput, setUniLogoInput] = useState('');
+  const [pendingLogoPrepared, setPendingLogoPrepared] = useState<PreparedUniversityLogo | null>(null);
+  const [logoRemoveRequested, setLogoRemoveRequested] = useState(false);
+  const [logoValidationError, setLogoValidationError] = useState<string | null>(null);
+  const [processingLogoFile, setProcessingLogoFile] = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement | null>(null);
   const [savingUni, setSavingUni] = useState(false);
   const [confirmDeleteUni, setConfirmDeleteUni] = useState<D1UniversityRow | null>(null);
   const [deletingUni, setDeletingUni] = useState(false);
@@ -444,6 +444,9 @@ export const AdminQuestionsPage: React.FC = () => {
         }, forceRefresh);
         if (!isMountedRef.current) return;
         setUniversities(fresh.universities);
+        for (const u of fresh.universities) {
+          if (u.logo_url) primeUniversityLogoCache(u.logo_url);
+        }
         setHealthData(fresh.health);
         setReports(fresh.reports);
         if (fresh.universities.length > 0 && !fresh.universities.some((u) => u.id === selectedUniId)) {
@@ -648,41 +651,107 @@ export const AdminQuestionsPage: React.FC = () => {
     setUniNameInput('');
     setUniSlugInput('');
     setUniLogoInput('');
+    setPendingLogoPrepared(null);
+    setLogoRemoveRequested(false);
+    setLogoValidationError(null);
     setUniFormModalOpen(true);
   };
 
-  const openEditUniversityModal = (uni: D1UniversityRow) => {
+  const openEditUniversityModal = (uni: D1UniversityRow, autoOpenFilePicker = false) => {
     setEditingUni(uni);
     setUniNameInput(uni.name);
     setUniSlugInput(uni.slug);
     setUniLogoInput(uni.logo_url || '');
+    setPendingLogoPrepared(null);
+    setLogoRemoveRequested(false);
+    setLogoValidationError(null);
     setUniFormModalOpen(true);
+    if (autoOpenFilePicker) {
+      setTimeout(() => {
+        logoFileInputRef.current?.click();
+      }, 80);
+    }
+  };
+
+  const openRemoveUniversityLogoModal = (uni: D1UniversityRow) => {
+    setEditingUni(uni);
+    setUniNameInput(uni.name);
+    setUniSlugInput(uni.slug);
+    setUniLogoInput(uni.logo_url || '');
+    setPendingLogoPrepared(null);
+    setLogoRemoveRequested(true);
+    setLogoValidationError(null);
+    setUniFormModalOpen(true);
+  };
+
+  const handleSelectUniversityLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLogoValidationError(null);
+    setProcessingLogoFile(true);
+    try {
+      const prepared = await prepareUniversityLogoForUpload(file);
+      markUniversityLogoCached(prepared.previewDataUrl);
+      setPendingLogoPrepared(prepared);
+      setLogoRemoveRequested(false);
+    } catch (err: any) {
+      setLogoValidationError(err?.message || 'Invalid logo file. Max 2 MB (PNG, JPG, WEBP, SVG).');
+    } finally {
+      setProcessingLogoFile(false);
+    }
   };
 
   const handleSaveUniversity = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uniNameInput.trim()) return;
+    if (!isAdmin || !uniNameInput.trim()) return;
     setSavingUni(true);
     try {
       if (editingUni) {
-        await updateUniversity(editingUni.id, {
-          name: uniNameInput.trim(),
-          slug: uniSlugInput.trim() || undefined,
-          logo_url: uniLogoInput.trim(),
-        });
-        showBanner('success', `Updated ${uniNameInput.trim()}`);
+        let latestUni = editingUni;
+        if (pendingLogoPrepared) {
+          latestUni = await uploadUniversityLogo(editingUni.id, pendingLogoPrepared);
+        } else if (logoRemoveRequested && editingUni.logo_url) {
+          latestUni = await removeUniversityLogo(editingUni.id);
+        }
+
+        const nextName = uniNameInput.trim();
+        const nextSlug = uniSlugInput.trim() || editingUni.slug;
+        if (
+          nextName !== latestUni.name ||
+          nextSlug !== latestUni.slug ||
+          (!pendingLogoPrepared && !logoRemoveRequested && uniLogoInput.trim() !== (latestUni.logo_url || ''))
+        ) {
+          latestUni = await updateUniversity(editingUni.id, {
+            name: nextName,
+            slug: nextSlug,
+            logo_url:
+              pendingLogoPrepared || logoRemoveRequested
+                ? latestUni.logo_url
+                : uniLogoInput.trim(),
+          });
+        }
+        setUniversities((prev) =>
+          prev.map((u) => (u.id === latestUni.id ? { ...u, ...latestUni } : u))
+        );
+        showBanner('success', `Updated ${latestUni.name}`);
       } else {
-        const created = await createUniversity({
+        let created = await createUniversity({
           name: uniNameInput.trim(),
           slug: uniSlugInput.trim() || undefined,
-          logo_url: uniLogoInput.trim(),
+          logo_url: pendingLogoPrepared ? '' : uniLogoInput.trim(),
           sort_order: universities.length + 1,
         });
+        if (pendingLogoPrepared) {
+          created = await uploadUniversityLogo(created.id, pendingLogoPrepared);
+        }
         setSelectedUniId(created.id);
         showBanner('success', `Added ${created.name}`);
       }
+      setPendingLogoPrepared(null);
+      setLogoRemoveRequested(false);
       setUniFormModalOpen(false);
-      await loadInitialData();
+      await loadInitialData(true);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to save university');
     } finally {
@@ -1395,6 +1464,59 @@ export const AdminQuestionsPage: React.FC = () => {
 
             {overflowMenuOpen && (
               <div className="aqb-dropdown-menu right-0">
+                {selectedUniversity && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOverflowMenuOpen(false);
+                        openEditUniversityModal(selectedUniversity, false);
+                      }}
+                      className="aqb-dropdown-item"
+                    >
+                      <Edit3 className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
+                      <span>Edit university ({selectedUniversity.name})</span>
+                    </button>
+                    {!selectedUniversity.logo_url ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOverflowMenuOpen(false);
+                          openEditUniversityModal(selectedUniversity, true);
+                        }}
+                        className="aqb-dropdown-item"
+                      >
+                        <ImageIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                        <span>Upload logo</span>
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOverflowMenuOpen(false);
+                            openEditUniversityModal(selectedUniversity, true);
+                          }}
+                          className="aqb-dropdown-item"
+                        >
+                          <ImageIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                          <span>Replace logo</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOverflowMenuOpen(false);
+                            openRemoveUniversityLogoModal(selectedUniversity);
+                          }}
+                          className="aqb-dropdown-item text-red-600 dark:text-red-400"
+                        >
+                          <Trash2 className="w-4 h-4 shrink-0" />
+                          <span>Remove logo</span>
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1479,9 +1601,12 @@ export const AdminQuestionsPage: React.FC = () => {
                   className="w-full text-left flex items-center justify-between gap-3 py-1.5 rounded-2xl transition active:scale-[0.99] min-w-0"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-[var(--accent)] text-white font-extrabold text-sm flex items-center justify-center shrink-0 shadow-sm">
-                      {getUniversityInitials(selectedUniversity.name)}
-                    </div>
+                    <UniversityLogoBox
+                      name={selectedUniversity.name}
+                      logoUrl={selectedUniversity.logo_url}
+                      size="md"
+                      eager
+                    />
                     <div className="min-w-0">
                       <div className="text-base font-extrabold text-[var(--text)] truncate">
                         {selectedUniversity.name}
@@ -2115,6 +2240,64 @@ export const AdminQuestionsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Question Bank University List with Logos & Quick Manage */}
+            <div className="aqb-glass-card p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-extrabold text-[var(--text)]">
+                    Question Bank Universities ({universities.length})
+                  </h2>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    All universities in the bank with logo status and MCQ counts.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUniSheetMode('manage');
+                    setUniSearchQuery('');
+                    setUniSheetOpen(true);
+                  }}
+                  className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs shrink-0"
+                >
+                  <span>Manage all</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {universities.map((uni) => (
+                  <div
+                    key={uni.id}
+                    className="rounded-2xl p-3 border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-between gap-2.5"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <UniversityLogoBox
+                        name={uni.name}
+                        logoUrl={uni.logo_url}
+                        size="sm"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-extrabold text-[var(--text)] truncate">
+                          {uni.name}
+                        </div>
+                        <div className="text-[11px] font-mono text-[var(--text-muted)] truncate">
+                          {uni.mcq_count.toLocaleString()} MCQs · {uni.logo_url ? 'Logo set' : 'Initials'}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditUniversityModal(uni, false)}
+                      className="aqb-btn aqb-btn--glass !min-h-[36px] !px-2.5 text-[11px] shrink-0"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                      <span>{uni.logo_url ? 'Logo' : 'Upload'}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2314,15 +2497,11 @@ export const AdminQuestionsPage: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div
-                            className={`w-10 h-10 rounded-2xl font-extrabold text-xs flex items-center justify-center shrink-0 ${
-                              active
-                                ? 'bg-[var(--accent)] text-white'
-                                : 'bg-black/5 dark:bg-white/10 text-[var(--text)]'
-                            }`}
-                          >
-                            {getUniversityInitials(uni.name)}
-                          </div>
+                          <UniversityLogoBox
+                            name={uni.name}
+                            logoUrl={uni.logo_url}
+                            size="sm"
+                          />
                           <div className="min-w-0">
                             <div className="text-sm font-extrabold text-[var(--text)] truncate">
                               {uni.name}
@@ -2353,6 +2532,11 @@ export const AdminQuestionsPage: React.FC = () => {
                       <div className="flex items-center justify-between gap-2 min-w-0">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <GripVertical className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
+                          <UniversityLogoBox
+                            name={uni.name}
+                            logoUrl={uni.logo_url}
+                            size="sm"
+                          />
                           <div className="min-w-0">
                             <div className="text-sm font-extrabold text-[var(--text)] truncate">
                               {uni.name}
@@ -2372,11 +2556,40 @@ export const AdminQuestionsPage: React.FC = () => {
                       </div>
 
                       <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                        {!uni.logo_url ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditUniversityModal(uni, true)}
+                            className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                            <span>Upload logo</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEditUniversityModal(uni, true)}
+                              className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                              <span>Replace logo</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openRemoveUniversityLogoModal(uni)}
+                              className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs text-red-600 dark:text-red-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Remove logo</span>
+                            </button>
+                          </>
+                        )}
                         <button
                           type="button"
                           disabled={idx === 0}
                           onClick={() => handleMoveUniversity(idx, -1)}
-                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                          className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
                         >
                           <ArrowUp className="w-3.5 h-3.5" />
                           <span>Up</span>
@@ -2385,15 +2598,15 @@ export const AdminQuestionsPage: React.FC = () => {
                           type="button"
                           disabled={idx === filteredUniversitiesInSheet.length - 1}
                           onClick={() => handleMoveUniversity(idx, 1)}
-                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                          className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
                         >
                           <ArrowDown className="w-3.5 h-3.5" />
                           <span>Down</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() => openEditUniversityModal(uni)}
-                          className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3 text-xs"
+                          onClick={() => openEditUniversityModal(uni, false)}
+                          className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3 text-xs"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Edit</span>
@@ -2401,7 +2614,7 @@ export const AdminQuestionsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => setConfirmDeleteUni(uni)}
-                          className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3 text-xs"
+                          className="aqb-btn aqb-btn--danger !min-h-[40px] !px-3 text-xs"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Delete</span>
@@ -2598,8 +2811,15 @@ export const AdminQuestionsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setMcqUniPickerOpen((prev) => !prev)}
-                    className="aqb-pill aqb-pill--live cursor-pointer"
+                    className="aqb-pill aqb-pill--live cursor-pointer inline-flex items-center gap-1.5"
                   >
+                    {mcqModalUniversity && (
+                      <UniversityLogoBox
+                        name={mcqModalUniversity.name}
+                        logoUrl={mcqModalUniversity.logo_url}
+                        size="xs"
+                      />
+                    )}
                     <span className="truncate max-w-[160px]">
                       {mcqModalUniversity?.name || 'Select university'}
                     </span>
@@ -2641,7 +2861,10 @@ export const AdminQuestionsPage: React.FC = () => {
                             : ''
                         }`}
                       >
-                        <span className="truncate">{u.name}</span>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <UniversityLogoBox name={u.name} logoUrl={u.logo_url} size="xs" />
+                          <span className="truncate">{u.name}</span>
+                        </span>
                         {u.id === (mcqTargetUniId || selectedUniId) && (
                           <Check className="w-4 h-4 shrink-0" />
                         )}
@@ -2993,8 +3216,17 @@ export const AdminQuestionsPage: React.FC = () => {
                       </span>
                       <span className="aqb-pill aqb-pill--live">Permanent Binding</span>
                     </div>
-                    <div className="text-base font-extrabold text-[var(--text)]">
-                      Importing into: {bulkModalUniversity?.name} ({bulkModalUniversity?.slug})
+                    <div className="flex items-center gap-3">
+                      {bulkModalUniversity && (
+                        <UniversityLogoBox
+                          name={bulkModalUniversity.name}
+                          logoUrl={bulkModalUniversity.logo_url}
+                          size="sm"
+                        />
+                      )}
+                      <div className="text-base font-extrabold text-[var(--text)]">
+                        Importing into: {bulkModalUniversity?.name} ({bulkModalUniversity?.slug})
+                      </div>
                     </div>
                     <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
                       Every imported row is permanently bound to{' '}
@@ -3036,7 +3268,10 @@ export const AdminQuestionsPage: React.FC = () => {
                                 : ''
                             }`}
                           >
-                            <span className="truncate">{u.name}</span>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <UniversityLogoBox name={u.name} logoUrl={u.logo_url} size="xs" />
+                              <span className="truncate">{u.name}</span>
+                            </span>
                             <span className="text-[11px] font-mono opacity-75">{u.slug}</span>
                           </button>
                         ))}
@@ -3443,7 +3678,7 @@ export const AdminQuestionsPage: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="aqb-sheet-body flex flex-col gap-3">
+            <div className="aqb-sheet-body flex flex-col gap-3.5">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">
                   University Name
@@ -3469,30 +3704,133 @@ export const AdminQuestionsPage: React.FC = () => {
                   className="aqb-input font-mono"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] mb-1">
-                  Logo URL (optional)
-                </label>
+
+              {/* University Logo Upload / Replace / Remove + Live Preview */}
+              <div className="rounded-2xl p-3.5 border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                      University Logo
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)]">
+                      PNG, JPG, WEBP, or SVG · Max 2 MB · Auto-resized to 256×256
+                    </div>
+                  </div>
+                  <span className="aqb-pill aqb-pill--tag">
+                    {logoRemoveRequested
+                      ? 'Removing on save'
+                      : pendingLogoPrepared
+                      ? 'Preview ready'
+                      : uniLogoInput
+                      ? 'Active logo'
+                      : 'Fallback initials'}
+                  </span>
+                </div>
+
+                {/* Live Preview Box (shows exact Working in card appearance before saving) */}
+                <div className="rounded-2xl p-3 border border-[var(--border)] bg-[var(--surface)] flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <UniversityLogoBox
+                      name={uniNameInput || editingUni?.name || 'FAST'}
+                      logoUrl={
+                        logoRemoveRequested
+                          ? ''
+                          : pendingLogoPrepared?.previewDataUrl || uniLogoInput
+                      }
+                      size="md"
+                      eager
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                        Preview in &ldquo;Working in&rdquo; card
+                      </div>
+                      <div className="text-sm font-extrabold text-[var(--text)] truncate">
+                        {uniNameInput.trim() || editingUni?.name || 'University Name'}
+                      </div>
+                      {pendingLogoPrepared && !logoRemoveRequested && (
+                        <div className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 truncate">
+                          {pendingLogoPrepared.width}×{pendingLogoPrepared.height}px ·{' '}
+                          {Math.max(1, Math.round(pendingLogoPrepared.fileSize / 1024))} KB
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 <input
-                  type="url"
-                  value={uniLogoInput}
-                  onChange={(e) => setUniLogoInput(e.target.value)}
-                  placeholder="https://..."
-                  className="aqb-input"
+                  ref={logoFileInputRef}
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
+                  onChange={handleSelectUniversityLogoFile}
+                  className="hidden"
                 />
+
+                {logoValidationError && (
+                  <div className="rounded-xl p-2.5 bg-red-500/10 border border-red-500/30 text-xs font-semibold text-red-600 dark:text-red-400">
+                    {logoValidationError}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {!(
+                    !logoRemoveRequested &&
+                    Boolean(pendingLogoPrepared?.previewDataUrl || uniLogoInput.trim())
+                  ) ? (
+                    <button
+                      type="button"
+                      disabled={processingLogoFile || savingUni}
+                      onClick={() => logoFileInputRef.current?.click()}
+                      className="aqb-btn aqb-btn--primary !min-h-[40px] !px-3.5 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{processingLogoFile ? 'Preparing preview…' : 'Upload logo'}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={processingLogoFile || savingUni}
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="aqb-btn aqb-btn--glass !min-h-[40px] !px-3.5 text-xs"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-[var(--accent)]" />
+                        <span>{processingLogoFile ? 'Preparing preview…' : 'Replace logo'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={processingLogoFile || savingUni}
+                        onClick={() => {
+                          setPendingLogoPrepared(null);
+                          setLogoRemoveRequested(true);
+                          setUniLogoInput('');
+                          setLogoValidationError(null);
+                        }}
+                        className="aqb-btn aqb-btn--danger !min-h-[40px] !px-3.5 text-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove logo</span>
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             <div className="aqb-sheet-footer">
               <button
                 type="button"
-                onClick={() => setUniFormModalOpen(false)}
+                onClick={() => {
+                  setPendingLogoPrepared(null);
+                  setLogoRemoveRequested(false);
+                  setLogoValidationError(null);
+                  setUniFormModalOpen(false);
+                }}
                 className="aqb-btn aqb-btn--glass"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={savingUni}
+                disabled={savingUni || processingLogoFile}
                 className="aqb-btn aqb-btn--primary"
               >
                 {savingUni ? <ButtonLineLoader label="Saving…" /> : <span>Save</span>}

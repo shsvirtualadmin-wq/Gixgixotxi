@@ -1236,6 +1236,7 @@ function inferMimeTypeFromKey(key: string): string {
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.svg')) return 'image/svg+xml';
   if (lower.endsWith('.gif')) return 'image/gif';
   if (lower.endsWith('.docx'))
     return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -4391,6 +4392,33 @@ ${urls
       return jsonResponse({ error: 'Bot endpoint not found' }, 404, cors);
     }
 
+    // 2b-r2. Public R2 object streaming at /api/r2/* (e.g. university logos & study materials)
+    if (url.pathname.startsWith('/api/r2/') && req.method === 'GET') {
+      const rawKey = decodeURIComponent(url.pathname.slice('/api/r2/'.length))
+        .replace(/\.\./g, '')
+        .replace(/^\/+/, '');
+      if (!rawKey) {
+        return jsonResponse({ success: false, error: 'Missing R2 key.' }, 400, cors);
+      }
+      if (rawKey.startsWith('signatures/') || rawKey.startsWith('certificates/')) {
+        return jsonResponse({ success: false, error: 'Forbidden private prefix.' }, 403, cors);
+      }
+      if (env.R2_BUCKET) {
+        const obj = await env.R2_BUCKET.get(rawKey);
+        if (obj) {
+          const contentType = obj.httpMetadata?.contentType || inferMimeTypeFromKey(rawKey);
+          return new Response(obj.body, {
+            status: 200,
+            headers: {
+              ...cors,
+              'Content-Type': contentType,
+              'Cache-Control': 'public, max-age=31536000, immutable',
+            },
+          });
+        }
+      }
+    }
+
     // 2c. API Routes under /api/universities, /api/mcqs, and /api/admin/legacy-bank
     if (
       url.pathname.startsWith('/api/universities') ||
@@ -4524,6 +4552,196 @@ ${urls
           return jsonResponse({ success: true, universities: results || [] }, 200, cors);
         }
 
+        const extractWorkerLogoR2Key = (rawUrl?: string | null): string | null => {
+          const clean = String(rawUrl || '').trim();
+          if (!clean) return null;
+          if (clean.startsWith('/api/r2/')) {
+            const key = decodeURIComponent(clean.slice('/api/r2/'.length))
+              .replace(/\.\./g, '')
+              .replace(/^\/+/, '');
+            return key || null;
+          }
+          if (clean.includes('/api/posts/file')) {
+            try {
+              const u = new URL(clean, 'http://localhost');
+              const key = String(u.searchParams.get('key') || '')
+                .replace(/\.\./g, '')
+                .replace(/^\/+/, '');
+              return key || null;
+            } catch {
+              return null;
+            }
+          }
+          return null;
+        };
+
+        const deleteOldWorkerUniversityLogo = async (uniId: string, oldLogoUrl?: string | null) => {
+          const keysToDelete = new Set<string>();
+          const parsedKey = extractWorkerLogoR2Key(oldLogoUrl);
+          if (parsedKey && parsedKey.startsWith('universities/logos/')) {
+            keysToDelete.add(parsedKey);
+          }
+          try {
+            const assetRow = await env.DB!.prepare(
+              'SELECT r2_key FROM university_logo_assets WHERE university_id = ? LIMIT 1'
+            )
+              .bind(uniId)
+              .first<{ r2_key: string }>();
+            if (assetRow?.r2_key) {
+              keysToDelete.add(assetRow.r2_key);
+            }
+            await env.DB!.prepare('DELETE FROM university_logo_assets WHERE university_id = ?')
+              .bind(uniId)
+              .run();
+          } catch {
+            // Table may not exist yet before migration runs
+          }
+          if (env.R2_BUCKET && keysToDelete.size > 0) {
+            await Promise.all(
+              Array.from(keysToDelete).map((k) => env.R2_BUCKET!.delete(k).catch(() => {}))
+            );
+          }
+        };
+
+        // Check for /api/universities/:id/logo sub-route
+        const subSegments = uniSub.split('/').filter(Boolean);
+        if (subSegments.length === 2 && subSegments[1] === 'logo') {
+          const logoTargetId = decodeURIComponent(subSegments[0]);
+          const existingUni = await env.DB.prepare(
+            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+          )
+            .bind(logoTargetId, logoTargetId)
+            .first<D1UniversityRow>();
+          if (!existingUni) {
+            return jsonResponse({ success: false, error: 'University not found.' }, 404, cors);
+          }
+
+          // POST /api/universities/:id/logo — Upload or Replace logo
+          if (req.method === 'POST') {
+            const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+            const rawName = String(body.fileName || body.name || 'logo.webp').trim();
+            const mimeType = String(body.mimeType || body.fileType || body.type || '')
+              .trim()
+              .toLowerCase();
+            const dataBase64 = String(body.dataBase64 || '').trim();
+
+            if (!dataBase64) {
+              return jsonResponse({ success: false, error: 'Missing logo image payload.' }, 400, cors);
+            }
+
+            const allowedLogoMimes = new Set([
+              'image/png',
+              'image/jpeg',
+              'image/webp',
+              'image/svg+xml',
+            ]);
+            const lowerName = rawName.toLowerCase();
+            const hasValidExt = ['.png', '.jpg', '.jpeg', '.webp', '.svg'].some((ext) =>
+              lowerName.endsWith(ext)
+            );
+            if (!allowedLogoMimes.has(mimeType) || !hasValidExt) {
+              return jsonResponse(
+                {
+                  success: false,
+                  error: 'Unsupported file type. Allowed formats: PNG, JPG, WEBP, and SVG.',
+                },
+                415,
+                cors
+              );
+            }
+
+            const decoded = base64ToUint8Array(dataBase64);
+            const fileSize = decoded.byteLength;
+            if (fileSize === 0) {
+              return jsonResponse(
+                { success: false, error: 'Uploaded logo file is empty (0 bytes).' },
+                400,
+                cors
+              );
+            }
+            if (fileSize > 2 * 1024 * 1024) {
+              return jsonResponse(
+                { success: false, error: 'Logo file exceeds the 2 MB maximum size limit.' },
+                413,
+                cors
+              );
+            }
+
+            const ext =
+              mimeType === 'image/svg+xml'
+                ? 'svg'
+                : mimeType === 'image/png'
+                ? 'png'
+                : mimeType === 'image/jpeg'
+                ? 'jpg'
+                : 'webp';
+            const safeUniKey = existingUni.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+            const randId = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+            const r2Key = `universities/logos/${safeUniKey}/${randId}-logo.${ext}`;
+
+            // Delete old file before uploading replacement
+            await deleteOldWorkerUniversityLogo(existingUni.id, existingUni.logo_url);
+
+            if (env.R2_BUCKET) {
+              await env.R2_BUCKET.put(r2Key, decoded, {
+                httpMetadata: {
+                  contentType: mimeType,
+                  cacheControl: 'public, max-age=31536000, immutable',
+                },
+                customMetadata: {
+                  universityId: existingUni.id,
+                  uploadedBy: adminUser.uid,
+                },
+              });
+            }
+
+            const logoUrl = `/api/r2/${r2Key}`;
+            await env.DB.prepare('UPDATE universities SET logo_url = ? WHERE id = ?')
+              .bind(logoUrl, existingUni.id)
+              .run();
+
+            try {
+              await env.DB.prepare(
+                `INSERT OR REPLACE INTO university_logo_assets (
+                  id, university_id, r2_key, logo_url, mime_type, file_size, uploaded_by_uid, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+                .bind(
+                  `ulogo_${existingUni.id}`,
+                  existingUni.id,
+                  r2Key,
+                  logoUrl,
+                  mimeType,
+                  fileSize,
+                  adminUser.uid,
+                  Date.now()
+                )
+                .run();
+            } catch {
+              // Optional metadata table may not be migrated yet
+            }
+
+            await recalculateD1UniCount(existingUni.id);
+            const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
+              .bind(existingUni.id)
+              .first<D1UniversityRow>();
+            return jsonResponse({ success: true, logo_url: logoUrl, university: updated }, 200, cors);
+          }
+
+          // DELETE /api/universities/:id/logo — Remove logo and delete old file
+          if (req.method === 'DELETE') {
+            await deleteOldWorkerUniversityLogo(existingUni.id, existingUni.logo_url);
+            await env.DB.prepare("UPDATE universities SET logo_url = '' WHERE id = ?")
+              .bind(existingUni.id)
+              .run();
+            await recalculateD1UniCount(existingUni.id);
+            const updated = await env.DB.prepare('SELECT * FROM universities WHERE id = ?')
+              .bind(existingUni.id)
+              .first<D1UniversityRow>();
+            return jsonResponse({ success: true, university: updated }, 200, cors);
+          }
+        }
+
         const targetId = decodeURIComponent(uniSub.slice(1));
         if (!targetId) {
           return jsonResponse({ success: false, error: 'University ID required.' }, 400, cors);
@@ -4550,6 +4768,10 @@ ${urls
               ? Number(body.sort_order)
               : existing.sort_order;
 
+          if (existing.logo_url && existing.logo_url !== nextLogo) {
+            await deleteOldWorkerUniversityLogo(existing.id, existing.logo_url);
+          }
+
           await env.DB.prepare(
             'UPDATE universities SET name = ?, slug = ?, logo_url = ?, sort_order = ? WHERE id = ?'
           )
@@ -4573,6 +4795,7 @@ ${urls
           if (!existing) {
             return jsonResponse({ success: false, error: 'University not found.' }, 404, cors);
           }
+          await deleteOldWorkerUniversityLogo(existing.id, existing.logo_url);
           await env.DB.batch([
             env.DB.prepare('DELETE FROM mcqs WHERE university_id = ?').bind(existing.id),
             env.DB.prepare('DELETE FROM universities WHERE id = ?').bind(existing.id),

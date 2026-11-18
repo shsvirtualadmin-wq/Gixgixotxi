@@ -288,6 +288,22 @@ CREATE TABLE IF NOT EXISTS universities (
 
 CREATE INDEX IF NOT EXISTS idx_universities_sort ON universities(sort_order ASC, name ASC);
 CREATE INDEX IF NOT EXISTS idx_universities_slug ON universities(slug);
+CREATE INDEX IF NOT EXISTS idx_universities_logo_url ON universities(logo_url);
+
+CREATE TABLE IF NOT EXISTS university_logo_assets (
+  id TEXT PRIMARY KEY,
+  university_id TEXT NOT NULL UNIQUE,
+  r2_key TEXT NOT NULL,
+  logo_url TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT 'image/webp',
+  file_size INTEGER NOT NULL DEFAULT 0,
+  uploaded_by_uid TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (university_id) REFERENCES universities(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_university_logo_assets_uni_id ON university_logo_assets(university_id);
 
 CREATE TABLE IF NOT EXISTS mcqs (
   id TEXT PRIMARY KEY,

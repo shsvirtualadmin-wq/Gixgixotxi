@@ -34,6 +34,7 @@ import {
   type D1UniversityRow,
   type D1McqRow,
 } from '@/constants/d1Universities';
+import { UniversityLogoBox } from '@/components/ui/UniversityLogoBox';
 import { MathText } from '@/components/ui/MathText';
 import { repairSplitOrGarbledMcqOptions } from '@/lib/math';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
@@ -512,19 +513,30 @@ export function PracticePage() {
         {/* ── CLOUDFLARE D1 UNIVERSITY SUBJECT & TOPIC PRACTICE BROWSER ── */}
         <Card className="p-5 sm:p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
-            <div>
-              <div className="flex items-center gap-2">
-                <Building2 size={17} className="text-[var(--accent)]" />
-                <h2
-                  className="text-lg font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-                >
-                  University Subject &amp; Topic Bank
-                </h2>
+            <div className="flex items-center gap-3 min-w-0">
+              {activeD1Uni ? (
+                <UniversityLogoBox
+                  name={activeD1Uni.name}
+                  logoUrl={activeD1Uni.logo_url}
+                  size="md"
+                  eager
+                />
+              ) : (
+                <Building2 size={17} className="text-[var(--accent)] shrink-0" />
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2
+                    className="text-lg font-bold text-[var(--text)] truncate"
+                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                  >
+                    University Subject &amp; Topic Bank
+                  </h2>
+                </div>
+                <p className="text-xs text-[var(--muted)] mt-0.5">
+                  Select a LIVE university to practice its subjects and topics, or run a mixed university practice session.
+                </p>
               </div>
-              <p className="text-xs text-[var(--muted)] mt-0.5">
-                Select a LIVE university to practice its subjects and topics, or run a mixed university practice session.
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -754,15 +766,28 @@ export function PracticePage() {
                 <button
                   type="button"
                   onClick={() => setTrackPickerOpen(true)}
-                  className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-left hover:border-[var(--text-muted)] transition-colors cursor-pointer"
+                  className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-2.5 text-left hover:border-[var(--text-muted)] transition-colors cursor-pointer"
                 >
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-[var(--text)] truncate">
-                      {currentUniversityCriteria.name}
-                    </p>
-                    <p className="text-[10px] text-[var(--muted)] truncate">
-                      {currentUniversityCriteria.badge}
-                    </p>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <UniversityLogoBox
+                      name={currentUniversityCriteria.name}
+                      logoUrl={
+                        (d1Universities || []).find(
+                          (u) =>
+                            u.name.toLowerCase() === currentUniversityCriteria.name.toLowerCase() ||
+                            u.slug.toLowerCase() === currentUniversityCriteria.id.toLowerCase()
+                        )?.logo_url
+                      }
+                      size="sm"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-[var(--text)] truncate">
+                        {currentUniversityCriteria.name}
+                      </p>
+                      <p className="text-[10px] text-[var(--muted)] truncate">
+                        {currentUniversityCriteria.badge}
+                      </p>
+                    </div>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)] shrink-0" />
                 </button>
@@ -937,15 +962,17 @@ export function PracticePage() {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2.5">
-                          <div
-                            className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
-                              isSelected
-                                ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                                : 'border-[var(--glass-border)]'
-                            }`}
-                          >
-                            {isSelected && <Check size={12} strokeWidth={3} />}
-                          </div>
+                          <UniversityLogoBox
+                            name={criteria.name}
+                            logoUrl={
+                              (d1Universities || []).find(
+                                (u) =>
+                                  u.name.toLowerCase() === criteria.name.toLowerCase() ||
+                                  u.slug.toLowerCase() === criteria.id.toLowerCase()
+                              )?.logo_url
+                            }
+                            size="sm"
+                          />
                           <div>
                             <span className="font-bold text-sm text-[var(--text)]">
                               {criteria.name}
@@ -1187,13 +1214,23 @@ export function PracticePage() {
                 return (
                   <>
                     <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
-                      <div>
-                        <span className="text-[10px] font-mono uppercase font-bold text-[var(--accent)]">
-                          University MCQ Practice
-                        </span>
-                        <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
-                          {d1PracticeTitle}
-                        </h3>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {activeD1Uni && (
+                          <UniversityLogoBox
+                            name={activeD1Uni.name}
+                            logoUrl={activeD1Uni.logo_url}
+                            size="sm"
+                            eager
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono uppercase font-bold text-[var(--accent)]">
+                            University MCQ Practice
+                          </span>
+                          <h3 className="text-base sm:text-lg font-bold text-[var(--text)] truncate">
+                            {d1PracticeTitle}
+                          </h3>
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)]">

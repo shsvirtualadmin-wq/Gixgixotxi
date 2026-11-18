@@ -245,8 +245,10 @@
   --uni-tile-border: rgba(255, 255, 255, 0.24);
   --uni-tile-text: #ffffff;
   --uni-tile-subtext: rgba(255, 255, 255, 0.85);
-  --uni-logo-box-bg: #ffffff;
+  --uni-logo-box-bg: #f8fafc;
   --uni-logo-box-text: #111115;
+  --uni-logo-box-border: rgba(215, 25, 33, 0.32);
+  --uni-logo-box-shadow: 0 2px 8px rgba(215, 25, 33, 0.14);
   --uni-live-badge-bg: rgba(15, 17, 22, 0.28);
   --uni-live-badge-border: rgba(255, 255, 255, 0.32);
   --uni-live-badge-dot: #ffffff;
@@ -387,8 +389,10 @@
   --uni-tile-border: rgba(255, 255, 255, 0.22);
   --uni-tile-text: #ffffff;
   --uni-tile-subtext: rgba(255, 255, 255, 0.85);
-  --uni-logo-box-bg: #ffffff;
+  --uni-logo-box-bg: #f8fafc;
   --uni-logo-box-text: #0e0e12;
+  --uni-logo-box-border: rgba(215, 25, 33, 0.52);
+  --uni-logo-box-shadow: 0 2px 10px rgba(215, 25, 33, 0.24);
   --uni-live-badge-bg: rgba(7, 7, 10, 0.36);
   --uni-live-badge-border: rgba(255, 255, 255, 0.28);
   --uni-live-badge-dot: #ffffff;
@@ -529,6 +533,10 @@
   --bubble-outer-glow: 0 6px 22px rgba(220,20,40,0.22);
   --menu-row-pressed: rgba(0,0,0,0.045);
   --menu-icon-bg: rgba(0,0,0,0.045);
+  --uni-logo-box-bg: #f8fafc;
+  --uni-logo-box-text: #111115;
+  --uni-logo-box-border: rgba(215, 25, 33, 0.32);
+  --uni-logo-box-shadow: 0 2px 8px rgba(215, 25, 33, 0.14);
 }
 
 /* ===== TAILWIND TOKEN UTILITY SHORTCUTS ===== */
