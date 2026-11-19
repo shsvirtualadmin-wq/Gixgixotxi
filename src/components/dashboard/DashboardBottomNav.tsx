@@ -669,7 +669,7 @@ function DashboardBottomNavComponent() {
       e.preventDefault();
       e.stopPropagation();
       if (!isAuthenticated) {
-        requireAuth('chat with Boardly AI');
+        requireAuth('chat with Boardly AI Mentors');
         return;
       }
       navigate('/dashboard/ai');
@@ -742,8 +742,8 @@ function DashboardBottomNavComponent() {
                     type="button"
                     data-ai-nav-fab="true"
                     data-testid="bottom-nav-ai-fab"
-                    aria-label="Open Boardly AI"
-                    title="Boardly AI"
+                    aria-label="Open Boardly AI Mentors"
+                    title="Boardly AI Mentors"
                     onPointerDown={(e) => e.stopPropagation()}
                     onTouchStart={(e) => e.stopPropagation()}
                     onClick={handleOpenAiMentors}

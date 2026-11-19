@@ -468,10 +468,10 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         onBack={() => setSection('privacy')}
         scrollContainer={scrollContainer}
       >
-        <SettingsGroup label="Boardly AI" radius="compact">
+        <SettingsGroup label="Mentors">
           <SettingsRow
             icon={<Sparkles />}
-            label="Open Boardly AI"
+            label="Open Boardly AI Mentors"
             subtitle="Noor, Zain, Sehar, Hamza & Mahnoor"
             onClick={() => navigateTo('/dashboard/ai')}
           />
@@ -479,7 +479,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
 
         <SettingsGroup
           label="Chat history & privacy"
-          helperText="When turned off, every Boardly AI chat behaves as a temporary chat and is not saved to your history."
+          helperText="When turned off, every Boardly AI Mentor chat behaves as a temporary chat and is not saved to your history."
         >
           <SettingsToggleRow
             icon={<MessageCircle />}
@@ -492,11 +492,11 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           />
         </SettingsGroup>
 
-        <SettingsGroup danger radius="compact">
+        <SettingsGroup danger>
           <SettingsRow
             icon={<Trash2 />}
             label="Delete all AI chats"
-            subtitle="Permanently clears your saved Boardly AI conversations"
+            subtitle="Permanently clears your saved AI Mentor conversations"
             tone="danger"
             chevron="none"
             onClick={() => setDeleteAiChatsConfirmOpen(true)}
@@ -513,7 +513,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           open={deleteAiChatsConfirmOpen}
           onClose={() => setDeleteAiChatsConfirmOpen(false)}
           title="Delete all AI chats?"
-          description="This permanently removes all saved Boardly AI conversations from your account. This action cannot be undone."
+          description="This permanently removes all saved Boardly AI Mentor conversations from your account. This action cannot be undone."
           confirmLabel="Delete all chats"
           tone="danger"
           loading={deletingAiChats}
@@ -958,17 +958,17 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         scrollContainer={scrollContainer}
       >
         <SettingsGroup
-          label="Boardly AI"
+          label="Boardly AI Mentor"
           helperText={
             aiCredits.unlimited
-              ? 'Superadmin access includes unlimited Boardly AI credits with Quick, Balanced, Deep, and Max thinking.'
+              ? 'Superadmin access includes unlimited AI Mentor credits with Quick, Balanced, Deep, and Max thinking.'
               : aiCredits.plan === 'pro'
               ? `Daily limit: ${aiCredits.limit} credits/day · Deep & Max thinking unlocked · resets at midnight PKT.`
               : `Daily limit: ${aiCredits.limit} credits/day (Quick & Balanced) · Deep & Max locked on Free · resets at midnight PKT.`
           }
         >
           <SettingsProgressRow
-            label="Boardly AI credits"
+            label="AI Mentor credits"
             percentRemaining={
               aiCredits.unlimited
                 ? 100
@@ -998,7 +998,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             <SettingsRow
               icon={<Crown />}
               label="Upgrade to Pro"
-              subtitle="Unlock 100 Boardly AI credits/day with Deep & Max"
+              subtitle="Unlock 100 AI Mentor credits/day with Deep & Max"
               tone="accent"
               onClick={() => navigateTo('/dashboard/plan#boardly-pro-card')}
             />
@@ -1009,8 +1009,8 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           label={isPro ? 'Pro plan allowances' : 'Daily free plan limits'}
           helperText={
             isPro
-              ? 'Your Boardly Pro membership includes unlimited Grand Line Mock Tests, Formula Vault, and 100 Boardly AI credits/day with Deep & Max thinking.'
-              : 'Free plan limits reset daily. Upgrade to Pro for unlimited mock tests and 100 Boardly AI credits/day with Deep & Max thinking.'
+              ? 'Your Boardly Pro membership includes full access to Grand Line Mock Tests, Formula Vault, and 100 daily AI Mentor credits with Deep & Max thinking.'
+              : 'Free plan limits reset daily. Upgrade to Pro for unlimited mock tests and 100 daily AI Mentor credits.'
           }
         >
           <SettingsProgressRow
@@ -1022,8 +1022,8 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           <SettingsProgressRow
             label="Practice sets"
             percentRemaining={100}
-            rightText={isPro ? 'Unlimited' : '100% remaining'}
-            resetsText={isPro ? 'Included with Pro' : `Resets ${nextResetDateLabel}`}
+            rightText="100% remaining"
+            resetsText={`Resets ${nextResetDateLabel}`}
           />
         </SettingsGroup>
 
@@ -1031,20 +1031,20 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           <button
             type="button"
             onClick={() => navigateTo('/store')}
-            className="w-full px-5 py-4 text-left transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
+            className="flex w-full flex-col px-5 py-4 text-left transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
           >
-            <div className="flex w-full items-center gap-3">
+            <span className="flex w-full items-center gap-3">
               <span className="flex shrink-0 items-center justify-center">
                 <KobanIcon size={24} decorative />
               </span>
               <span
-                className="min-w-0 flex-1 text-[16px] font-medium leading-snug"
+                className="min-w-0 flex-1 text-left text-[16px] font-medium leading-snug"
                 style={{ color: 'var(--text)' }}
               >
                 Kobans
               </span>
               <span
-                className="ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[14px] font-semibold tabular-nums"
+                className="flex-none shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-semibold tabular-nums"
                 style={{
                   backgroundColor: 'var(--koban-bg)',
                   border: '1px solid var(--koban-border)',
@@ -1067,14 +1067,13 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
                 style={{ color: 'var(--text-muted)' }}
                 strokeWidth={1.75}
               />
-            </div>
-
-            <p
-              className="mt-2 w-full text-[13px] leading-snug"
+            </span>
+            <span
+              className="mt-2 block w-full text-left text-[13px] leading-snug break-words"
               style={{ color: 'var(--text-muted)' }}
             >
               Earn Kobans from daily claims, streaks, and mock tests
-            </p>
+            </span>
           </button>
         </SettingsGroup>
       </SettingsPage>

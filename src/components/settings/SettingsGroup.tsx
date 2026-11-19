@@ -7,8 +7,8 @@ export interface SettingsGroupProps {
   helperText?: React.ReactNode;
   /** Force single-row full pill (999px) vs multi-row (32px). Auto-detected if omitted. */
   singleRow?: boolean;
-  /** Explicit corner radius preset: 'pill' (999px), 'compact' (22px), or 'card' (32px) */
-  radius?: 'pill' | 'compact' | 'card';
+  /** Optional corner radius override: 'compact' renders 22px corners matching standard cards */
+  radius?: 'auto' | 'compact';
   /** Red-tinted danger border for Sign out / Suspend / Delete cards */
   danger?: boolean;
   className?: string;
@@ -19,7 +19,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
   label,
   helperText,
   singleRow,
-  radius,
+  radius = 'auto',
   danger = false,
   className = '',
   children,
@@ -28,23 +28,12 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
   if (validChildren.length === 0) return null;
 
   const isSingleRow = singleRow ?? validChildren.length === 1;
-  const singleChildHasSubtitle =
-    validChildren.length === 1 &&
-    React.isValidElement(validChildren[0]) &&
-    Boolean((validChildren[0].props as Record<string, any>)?.subtitle);
-
   const radiusClass =
     radius === 'compact'
       ? 'rounded-[22px]'
-      : radius === 'card'
-        ? 'rounded-[32px]'
-        : radius === 'pill'
-          ? 'rounded-[999px]'
-          : isSingleRow && !singleChildHasSubtitle
-            ? 'rounded-[999px]'
-            : isSingleRow && singleChildHasSubtitle
-              ? 'rounded-[22px]'
-              : 'rounded-[32px]';
+      : isSingleRow
+        ? 'rounded-[999px]'
+        : 'rounded-[32px]';
 
   return (
     <section className={`mb-6 ${className}`}>
@@ -71,6 +60,11 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
         {validChildren.map((child, idx) => {
           if (!React.isValidElement(child)) return child;
           const isLast = idx === validChildren.length - 1;
+          if (typeof child.type === 'string') {
+            return React.cloneElement(child as React.ReactElement<any>, {
+              key: child.key ?? idx,
+            });
+          }
           return React.cloneElement(child as React.ReactElement<any>, {
             isLast,
             key: child.key ?? idx,

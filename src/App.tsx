@@ -185,7 +185,7 @@ const TestResultPage = lazyWithRetry(() =>
   import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
 );
 
-// Crew, Captain (legacy /dashboard/ai-tutor redirects to unified Boardly AI at /dashboard/ai)
+// Crew & Captain
 const CrewDashboardPage = lazyWithRetry(() =>
   import('./pages/crew/CrewDashboardPage').then(m => ({ default: m.CrewDashboardPage }))
 );

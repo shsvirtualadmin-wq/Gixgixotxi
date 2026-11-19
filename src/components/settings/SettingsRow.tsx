@@ -85,7 +85,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
 
       <span
         className={`ml-auto pl-3 flex items-center justify-end gap-2 ${
-          actionValue ? 'flex-none shrink-0 whitespace-nowrap' : 'min-w-0 max-w-[55%] shrink'
+          actionValue ? 'flex-none shrink-0' : 'min-w-0 max-w-[65%] shrink'
         }`}
       >
         {dot && (
@@ -101,13 +101,13 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
           <span
             className={
               actionValue
-                ? 'whitespace-nowrap text-right text-[14px] sm:text-[15px] leading-snug'
+                ? 'whitespace-nowrap flex-none text-right text-[14px] sm:text-[15px] leading-snug'
                 : 'min-w-0 break-words text-right text-[14px] sm:text-[15px] leading-snug'
             }
             style={{
               color: actionValue ? 'var(--accent)' : 'var(--text-muted)',
               fontWeight: actionValue ? 500 : 400,
-              ...(actionValue ? {} : { overflowWrap: 'anywhere' }),
+              overflowWrap: actionValue ? 'normal' : 'anywhere',
             }}
           >
             {value}

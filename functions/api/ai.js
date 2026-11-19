@@ -1,20 +1,18 @@
 /**
- * Boardly AI — Cloudflare Pages Function (/api/ai)
+ * Boardly AI Mentors — Cloudflare Pages Function (/api/ai)
  *
  * Endpoints:
  * - GET  /api/ai  -> Returns live daily credit balance, plan, Deep/Max unlock status, and PKT reset time
- * - POST /api/ai  -> Validates request, enforces plan & server-side daily credits in Firestore
- *                    (with direct Unlimited fast-path for Superadmin), deducts before calling Gemini,
- *                    refunds automatically on failure, and returns clean answer text.
+ * - POST /api/ai  -> Validates request, enforces plan & server-side daily credits in Firestore,
+ *                    deducts before calling Gemini, refunds automatically on failure, returns answer text.
  *
  * Environment variables read:
- * - GEMINI_API_KEY (and/or comma/newline-separated GEMINI_API_KEYS)
+ * - GEMINI_API_KEY (or fallback first key from GEMINI_API_KEYS)
  * - GEMINI_MODEL (optional, defaults to "gemini-4-hydrogen" from ai-config.json)
- * - GEMINI_FALLBACK_MODEL (optional, defaults to "gemini-3.1-flash-lite")
  * - FIREBASE_SERVICE_ACCOUNT (JSON or base64 JSON; fallback GOOGLE_SERVICE_ACCOUNT_KEY)
  * - FIREBASE_PROJECT_ID (optional, fallback VITE_FIREBASE_PROJECT_ID)
  * - FIREBASE_DATABASE_ID (optional, fallback VITE_FIREBASE_DATABASE_ID / VITE_FIREBASE_FIRESTORE_DATABASE_ID)
- * - OWNER_EMAIL / SUPERADMIN_EMAILS / SUPERADMIN_UIDS (optional)
+ * - OWNER_EMAIL (optional, defaults to "shsvirtualadmin@gmail.com")
  */
 
 import aiConfig from '../../ai-config.json';
@@ -25,29 +23,7 @@ const DEFAULT_FIRESTORE_DATABASE_ID =
 const DEFAULT_OWNER_EMAIL = 'shsvirtualadmin@gmail.com';
 const FIRESTORE_OAUTH_SCOPE = 'https://www.googleapis.com/auth/datastore';
 
-const DEFAULT_PRIMARY_MODEL = aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen';
-const DEFAULT_FALLBACK_MODEL = aiConfig.FALLBACK_MODEL || 'gemini-3.1-flash-lite';
-
-const DISALLOWED_MODELS = new Set([
-  'gemini-flash-latest',
-  'gemini-pro-latest',
-  'gemini-1.5-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro',
-  'gemini-1.5-pro-latest',
-  'gemini-pro',
-  'gemini-2.0-flash',
-  'gemini-2.0-pro',
-  'gemini-2.0-flash-thinking',
-]);
-
-const XHIGH_CAPABLE_MODELS = new Set(['gemini-4-hydrogen', 'gemini-4-neon']);
-
-const FETCH_TIMEOUT_AUTH_MS = 10_000;
-const FETCH_TIMEOUT_FIRESTORE_MS = 10_000;
-const FETCH_TIMEOUT_GEMINI_MS = 48_000;
-
-const BASE_SYSTEM_PROMPT = `You are Boardly AI, helping Pakistani students preparing for Matric (9th/10th), FSc (11th/12th), O/A Levels, and university entry tests (MDCAT, NUST NET, FAST-NUCES, GIKI, ECAT, LUMS, COMSATS, UET).
+const BASE_SYSTEM_PROMPT = `You are a Boardly AI Mentor helping Pakistani students preparing for Matric (9th/10th), FSc (11th/12th), O/A Levels, and university entry tests (MDCAT, NUST NET, FAST-NUCES, GIKI, ECAT, LUMS, COMSATS, UET).
 Core rules:
 - Write clear, accurate, encouraging, exam-ready answers tailored to Pakistani boards (FBISE, Punjab, Sindh, KPK, Balochistan) and entry tests.
 - Format all mathematics cleanly with LaTeX: inline $...$ and display $$...$$. Format chemical formulas and reactions using mhchem \\ce{...} inside math delimiters (e.g. $\\ce{H2SO4}$, $\\ce{2H2 + O2 -> 2H2O}$).
@@ -86,7 +62,7 @@ const DEPTH_LINES = [
   'Response depth: Max — Deliver maximum academic rigor: full first-principles derivations, complete verification, comparison tables, and high-yield exam insights.',
 ];
 
-// ─── CORS, Fetch Timeout & JSON Helpers ───────────────────────────────────────
+// ─── CORS & JSON Helpers ──────────────────────────────────────────────────────
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -109,17 +85,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err && err.name === 'AbortError') {
-      const timeoutErr = new Error(`Upstream request timed out after ${Math.round(timeoutMs / 1000)}s`);
-      timeoutErr.name = 'TimeoutError';
-      throw timeoutErr;
-    }
-    throw err;
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -176,7 +142,7 @@ async function getGooglePublicJwks() {
   const res = await fetchWithTimeout(
     'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com',
     {},
-    FETCH_TIMEOUT_AUTH_MS
+    10_000
   );
   if (!res.ok) {
     throw new Error(`Failed to fetch Google public JWKs (HTTP ${res.status})`);
@@ -187,22 +153,11 @@ async function getGooglePublicJwks() {
   return keys;
 }
 
-function parseCsvSet(raw) {
-  return new Set(
-    String(raw || '')
-      .split(/[\n,]+/)
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}
-
 async function verifyFirebaseIdToken(authHeader, projectId, env) {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { error: 'Missing Authorization token.', status: 401 };
-  }
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return { error: 'Missing Authorization token.', status: 401 };
   const token = authHeader.slice(7).trim();
   if (!token || token.startsWith('guest_')) {
-    return { error: 'Please sign in with a registered Boardly account to use Boardly AI.', status: 401 };
+    return { error: 'Please sign in with a registered Boardly account to use AI Mentors.', status: 401 };
   }
 
   const parts = token.split('.');
@@ -230,22 +185,16 @@ async function verifyFirebaseIdToken(authHeader, projectId, env) {
       return { error: 'Token issuer mismatch.', status: 401 };
     }
     if (!payload.sub || typeof payload.sub !== 'string' || payload.sub.startsWith('guest_')) {
-      return { error: 'Guest accounts cannot use Boardly AI. Please sign in.', status: 403 };
+      return { error: 'Guest accounts cannot use AI Mentors. Please sign in.', status: 403 };
     }
 
     const signInProvider = String(payload?.firebase?.sign_in_provider || '').toLowerCase();
     if (signInProvider === 'anonymous') {
-      return { error: 'Anonymous sessions cannot use Boardly AI. Please sign in.', status: 403 };
+      return { error: 'Anonymous sessions cannot use AI Mentors. Please sign in.', status: 403 };
     }
 
-    let keys = await getGooglePublicJwks();
-    let jwk = keys.find((k) => k.kid === header.kid);
-    if (!jwk) {
-      // Force one refresh in case Google rotated keys since cache was written
-      cachedGoogleJwks = null;
-      keys = await getGooglePublicJwks();
-      jwk = keys.find((k) => k.kid === header.kid);
-    }
+    const keys = await getGooglePublicJwks();
+    const jwk = keys.find((k) => k.kid === header.kid);
     if (!jwk) {
       return { error: 'Unable to verify authentication key.', status: 401 };
     }
@@ -271,21 +220,10 @@ async function verifyFirebaseIdToken(authHeader, projectId, env) {
     }
 
     const ownerEmail = String(env?.OWNER_EMAIL || DEFAULT_OWNER_EMAIL).trim().toLowerCase();
-    const superAdminEmails = parseCsvSet(env?.SUPERADMIN_EMAILS);
-    superAdminEmails.add(ownerEmail);
-    const superAdminUids = new Set(
-      String(env?.SUPERADMIN_UIDS || '')
-        .split(/[\n,]+/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-    );
-
     const email = String(payload.email || '').trim().toLowerCase();
     const emailVerified = payload.email_verified === true;
     const isSuperAdmin =
-      payload.superAdmin === true ||
-      superAdminUids.has(payload.sub) ||
-      (emailVerified && email !== '' && superAdminEmails.has(email));
+      payload.superAdmin === true || (emailVerified && email !== '' && email === ownerEmail);
 
     return {
       user: {
@@ -296,10 +234,7 @@ async function verifyFirebaseIdToken(authHeader, projectId, env) {
         isAdmin: isSuperAdmin || payload.admin === true,
       },
     };
-  } catch (err) {
-    if (err && err.name === 'TimeoutError') {
-      return { error: 'Authentication verification timed out. Please try again.', status: 504 };
-    }
+  } catch {
     return { error: 'Authentication verification failed.', status: 401 };
   }
 }
@@ -382,7 +317,7 @@ async function getServiceAccountAccessToken(sa) {
         assertion: jwt,
       }).toString(),
     },
-    FETCH_TIMEOUT_AUTH_MS
+    10_000
   );
 
   if (!res.ok) {
@@ -453,7 +388,7 @@ async function getFirestoreDoc(baseUrl, accessToken, docPath) {
     {
       headers: { Authorization: `Bearer ${accessToken}` },
     },
-    FETCH_TIMEOUT_FIRESTORE_MS
+    10_000
   );
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -480,7 +415,7 @@ async function patchFirestoreDoc(baseUrl, accessToken, docPath, fieldsObj) {
       },
       body: JSON.stringify({ fields }),
     },
-    FETCH_TIMEOUT_FIRESTORE_MS
+    10_000
   );
   if (!res.ok) {
     throw new Error(`Firestore write failed for ${docPath} (HTTP ${res.status})`);
@@ -538,21 +473,17 @@ function isPersonalProUserDoc(userDoc, nowMs) {
   return hasFutureExpiry || (isFlaggedPro && !isExpired);
 }
 
-function buildSuperAdminPlan() {
-  return {
-    plan: 'pro',
-    isPro: true,
-    isSuperAdmin: true,
-    isUnlimited: true,
-    deepMaxUnlocked: true,
-    source: 'superadmin',
-    dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
-  };
-}
-
 async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser) {
   if (authUser.isSuperAdmin) {
-    return buildSuperAdminPlan();
+    return {
+      plan: 'pro',
+      isPro: true,
+      isSuperAdmin: true,
+      isUnlimited: true,
+      deepMaxUnlocked: true,
+      source: 'superadmin',
+      dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
+    };
   }
 
   const nowMs = Date.now();
@@ -626,8 +557,8 @@ function computeServerMessageCost(depth, contents) {
   const depthCfg = aiConfig.DEPTHS[depth] || aiConfig.DEPTHS[1];
   const rules = aiConfig.COST_RULES;
 
-  const lastUserMsg =
-    [...contents].reverse().find((m) => m.role === 'user') || contents[contents.length - 1];
+  // Measure the newest user message's text + attachments + total history count
+  const lastUserMsg = [...contents].reverse().find((m) => m.role === 'user') || contents[contents.length - 1];
   let textLen = 0;
   let photoCount = 0;
   let pdfCount = 0;
@@ -697,6 +628,7 @@ function validateAndSanitizeContents(rawContents) {
         if (!allowedMime) {
           return { error: 'Only JPEG/PNG/WebP images and PDF files are supported.' };
         }
+        // Estimate decoded bytes from base64 length
         const approxBytes = Math.ceil((data.length * 3) / 4);
         if (approxBytes > aiConfig.COST_RULES.maxPdfBytes) {
           return { error: 'Attached file exceeds the 4 MB limit.' };
@@ -719,131 +651,24 @@ function validateAndSanitizeContents(rawContents) {
   return { contents: sanitized };
 }
 
-function resolveGeminiApiKeys(env) {
-  const keys = [];
+function resolveGeminiApiKey(env) {
   const direct = String(env?.GEMINI_API_KEY || '').trim();
-  if (direct) keys.push(direct);
+  if (direct) return direct;
   const pool = String(env?.GEMINI_API_KEYS || '').trim();
   if (pool) {
-    for (const candidate of pool.split(/[\n,]+/).map((s) => s.trim())) {
-      if (candidate && !keys.includes(candidate)) {
-        keys.push(candidate);
-      }
-    }
+    const first = pool
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .find(Boolean);
+    if (first) return first;
   }
-  return keys;
-}
-
-function resolveModelCandidates(env) {
-  const rawPrimary = String(env?.GEMINI_MODEL || DEFAULT_PRIMARY_MODEL).trim();
-  const primary =
-    !rawPrimary || DISALLOWED_MODELS.has(rawPrimary.toLowerCase())
-      ? DEFAULT_PRIMARY_MODEL
-      : rawPrimary;
-
-  const rawFallback = String(env?.GEMINI_FALLBACK_MODEL || DEFAULT_FALLBACK_MODEL).trim();
-  const fallback =
-    !rawFallback || DISALLOWED_MODELS.has(rawFallback.toLowerCase())
-      ? DEFAULT_FALLBACK_MODEL
-      : rawFallback;
-
-  const list = [primary];
-  if (fallback && fallback !== primary) {
-    list.push(fallback);
-  }
-  return list;
-}
-
-function normalizeThinkingLevel(rawLevel, modelName) {
-  const upper = String(rawLevel || 'MEDIUM').trim().toUpperCase();
-  const valid = upper === 'LOW' || upper === 'MEDIUM' || upper === 'HIGH' || upper === 'XHIGH'
-    ? upper
-    : 'MEDIUM';
-  if (valid === 'XHIGH' && !XHIGH_CAPABLE_MODELS.has(String(modelName || '').toLowerCase())) {
-    return 'HIGH';
-  }
-  return valid;
-}
-
-function extractAnswerFromGeminiPayload(geminiData) {
-  const candidate = geminiData?.candidates?.[0];
-  const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
-  const answerText = parts
-    .filter((p) => p && p.thought !== true && typeof p.text === 'string')
-    .map((p) => p.text)
-    .join('')
-    .trim();
-  const finishReason = String(candidate?.finishReason || '');
-  const blockReason = String(geminiData?.promptFeedback?.blockReason || '');
-  return { answerText, finishReason, blockReason };
-}
-
-async function callGeminiOnce({
-  model,
-  apiKey,
-  systemInstructionText,
-  contents,
-  depthCfg,
-  includeThinking,
-  timeoutMs,
-}) {
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const generationConfig = {
-    maxOutputTokens: Math.max(1024, Number(depthCfg?.maxOutputTokens || 4096)),
-  };
-
-  if (includeThinking) {
-    generationConfig.thinkingConfig = {
-      thinkingLevel: normalizeThinkingLevel(depthCfg?.thinkingLevel, model),
-    };
-  }
-
-  const res = await fetchWithTimeout(
-    geminiUrl,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'aistudio-build',
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemInstructionText }],
-        },
-        contents,
-        generationConfig,
-      }),
-    },
-    timeoutMs
-  );
-
-  const rawText = await res.text().catch(() => '');
-  let parsed = null;
-  try {
-    parsed = rawText ? JSON.parse(rawText) : null;
-  } catch {
-    parsed = null;
-  }
-
-  return {
-    ok: res.ok,
-    status: res.status,
-    data: parsed,
-    errorMessage: String(parsed?.error?.message || '').trim(),
-  };
+  return '';
 }
 
 function resolveFirestoreIds(env, sa) {
   const projectId =
-    String(
-      env?.FIREBASE_PROJECT_ID ||
-        env?.VITE_FIREBASE_PROJECT_ID ||
-        sa?.project_id ||
-        DEFAULT_FIREBASE_PROJECT_ID
-    ).trim() || DEFAULT_FIREBASE_PROJECT_ID;
+    String(env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || sa?.project_id || DEFAULT_FIREBASE_PROJECT_ID).trim() ||
+    DEFAULT_FIREBASE_PROJECT_ID;
   const rawDb = String(
     env?.FIREBASE_DATABASE_ID ||
       env?.VITE_FIREBASE_DATABASE_ID ||
@@ -860,386 +685,371 @@ function resolveFirestoreIds(env, sa) {
 // ─── Main Request Handler (Shared by Cloudflare Pages Function & Vite Dev) ───
 
 export async function handleAiMentorsRequest(request, env) {
-  try {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
 
-    if (request.method !== 'GET' && request.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed.' }, 405);
-    }
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed.' }, 405);
+  }
 
-    const sa = parseServiceAccount(env);
-    const { projectId, databaseId } = resolveFirestoreIds(env, sa);
+  const sa = parseServiceAccount(env);
+  const { projectId, databaseId } = resolveFirestoreIds(env, sa);
 
-    // 1. Verify Firebase ID Token (rejects missing, invalid, guest, and anonymous tokens)
-    const authResult = await verifyFirebaseIdToken(
-      request.headers.get('Authorization'),
-      projectId,
-      env
-    );
-    if (authResult.error || !authResult.user) {
-      return jsonResponse({ error: authResult.error || 'Unauthorized.' }, authResult.status || 401);
-    }
-    const authUser = authResult.user;
+  // 1. Verify Firebase ID Token (rejects missing, invalid, guest, and anonymous tokens)
+  const authResult = await verifyFirebaseIdToken(
+    request.headers.get('Authorization'),
+    projectId,
+    env
+  );
+  if (authResult.error || !authResult.user) {
+    return jsonResponse({ error: authResult.error || 'Unauthorized.' }, authResult.status || 401);
+  }
+  const authUser = authResult.user;
 
-    const { dateKey, resetAt } = getPktDateAndReset();
-    let planInfo;
-    let baseUrl = '';
-    let accessToken = '';
-    let usageDocPath = '';
-    let creditsUsed = 0;
+  const { dateKey, resetAt } = getPktDateAndReset();
+  let accessToken = null;
+  let baseUrl = '';
+  let usageDocPath = '';
+  let planInfo;
+  let creditsUsed = 0;
 
-    // 2. Superadmin Unlimited fast-path: never blocked on FIREBASE_SERVICE_ACCOUNT or Firestore
-    if (authUser.isSuperAdmin) {
-      planInfo = buildSuperAdminPlan();
-    } else {
-      if (!sa) {
-        return jsonResponse(
-          {
-            error:
-              'Server configuration incomplete: FIREBASE_SERVICE_ACCOUNT is not configured for Boardly AI credit enforcement.',
-            code: 'MISSING_SERVICE_ACCOUNT',
-          },
-          503
-        );
-      }
-
-      try {
-        accessToken = await getServiceAccountAccessToken(sa);
-      } catch (err) {
-        return jsonResponse(
-          {
-            error:
-              err?.name === 'TimeoutError'
-                ? 'Database authentication timed out. Please try again.'
-                : 'Unable to authenticate with database service. Please try again shortly.',
-          },
-          503
-        );
-      }
-
-      baseUrl = firestoreDocBaseUrl(projectId, databaseId);
-      usageDocPath = `users/${encodeURIComponent(authUser.uid)}/aiUsage/${encodeURIComponent(
-        dateKey
-      )}`;
-
-      try {
-        planInfo = await resolveUserPlanFromFirestore(baseUrl, accessToken, authUser);
-      } catch {
-        return jsonResponse(
-          { error: 'Could not verify your subscription status. Please try again.' },
-          503
-        );
-      }
-
-      const existingUsage = await getFirestoreDoc(baseUrl, accessToken, usageDocPath).catch(
-        () => null
-      );
-      creditsUsed = Math.max(0, Number(existingUsage?.creditsUsed || 0));
-    }
-
-    const creditsLeft = planInfo.isUnlimited
-      ? planInfo.dailyLimit
-      : Math.max(0, planInfo.dailyLimit - creditsUsed);
-
-    // GET /api/ai -> Live credit & plan summary
-    if (request.method === 'GET') {
-      return jsonResponse({
-        creditsUsed,
-        creditsLeft,
-        dailyLimit: planInfo.dailyLimit,
-        isUnlimited: planInfo.isUnlimited,
-        isPro: planInfo.isPro,
-        isSuperAdmin: planInfo.isSuperAdmin,
-        deepMaxUnlocked: planInfo.deepMaxUnlocked,
-        plan: planInfo.plan,
-        source: planInfo.source,
-        dateKey,
-        resetAt,
-      });
-    }
-
-    // 3. POST /api/ai -> Validate request payload
-    const apiKeys = resolveGeminiApiKeys(env);
-    if (apiKeys.length === 0) {
+  // 2. Superadmin Unlimited path: verified cryptographically from signed Firebase ID token,
+  //    so Superadmin never stalls or fails on Firestore / FIREBASE_SERVICE_ACCOUNT availability.
+  if (authUser.isSuperAdmin) {
+    planInfo = {
+      plan: 'pro',
+      isPro: true,
+      isSuperAdmin: true,
+      isUnlimited: true,
+      deepMaxUnlocked: true,
+      source: 'superadmin',
+      dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
+    };
+  } else {
+    if (!sa) {
       return jsonResponse(
         {
           error:
-            'Server configuration incomplete: GEMINI_API_KEY is not configured in the server environment.',
-          code: 'MISSING_GEMINI_API_KEY',
+            'Server configuration incomplete: FIREBASE_SERVICE_ACCOUNT is not configured for AI Mentors credit enforcement.',
+          code: 'MISSING_SERVICE_ACCOUNT',
         },
         503
       );
     }
 
-    let body;
     try {
-      body = await request.json();
+      accessToken = await getServiceAccountAccessToken(sa);
     } catch {
-      return jsonResponse({ error: 'Invalid JSON request body.' }, 400);
-    }
-
-    const mentorId = Number(body?.mentor);
-    if (!Number.isInteger(mentorId) || mentorId < 0 || mentorId > 4) {
-      return jsonResponse({ error: 'Invalid mentor selection (expected 0–4).' }, 400);
-    }
-
-    const depthId = Number(body?.depth);
-    if (!Number.isInteger(depthId) || depthId < 0 || depthId > 3) {
-      return jsonResponse({ error: 'Invalid answer depth (expected 0–3).' }, 400);
-    }
-
-    const depthCfg = aiConfig.DEPTHS[depthId];
-    if (!depthCfg.freeAllowed && !planInfo.deepMaxUnlocked) {
       return jsonResponse(
-        {
-          error: `${depthCfg.label} thinking is a Boardly Pro feature. Upgrade to unlock Deep & Max thinking.`,
-          code: 'PRO_DEPTH_REQUIRED',
-          creditsLeft,
-          dailyLimit: planInfo.dailyLimit,
-          resetAt,
-        },
-        403
+        { error: 'Unable to authenticate with database service. Please try again shortly.' },
+        503
       );
     }
 
-    const validated = validateAndSanitizeContents(body?.contents);
-    if (validated.error || !validated.contents) {
-      return jsonResponse({ error: validated.error || 'Invalid conversation payload.' }, 400);
-    }
+    baseUrl = firestoreDocBaseUrl(projectId, databaseId);
+    usageDocPath = `users/${encodeURIComponent(authUser.uid)}/aiUsage/${encodeURIComponent(dateKey)}`;
 
-    // 4. Compute exact server credit cost & enforce daily cap
-    const cost = computeServerMessageCost(depthId, validated.contents);
-    if (!planInfo.isUnlimited && creditsLeft < cost) {
+    try {
+      planInfo = await resolveUserPlanFromFirestore(baseUrl, accessToken, authUser);
+    } catch {
       return jsonResponse(
-        {
-          error:
-            creditsLeft === 0
-              ? 'You have used all your Boardly AI credits for today. Upgrade to Pro for 100 credits/day or wait for the midnight PKT reset.'
-              : `This message needs ${cost} credits, but you only have ${creditsLeft} left today.`,
-          code: 'INSUFFICIENT_CREDITS',
-          cost,
-          creditsLeft,
-          dailyLimit: planInfo.dailyLimit,
-          resetAt,
-        },
-        402
+        { error: 'Could not verify your subscription status. Please try again.' },
+        503
       );
     }
 
-    // 5. Deduct credits BEFORE calling Gemini (so concurrent requests cannot bypass the cap)
-    const deductedUsed = planInfo.isUnlimited ? creditsUsed : creditsUsed + cost;
-    if (!planInfo.isUnlimited) {
-      try {
-        await patchFirestoreDoc(baseUrl, accessToken, usageDocPath, {
-          creditsUsed: deductedUsed,
-          dailyLimit: planInfo.dailyLimit,
-          dateKey,
-          updatedAt: new Date().toISOString(),
-        });
-      } catch {
-        return jsonResponse(
-          { error: 'Could not update your credit balance. Please try again.' },
-          503
-        );
-      }
-    }
+    const existingUsage = await getFirestoreDoc(baseUrl, accessToken, usageDocPath).catch(() => null);
+    creditsUsed = Math.max(0, Number(existingUsage?.creditsUsed || 0));
+  }
 
-    const refundCredits = async () => {
-      if (planInfo.isUnlimited || !baseUrl || !accessToken || !usageDocPath) return;
-      try {
-        await patchFirestoreDoc(baseUrl, accessToken, usageDocPath, {
-          creditsUsed,
-          dailyLimit: planInfo.dailyLimit,
-          dateKey,
-          updatedAt: new Date().toISOString(),
-        });
-      } catch {
-        // Best-effort refund
-      }
+  const creditsLeft = planInfo.isUnlimited
+    ? planInfo.dailyLimit
+    : Math.max(0, planInfo.dailyLimit - creditsUsed);
+
+  // GET /api/ai -> Live credit & plan summary
+  if (request.method === 'GET') {
+    return jsonResponse({
+      creditsUsed,
+      creditsLeft,
+      dailyLimit: planInfo.dailyLimit,
+      isUnlimited: planInfo.isUnlimited,
+      isPro: planInfo.isPro,
+      isSuperAdmin: planInfo.isSuperAdmin,
+      deepMaxUnlocked: planInfo.deepMaxUnlocked,
+      plan: planInfo.plan,
+      source: planInfo.source,
+      dateKey,
+      resetAt,
+    });
+  }
+
+  // 3. POST /api/ai -> Validate request payload
+  const apiKey = resolveGeminiApiKey(env);
+  if (!apiKey) {
+    return jsonResponse(
+      {
+        error:
+          'Server configuration incomplete: GEMINI_API_KEY is not configured in the server environment.',
+        code: 'MISSING_GEMINI_API_KEY',
+      },
+      503
+    );
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON request body.' }, 400);
+  }
+
+  const mentorId = Number(body?.mentor);
+  if (!Number.isInteger(mentorId) || mentorId < 0 || mentorId > 4) {
+    return jsonResponse({ error: 'Invalid mentor selection (expected 0–4).' }, 400);
+  }
+
+  const depthId = Number(body?.depth);
+  if (!Number.isInteger(depthId) || depthId < 0 || depthId > 3) {
+    return jsonResponse({ error: 'Invalid answer depth (expected 0–3).' }, 400);
+  }
+
+  const depthCfg = aiConfig.DEPTHS[depthId];
+  if (!depthCfg.freeAllowed && !planInfo.deepMaxUnlocked) {
+    return jsonResponse(
+      {
+        error: `${depthCfg.label} thinking is a Boardly Pro feature. Upgrade to unlock Deep & Max thinking.`,
+        code: 'PRO_DEPTH_REQUIRED',
+        creditsLeft,
+        dailyLimit: planInfo.dailyLimit,
+        resetAt,
+      },
+      403
+    );
+  }
+
+  const validated = validateAndSanitizeContents(body?.contents);
+  if (validated.error || !validated.contents) {
+    return jsonResponse({ error: validated.error || 'Invalid conversation payload.' }, 400);
+  }
+
+  // 4. Compute exact server credit cost & enforce daily cap
+  const cost = computeServerMessageCost(depthId, validated.contents);
+  if (!planInfo.isUnlimited && creditsLeft < cost) {
+    return jsonResponse(
+      {
+        error:
+          creditsLeft === 0
+            ? 'You have used all your AI Mentor credits for today. Upgrade to Pro for 100 credits/day or wait for the midnight PKT reset.'
+            : `This message needs ${cost} credits, but you only have ${creditsLeft} left today.`,
+        code: 'INSUFFICIENT_CREDITS',
+        cost,
+        creditsLeft,
+        dailyLimit: planInfo.dailyLimit,
+        resetAt,
+      },
+      402
+    );
+  }
+
+  // 5. Deduct credits BEFORE calling Gemini (so concurrent requests cannot bypass the cap)
+  const deductedUsed = planInfo.isUnlimited ? creditsUsed : creditsUsed + cost;
+  if (!planInfo.isUnlimited) {
+    try {
+      await patchFirestoreDoc(baseUrl, accessToken, usageDocPath, {
+        creditsUsed: deductedUsed,
+        dailyLimit: planInfo.dailyLimit,
+        dateKey,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      return jsonResponse(
+        { error: 'Could not update your credit balance. Please try again.' },
+        503
+      );
+    }
+  }
+
+  const refundCredits = async () => {
+    if (planInfo.isUnlimited) return;
+    try {
+      await patchFirestoreDoc(baseUrl, accessToken, usageDocPath, {
+        creditsUsed,
+        dailyLimit: planInfo.dailyLimit,
+        dateKey,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      // Best-effort refund
+    }
+  };
+
+  // 6. Call Gemini generateContent with strict timeout, uppercase thinkingLevel, and clean fallback
+  const primaryModel = String(env?.GEMINI_MODEL || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen').trim();
+  const fallbackModel = String(
+    env?.GEMINI_FALLBACK_MODEL || aiConfig.FALLBACK_MODEL || 'gemini-3.1-flash-lite'
+  ).trim();
+  const systemInstructionText = `${BASE_SYSTEM_PROMPT}\n\n${MENTOR_BLOCKS[mentorId]}\n\n${DEPTH_LINES[depthId]}`;
+
+  const resolveThinkingLevelForModel = (modelName, rawLevel) => {
+    const upper = String(rawLevel || 'MEDIUM').toUpperCase();
+    const supportsXhigh = modelName === 'gemini-4-hydrogen' || modelName === 'gemini-4-neon';
+    if (upper === 'XHIGH' && !supportsXhigh) {
+      return 'HIGH';
+    }
+    return upper;
+  };
+
+  const invokeGemini = async (modelName, includeThinkingConfig) => {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      modelName
+    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const generationConfig = {
+      maxOutputTokens: Number(depthCfg.maxOutputTokens || 6144),
     };
-
-    // 6. Call Gemini generateContent with per-mode thinking config, timeout, key rotation & fallback model
-    const systemInstructionText = `${BASE_SYSTEM_PROMPT}\n\n${MENTOR_BLOCKS[mentorId]}\n\n${DEPTH_LINES[depthId]}`;
-    const modelCandidates = resolveModelCandidates(env);
-    const startedAt = Date.now();
-    const overallBudgetMs = FETCH_TIMEOUT_GEMINI_MS;
-
-    let answerText = '';
-    let lastStatus = 502;
-    let lastErrorDetail = '';
-    let timedOut = false;
-
-    for (let mIdx = 0; mIdx < modelCandidates.length && !answerText; mIdx++) {
-      const model = modelCandidates[mIdx];
-      let includeThinking = true;
-
-      for (let kIdx = 0; kIdx < apiKeys.length && !answerText; kIdx++) {
-        const remainingMs = overallBudgetMs - (Date.now() - startedAt);
-        if (remainingMs < 4000) {
-          timedOut = true;
-          break;
-        }
-
-        let attempt;
-        try {
-          attempt = await callGeminiOnce({
-            model,
-            apiKey: apiKeys[kIdx],
-            systemInstructionText,
-            contents: validated.contents,
-            depthCfg,
-            includeThinking,
-            timeoutMs: remainingMs,
-          });
-        } catch (err) {
-          if (err && err.name === 'TimeoutError') {
-            timedOut = true;
-            lastStatus = 504;
-            lastErrorDetail = 'AI request timed out while generating a response.';
-            break;
-          }
-          lastStatus = 502;
-          lastErrorDetail = 'Could not reach the AI service right now.';
-          break;
-        }
-
-        // If upstream rejected thinkingConfig/thinkingLevel (HTTP 400), retry once without thinkingConfig
-        if (
-          !attempt.ok &&
-          attempt.status === 400 &&
-          includeThinking &&
-          /thinking/i.test(attempt.errorMessage)
-        ) {
-          includeThinking = false;
-          const retryMs = overallBudgetMs - (Date.now() - startedAt);
-          if (retryMs >= 4000) {
-            try {
-              attempt = await callGeminiOnce({
-                model,
-                apiKey: apiKeys[kIdx],
-                systemInstructionText,
-                contents: validated.contents,
-                depthCfg,
-                includeThinking: false,
-                timeoutMs: retryMs,
-              });
-            } catch (err) {
-              if (err && err.name === 'TimeoutError') {
-                timedOut = true;
-                lastStatus = 504;
-                lastErrorDetail = 'AI request timed out while generating a response.';
-                break;
-              }
-            }
-          }
-        }
-
-        if (attempt.ok && attempt.data) {
-          const extracted = extractAnswerFromGeminiPayload(attempt.data);
-          if (extracted.answerText) {
-            answerText = extracted.answerText;
-            break;
-          }
-          if (extracted.blockReason) {
-            lastStatus = 422;
-            lastErrorDetail = `This message could not be answered (${extracted.blockReason}). Please rephrase your question.`;
-            break;
-          }
-          // Empty answer (e.g. thought tokens consumed budget) -> try fallback model if available
-          lastStatus = 502;
-          lastErrorDetail = 'Boardly AI returned an empty response. Please try again.';
-          break;
-        }
-
-        lastStatus = attempt.status || 502;
-        lastErrorDetail = attempt.errorMessage || '';
-
-        // Rotate API key on quota/auth errors if additional keys exist
-        if ((attempt.status === 429 || attempt.status === 401 || attempt.status === 403) && kIdx + 1 < apiKeys.length) {
-          continue;
-        }
-        // On model-not-found / 5xx, break key loop to try fallback model
-        break;
-      }
-
-      if (timedOut || lastStatus === 422) {
-        break;
-      }
+    if (includeThinkingConfig && depthCfg.thinkingLevel) {
+      generationConfig.thinkingConfig = {
+        thinkingLevel: resolveThinkingLevelForModel(modelName, depthCfg.thinkingLevel),
+      };
     }
 
-    if (!answerText) {
-      await refundCredits();
-      const refundSuffix = planInfo.isUnlimited ? '' : ' Your credits were refunded.';
-      if (timedOut || lastStatus === 504) {
-        return jsonResponse(
-          {
-            error: `Boardly AI took too long to respond.${refundSuffix} Please tap Retry or switch to Quick/Balanced.`,
-            code: 'AI_TIMEOUT',
+    return await fetchWithTimeout(
+      geminiUrl,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'aistudio-build',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: systemInstructionText }],
           },
-          504
-        );
-      }
-      if (lastStatus === 429) {
-        return jsonResponse(
-          {
-            error: `Boardly AI is busy right now (rate limit reached).${refundSuffix} Please try again in a moment.`,
-            code: 'AI_RATE_LIMITED',
-          },
-          429
-        );
-      }
-      if (lastStatus === 401 || lastStatus === 403) {
-        return jsonResponse(
-          {
-            error: `AI service credentials were rejected by the provider.${refundSuffix}`,
-            code: 'AI_AUTH_ERROR',
-          },
-          502
-        );
-      }
-      if (lastStatus === 422) {
-        return jsonResponse({ error: lastErrorDetail, code: 'AI_BLOCKED' }, 422);
-      }
+          contents: validated.contents,
+          generationConfig,
+        }),
+      },
+      50_000
+    );
+  };
+
+  let geminiRes;
+  let lastErrorBody = '';
+  try {
+    geminiRes = await invokeGemini(primaryModel, true);
+
+    // If the configured model rejects thinkingConfig (HTTP 400), retry once without thinkingConfig
+    if (geminiRes.status === 400) {
+      lastErrorBody = await geminiRes.text().catch(() => '');
+      geminiRes = await invokeGemini(primaryModel, false);
+    }
+
+    // If the primary model is unavailable / not found (404/503), fall back cleanly to fallbackModel
+    if (
+      (geminiRes.status === 404 || geminiRes.status === 503) &&
+      fallbackModel &&
+      fallbackModel !== primaryModel
+    ) {
+      lastErrorBody = await geminiRes.text().catch(() => '');
+      geminiRes = await invokeGemini(fallbackModel, false);
+    }
+  } catch (err) {
+    await refundCredits();
+    const isTimeout = err?.name === 'AbortError';
+    return jsonResponse(
+      {
+        error: isTimeout
+          ? 'The AI Mentor took too long to respond. Your credits were not used — please try again.'
+          : 'Could not reach the AI service right now. Your credits were not used.',
+        code: isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNREACHABLE',
+      },
+      isTimeout ? 504 : 502
+    );
+  }
+
+  if (!geminiRes.ok) {
+    const errText = await geminiRes.text().catch(() => lastErrorBody);
+    let upstreamMessage = '';
+    try {
+      const parsed = JSON.parse(errText);
+      upstreamMessage = String(parsed?.error?.message || '').trim();
+    } catch {
+      // ignore non-JSON error body
+    }
+    await refundCredits();
+    if (geminiRes.status === 429) {
+      return jsonResponse({ error: 'Too many requests. Try again in a minute.', code: 'RATE_LIMITED' }, 429);
+    }
+    if (geminiRes.status === 401 || geminiRes.status === 403) {
       return jsonResponse(
         {
-          error:
-            lastErrorDetail && lastErrorDetail.length < 180
-              ? `Boardly AI couldn't reply (${lastErrorDetail}).${refundSuffix}`
-              : `Boardly AI hit a temporary snag.${refundSuffix} Please tap Retry.`,
-          code: 'AI_UPSTREAM_ERROR',
+          error: 'AI service key was rejected by upstream provider. Your credits were refunded.',
+          code: 'UPSTREAM_AUTH_ERROR',
         },
         502
       );
     }
+    return jsonResponse(
+      {
+        error: upstreamMessage
+          ? `AI Mentor error (HTTP ${geminiRes.status}): ${upstreamMessage.slice(0, 180)}`
+          : 'The AI Mentor hit a temporary snag. Your credits were refunded — please try again.',
+        code: 'UPSTREAM_ERROR',
+      },
+      502
+    );
+  }
 
-    const finalCreditsLeft = planInfo.isUnlimited
-      ? planInfo.dailyLimit
-      : Math.max(0, planInfo.dailyLimit - deductedUsed);
+  let geminiData;
+  try {
+    geminiData = await geminiRes.json();
+  } catch {
+    await refundCredits();
+    return jsonResponse(
+      { error: 'Received an unreadable AI response. Your credits were refunded.' },
+      502
+    );
+  }
 
-    return jsonResponse({
-      text: answerText,
-      creditsLeft: finalCreditsLeft,
-      creditsUsed: deductedUsed,
-      dailyLimit: planInfo.dailyLimit,
-      isUnlimited: planInfo.isUnlimited,
-      cost: planInfo.isUnlimited ? 0 : cost,
-      resetAt,
-      dateKey,
-    });
-  } catch (err) {
+  // Return ONLY non-thought text parts
+  const candidate = geminiData?.candidates?.[0];
+  const parts = candidate?.content?.parts || [];
+  const answerText = parts
+    .filter((p) => p && p.thought !== true && typeof p.text === 'string')
+    .map((p) => p.text)
+    .join('')
+    .trim();
+
+  if (!answerText) {
+    await refundCredits();
+    const blockReason = geminiData?.promptFeedback?.blockReason || candidate?.finishReason;
     return jsonResponse(
       {
         error:
-          err?.message && String(err.message).length < 160
-            ? `Boardly AI error: ${err.message}`
-            : 'Unexpected Boardly AI server error. Please try again.',
-        code: 'AI_INTERNAL_ERROR',
+          blockReason && blockReason !== 'STOP'
+            ? `The mentor could not complete that answer (${blockReason}). Please rephrase and try again.`
+            : 'The mentor could not generate an answer for that message. Your credits were refunded.',
+        code: 'EMPTY_ANSWER',
       },
-      500
+      502
     );
   }
+
+  const finalCreditsLeft = planInfo.isUnlimited
+    ? planInfo.dailyLimit
+    : Math.max(0, planInfo.dailyLimit - deductedUsed);
+
+  return jsonResponse({
+    text: answerText,
+    creditsLeft: finalCreditsLeft,
+    creditsUsed: deductedUsed,
+    dailyLimit: planInfo.dailyLimit,
+    isUnlimited: planInfo.isUnlimited,
+    cost: planInfo.isUnlimited ? 0 : cost,
+    resetAt,
+    dateKey,
+  });
 }
 
 export async function onRequestOptions() {

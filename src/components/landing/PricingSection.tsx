@@ -6,14 +6,14 @@ const FREE_FEATURES = [
   'The free tier is enough to practice and learn',
   'Sharing material in Commons is always free with no limit',
   '10 practice tests per day',
-  '5 Boardly AI credits/day (Quick & Balanced) with KaTeX derivations',
+  'Boardy AI queries with KaTeX formula derivations',
   'Join or create Study Crew squads',
   'Daily midnight quota reset (PKT)',
 ];
 
 const UNLIMITED_FEATURES = [
   'Unlimited practice tests and sprint drills',
-  '100 Boardly AI credits/day with Deep & Max thinking',
+  'Unlimited Boardy AI questions with step derivations',
   'Complete subject question banks unlocked',
   'Detailed chapter weakness diagnostics and mistake curves',
   'Unlimited public Grand Line & Arena tests',

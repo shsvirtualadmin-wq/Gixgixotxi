@@ -76,7 +76,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
             className="text-[16px] font-bold truncate"
             style={{ fontFamily: "'Doto', var(--font-dot), sans-serif", color: 'var(--text)' }}
           >
-            Boardly AI
+            AI Mentors
           </span>
         </div>
 
@@ -99,10 +99,14 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
               type="button"
               onClick={onCloseMobileDrawer}
               aria-label="Close history"
-              className="ai-header-icon-btn flex h-9 w-9 items-center justify-center rounded-full cursor-pointer lg:hidden"
-              style={{ color: 'var(--text)' }}
+              className="flex h-9 w-9 items-center justify-center rounded-full cursor-pointer lg:hidden"
+              style={{
+                backgroundColor: 'var(--card)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+              }}
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -124,7 +128,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search chats or mentor"
             aria-label="Search AI chats"
-            className="ai-search-input w-full min-w-0 bg-transparent text-[13.5px] outline-none border-0 shadow-none appearance-none placeholder:text-[var(--placeholder)]"
+            className="w-full min-w-0 bg-transparent text-[13.5px] outline-none border-0 shadow-none appearance-none placeholder:text-[var(--placeholder)]"
             style={{ color: 'var(--text)' }}
           />
           {search && (

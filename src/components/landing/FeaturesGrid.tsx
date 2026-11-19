@@ -217,17 +217,17 @@ export function FeaturesGrid() {
                   className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
-                  Boardly AI
+                  Boardly AI Mentor
                 </h3>
                 <p className="text-sm text-[var(--muted)] leading-[1.65]">
-                  Stuck on a tricky organic reaction, vector projection, or past-paper photo? Ask Boardly AI for step-by-step derivations, MCQ traps, and study plans.
+                  Stuck on a tricky organic reaction or vector projection? Chat with your Boardly AI Mentor for step-by-step guidance without giving away the answer upfront.
                 </p>
               </div>
             </div>
 
             {/* Pinned Footer */}
             <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center text-xs text-[var(--muted)]">
-              5 specialized mentors with Quick, Balanced, Deep &amp; Max thinking.
+              Powered by step-by-step academic guidance.
             </div>
           </div>
 

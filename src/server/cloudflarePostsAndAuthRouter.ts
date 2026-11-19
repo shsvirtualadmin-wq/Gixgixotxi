@@ -5009,9 +5009,14 @@ ${postSitemaps}
   // ==========================================================================
   // DAILY BOTS API ROUTES (/api/bots/*) — RETIRED (existing posts untouched)
   // ==========================================================================
-  app.all(['/api/bots', '/api/bots/*'], (_req, res) => {
+  const handleRetiredBotsRoute = (_req: Request, res: Response) => {
     return res.status(410).json({ error: 'Automated bots have been removed.' });
-  });
+  };
+  app.get(['/api/bots', '/api/bots/*'], handleRetiredBotsRoute);
+  app.post(['/api/bots', '/api/bots/*'], handleRetiredBotsRoute);
+  app.put(['/api/bots', '/api/bots/*'], handleRetiredBotsRoute);
+  app.patch(['/api/bots', '/api/bots/*'], handleRetiredBotsRoute);
+  app.delete(['/api/bots', '/api/bots/*'], handleRetiredBotsRoute);
 
   // ===========================================================================
   // /api/questions — Cloudflare D1 Question Bank Endpoints
@@ -12693,9 +12698,11 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     put: (p: any, h: any) => addRoute('PUT', p, h),
     patch: (p: any, h: any) => addRoute('PATCH', p, h),
     delete: (p: any, h: any) => addRoute('DELETE', p, h),
-    head: (p: any, h: any) => addRoute('HEAD', p, h),
-    options: (p: any, h: any) => addRoute('OPTIONS', p, h),
-    all: (p: any, h: any) => addRoute('ALL', p, h),
+    all: (p: any, h: any) => {
+      for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']) {
+        addRoute(m, p, h);
+      }
+    },
   } as unknown as Express;
 
   registerCloudflarePostsAndAuthRoutes(fakeApp, options || {});
@@ -13013,7 +13020,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     let matchResult: RegExpExecArray | null = null;
 
     for (const r of routes) {
-      if (r.method !== 'ALL' && r.method !== method) continue;
+      if (r.method !== method) continue;
       const m = r.regex.exec(pathname);
       if (m) {
         matchedRoute = r;

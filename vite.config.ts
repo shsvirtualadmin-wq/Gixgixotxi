@@ -407,23 +407,37 @@ function aiTutorPlugin() {
           return next();
         }
         try {
+          // Attach body listeners immediately BEFORE any async import so the stream can never end before listeners bind
+          let bodyBuf: Buffer | undefined;
+          if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+            if (req.readableEnded) {
+              bodyBuf = undefined;
+            } else {
+              const chunks: Buffer[] = [];
+              await new Promise<void>((resolve, reject) => {
+                const bodyTimer = setTimeout(() => resolve(), 15_000);
+                const finish = () => {
+                  clearTimeout(bodyTimer);
+                  resolve();
+                };
+                req.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+                req.once('end', finish);
+                req.once('close', finish);
+                req.once('aborted', finish);
+                req.once('error', (err: any) => {
+                  clearTimeout(bodyTimer);
+                  reject(err);
+                });
+              });
+              bodyBuf = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+            }
+          }
+
           if (!aiMentorsModPromise) {
-            aiMentorsModPromise = server.ssrLoadModule('/functions/api/ai.js').catch((err: any) => {
-              aiMentorsModPromise = null;
-              throw err;
-            });
+            aiMentorsModPromise = import('./functions/api/ai.js');
           }
           const aiMod = await aiMentorsModPromise;
-          const chunks: Buffer[] = [];
-          if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-            await new Promise<void>((resolve, reject) => {
-              req.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-              req.on('end', () => resolve());
-              req.on('error', (err: any) => reject(err));
-              req.on('aborted', () => resolve());
-            });
-          }
-          const bodyBuf = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers || {})) {
             if (Array.isArray(v)) headers.set(k, v.join(', '));
@@ -439,11 +453,15 @@ function aiTutorPlugin() {
           webRes.headers.forEach((v, k) => {
             outHeaders[k] = v;
           });
-          res.writeHead(webRes.status, outHeaders);
+          if (!res.headersSent) {
+            res.writeHead(webRes.status, outHeaders);
+          }
           const text = await webRes.text();
           res.end(text);
         } catch (err: any) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+          }
           res.end(JSON.stringify({ error: err?.message || 'AI Mentors server error.' }));
         }
       });

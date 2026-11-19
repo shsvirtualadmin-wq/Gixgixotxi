@@ -1277,7 +1277,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
       )}
 
       {isGuest ? (
-        <SettingsGroup label="Guest account">
+        <SettingsGroup label="Guest account" radius="compact">
           <SettingsRow
             icon={<Shield />}
             label="Create a full account for security features"
@@ -1298,58 +1298,57 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
             <SettingsGroup label="Security recommendations" radius="compact">
               {summary.recommendations.map((rec, idx) => {
                 const isLastRec = idx === summary.recommendations.length - 1;
-                const RecIcon =
-                  rec.targetSection === 'passkeys'
-                    ? KeyRound
-                    : rec.targetSection === 'mfa'
-                      ? ShieldCheck
-                      : Laptop;
-
                 return (
                   <div key={rec.id} className="relative">
                     <button
                       type="button"
                       onClick={() => setSubView(rec.targetSection)}
-                      className="flex min-h-[64px] w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
+                      className="flex min-h-[56px] w-full items-center gap-3.5 px-5 py-3.5 text-left transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
                     >
                       <span
-                        className="flex h-6 w-6 shrink-0 items-center justify-center"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center [&>svg]:h-6 [&>svg]:w-6"
                         style={{ color: 'var(--text)' }}
                         aria-hidden="true"
                       >
-                        <RecIcon className="h-[22px] w-[22px]" />
+                        {rec.targetSection === 'passkeys' ? (
+                          <KeyRound />
+                        ) : rec.targetSection === 'mfa' ? (
+                          <ShieldCheck />
+                        ) : (
+                          <Laptop />
+                        )}
                       </span>
 
                       <span className="min-w-0 flex-1 text-left">
                         <span
-                          className="block text-[15.5px] font-medium leading-snug break-words"
+                          className="block text-[16px] font-normal leading-snug break-words"
                           style={{ color: 'var(--text)' }}
                         >
                           {rec.title}
                         </span>
-                        <span
-                          className="mt-0.5 block text-[13px] leading-snug break-words"
-                          style={{ color: 'var(--text-muted)' }}
-                        >
-                          {rec.subtitle}
-                        </span>
+                        {rec.subtitle && (
+                          <span
+                            className="mt-0.5 block text-[13px] leading-snug break-words"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {rec.subtitle}
+                          </span>
+                        )}
                       </span>
 
-                      <span className="flex flex-none shrink-0 items-center gap-1.5 whitespace-nowrap">
+                      <span
+                        className="flex-none shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-semibold"
+                        style={{
+                          backgroundColor: 'var(--accent-soft)',
+                          color: 'var(--accent)',
+                        }}
+                      >
                         <span
                           className="h-2 w-2 shrink-0 rounded-full bg-amber-400"
-                          aria-label="Action recommended"
+                          aria-hidden="true"
                         />
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12.5px] font-semibold whitespace-nowrap"
-                          style={{
-                            backgroundColor: 'var(--accent-soft)',
-                            color: 'var(--accent)',
-                          }}
-                        >
-                          <span>{rec.actionLabel}</span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
-                        </span>
+                        <span>{rec.actionLabel}</span>
+                        <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2} />
                       </span>
                     </button>
 
@@ -1359,7 +1358,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                         className="pointer-events-none h-px"
                         style={{
                           backgroundColor: 'var(--border)',
-                          marginLeft: '54px',
+                          marginLeft: '58px',
                         }}
                       />
                     )}
@@ -1488,7 +1487,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
           </SettingsGroup>
 
           {/* 5. Security history */}
-          <SettingsGroup>
+          <SettingsGroup radius="compact">
             <SettingsRow
               icon={<History />}
               label="Security history"

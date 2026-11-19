@@ -8,19 +8,14 @@ import { Check, X, Shield } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
-import { FREE_DAILY_TESTS, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
+import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
 import { PAYMENT_METHODS as OFFICIAL_PAYMENT_METHODS } from '@/constants/branding';
 import { PLANS } from '@/config/plans';
-import { FREE_AI_CREDITS_PER_DAY, PRO_AI_CREDITS_PER_DAY } from '@/utils/aiMentorsLogic';
 
 const COMPARISON_ROWS = [
   { feature: 'Daily Practice Tests & Sprints', free: `${FREE_DAILY_TESTS} / day`, pro: 'Unlimited' },
   { feature: 'Sharing Study Material in Commons', free: 'Free & Unlimited', pro: 'Free & Unlimited' },
-  {
-    feature: 'Boardly AI Credits',
-    free: `${FREE_AI_CREDITS_PER_DAY} / day (Quick & Balanced)`,
-    pro: `${PRO_AI_CREDITS_PER_DAY} / day (Deep & Max)`,
-  },
+  { feature: 'Boardy AI Concept Explanations', free: `${FREE_DAILY_TOKEN_LIMIT} / day`, pro: 'Unlimited' },
   { feature: 'Public Grand Line Tests', free: `${FREE_DAILY_ARENA_LIMIT} / day`, pro: 'Unlimited' },
   { feature: 'KaTeX Formula Step Derivations', free: true, pro: true },
   { feature: 'Study Crew Squad Membership (up to 30)', free: true, pro: true },
@@ -136,7 +131,7 @@ export function PricingPage() {
                     'The free tier is enough to practice and learn',
                     'Sharing material in Commons is always free with no limit',
                     `${FREE_DAILY_TESTS} practice tests per day`,
-                    `${FREE_AI_CREDITS_PER_DAY} Boardly AI credits / day (Quick & Balanced)`,
+                    `${FREE_DAILY_TOKEN_LIMIT} Boardy AI derivation tokens / day`,
                     'KaTeX mathematical derivations for all questions',
                     'Join or create Study Crews (up to 30 members)',
                     'PKT midnight quota reset (Asia/Karachi UTC+5)',
@@ -187,7 +182,7 @@ export function PricingPage() {
                   {[
                     `PKR ${PLANS.pro_monthly.price_pkr}/month or PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/year`,
                     'Unlimited practice tests & sprint drills',
-                    `${PRO_AI_CREDITS_PER_DAY} Boardly AI credits / day with Deep & Max thinking`,
+                    'Unlimited Boardy AI step derivations',
                     'Complete subject question banks unlocked',
                     'Advanced weak chapter diagnostics & mistake curves',
                     'Unlimited Grand Line & public Arena tests',

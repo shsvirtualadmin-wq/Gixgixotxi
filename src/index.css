@@ -1585,8 +1585,8 @@
   background-image: radial-gradient(circle, rgba(17, 17, 20, 0.28) 1px, transparent 1px);
 }
 
-/* Focus ring (excludes menu search input and AI composer/search inputs which handle focus on their parent pill) */
-:focus-visible:not(.fsm-search-input):not(.ai-composer-textarea):not(.ai-search-input) {
+/* Focus ring (excludes menu search input and AI chat composer textarea which keep styling on their parent pill) */
+:focus-visible:not(.fsm-search-input):not(.ai-composer-textarea) {
   outline: 2px solid var(--red) !important;
   outline-offset: 2px;
 }
@@ -12404,44 +12404,24 @@ input[type="search"],
   animation: ai-typing-bounce 1.2s ease-in-out infinite;
 }
 
-/* Boardly AI Composer: zero inner rectangle in every state (default, typing, focus, focus-visible, active) */
-.ai-composer-textarea-wrap,
-.ai-composer-textarea-wrap:focus,
-.ai-composer-textarea-wrap:focus-within,
-.ai-composer-textarea-wrap:focus-visible,
-.ai-composer-textarea-wrap:active,
+/* AI Mentors composer textarea: strictly borderless, transparent, zero inner rectangle in every state */
+.ai-composer-input-wrap,
+.ai-composer-input-wrap:hover,
+.ai-composer-input-wrap:focus,
+.ai-composer-input-wrap:focus-within,
+.ai-composer-input-wrap:active,
 .ai-composer-textarea,
+.ai-composer-textarea:hover,
 .ai-composer-textarea:focus,
 .ai-composer-textarea:focus-visible,
-.ai-composer-textarea:active,
-.ai-search-input,
-.ai-search-input:focus,
-.ai-search-input:focus-visible,
-.ai-search-input:active {
+.ai-composer-textarea:active {
   border: 0 !important;
   outline: none !important;
   box-shadow: none !important;
   background: transparent !important;
   background-color: transparent !important;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-/* Boardly AI borderless header icon buttons with subtle press feedback */
-.ai-header-icon-btn {
-  border: 0 !important;
-  background-color: transparent;
-  -webkit-tap-highlight-color: transparent;
-  transition: background-color 140ms ease, transform 120ms ease, color 140ms ease;
-}
-
-.ai-header-icon-btn:hover {
-  background-color: var(--surface-hover);
-}
-
-.ai-header-icon-btn:active {
-  transform: scale(0.92);
-  background-color: var(--surface-hover);
+  appearance: none !important;
+  -webkit-appearance: none !important;
 }
 
 

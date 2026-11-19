@@ -7,6 +7,7 @@ import {
   type TokenVerifierFn,
 } from '../_utils/adminRoleGate';
 import { getSharedLocalD1Database } from '../_utils/firestoreRestAdmin';
+import { handleAiMentorsRequest } from './ai.js';
 
 export interface PagesApiContext {
   request: Request;
@@ -28,6 +29,10 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
 
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+
+  if (path === '/api/ai') {
+    return handleAiMentorsRequest(request, env);
+  }
 
   // Serve R2 objects from R2_BUCKET (e.g. university logos) or D1 university_logo_assets fallback
   if (

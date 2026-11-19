@@ -121,45 +121,31 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeSessionTokenRef = useRef<string>('');
-  const activeAbortRef = useRef<AbortController | null>(null);
-  const failedPayloadsRef = useRef<
-    Record<string, { text: string; attachments: PreparedAttachment[] }>
-  >({});
-  const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
+  const inFlightAbortRef = useRef<AbortController | null>(null);
+  const safetyTimerRef = useRef<number | null>(null);
   const currentThread = threadsByMentor[mentorId] || makeInitialThread(mentorId);
   const mentor = getMentorConfig(mentorId);
 
-  // Track visualViewport height on mobile (< 1024px) so composer stays visible above virtual keyboard
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.visualViewport) return;
-    const vv = window.visualViewport;
-    const syncHeight = () => {
-      if (window.innerWidth >= 1024) {
-        setMobileViewportHeight(null);
-      } else {
-        setMobileViewportHeight(Math.round(vv.height));
+  const cancelInFlightRequest = useCallback(() => {
+    if (safetyTimerRef.current !== null) {
+      window.clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = null;
+    }
+    if (inFlightAbortRef.current) {
+      try {
+        inFlightAbortRef.current.abort();
+      } catch {
+        // Ignore abort errors
       }
-    };
-    syncHeight();
-    vv.addEventListener('resize', syncHeight);
-    window.addEventListener('resize', syncHeight);
-    return () => {
-      vv.removeEventListener('resize', syncHeight);
-      window.removeEventListener('resize', syncHeight);
-    };
+      inFlightAbortRef.current = null;
+    }
   }, []);
 
-  // Abort any in-flight AI request on unmount
   useEffect(() => {
     return () => {
-      try {
-        activeAbortRef.current?.abort();
-      } catch {
-        // Ignore
-      }
-      activeAbortRef.current = null;
+      cancelInFlightRequest();
     };
-  }, []);
+  }, [cancelInFlightRequest]);
 
   // Keep greeting personalized if profile finishes loading and chat has no user messages yet
   useEffect(() => {
@@ -237,21 +223,12 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [mentorPickerOpen, depthGaugeOpen, upgradeSheetReason, mobileHistoryOpen, onClose]);
 
-  const cancelInFlightRequest = useCallback(() => {
-    try {
-      activeAbortRef.current?.abort();
-    } catch {
-      // Ignore
-    }
-    activeAbortRef.current = null;
-    setSending(false);
-  }, []);
-
   const startFreshChat = useCallback(
     (targetMentor: AiMentorId) => {
       cancelInFlightRequest();
       const fresh = makeInitialThread(targetMentor);
       activeSessionTokenRef.current = fresh.chatId;
+      setSending(false);
       setThreadsByMentor((prev) => ({
         ...prev,
         [targetMentor]: fresh,
@@ -261,9 +238,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
   );
 
   const handleSelectMentor = (nextMentor: AiMentorId) => {
-    if (nextMentor !== mentorId) {
-      cancelInFlightRequest();
-    }
+    cancelInFlightRequest();
+    setSending(false);
     setMentorId(nextMentor);
     if (isTemporary) {
       startFreshChat(nextMentor);
@@ -291,6 +267,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     setTemporaryToggle(false);
     setMentorId(chat.mentor);
     activeSessionTokenRef.current = chat.id;
+    setSending(false);
     setThreadsByMentor((prev) => ({
       ...prev,
       [chat.mentor]: {
@@ -319,20 +296,16 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     attachments: PreparedAttachment[],
     baseMessages?: StoredAiMessage[]
   ) => {
-    // Cancel any previous in-flight request cleanly
-    try {
-      activeAbortRef.current?.abort();
-    } catch {
-      // Ignore
-    }
-    const abortController = new AbortController();
-    activeAbortRef.current = abortController;
+    cancelInFlightRequest();
 
     const thread = currentThread;
     const targetMentor = mentorId;
     const targetChatId = thread.chatId;
     const requestToken = `${targetChatId}:${Date.now()}`;
     activeSessionTokenRef.current = requestToken;
+
+    const controller = new AbortController();
+    inFlightAbortRef.current = controller;
 
     const attachmentLabels = attachments.map((a) =>
       a.kind === 'photo' ? '📷 Photo' : `📄 PDF`
@@ -371,27 +344,38 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     }));
     setSending(true);
 
-    try {
-      // Prepare last 12 messages for API inside try/finally so errors always end the thinking state
-      const apiContents = prepareApiContents([
-        ...existingList.map((m) => ({
-          role: m.role,
-          text: m.text,
-          isError: m.isError,
-          isGreeting: m.isGreeting,
-        })),
-        {
-          role: 'user',
-          text: userText.trim(),
-          parts: userMsgParts,
-        },
-      ]);
+    // Belt-and-suspenders safety timer: guarantee thinking state never exceeds 62s
+    let safetyTriggered = false;
+    safetyTimerRef.current = window.setTimeout(() => {
+      safetyTriggered = true;
+      try {
+        controller.abort();
+      } catch {
+        // Ignore
+      }
+    }, 62_000);
 
+    // Prepare last 12 messages for API (attaching real inlineData on latest user turn)
+    const apiContents = prepareApiContents([
+      ...existingList.map((m) => ({
+        role: m.role,
+        text: m.text,
+        isError: m.isError,
+        isGreeting: m.isGreeting,
+      })),
+      {
+        role: 'user',
+        text: userText.trim(),
+        parts: userMsgParts,
+      },
+    ]);
+
+    try {
       const result = await sendAiMentorMessage({
         mentor: targetMentor,
         depth: depthId,
         contents: apiContents,
-        signal: abortController.signal,
+        signal: controller.signal,
       });
 
       applyServerUpdate({
@@ -439,10 +423,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
           .catch(() => {});
       }
     } catch (err: any) {
-      if (
-        activeSessionTokenRef.current !== requestToken ||
-        (err instanceof AiMentorApiError && err.code === 'ABORTED')
-      ) {
+      if (activeSessionTokenRef.current !== requestToken) {
+        return;
+      }
+      if (!safetyTriggered && err instanceof AiMentorApiError && err.code === 'ABORTED') {
         return;
       }
 
@@ -459,17 +443,19 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         }
       }
 
-      const errId = `err_${Date.now()}`;
-      failedPayloadsRef.current[errId] = {
-        text: userText,
-        attachments,
-      };
+      const errorText = safetyTriggered
+        ? 'Request timed out after 60 seconds. Please tap Retry.'
+        : err?.message || 'Could not get a response right now. Please tap Retry.';
 
       const errorBubble: StoredAiMessage = {
-        id: errId,
+        id: `err_${Date.now()}`,
         role: 'model',
-        text: err?.message || 'Could not get a response right now. Tap Retry to try again.',
+        text: errorText,
         isError: true,
+        retryPayload: {
+          text: userText.trim(),
+          attachments,
+        },
         createdAt: Date.now(),
       };
 
@@ -481,8 +467,12 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         },
       }));
     } finally {
-      if (activeAbortRef.current === abortController) {
-        activeAbortRef.current = null;
+      if (safetyTimerRef.current !== null) {
+        window.clearTimeout(safetyTimerRef.current);
+        safetyTimerRef.current = null;
+      }
+      if (inFlightAbortRef.current === controller) {
+        inFlightAbortRef.current = null;
       }
       if (activeSessionTokenRef.current === requestToken) {
         setSending(false);
@@ -490,8 +480,9 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     }
   };
 
-  const handleRegenerate = (modelMsgIndex: number, errorMsgId?: string) => {
+  const handleRegenerate = (modelMsgIndex: number) => {
     if (sending) return;
+    // Find the preceding user message
     const msgs = currentThread.messages;
     let lastUserIdx = -1;
     for (let i = modelMsgIndex - 1; i >= 0; i--) {
@@ -501,14 +492,27 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       }
     }
     if (lastUserIdx < 0) return;
-    const savedFailed = errorMsgId ? failedPayloadsRef.current[errorMsgId] : undefined;
-    if (errorMsgId && savedFailed) {
-      delete failedPayloadsRef.current[errorMsgId];
-    }
-    const promptText = savedFailed?.text ?? msgs[lastUserIdx].text;
-    const retryAttachments = savedFailed?.attachments ?? [];
+    const promptText = msgs[lastUserIdx].text;
     const trimmedHistory = msgs.slice(0, lastUserIdx);
-    void sendPayload(promptText, retryAttachments, trimmedHistory);
+    void sendPayload(promptText, [], trimmedHistory);
+  };
+
+  const handleRetryError = (errorMsgIndex: number) => {
+    if (sending) return;
+    const msgs = currentThread.messages;
+    const errMsg = msgs[errorMsgIndex];
+    let lastUserIdx = -1;
+    for (let i = errorMsgIndex - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    const retryText = errMsg?.retryPayload?.text ?? (lastUserIdx >= 0 ? msgs[lastUserIdx].text : '');
+    const retryAttachments = errMsg?.retryPayload?.attachments ?? [];
+    if (!retryText && retryAttachments.length === 0) return;
+    const trimmedHistory = lastUserIdx >= 0 ? msgs.slice(0, lastUserIdx) : msgs.slice(0, errorMsgIndex);
+    void sendPayload(retryText, retryAttachments, trimmedHistory);
   };
 
   const handleUpgradeNavigate = () => {
@@ -533,7 +537,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       data-ai-mentors-overlay="true"
       role="dialog"
       aria-modal="true"
-      aria-label="Boardly AI"
+      aria-label="Boardly AI Mentors"
       className="fixed inset-0 z-[9950] flex items-end lg:items-center justify-center lg:p-6"
     >
       {/* Dimmed backdrop (desktop click closes) */}
@@ -543,7 +547,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         aria-hidden="true"
       />
 
-      {/* Main Container: Full-screen sheet on <1024px (adapts to mobile keyboard via visualViewport); Centered 1040px x 86vh dialog on >=1024px */}
+      {/* Main Container: Full-screen 100dvh sheet on <1024px; Centered 1040px x 86vh dialog on >=1024px */}
       <div
         onClick={(e) => e.stopPropagation()}
         className="ai-mentors-sheet relative z-10 flex w-full h-[100dvh] lg:h-[86vh] lg:max-w-[1040px] lg:rounded-[32px] overflow-hidden shadow-2xl"
@@ -551,7 +555,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
           backgroundColor: 'var(--bg)',
           border: '1px solid var(--border)',
           color: 'var(--text)',
-          ...(mobileViewportHeight ? { height: `${mobileViewportHeight}px` } : {}),
         }}
       >
         {/* Permanent Left History Column on Laptop (>= 1024px) */}
@@ -571,34 +574,34 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             onDeleteChat={handleDeleteSavedChat}
             onNewChat={() => startFreshChat(mentorId)}
             onUpgradeClick={() =>
-              setUpgradeSheetReason(
-                'Upgrade to Boardly Pro for 100 Boardly AI credits/day and Deep & Max thinking.'
-              )
+              setUpgradeSheetReason('Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.')
             }
           />
         </aside>
 
         {/* Right Main Chat Column */}
         <div className="flex flex-1 min-w-0 flex-col min-h-0">
-          {/* Header — borderless icon buttons with subtle press states */}
+          {/* Header */}
           <header
-            className="shrink-0 flex items-center justify-between gap-2 px-2.5 sm:px-4 pt-[calc(10px+env(safe-area-inset-top,0px))] lg:pt-3 pb-2.5"
+            className="shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 pt-[calc(10px+env(safe-area-inset-top,0px))] lg:pt-3 pb-2.5"
             style={{
               backgroundColor: 'var(--bg)',
               borderBottom: '1px solid var(--border)',
             }}
           >
-            {/* Left controls: Close (X) + History menu (mobile/tablet only) */}
+            {/* Left controls: Close (X) + History menu (mobile/tablet only) — borderless icon buttons */}
             <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close Boardly AI"
+                aria-label="Close AI Mentors"
                 title="Close"
-                className="ai-header-icon-btn flex h-10 w-10 items-center justify-center rounded-full cursor-pointer"
-                style={{ color: 'var(--text)' }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
+                style={{
+                  color: 'var(--text)',
+                }}
               >
-                <X className="h-5 w-5" />
+                <X className="h-[20px] w-[20px]" />
               </button>
 
               <button
@@ -606,10 +609,12 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 onClick={() => setMobileHistoryOpen(true)}
                 aria-label="Open chat history"
                 title="Chat history"
-                className="ai-header-icon-btn flex lg:hidden h-10 w-10 items-center justify-center rounded-full cursor-pointer"
-                style={{ color: 'var(--text)' }}
+                className="flex lg:hidden h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
+                style={{
+                  color: 'var(--text)',
+                }}
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-[20px] w-[20px]" />
               </button>
             </div>
 
@@ -617,7 +622,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             <button
               type="button"
               onClick={() => setMentorPickerOpen(true)}
-              className="flex flex-col items-center justify-center min-w-0 px-2 py-0.5 rounded-2xl hover:bg-[var(--surface-hover)] active:scale-[0.98] transition-all cursor-pointer"
+              className="flex flex-col items-center justify-center min-w-0 px-2 py-0.5 rounded-2xl hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-1.5 min-w-0">
                 <span
@@ -639,7 +644,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               </span>
             </button>
 
-            {/* Right controls: Temporary-chat toggle + New-chat pencil */}
+            {/* Right controls: Temporary-chat toggle + New-chat pencil — borderless icon buttons */}
             <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
@@ -647,7 +652,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 aria-label={isTemporary ? 'Temporary chat is on' : 'Turn on temporary chat'}
                 aria-pressed={isTemporary}
                 title={isTemporary ? 'Temporary chat on' : 'Temporary chat'}
-                className="ai-header-icon-btn flex h-10 w-10 items-center justify-center rounded-full cursor-pointer"
+                className="flex h-10 w-10 items-center justify-center rounded-full border-0 cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95"
                 style={{
                   backgroundColor: isTemporary
                     ? `color-mix(in srgb, ${mentor.accent} 14%, transparent)`
@@ -655,7 +660,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                   color: isTemporary ? mentor.accent : 'var(--text)',
                 }}
               >
-                <MessageCircleDashed className="h-5 w-5" />
+                <MessageCircleDashed className="h-[20px] w-[20px]" />
               </button>
 
               <button
@@ -663,8 +668,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 onClick={() => startFreshChat(mentorId)}
                 aria-label="Start new chat"
                 title="New chat"
-                className="ai-header-icon-btn flex h-10 w-10 items-center justify-center rounded-full cursor-pointer"
-                style={{ color: 'var(--text)' }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
+                style={{
+                  color: 'var(--text)',
+                }}
               >
                 <PenSquare className="h-[19px] w-[19px]" />
               </button>
@@ -739,9 +746,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                             ? () => handleRegenerate(idx)
                             : undefined
                         }
-                        onRetry={
-                          msg.isError ? () => handleRegenerate(idx, msg.id) : undefined
-                        }
+                        onRetry={msg.isError ? () => handleRetryError(idx) : undefined}
                       />
                     </div>
                   </div>
@@ -810,7 +815,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
           className="fixed inset-0 z-[10040] flex lg:hidden"
           role="dialog"
           aria-modal="true"
-          aria-label="Boardly AI chat history"
+          aria-label="AI Mentors chat history"
         >
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -822,7 +827,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             style={{
               backgroundColor: 'var(--bg)',
               borderRight: '1px solid var(--border)',
-              ...(mobileViewportHeight ? { height: `${mobileViewportHeight}px` } : {}),
             }}
           >
             <AiHistorySidebar
@@ -839,7 +843,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               onUpgradeClick={() => {
                 setMobileHistoryOpen(false);
                 setUpgradeSheetReason(
-                  'Upgrade to Boardly Pro for 100 Boardly AI credits/day and Deep & Max thinking.'
+                  'Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.'
                 );
               }}
               onCloseMobileDrawer={() => setMobileHistoryOpen(false)}
@@ -877,7 +881,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         open={Boolean(upgradeSheetReason)}
         reason={
           upgradeSheetReason ||
-          'Upgrade to Boardly Pro for 100 Boardly AI credits/day and Deep & Max thinking.'
+          'Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.'
         }
         onClose={() => setUpgradeSheetReason(null)}
         onUpgrade={handleUpgradeNavigate}

@@ -46,6 +46,10 @@ export interface StoredAiMessage {
   isGreeting?: boolean;
   isError?: boolean;
   attachmentLabels?: string[];
+  retryPayload?: {
+    text: string;
+    attachments: PreparedAttachment[];
+  };
   createdAt?: number;
 }
 
@@ -130,41 +134,11 @@ export function cacheAiCreditsStatus(uid: string | null | undefined, status: AiC
   }
 }
 
-async function getIdTokenWithTimeout(timeoutMs = 10_000): Promise<string | null> {
-  const currentUser = auth.currentUser;
-  if (!currentUser) return null;
-  return await new Promise<string | null>((resolve) => {
-    let settled = false;
-    const timer = window.setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve(null);
-      }
-    }, timeoutMs);
-    currentUser
-      .getIdToken()
-      .then((tok) => {
-        if (!settled) {
-          settled = true;
-          window.clearTimeout(timer);
-          resolve(tok);
-        }
-      })
-      .catch(() => {
-        if (!settled) {
-          settled = true;
-          window.clearTimeout(timer);
-          resolve(null);
-        }
-      });
-  });
-}
-
 export async function fetchAiCreditsStatus(
   uid?: string | null,
   fallbackOpts?: { isPro: boolean; isSuperAdmin: boolean; source?: 'superadmin' | 'personal' | 'crew' | 'none' }
 ): Promise<AiCreditsStatus> {
-  const token = await getIdTokenWithTimeout(8_000);
+  const token = await auth.currentUser?.getIdToken().catch(() => null);
   if (!token) {
     return buildFallbackCreditsStatus(
       fallbackOpts || { isPro: false, isSuperAdmin: false, source: 'none' }
@@ -237,6 +211,22 @@ export class AiMentorApiError extends Error {
   }
 }
 
+async function getIdTokenWithTimeout(timeoutMs = 10_000): Promise<string | null> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return null;
+  let timer: number | null = null;
+  try {
+    return await Promise.race([
+      currentUser.getIdToken().catch(() => null),
+      new Promise<null>((resolve) => {
+        timer = window.setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) window.clearTimeout(timer);
+  }
+}
+
 export async function sendAiMentorMessage(params: {
   mentor: AiMentorId;
   depth: AiDepthId;
@@ -245,10 +235,7 @@ export async function sendAiMentorMessage(params: {
 }): Promise<SendAiMessageResult> {
   const token = await getIdTokenWithTimeout(10_000);
   if (!token) {
-    throw new AiMentorApiError(
-      'Could not verify your Boardly session. Please check your connection or sign in again.',
-      401
-    );
+    throw new AiMentorApiError('Please sign in with a registered Boardly account to chat.', 401);
   }
 
   const controller = new AbortController();
@@ -262,7 +249,7 @@ export async function sendAiMentorMessage(params: {
   if (params.signal) {
     if (params.signal.aborted) {
       window.clearTimeout(timeoutId);
-      throw new AiMentorApiError('Request cancelled.', 499, { code: 'ABORTED' });
+      throw new AiMentorApiError('Request was cancelled.', 499, { code: 'ABORTED' });
     }
     params.signal.addEventListener('abort', onExternalAbort, { once: true });
   }
@@ -282,36 +269,26 @@ export async function sendAiMentorMessage(params: {
       signal: controller.signal,
     });
 
-    const rawText = await res.text().catch(() => '');
-    let data: Record<string, any> = {};
-    try {
-      data = rawText ? JSON.parse(rawText) : {};
-    } catch {
-      data = {};
-    }
-
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const fallbackMsg =
-        res.status === 504 || res.status === 524
-          ? 'Boardly AI timed out while generating a reply. Tap Retry to try again.'
-          : res.status >= 500
-          ? `Boardly AI is temporarily unavailable (HTTP ${res.status}). Tap Retry to try again.`
-          : `Could not get a response from Boardly AI (HTTP ${res.status}).`;
-
-      throw new AiMentorApiError(data?.error || fallbackMsg, res.status, {
-        code: data?.code,
-        creditsLeft: typeof data?.creditsLeft === 'number' ? data.creditsLeft : undefined,
-        dailyLimit: typeof data?.dailyLimit === 'number' ? data.dailyLimit : undefined,
-        resetAt: typeof data?.resetAt === 'string' ? data.resetAt : undefined,
-      });
+      throw new AiMentorApiError(
+        data?.error || `Could not get a response from your AI Mentor (HTTP ${res.status}).`,
+        res.status,
+        {
+          code: data?.code,
+          creditsLeft: typeof data?.creditsLeft === 'number' ? data.creditsLeft : undefined,
+          dailyLimit: typeof data?.dailyLimit === 'number' ? data.dailyLimit : undefined,
+          resetAt: typeof data?.resetAt === 'string' ? data.resetAt : undefined,
+        }
+      );
     }
 
     const answerText = String(data.text || '').trim();
     if (!answerText) {
       throw new AiMentorApiError(
-        'Boardly AI returned an empty response. Tap Retry to try again.',
+        'The mentor returned an empty reply. Please try again.',
         502,
-        { code: 'EMPTY_RESPONSE' }
+        { code: 'EMPTY_ANSWER' }
       );
     }
 
@@ -329,16 +306,14 @@ export async function sendAiMentorMessage(params: {
     if (err instanceof AiMentorApiError) throw err;
     if (err?.name === 'AbortError') {
       if (timedOut) {
-        throw new AiMentorApiError(
-          'Boardly AI timed out after 60 seconds. Tap Retry or try Quick/Balanced mode.',
-          408,
-          { code: 'CLIENT_TIMEOUT' }
-        );
+        throw new AiMentorApiError('Request timed out after 60 seconds. Please tap Retry.', 408, {
+          code: 'CLIENT_TIMEOUT',
+        });
       }
-      throw new AiMentorApiError('Request cancelled.', 499, { code: 'ABORTED' });
+      throw new AiMentorApiError('Request was cancelled.', 499, { code: 'ABORTED' });
     }
     throw new AiMentorApiError(
-      err?.message || 'Network error while reaching Boardly AI. Tap Retry to try again.',
+      err?.message || 'Network error while reaching AI Mentor. Please try again.',
       0
     );
   } finally {
