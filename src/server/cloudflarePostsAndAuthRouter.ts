@@ -12693,6 +12693,9 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     put: (p: any, h: any) => addRoute('PUT', p, h),
     patch: (p: any, h: any) => addRoute('PATCH', p, h),
     delete: (p: any, h: any) => addRoute('DELETE', p, h),
+    head: (p: any, h: any) => addRoute('HEAD', p, h),
+    options: (p: any, h: any) => addRoute('OPTIONS', p, h),
+    all: (p: any, h: any) => addRoute('ALL', p, h),
   } as unknown as Express;
 
   registerCloudflarePostsAndAuthRoutes(fakeApp, options || {});
@@ -13010,7 +13013,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     let matchResult: RegExpExecArray | null = null;
 
     for (const r of routes) {
-      if (r.method !== method) continue;
+      if (r.method !== 'ALL' && r.method !== method) continue;
       const m = r.regex.exec(pathname);
       if (m) {
         matchedRoute = r;
