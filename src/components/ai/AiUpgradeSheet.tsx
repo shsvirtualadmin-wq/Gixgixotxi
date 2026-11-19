@@ -97,9 +97,9 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
         {/* 3 crisp benefits */}
         <ul className="mt-4 space-y-2.5">
           {[
-            `${PRO_AI_CREDITS_PER_DAY} AI Mentor credits every day (20× Free)`,
+            `${PRO_AI_CREDITS_PER_DAY} Boardly AI credits every day (20× Free)`,
             'Unlock Deep & Max thinking for tough board & entry-test derivations',
-            'Unlimited Practice Tests, Grand Line Mocks & AI Step Derivations',
+            'Unlimited Practice Tests, Grand Line Mocks & Formula Vault access',
           ].map((line) => (
             <li
               key={line}

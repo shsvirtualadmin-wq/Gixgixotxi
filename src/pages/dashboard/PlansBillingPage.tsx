@@ -351,7 +351,7 @@ export function PlansBillingPage() {
           className="mb-2 pl-4 text-[14px] font-medium leading-snug"
           style={{ color: 'var(--text-muted)' }}
         >
-          AI Mentor credits today
+          Boardly AI credits today
         </h2>
         <div
           className="rounded-[32px] p-5"

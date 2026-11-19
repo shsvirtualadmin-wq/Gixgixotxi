@@ -66,7 +66,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
         </span>
       ) : null}
 
-      <span className="min-w-0 shrink py-3 text-left">
+      <span className="min-w-0 flex-1 py-3 text-left">
         <span
           className="block text-[16px] font-normal leading-snug"
           style={{ color: textColor }}
@@ -83,7 +83,11 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
         )}
       </span>
 
-      <span className="ml-auto pl-3 flex min-w-0 max-w-[65%] shrink items-center justify-end gap-2">
+      <span
+        className={`ml-auto pl-3 flex items-center justify-end gap-2 ${
+          actionValue ? 'flex-none shrink-0 whitespace-nowrap' : 'min-w-0 max-w-[55%] shrink'
+        }`}
+      >
         {dot && (
           <span
             className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"
@@ -95,11 +99,15 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
 
         {value !== undefined && value !== null && (
           <span
-            className="min-w-0 break-words text-right text-[14px] sm:text-[15px] leading-snug"
+            className={
+              actionValue
+                ? 'whitespace-nowrap text-right text-[14px] sm:text-[15px] leading-snug'
+                : 'min-w-0 break-words text-right text-[14px] sm:text-[15px] leading-snug'
+            }
             style={{
               color: actionValue ? 'var(--accent)' : 'var(--text-muted)',
               fontWeight: actionValue ? 500 : 400,
-              overflowWrap: 'anywhere',
+              ...(actionValue ? {} : { overflowWrap: 'anywhere' }),
             }}
           >
             {value}

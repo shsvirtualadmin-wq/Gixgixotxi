@@ -75,8 +75,7 @@ export const PLANS: {
     features: [
       '2 Practice Tests per day (10 questions/test)',
       '3 Arena Grand National Mocks per day',
-      '5 Boardly AI step derivations per day',
-      `${aiConfig.FREE_CREDITS_PER_DAY} AI Mentor credits per day (Quick & Balanced)`,
+      `${aiConfig.FREE_CREDITS_PER_DAY} Boardly AI credits/day (Quick & Balanced)`,
       'Unlimited access to Boardly Commons PDFs',
       'Daily study streak tracking (PKT midnight reset)',
     ],
@@ -90,13 +89,13 @@ export const PLANS: {
     price_pkr: MONTHLY_PRICE_PKR,
     price_kobans: MONTHLY_PRICE_PKR * KOBANS_PER_PKR, // 1,990 Kobans
     cadenceLabel: '/ month',
-    description: 'Full 30-day access to unlimited mock tests, AI derivations, and deep analytics.',
+    description: 'Full 30-day access to unlimited mock tests, 100 Boardly AI credits/day, and deep analytics.',
     badge: 'POPULAR',
     features: [
       'Unlimited Practice Tests & Sprints',
       'Unlimited Arena Grand National Mocks',
-      'Unlimited Boardly AI Derivations',
-      `${aiConfig.PRO_CREDITS_PER_DAY} AI Mentor credits/day with Deep & Max thinking`,
+      `${aiConfig.PRO_CREDITS_PER_DAY} Boardly AI credits/day with Deep & Max thinking`,
+      'Full Formula Vault access',
       'FAST-NUCES Negative Marking Optimizer',
       'Comprehensive Mistakes & Topic Breakdown',
     ],
@@ -115,7 +114,7 @@ export const PLANS: {
     badge: `Best value · ${ANNUAL_SAVINGS_BADGE}`,
     features: [
       'Everything in Monthly Pass for 365 days',
-      `${aiConfig.PRO_CREDITS_PER_DAY} AI Mentor credits/day with Deep & Max thinking`,
+      `${aiConfig.PRO_CREDITS_PER_DAY} Boardly AI credits/day with Deep & Max thinking`,
       'Unlimited MDCAT, NET, ECAT & FSc full-length mocks',
       'Priority support & exam session archives',
       'Detailed topic accuracy & weakness tracking',
@@ -135,7 +134,7 @@ export const PLANS: {
       'Up to 30 classmates per private Study Crew',
       'Shared squad leaderboards & solve-time rankings',
       'Crew-wide custom practice challenges',
-      'Whole squad uses the best AI Mentor plan in the crew',
+      'Whole squad uses the best Boardly AI plan in the crew',
       'Bonus referral & milestone Koban rewards',
       'Eligible for Large Crew Pass upgrades',
     ],
@@ -166,13 +165,7 @@ export const PLAN_COMPARISON_ROWS: ReadonlyArray<{
     crew: 'Squad Ranked',
   },
   {
-    feature: 'Boardly AI Derivations',
-    free: '5 / day',
-    pro: 'Unlimited',
-    crew: '5 / day + Crew',
-  },
-  {
-    feature: 'Boardly AI Mentors',
+    feature: 'Boardly AI',
     free: `${aiConfig.FREE_CREDITS_PER_DAY} credits / day · Quick & Balanced`,
     pro: `${aiConfig.PRO_CREDITS_PER_DAY} credits / day · Deep & Max`,
     crew: 'Best plan in squad',
@@ -194,8 +187,8 @@ export const PRO_HIGHLIGHT_BULLETS: ReadonlyArray<{
     description: 'Practice MDCAT, NUST NET, FAST, ECAT & FSc sets with zero daily caps.',
   },
   {
-    title: 'Unlimited AI Step Derivations',
-    description: 'Get instant KaTeX formula walkthroughs and trap analysis from Boardly AI.',
+    title: `${aiConfig.PRO_CREDITS_PER_DAY} Boardly AI Credits / Day`,
+    description: 'Unlock Deep & Max thinking for step-by-step KaTeX derivations, MCQ shortcuts, and photo/PDF solving.',
   },
   {
     title: 'Deep Topic & Speed Analytics',
@@ -720,13 +713,13 @@ export function getProStatusSummary(
       ? `Pro active until ${unified.expiryFormatted} (${unified.timeLeftLabel})`
       : null;
 
-  let statusBannerText = 'Free Tier · 2 practice tests & 5 AI tokens per day';
+  let statusBannerText = `Free Tier · 2 practice tests & ${aiConfig.FREE_CREDITS_PER_DAY} Boardly AI credits per day`;
   if (unified.isSuperAdmin) {
-    statusBannerText = 'Superadmin · Unlimited Pro access active';
+    statusBannerText = 'Superadmin · Unlimited Pro & Boardly AI access active';
   } else if (statusText) {
     statusBannerText = statusText;
   } else if (unified.isPersonalPro) {
-    statusBannerText = 'Pro active · Unlimited tests & AI derivations';
+    statusBannerText = `Pro active · Unlimited tests & ${aiConfig.PRO_CREDITS_PER_DAY} Boardly AI credits/day`;
   } else if (unified.isCrewPro) {
     statusBannerText = `Pro active via ${inputObj.crewName || 'Study Crew'}`;
   }

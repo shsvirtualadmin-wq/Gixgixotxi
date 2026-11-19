@@ -136,7 +136,7 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     if (!isUnlimited && creditsLeft < costEstimate.total) {
       onOpenUpgrade(
         creditsLeft === 0
-          ? 'You have used all your AI Mentor credits for today.'
+          ? 'You have used all your Boardly AI credits for today.'
           : `This message needs ${costEstimate.total} credits, and you have ${creditsLeft} left today.`
       );
       return;
@@ -207,70 +207,17 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     }
   };
 
-  const creditPct = isUnlimited
-    ? 100
-    : Math.max(0, Math.min(100, Math.round((creditsLeft / Math.max(1, dailyLimit)) * 100)));
   const isThinkHarderOn = depthId >= 2;
   const canSend = !sending && (text.trim().length > 0 || attachments.length > 0);
 
   return (
     <div
-      className="shrink-0 px-3 sm:px-4 pt-2 pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:pb-4"
+      className="shrink-0 px-3 sm:px-4 pt-2 pb-[calc(10px+env(safe-area-inset-bottom,0px))] lg:pb-4"
       style={{
         backgroundColor: 'var(--bg)',
-        borderTop: '1px solid var(--border)',
       }}
     >
       <div className="mx-auto max-w-[740px] space-y-2">
-        {/* Credits Bar + Estimate */}
-        <div className="flex flex-col gap-1 px-1">
-          <div className="flex items-center justify-between gap-2 text-[12px]">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
-                {isUnlimited
-                  ? 'Unlimited credits'
-                  : `${creditsLeft} of ${dailyLimit} credits left`}
-              </span>
-              {!isUnlimited && (
-                <div
-                  className="h-1.5 w-20 sm:w-28 overflow-hidden rounded-full shrink-0"
-                  style={{ backgroundColor: 'var(--border)' }}
-                  aria-hidden="true"
-                >
-                  <div
-                    className="h-full rounded-full transition-all duration-300"
-                    style={{
-                      width: `${creditPct}%`,
-                      backgroundColor: creditsLeft <= 1 ? 'var(--accent)' : mentor.accent,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {!isPro && (
-              <button
-                type="button"
-                onClick={() =>
-                  onOpenUpgrade('Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.')
-                }
-                className="shrink-0 rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold cursor-pointer transition-opacity hover:opacity-90"
-                style={{
-                  backgroundColor: 'var(--accent-soft)',
-                  color: 'var(--accent)',
-                }}
-              >
-                Upgrade
-              </button>
-            )}
-          </div>
-
-          <div className="text-[11.5px] truncate" style={{ color: 'var(--text-muted)' }}>
-            This message ≈ {costEstimate.total} credit{costEstimate.total === 1 ? '' : 's'} ·{' '}
-            {depthCfg.label} {depthCfg.baseCost}
-          </div>
-        </div>
-
         {/* Inline attachment/mic feedback */}
         {(attachError || micNote) && (
           <div
@@ -322,9 +269,9 @@ export const AiComposer: React.FC<AiComposerProps> = ({
           </div>
         )}
 
-        {/* Composer Card */}
+        {/* Single Rounded Composer Card */}
         <div
-          className="relative rounded-[28px] p-2.5 pl-4 pr-2.5 transition-shadow focus-within:ring-2 focus-within:ring-[var(--border-strong)]"
+          className="relative rounded-[28px] px-3.5 pt-2.5 pb-2.5 transition-colors"
           style={{
             backgroundColor: 'var(--card)',
             border: '1px solid var(--border)',
@@ -425,23 +372,61 @@ export const AiComposer: React.FC<AiComposerProps> = ({
             </>
           )}
 
-          {/* Auto-growing textarea */}
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isTemporary ? 'Temporary chat' : `Ask ${mentor.name} anything...`}
-            aria-label={isTemporary ? 'Temporary chat message' : `Message ${mentor.name}`}
-            className="w-full resize-none bg-transparent text-[15px] leading-snug outline-none border-0 shadow-none placeholder:text-[var(--placeholder)] overflow-y-auto"
+          {/* Auto-growing borderless textarea (zero inner rectangle in every state) */}
+          <div
+            className="ai-composer-textarea-wrap w-full px-0.5"
             style={{
-              color: 'var(--text)',
-              maxHeight: '140px',
-              minHeight: '36px',
-              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+              border: 0,
+              outline: 'none',
+              boxShadow: 'none',
+              backgroundColor: 'transparent',
             }}
-          />
+          >
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isTemporary ? 'Temporary chat' : `Ask ${mentor.name} anything...`}
+              aria-label={isTemporary ? 'Temporary chat message' : `Message ${mentor.name}`}
+              className="ai-composer-textarea block w-full resize-none bg-transparent text-[15px] leading-snug outline-none border-0 shadow-none ring-0 focus:ring-0 focus:outline-none focus:border-0 placeholder:text-[var(--placeholder)] overflow-y-auto"
+              style={{
+                color: 'var(--text)',
+                maxHeight: '140px',
+                minHeight: '36px',
+                border: 0,
+                outline: 'none',
+                boxShadow: 'none',
+                backgroundColor: 'transparent',
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+              }}
+            />
+          </div>
+
+          {/* Single muted credits line inside composer (hidden for unlimited users) */}
+          {!isUnlimited && (
+            <div className="mt-0.5 mb-1 flex items-center justify-between gap-2 px-0.5 text-[11px] leading-tight">
+              <span className="min-w-0 truncate tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {creditsLeft} of {dailyLimit} credits left · ≈{costEstimate.total} credit
+                {costEstimate.total === 1 ? '' : 's'} ({depthCfg.label})
+              </span>
+              {!isPro && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenUpgrade(
+                      'Upgrade to Boardly Pro for 100 Boardly AI credits/day and Deep & Max thinking.'
+                    )
+                  }
+                  className="shrink-0 font-semibold cursor-pointer hover:underline"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  Upgrade
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Bottom Controls Row: +, Mentor+Depth chip, Mic, Send */}
           <div className="mt-1.5 flex items-center justify-between gap-2">

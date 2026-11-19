@@ -7,6 +7,8 @@ export interface SettingsGroupProps {
   helperText?: React.ReactNode;
   /** Force single-row full pill (999px) vs multi-row (32px). Auto-detected if omitted. */
   singleRow?: boolean;
+  /** Explicit corner radius preset: 'pill' (999px), 'compact' (22px), or 'card' (32px) */
+  radius?: 'pill' | 'compact' | 'card';
   /** Red-tinted danger border for Sign out / Suspend / Delete cards */
   danger?: boolean;
   className?: string;
@@ -17,6 +19,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
   label,
   helperText,
   singleRow,
+  radius,
   danger = false,
   className = '',
   children,
@@ -25,6 +28,23 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
   if (validChildren.length === 0) return null;
 
   const isSingleRow = singleRow ?? validChildren.length === 1;
+  const singleChildHasSubtitle =
+    validChildren.length === 1 &&
+    React.isValidElement(validChildren[0]) &&
+    Boolean((validChildren[0].props as Record<string, any>)?.subtitle);
+
+  const radiusClass =
+    radius === 'compact'
+      ? 'rounded-[22px]'
+      : radius === 'card'
+        ? 'rounded-[32px]'
+        : radius === 'pill'
+          ? 'rounded-[999px]'
+          : isSingleRow && !singleChildHasSubtitle
+            ? 'rounded-[999px]'
+            : isSingleRow && singleChildHasSubtitle
+              ? 'rounded-[22px]'
+              : 'rounded-[32px]';
 
   return (
     <section className={`mb-6 ${className}`}>
@@ -41,7 +61,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
       )}
 
       <div
-        className={`overflow-hidden ${isSingleRow ? 'rounded-[999px]' : 'rounded-[32px]'}`}
+        className={`overflow-hidden ${radiusClass}`}
         style={{
           backgroundColor: 'var(--card)',
           border: `1px solid ${danger ? 'var(--danger-border)' : 'var(--border)'}`,

@@ -185,10 +185,7 @@ const TestResultPage = lazyWithRetry(() =>
   import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
 );
 
-// AI Tutor, Crew, Captain
-const AiTutorPage = lazyWithRetry(() =>
-  import('./pages/dashboard/AiTutorPage').then(m => ({ default: m.AiTutorPage }))
-);
+// Crew, Captain (legacy /dashboard/ai-tutor redirects to unified Boardly AI at /dashboard/ai)
 const CrewDashboardPage = lazyWithRetry(() =>
   import('./pages/crew/CrewDashboardPage').then(m => ({ default: m.CrewDashboardPage }))
 );
@@ -406,7 +403,7 @@ function AppInner() {
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
           <Route path="ai" element={<AiMentorsPage />} />
-          <Route path="ai-tutor" element={<AiTutorPage />} />
+          <Route path="ai-tutor" element={<Navigate to="/dashboard/ai" replace />} />
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="crew" element={<CrewDashboardPage />} />

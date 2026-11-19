@@ -413,9 +413,11 @@ function aiTutorPlugin() {
           const aiMod = await aiMentorsModPromise;
           const chunks: Buffer[] = [];
           if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-            await new Promise<void>((resolve) => {
+            await new Promise<void>((resolve, reject) => {
               req.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
               req.on('end', () => resolve());
+              req.on('error', (err: any) => reject(err));
+              req.on('aborted', () => resolve());
             });
           }
           const bodyBuf = chunks.length > 0 ? Buffer.concat(chunks) : undefined;

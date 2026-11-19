@@ -21,6 +21,7 @@ interface AiMessageRendererProps {
   isGreeting?: boolean;
   isError?: boolean;
   onRegenerate?: () => void;
+  onRetry?: () => void;
 }
 
 export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
@@ -29,6 +30,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
   isGreeting = false,
   isError = false,
   onRegenerate,
+  onRetry,
 }) => {
   const [copied, setCopied] = useState(false);
   const [copiedRaw, setCopiedRaw] = useState(false);
@@ -120,7 +122,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
         await navigator.share({
-          title: 'Boardly AI Mentor Answer',
+          title: 'Boardly AI Answer',
           text: shareText,
         });
         setShared(true);
@@ -135,13 +137,47 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     }
   };
 
+  if (isError) {
+    return (
+      <div
+        className="min-w-0 max-w-full rounded-[20px] px-4 py-3"
+        style={{
+          backgroundColor: 'var(--tag-danger-bg)',
+          border: '1px solid var(--danger-border)',
+        }}
+        role="alert"
+      >
+        <p
+          className="text-[14px] leading-relaxed break-words"
+          style={{
+            color: 'var(--danger)',
+            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          }}
+        >
+          {text}
+        </p>
+        {onRetry && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onRetry}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold text-white cursor-pointer transition-opacity hover:opacity-90 active:scale-95"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span>Retry</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-0 max-w-full">
       {/* Answer Prose: strictly normal readable UI font (Inter), NEVER dot-matrix font */}
       <div
-        className={`ai-answer-prose text-[15px] leading-[1.65] break-words ${
-          isError ? 'text-[var(--danger)]' : 'text-[var(--text)]'
-        }`}
+        className="ai-answer-prose text-[15px] leading-[1.65] break-words text-[var(--text)]"
         style={{
           fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
@@ -149,7 +185,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
       />
 
       {/* Message Action Bar (shown under real AI answers, not greeting or error) */}
-      {!isGreeting && !isError && (
+      {!isGreeting && (
         <div className="relative mt-2.5 flex items-center gap-1 flex-wrap">
           <button
             type="button"

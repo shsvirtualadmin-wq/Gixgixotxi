@@ -130,11 +130,41 @@ export function cacheAiCreditsStatus(uid: string | null | undefined, status: AiC
   }
 }
 
+async function getIdTokenWithTimeout(timeoutMs = 10_000): Promise<string | null> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return null;
+  return await new Promise<string | null>((resolve) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, timeoutMs);
+    currentUser
+      .getIdToken()
+      .then((tok) => {
+        if (!settled) {
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(tok);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(null);
+        }
+      });
+  });
+}
+
 export async function fetchAiCreditsStatus(
   uid?: string | null,
   fallbackOpts?: { isPro: boolean; isSuperAdmin: boolean; source?: 'superadmin' | 'personal' | 'crew' | 'none' }
 ): Promise<AiCreditsStatus> {
-  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  const token = await getIdTokenWithTimeout(8_000);
   if (!token) {
     return buildFallbackCreditsStatus(
       fallbackOpts || { isPro: false, isSuperAdmin: false, source: 'none' }
@@ -211,14 +241,31 @@ export async function sendAiMentorMessage(params: {
   mentor: AiMentorId;
   depth: AiDepthId;
   contents: ApiContentMessage[];
+  signal?: AbortSignal;
 }): Promise<SendAiMessageResult> {
-  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  const token = await getIdTokenWithTimeout(10_000);
   if (!token) {
-    throw new AiMentorApiError('Please sign in with a registered Boardly account to chat.', 401);
+    throw new AiMentorApiError(
+      'Could not verify your Boardly session. Please check your connection or sign in again.',
+      401
+    );
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 95_000);
+  let timedOut = false;
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 60_000);
+
+  const onExternalAbort = () => controller.abort();
+  if (params.signal) {
+    if (params.signal.aborted) {
+      window.clearTimeout(timeoutId);
+      throw new AiMentorApiError('Request cancelled.', 499, { code: 'ABORTED' });
+    }
+    params.signal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   try {
     const res = await fetch('/api/ai', {
@@ -235,22 +282,41 @@ export async function sendAiMentorMessage(params: {
       signal: controller.signal,
     });
 
-    const data = await res.json().catch(() => ({}));
+    const rawText = await res.text().catch(() => '');
+    let data: Record<string, any> = {};
+    try {
+      data = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      data = {};
+    }
+
     if (!res.ok) {
+      const fallbackMsg =
+        res.status === 504 || res.status === 524
+          ? 'Boardly AI timed out while generating a reply. Tap Retry to try again.'
+          : res.status >= 500
+          ? `Boardly AI is temporarily unavailable (HTTP ${res.status}). Tap Retry to try again.`
+          : `Could not get a response from Boardly AI (HTTP ${res.status}).`;
+
+      throw new AiMentorApiError(data?.error || fallbackMsg, res.status, {
+        code: data?.code,
+        creditsLeft: typeof data?.creditsLeft === 'number' ? data.creditsLeft : undefined,
+        dailyLimit: typeof data?.dailyLimit === 'number' ? data.dailyLimit : undefined,
+        resetAt: typeof data?.resetAt === 'string' ? data.resetAt : undefined,
+      });
+    }
+
+    const answerText = String(data.text || '').trim();
+    if (!answerText) {
       throw new AiMentorApiError(
-        data?.error || 'Could not get a response from your AI Mentor.',
-        res.status,
-        {
-          code: data?.code,
-          creditsLeft: typeof data?.creditsLeft === 'number' ? data.creditsLeft : undefined,
-          dailyLimit: typeof data?.dailyLimit === 'number' ? data.dailyLimit : undefined,
-          resetAt: typeof data?.resetAt === 'string' ? data.resetAt : undefined,
-        }
+        'Boardly AI returned an empty response. Tap Retry to try again.',
+        502,
+        { code: 'EMPTY_RESPONSE' }
       );
     }
 
     return {
-      text: String(data.text || ''),
+      text: answerText,
       creditsLeft: Number(data.creditsLeft ?? 0),
       creditsUsed: Number(data.creditsUsed ?? 0),
       dailyLimit: Number(data.dailyLimit ?? FREE_AI_CREDITS_PER_DAY),
@@ -262,14 +328,24 @@ export async function sendAiMentorMessage(params: {
   } catch (err: any) {
     if (err instanceof AiMentorApiError) throw err;
     if (err?.name === 'AbortError') {
-      throw new AiMentorApiError('Request timed out after 95 seconds. Please try again.', 408);
+      if (timedOut) {
+        throw new AiMentorApiError(
+          'Boardly AI timed out after 60 seconds. Tap Retry or try Quick/Balanced mode.',
+          408,
+          { code: 'CLIENT_TIMEOUT' }
+        );
+      }
+      throw new AiMentorApiError('Request cancelled.', 499, { code: 'ABORTED' });
     }
     throw new AiMentorApiError(
-      err?.message || 'Network error while reaching AI Mentor. Please try again.',
+      err?.message || 'Network error while reaching Boardly AI. Tap Retry to try again.',
       0
     );
   } finally {
     window.clearTimeout(timeoutId);
+    if (params.signal) {
+      params.signal.removeEventListener('abort', onExternalAbort);
+    }
   }
 }
 

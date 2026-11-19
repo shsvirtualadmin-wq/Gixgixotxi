@@ -300,23 +300,23 @@ export function DashboardTopBar({
 
           {/* Right side: AI Mentors (desktop), Coin chip, Theme toggle, and Profile avatar */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
-            {/* Desktop (1024px+) AI Mentors navigation item */}
+            {/* Desktop (1024px+) Boardly AI navigation item */}
             <button
               type="button"
               data-testid="topbar-ai-mentors-btn"
               onClick={() => {
                 if (!user) {
-                  requireAuth('chat with Boardly AI Mentors');
+                  requireAuth('chat with Boardly AI');
                   return;
                 }
                 navigate('/dashboard/ai');
               }}
-              aria-label="Open Boardly AI Mentors"
-              title="Boardly AI Mentors"
+              aria-label="Open Boardly AI"
+              title="Boardly AI"
               className="hidden lg:inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full dashboard-topbar-icon-btn text-[13px] font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Sparkles size={15} strokeWidth={2.1} className="text-[var(--accent)]" />
-              <span>AI Mentors</span>
+              <span>Boardly AI</span>
             </button>
 
             {/* Kobans Wallet Chip */}
