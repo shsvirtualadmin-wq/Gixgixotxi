@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
+  AlertCircle,
   Check,
+  ChevronLeft,
   Crown,
-  Package,
+  Loader2,
   Plus,
+  RefreshCw,
   RotateCcw,
   ShoppingBag,
   Sparkles,
-  Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
@@ -23,9 +24,11 @@ import type { EquippedCosmetics } from '@/types';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import { computeLevelFromStats } from '@/components/profile/ProfileView';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { getDisplayName } from '@/utils/displayName';
+import { getEquippedLoadout } from '@/utils/userStateSource';
 
 type LockerCategoryTab =
   | 'all'
@@ -44,36 +47,39 @@ const CATEGORY_TABS: Array<{ id: LockerCategoryTab; label: string }> = [
   { id: 'effect', label: 'Effects' },
 ];
 
-const RARITY_STYLES: Record<
+const RARITY_TOKEN_STYLES: Record<
   CosmeticRarity,
-  { label: string; tagClass: string; ringClass: string }
+  { label: string; bg: string; text: string; border: string }
 > = {
   mythic: {
-    label: 'MYTHIC',
-    tagClass:
-      'bg-[#D71921]/25 text-red-200 border-[#D71921]/60 shadow-[0_0_14px_rgba(215,25,33,0.35)]',
-    ringClass: 'border-[#D71921]/55',
+    label: 'Mythic',
+    bg: 'var(--rarity-mythic-bg)',
+    text: 'var(--rarity-mythic-text)',
+    border: 'var(--rarity-mythic-border)',
   },
   legendary: {
-    label: 'LEGENDARY',
-    tagClass:
-      'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]',
-    ringClass: 'border-amber-400/45',
+    label: 'Legendary',
+    bg: 'var(--rarity-legendary-bg)',
+    text: 'var(--rarity-legendary-text)',
+    border: 'var(--rarity-legendary-border)',
   },
   epic: {
-    label: 'EPIC',
-    tagClass: 'bg-purple-500/20 text-purple-300 border-purple-400/45',
-    ringClass: 'border-purple-400/40',
+    label: 'Epic',
+    bg: 'var(--rarity-epic-bg)',
+    text: 'var(--rarity-epic-text)',
+    border: 'var(--rarity-epic-border)',
   },
   rare: {
-    label: 'RARE',
-    tagClass: 'bg-sky-500/20 text-sky-300 border-sky-400/45',
-    ringClass: 'border-sky-400/40',
+    label: 'Rare',
+    bg: 'var(--rarity-rare-bg)',
+    text: 'var(--rarity-rare-text)',
+    border: 'var(--rarity-rare-border)',
   },
   common: {
-    label: 'COMMON',
-    tagClass: 'bg-white/10 text-white/75 border-white/20',
-    ringClass: 'border-white/18',
+    label: 'Common',
+    bg: 'var(--rarity-common-bg)',
+    text: 'var(--rarity-common-text)',
+    border: 'var(--rarity-common-border)',
   },
 };
 
@@ -90,24 +96,62 @@ function deriveDeterministicShortId(uid: string): string {
 
 export const LockerPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, profile, authProfile } = useAuth();
+  const { user, profile } = useAuth();
   const wallet = useWallet();
 
+  // Single source of truth for currently equipped loadout
+  const equippedLoadout = useMemo(
+    () =>
+      getEquippedLoadout({
+        uid: user?.uid,
+        equipped: wallet.equipped,
+        photoURL: profile?.photoURL || user?.photoURL || null,
+        avatar: profile?.avatar,
+        equippedAvatar: profile?.equippedAvatar,
+        frame: profile?.frame,
+        equippedFrame: profile?.equippedFrame,
+        banner: profile?.banner,
+        nameplate: profile?.nameplate,
+        effect: (profile as { effect?: string } | null)?.effect,
+      }),
+    [user?.uid, user?.photoURL, wallet.equipped, profile]
+  );
+
   const [activeCategory, setActiveCategory] = useState<LockerCategoryTab>('all');
+  // Do NOT auto-select the first item on load — preview starts strictly from what is equipped
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [savingEquip, setSavingEquip] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Live try-on state (initializes from currently equipped items)
+  // Live try-on state initialized strictly from equippedLoadout
   const [previewEquipped, setPreviewEquipped] = useState<EquippedCosmetics>(() => ({
-    ...(wallet.equipped || {}),
+    avatar: equippedLoadout.avatar,
+    frame: equippedLoadout.frame,
+    banner: equippedLoadout.banner,
+    nameplate: equippedLoadout.nameplate,
+    effect: equippedLoadout.effect,
   }));
 
+  // Keep preview synced with newly loaded equipped items when the user has not clicked a preview tile
   useEffect(() => {
-    setPreviewEquipped({ ...(wallet.equipped || {}) });
-  }, [wallet.equipped]);
+    if (!selectedItemId) {
+      setPreviewEquipped({
+        avatar: equippedLoadout.avatar,
+        frame: equippedLoadout.frame,
+        banner: equippedLoadout.banner,
+        nameplate: equippedLoadout.nameplate,
+        effect: equippedLoadout.effect,
+      });
+    }
+  }, [
+    selectedItemId,
+    equippedLoadout.avatar,
+    equippedLoadout.frame,
+    equippedLoadout.banner,
+    equippedLoadout.nameplate,
+    equippedLoadout.effect,
+  ]);
 
-  // Owned items ONLY (Items not owned never show here)
   const ownedSet = useMemo(() => new Set(wallet.owned || []), [wallet.owned]);
 
   const ownedItems = useMemo(() => {
@@ -130,17 +174,6 @@ export const LockerPage: React.FC = () => {
     return ownedItems.filter((item) => item.type === activeCategory);
   }, [ownedItems, activeCategory]);
 
-  // Select first item automatically when category changes
-  useEffect(() => {
-    if (filteredItems.length > 0) {
-      if (!selectedItemId || !filteredItems.some((i) => i.id === selectedItemId)) {
-        setSelectedItemId(filteredItems[0].id);
-      }
-    } else {
-      setSelectedItemId(null);
-    }
-  }, [filteredItems, selectedItemId]);
-
   const selectedItem: CosmeticItem | null = useMemo(
     () => ownedItems.find((i) => i.id === selectedItemId) || null,
     [ownedItems, selectedItemId]
@@ -148,12 +181,13 @@ export const LockerPage: React.FC = () => {
 
   const isItemEquippedInWallet = useCallback(
     (item: CosmeticItem) => {
-      return wallet.equipped?.[item.type] === item.id;
+      const currentValue = equippedLoadout[item.type];
+      return Boolean(currentValue && currentValue === item.id);
     },
-    [wallet.equipped]
+    [equippedLoadout]
   );
 
-  // Tap an item -> select it and apply live preview on stage immediately
+  // Tapping an item ONLY previews it on the stage until the user taps Equip
   const handleSelectTile = useCallback((item: CosmeticItem) => {
     setSelectedItemId(item.id);
     setPreviewEquipped((prev) => ({
@@ -164,19 +198,17 @@ export const LockerPage: React.FC = () => {
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
-    setTimeout(() => {
+    window.setTimeout(() => {
       setToastMsg((curr) => (curr === msg ? null : curr));
     }, 2400);
   };
 
-  // Equip the selected item & write to user doc
   const handleEquipSelected = useCallback(
     async (itemToEquip?: CosmeticItem | null) => {
       const target = itemToEquip || selectedItem;
       if (!target || savingEquip) return;
 
-      const alreadyEquipped = isItemEquippedInWallet(target);
-      if (alreadyEquipped) return;
+      if (isItemEquippedInWallet(target)) return;
 
       setSavingEquip(true);
       try {
@@ -195,9 +227,18 @@ export const LockerPage: React.FC = () => {
     [selectedItem, savingEquip, isItemEquippedInWallet, wallet]
   );
 
-  // Save all previewed items at once (Desktop Save button)
+  const hasUnsavedPreview = useMemo(() => {
+    return (
+      (previewEquipped.avatar || 'avatar-1') !== (equippedLoadout.avatar || 'avatar-1') ||
+      (previewEquipped.frame || 'none') !== (equippedLoadout.frame || 'none') ||
+      (previewEquipped.banner || 'none') !== (equippedLoadout.banner || 'none') ||
+      (previewEquipped.nameplate || 'none') !== (equippedLoadout.nameplate || 'none') ||
+      (previewEquipped.effect || 'none') !== (equippedLoadout.effect || 'none')
+    );
+  }, [previewEquipped, equippedLoadout]);
+
   const handleSaveAllPreviewed = async () => {
-    if (savingEquip) return;
+    if (savingEquip || !hasUnsavedPreview) return;
     setSavingEquip(true);
     try {
       await wallet.equipMultipleCosmetics(previewEquipped);
@@ -210,11 +251,18 @@ export const LockerPage: React.FC = () => {
   };
 
   const handleResetPreview = () => {
-    setPreviewEquipped({ ...(wallet.equipped || {}) });
+    setSelectedItemId(null);
+    setPreviewEquipped({
+      avatar: equippedLoadout.avatar,
+      frame: equippedLoadout.frame,
+      banner: equippedLoadout.banner,
+      nameplate: equippedLoadout.nameplate,
+      effect: equippedLoadout.effect,
+    });
     showToast('Preview reset to equipped loadout');
   };
 
-  // Keyboard navigation on Desktop: Arrow keys move selection, Enter equips
+  // Keyboard navigation on desktop
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (
@@ -247,24 +295,13 @@ export const LockerPage: React.FC = () => {
 
   const displayName = getDisplayName(
     {
-      display_name:
-        (authProfile as any)?.display_name ??
-        (authProfile as any)?.displayName ??
-        profile?.display_name ??
-        profile?.displayName,
-      realName:
-        (authProfile as any)?.realName ??
-        (authProfile as any)?.name ??
-        profile?.realName ??
-        profile?.name ??
-        user?.displayName,
-      username: (authProfile as any)?.username ?? profile?.username,
+      display_name: profile?.display_name ?? profile?.displayName,
+      realName: profile?.realName ?? profile?.name ?? user?.displayName,
+      username: profile?.username,
     },
     'Student'
   );
-  const username = String(
-    (authProfile as any)?.username || profile?.username || 'student'
-  ).replace(/^@+/, '');
+  const username = String(profile?.username || 'student').replace(/^@+/, '');
   const shortId = String(
     profile?.shortId || deriveDeterministicShortId(user?.uid || 'student')
   )
@@ -279,40 +316,20 @@ export const LockerPage: React.FC = () => {
   });
 
   const equippedCount = useMemo(() => {
-    return Object.values(wallet.equipped || {}).filter(
-      (val) => Boolean(val) && val !== 'none'
-    ).length;
-  }, [wallet.equipped]);
+    return [
+      equippedLoadout.avatar,
+      equippedLoadout.frame,
+      equippedLoadout.banner,
+      equippedLoadout.nameplate,
+      equippedLoadout.effect,
+    ].filter((val) => Boolean(val) && val !== 'none').length;
+  }, [equippedLoadout]);
 
-  const stageAvatarId =
-    previewEquipped.avatar ||
-    wallet.equipped?.avatar ||
-    profile?.equippedAvatar ||
-    profile?.avatar ||
-    'avatar-1';
-  const stageFrameId =
-    previewEquipped.frame ||
-    wallet.equipped?.frame ||
-    profile?.equippedFrame ||
-    profile?.frame ||
-    'none';
-  const stageBannerId =
-    previewEquipped.banner ||
-    wallet.equipped?.banner ||
-    profile?.banner ||
-    'none';
-  const stageNameplateId =
-    previewEquipped.nameplate ||
-    wallet.equipped?.nameplate ||
-    profile?.nameplate ||
-    'none';
-  const stageEffectId =
-    previewEquipped.effect || wallet.equipped?.effect || 'none';
-
-  const activeCategoryIdx = Math.max(
-    0,
-    CATEGORY_TABS.findIndex((c) => c.id === activeCategory)
-  );
+  const stageAvatarId = previewEquipped.avatar || equippedLoadout.avatar || 'avatar-1';
+  const stageFrameId = previewEquipped.frame || equippedLoadout.frame || 'none';
+  const stageBannerId = previewEquipped.banner || equippedLoadout.banner || 'none';
+  const stageNameplateId = previewEquipped.nameplate || equippedLoadout.nameplate || 'none';
+  const stageEffectId = previewEquipped.effect || equippedLoadout.effect || 'none';
 
   const renderItemVisual = (item: CosmeticItem) => {
     if (item.type === 'avatar') {
@@ -338,7 +355,10 @@ export const LockerPage: React.FC = () => {
     }
     if (item.type === 'banner') {
       return (
-        <div className="w-full h-14 rounded-xl overflow-hidden border border-white/15">
+        <div
+          className="w-full h-14 rounded-xl overflow-hidden border"
+          style={{ borderColor: 'var(--border)' }}
+        >
           <BannerRenderer
             bannerId={item.id}
             showReadabilityOverlay={false}
@@ -361,138 +381,243 @@ export const LockerPage: React.FC = () => {
     }
     return (
       <div
-        className="w-12 h-12 rounded-2xl border border-white/20 flex items-center justify-center"
+        className="w-12 h-12 rounded-2xl border flex items-center justify-center"
         style={{
+          borderColor: 'var(--border)',
           background: item.previewColor
-            ? `radial-gradient(circle at 30% 30%, ${item.previewColor}66, rgba(215,25,33,0.2))`
-            : 'linear-gradient(135deg, rgba(215,25,33,0.4), rgba(245,158,11,0.25))',
+            ? `radial-gradient(circle at 30% 30%, ${item.previewColor}55, color-mix(in srgb, var(--accent) 18%, transparent))`
+            : 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 26%, transparent), color-mix(in srgb, var(--koban) 20%, transparent))',
+          color: 'var(--text)',
         }}
       >
-        <Sparkles className="w-5 h-5 text-white" />
+        <Sparkles className="w-5 h-5" />
       </div>
     );
   };
 
   return (
-    <div className="relative min-h-screen bg-[#050506] text-white boardly-page-safe-bottom overflow-x-hidden">
+    <div
+      className="relative min-h-[100dvh] w-full max-w-full overflow-x-hidden"
+      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+    >
       <PageMeta
         title="Locker — Boardly"
         description="Preview and equip your owned avatars, frames, banners, nameplates, and profile effects."
       />
 
-      {/* Ambient blurred red (#D71921) and blue (#3a4cff) glows */}
+      {/* Soft ambient accents strictly clipped inside container (< 5% opacity in light mode, zero hard edges) */}
       <div
-        className="pointer-events-none fixed inset-0 overflow-hidden z-0"
+        className="pointer-events-none absolute inset-0 overflow-hidden z-0"
         aria-hidden="true"
       >
-        <div className="absolute -top-28 -left-24 w-[360px] h-[360px] rounded-full bg-[#D71921]/22 blur-[120px]" />
-        <div className="absolute top-1/3 -right-28 w-[340px] h-[340px] rounded-full bg-[#3a4cff]/18 blur-[130px]" />
+        <div
+          className="absolute -top-32 -left-32 w-[420px] h-[420px] rounded-full opacity-[0.045] dark:opacity-[0.14]"
+          style={{
+            background: 'radial-gradient(circle, #D71921 0%, transparent 68%)',
+          }}
+        />
+        <div
+          className="absolute top-1/4 -right-32 w-[400px] h-[400px] rounded-full opacity-[0.04] dark:opacity-[0.12]"
+          style={{
+            background: 'radial-gradient(circle, #3a4cff 0%, transparent 68%)',
+          }}
+        />
       </div>
 
       {/* Toast Notification */}
       {toastMsg && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[2100] boardly-glass-pill px-4 py-2.5 flex items-center gap-2 text-xs font-bold text-white shadow-2xl">
-          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+        <div
+          role="status"
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-[2100] rounded-full px-4 py-2.5 flex items-center gap-2 text-[13px] font-semibold shadow-lg"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+          }}
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span>{toastMsg}</span>
         </div>
       )}
 
-      <div className="relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-3 pb-28 lg:pb-12">
-        {/* Top Glass Navigation Bar */}
-        <header className="boardly-glass-pill sticky top-3 z-30 h-14 px-2.5 mb-4 flex items-center justify-between gap-2">
+      {/* Main container — extra bottom padding stacks above both mobile bottom nav AND sticky Equip bar */}
+      <div
+        className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-3 lg:pb-12"
+        style={{
+          paddingBottom: selectedItem
+            ? 'calc(176px + env(safe-area-inset-bottom, 0px))'
+            : 'calc(112px + env(safe-area-inset-bottom, 0px))',
+        }}
+      >
+        {/* Top Navigation Bar (normal UI font 17px/600) */}
+        <header
+          className="sticky top-2 z-30 h-14 px-2.5 mb-4 rounded-full flex items-center justify-between gap-2"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--settings-card-shadow)',
+          }}
+        >
           <button
             type="button"
             onClick={() => navigate('/profile')}
             aria-label="Back to profile"
-            className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 hover:bg-[var(--settings-row-hover)]"
+            style={{ color: 'var(--text)' }}
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ChevronLeft className="w-5 h-5" strokeWidth={2.1} />
           </button>
 
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-[#D71921]" />
-            <h1 className="font-doto-title text-[16px] tracking-[0.16em] text-white">
-              LOCKER
-            </h1>
-          </div>
+          <h1
+            className="text-[17px] font-semibold leading-tight truncate"
+            style={{
+              color: 'var(--text)',
+              fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+            }}
+          >
+            Locker
+          </h1>
 
           <button
             type="button"
             onClick={() => navigate('/store')}
-            className="press-scale min-h-[44px] px-3.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/15 inline-flex items-center gap-1.5 text-xs font-bold text-white cursor-pointer shrink-0"
+            className="min-h-[40px] px-3.5 rounded-full inline-flex items-center gap-1.5 text-[13px] font-semibold cursor-pointer shrink-0 transition-colors hover:bg-[var(--settings-row-hover)]"
+            style={{
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+            }}
           >
-            <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
+            <ShoppingBag className="w-4 h-4" style={{ color: 'var(--accent)' }} />
             <span>Store</span>
           </button>
         </header>
 
-        {/* Responsive Layout: Mobile (< 1024px) stacked | Desktop (>= 1024px) 45% Left / 55% Right */}
+        {wallet.walletError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-center justify-between gap-3 rounded-[24px] px-4 py-3"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--danger-border)',
+            }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertCircle className="w-4 h-4 shrink-0" style={{ color: 'var(--danger)' }} />
+              <span className="text-[13px]" style={{ color: 'var(--text)' }}>
+                {wallet.walletError}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void wallet.refreshWallet()}
+              className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold shrink-0 cursor-pointer"
+              style={{
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--accent)',
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Responsive Layout: Mobile stacked | Desktop 45% Left / 55% Right */}
         <div className="flex flex-col lg:flex-row gap-5 items-stretch lg:items-start">
           {/* LEFT 45% (Desktop) / TOP (Mobile): PROFILE PREVIEW STAGE */}
           <div className="w-full lg:w-[45%] lg:sticky lg:top-20 space-y-3">
-            <div className="boardly-glass-card relative rounded-[32px] min-h-[270px] lg:min-h-[420px] overflow-hidden flex flex-col justify-between">
+            <div
+              className="relative rounded-[28px] min-h-[270px] lg:min-h-[410px] overflow-hidden flex flex-col justify-between"
+              style={{
+                backgroundColor: 'var(--card)',
+                border: '1px solid var(--border)',
+                boxShadow: 'var(--settings-card-shadow)',
+              }}
+            >
               {stageEffectId && stageEffectId !== 'none' && (
                 <ProfileCardEffect itemId={stageEffectId} canAnimate />
               )}
 
-              {/* Equipped Banner behind */}
-              <div className="relative h-28 lg:h-40 w-full overflow-hidden">
-                <BannerRenderer
-                  bannerId={stageBannerId === 'none' ? undefined : stageBannerId}
-                  showReadabilityOverlay={false}
-                  className="h-28 lg:h-40"
-                />
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-35"
-                  style={{
-                    backgroundImage:
-                      'radial-gradient(rgba(255,255,255,0.3) 1px, transparent 1px)',
-                    backgroundSize: '10px 10px',
-                  }}
-                />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#09090d] via-transparent to-black/30" />
+              {/* Equipped Banner behind (theme-aware subtle surface when no banner equipped) */}
+              <div className="relative h-28 lg:h-36 w-full overflow-hidden">
+                {stageBannerId && stageBannerId !== 'none' ? (
+                  <>
+                    <BannerRenderer
+                      bannerId={stageBannerId}
+                      showReadabilityOverlay={false}
+                      className="h-28 lg:h-36"
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        background:
+                          'linear-gradient(to top, var(--card) 0%, transparent 55%, rgba(0,0,0,0.2) 100%)',
+                      }}
+                    />
+                  </>
+                ) : (
+                  <div
+                    className="h-full w-full"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--bg)) 0%, var(--bg) 52%, color-mix(in srgb, var(--koban) 8%, var(--bg)) 100%)',
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                  />
+                )}
 
-                {/* Top Stage Badges: "PREVIEW" and "N EQUIPPED" */}
+                {/* Top Stage Badges: normal UI font */}
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-20">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/65 backdrop-blur-md border border-white/20 font-doto-title text-[10px] tracking-[0.16em] text-white">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
-                    PREVIEW
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold"
+                    style={{
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: hasUnsavedPreview ? 'var(--accent)' : '#10b981' }}
+                    />
+                    {hasUnsavedPreview ? 'Previewing' : 'Equipped'}
                   </span>
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-black/65 backdrop-blur-md border border-white/20 font-doto-title text-[10px] tracking-[0.14em] text-white/90">
-                    {equippedCount} EQUIPPED
+                  <span
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-semibold"
+                    style={{
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {equippedCount} equipped
                   </span>
                 </div>
               </div>
 
-              {/* Center Stage: Large Avatar with Frame + Dotted Glowing Platform Ellipse Under It */}
-              <div className="relative -mt-12 lg:-mt-16 px-5 pb-5 flex flex-col items-center text-center z-10 flex-1 justify-center">
-                <div className="relative flex flex-col items-center">
-                  <div className="rounded-full p-1.5 bg-[#09090d]/90 border border-white/20 shadow-[0_14px_34px_rgba(0,0,0,0.75)]">
-                    <BoardlyAvatar
-                      size={96}
-                      uid={user?.uid}
-                      equippedAvatar={stageAvatarId}
-                      customPhotoURL={profile?.photoURL}
-                      equippedFrameId={stageFrameId}
-                      alt={displayName}
-                    />
-                  </div>
-
-                  {/* Dotted Glowing Platform Ellipse Under Avatar */}
-                  <div
-                    aria-hidden="true"
-                    className="-mt-2 w-36 h-6 rounded-full border border-dashed border-[#D71921]/60 bg-[#D71921]/20 shadow-[0_0_28px_rgba(215,25,33,0.55)]"
-                    style={{
-                      transform: 'rotateX(65deg)',
-                      backgroundImage:
-                        'radial-gradient(rgba(255,255,255,0.45) 1px, transparent 1px)',
-                      backgroundSize: '6px 6px',
-                    }}
+              {/* Center Stage: Avatar with Frame */}
+              <div className="relative -mt-12 lg:-mt-14 px-5 pb-5 flex flex-col items-center text-center z-10 flex-1 justify-center">
+                <div
+                  className="rounded-full p-1.5 shadow-md"
+                  style={{
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <BoardlyAvatar
+                    size={96}
+                    uid={user?.uid}
+                    equippedAvatar={stageAvatarId}
+                    customPhotoURL={equippedLoadout.photoURL || undefined}
+                    equippedFrameId={stageFrameId}
+                    alt={displayName}
                   />
                 </div>
 
-                {/* Nameplate & Name */}
-                <div className="mt-2">
+                {/* Nameplate (pixel font allowed ONLY on nameplate) */}
+                <div className="mt-3">
                   {stageNameplateId && stageNameplateId !== 'none' ? (
                     <Nameplate
                       itemId={stageNameplateId}
@@ -500,47 +625,81 @@ export const LockerPage: React.FC = () => {
                       shortId={shortId}
                     />
                   ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-amber-500/20 via-yellow-500/10 to-amber-500/20 border border-amber-400/55">
-                      <Crown className="w-3.5 h-3.5 text-amber-300" />
-                      <span className="text-xs font-bold text-amber-100 font-inter-num">
-                        {username} #{shortId}
+                    <div
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[12px] font-semibold"
+                      style={{
+                        backgroundColor: 'var(--koban-bg)',
+                        border: '1px solid var(--koban-border)',
+                        color: 'var(--koban)',
+                      }}
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      <span>
+                        @{username} #{shortId}
                       </span>
                     </div>
                   )}
                 </div>
 
-                <h2 className="mt-2 text-lg lg:text-xl font-extrabold text-white">
+                <h2
+                  className="mt-2 text-[18px] font-semibold leading-snug"
+                  style={{
+                    color: 'var(--text)',
+                    fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+                  }}
+                >
                   {displayName}
                 </h2>
-                <p className="text-xs text-white/65 font-inter-num">
-                  Level {levelInfo.level.toLocaleString()} ·{' '}
-                  {Number(wallet.balance || 0).toLocaleString()} Kobans
-                </p>
+                <div
+                  className="mt-1 inline-flex items-center gap-1.5 text-[13px]"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <span>Level {levelInfo.level.toLocaleString()}</span>
+                  <span>·</span>
+                  <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--koban)' }}>
+                    <KobanIcon size={14} decorative />
+                    {!wallet.balanceLoaded || wallet.kobanBalance === null ? (
+                      <span
+                        className="inline-block h-3.5 w-10 animate-pulse rounded-full"
+                        style={{ backgroundColor: 'var(--skeleton)' }}
+                        aria-label="Loading Kobans balance"
+                      />
+                    ) : (
+                      <span>{wallet.kobanBalance.toLocaleString()} Kobans</span>
+                    )}
+                  </span>
+                </div>
 
-                {/* Desktop Stats & Barcode Strip */}
-                <div className="hidden lg:grid grid-cols-3 gap-2 w-full mt-4 boardly-glass-inset rounded-2xl p-3 text-center">
+                {/* Desktop Stats Strip */}
+                <div
+                  className="hidden lg:grid grid-cols-3 gap-2 w-full mt-4 rounded-2xl p-3 text-center"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
                   <div>
-                    <div className="font-inter-num text-sm font-extrabold text-white">
-                      LV {levelInfo.level}
+                    <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
+                      Lv {levelInfo.level}
                     </div>
-                    <div className="font-doto-title text-[9px] text-white/60">
-                      RANK
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      Rank
                     </div>
                   </div>
-                  <div className="nothing-dotted-divider-v">
-                    <div className="font-inter-num text-sm font-extrabold text-amber-300">
+                  <div className="border-x" style={{ borderColor: 'var(--border)' }}>
+                    <div className="text-[14px] font-semibold" style={{ color: 'var(--koban)' }}>
                       {ownedItems.length.toLocaleString()}
                     </div>
-                    <div className="font-doto-title text-[9px] text-amber-300/80">
-                      OWNED
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      Owned
                     </div>
                   </div>
-                  <div className="nothing-dotted-divider-v">
-                    <div className="font-inter-num text-sm font-extrabold text-white">
+                  <div>
+                    <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
                       #{shortId}
                     </div>
-                    <div className="font-doto-title text-[9px] text-white/60">
-                      ID TAG
+                    <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                      ID tag
                     </div>
                   </div>
                 </div>
@@ -552,44 +711,42 @@ export const LockerPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleResetPreview}
-                className="boardly-glass-pill press-scale h-[50px] rounded-full inline-flex items-center justify-center gap-2 text-xs font-bold text-white/85 hover:text-white cursor-pointer"
+                disabled={!hasUnsavedPreview}
+                className="h-[48px] rounded-full inline-flex items-center justify-center gap-2 text-[14px] font-semibold cursor-pointer disabled:opacity-45 transition-colors hover:bg-[var(--settings-row-hover)]"
+                style={{
+                  backgroundColor: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>Reset</span>
+                <span>Reset preview</span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleSaveAllPreviewed()}
-                disabled={savingEquip}
-                className="boardly-red-pill press-scale h-[50px] rounded-full inline-flex items-center justify-center gap-2 text-xs font-bold tracking-wide disabled:opacity-50 cursor-pointer"
+                disabled={savingEquip || !hasUnsavedPreview}
+                className="h-[48px] rounded-full inline-flex items-center justify-center gap-2 text-[14px] font-semibold text-white cursor-pointer disabled:opacity-45"
+                style={{ backgroundColor: 'var(--accent)' }}
               >
                 {savingEquip ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                <span>Save Loadout</span>
+                <span>Save loadout</span>
               </button>
             </div>
           </div>
 
-          {/* RIGHT 55% (Desktop) / BELOW (Mobile): CATEGORY CHIPS + OWNED ITEM GRID */}
-          <div className="w-full lg:w-[55%] space-y-4">
-            {/* Category Chips with ONE Shared Sliding Red Pill */}
+          {/* RIGHT 55% (Desktop) / BELOW (Mobile): CATEGORY PILLS + OWNED ITEM GRID */}
+          <div className="w-full lg:w-[55%] min-w-0 space-y-4">
+            {/* Scrollable Pill Row on mobile, wraps cleanly on desktop — AA contrast, zero overlapping or clipped text */}
             <div
               role="tablist"
               aria-label="Locker categories"
-              className="boardly-glass-pill relative p-1.5 grid grid-cols-6 items-center min-h-[52px] overflow-x-auto no-scrollbar"
+              className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1 lg:flex-wrap lg:overflow-visible"
             >
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-[#D71921] to-[#b51219] border border-white/25 shadow-[0_4px_16px_rgba(215,25,33,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-                style={{
-                  width: `calc((100% - 12px) / ${CATEGORY_TABS.length})`,
-                  left: '6px',
-                  transform: `translateX(${activeCategoryIdx * 100}%)`,
-                }}
-              />
               {CATEGORY_TABS.map((cat) => {
                 const active = activeCategory === cat.id;
                 return (
@@ -599,9 +756,20 @@ export const LockerPage: React.FC = () => {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setActiveCategory(cat.id)}
-                    className={`relative z-10 min-h-[44px] px-2 rounded-full text-[11px] sm:text-xs font-bold tracking-wide whitespace-nowrap transition-colors cursor-pointer ${
-                      active ? 'text-white' : 'text-white/72 hover:text-white'
-                    }`}
+                    className="shrink-0 whitespace-nowrap min-h-[42px] px-3.5 rounded-full text-[13.5px] font-medium transition-colors cursor-pointer"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: 'var(--accent)',
+                            border: '1px solid var(--accent)',
+                            color: '#ffffff',
+                          }
+                        : {
+                            backgroundColor: 'var(--card)',
+                            border: '1px solid var(--border)',
+                            color: 'var(--text)',
+                          }
+                    }
                   >
                     {cat.label}
                   </button>
@@ -609,42 +777,72 @@ export const LockerPage: React.FC = () => {
               })}
             </div>
 
+            <div className="flex items-center justify-between px-1">
+              <h2
+                className="text-[14px] font-medium"
+                style={{
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+                }}
+              >
+                Owned items ({filteredItems.length})
+              </h2>
+              {hasUnsavedPreview && (
+                <button
+                  type="button"
+                  onClick={handleResetPreview}
+                  className="text-[13px] font-medium cursor-pointer hover:underline lg:hidden"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  Reset preview
+                </button>
+              )}
+            </div>
+
             {/* 3-Column Mobile / 4-Column Desktop Grid of Owned Item Cards */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 sm:gap-3">
-              {filteredItems.map((item, idx) => {
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {filteredItems.map((item) => {
                 const isEquipped = isItemEquippedInWallet(item);
                 const isSelected = selectedItemId === item.id;
-                const rStyle = RARITY_STYLES[item.rarity || 'common'];
+                const rToken = RARITY_TOKEN_STYLES[item.rarity || 'common'];
 
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
                     onClick={() => handleSelectTile(item)}
-                    className={`press-scale relative rounded-[22px] p-2.5 sm:p-3 flex flex-col items-center justify-between text-center min-h-[142px] transition-all cursor-pointer ${
-                      isEquipped
-                        ? 'boardly-glass-card ring-2 ring-[#D71921] shadow-[0_0_22px_rgba(215,25,33,0.35)]'
+                    className="relative rounded-[24px] p-3 flex flex-col items-center justify-between text-center min-h-[146px] transition-all cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--card)',
+                      border: isEquipped
+                        ? '2px solid var(--accent)'
                         : isSelected
-                        ? 'boardly-glass-card ring-2 ring-white/60'
-                        : 'boardly-glass-card hover:border-white/35'
-                    }`}
+                        ? '2px solid var(--text)'
+                        : '1px solid var(--border)',
+                      boxShadow: 'var(--settings-card-shadow)',
+                    }}
                   >
                     {/* Check badge on equipped item */}
                     {isEquipped && (
                       <span
                         title="Equipped"
-                        className="absolute top-2 right-2 z-10 w-5 h-5 rounded-full bg-[#D71921] text-white flex items-center justify-center shadow-md"
+                        className="absolute top-2.5 right-2.5 z-10 w-5 h-5 rounded-full text-white flex items-center justify-center"
+                        style={{ backgroundColor: 'var(--accent)' }}
                       >
                         <Check className="w-3 h-3 stroke-[3]" />
                       </span>
                     )}
 
-                    {/* Rarity Tag */}
+                    {/* AA Rarity Chip */}
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border ${rStyle.tagClass}`}
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                      style={{
+                        backgroundColor: rToken.bg,
+                        color: rToken.text,
+                        border: `1px solid ${rToken.border}`,
+                      }}
                     >
-                      {rStyle.label}
+                      {rToken.label}
                     </span>
 
                     {/* Thumbnail */}
@@ -653,48 +851,75 @@ export const LockerPage: React.FC = () => {
                     </div>
 
                     {/* Item Name */}
-                    <div className="w-full text-[11px] sm:text-xs font-bold text-white truncate">
+                    <div
+                      className="w-full text-[13px] font-semibold truncate"
+                      style={{ color: 'var(--text)' }}
+                    >
                       {item.name}
                     </div>
                   </button>
                 );
               })}
 
-              {/* Last Tile: Dashed "+ Get more in Store" linking to /store */}
+              {/* Last Tile: "+ Get more in Store" */}
               <button
                 type="button"
                 onClick={() => navigate('/store')}
-                className="press-scale rounded-[22px] p-3 min-h-[142px] border border-dashed border-white/25 hover:border-[#D71921]/70 bg-white/[0.02] hover:bg-[#D71921]/10 flex flex-col items-center justify-center text-center gap-2 transition-all cursor-pointer"
+                className="rounded-[24px] p-3 min-h-[146px] border border-dashed flex flex-col items-center justify-center text-center gap-2 transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)]"
+                style={{
+                  backgroundColor: 'var(--card)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text)',
+                }}
               >
-                <div className="w-10 h-10 rounded-full bg-[#D71921]/20 border border-[#D71921]/40 flex items-center justify-center text-[#D71921]">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{
+                    backgroundColor: 'var(--accent-soft)',
+                    color: 'var(--accent)',
+                  }}
+                >
                   <Plus className="w-5 h-5" />
                 </div>
-                <span className="text-xs font-bold text-white/85 leading-snug">
-                  + Get more in Store
+                <span className="text-[13px] font-semibold leading-snug">
+                  Get more in Store
                 </span>
               </button>
             </div>
 
             {/* Desktop Item Detail Strip at the Bottom */}
             {selectedItem && (
-              <div className="hidden lg:flex boardly-glass-card rounded-[24px] p-4 items-center justify-between gap-4">
+              <div
+                className="hidden lg:flex rounded-[24px] p-4 items-center justify-between gap-4"
+                style={{
+                  backgroundColor: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--settings-card-shadow)',
+                }}
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${
-                        RARITY_STYLES[selectedItem.rarity || 'common'].tagClass
-                      }`}
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                      style={{
+                        backgroundColor: RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].bg,
+                        color: RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].text,
+                        border: `1px solid ${RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].border}`,
+                      }}
                     >
-                      {RARITY_STYLES[selectedItem.rarity || 'common'].label}
+                      {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label}
                     </span>
-                    <span className="font-doto-title text-[10px] tracking-[0.14em] text-white/60 uppercase">
+                    <span className="text-[12px] capitalize" style={{ color: 'var(--text-muted)' }}>
                       {selectedItem.type}
                     </span>
                   </div>
-                  <h3 className="text-base font-extrabold text-white mt-1 truncate">
+                  <h3
+                    className="text-[16px] font-semibold mt-1 truncate"
+                    style={{ color: 'var(--text)' }}
+                  >
                     {selectedItem.name}
                   </h3>
-                  <p className="text-xs text-white/65 truncate mt-0.5">
+                  <p className="text-[13px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     {selectedItem.description}
                   </p>
                 </div>
@@ -703,13 +928,25 @@ export const LockerPage: React.FC = () => {
                   type="button"
                   disabled={savingEquip || isItemEquippedInWallet(selectedItem)}
                   onClick={() => void handleEquipSelected(selectedItem)}
-                  className={`press-scale h-[48px] px-6 rounded-full text-xs font-bold tracking-wide shrink-0 cursor-pointer ${
+                  className="h-[46px] px-6 rounded-full text-[14px] font-semibold shrink-0 cursor-pointer disabled:opacity-60"
+                  style={
                     isItemEquippedInWallet(selectedItem)
-                      ? 'boardly-glass-pill text-emerald-300 border-emerald-400/40'
-                      : 'boardly-red-pill text-white'
-                  }`}
+                      ? {
+                          backgroundColor: 'var(--bg)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-muted)',
+                        }
+                      : {
+                          backgroundColor: 'var(--accent)',
+                          color: '#ffffff',
+                        }
+                  }
                 >
-                  {isItemEquippedInWallet(selectedItem) ? 'Equipped' : 'Equip'}
+                  {savingEquip
+                    ? 'Equipping…'
+                    : isItemEquippedInWallet(selectedItem)
+                    ? 'Equipped'
+                    : 'Equip'}
                 </button>
               </div>
             )}
@@ -717,16 +954,25 @@ export const LockerPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Sticky Glass Bottom Bar: Selected Item Name + Red "Equip" Pill */}
+      {/* Mobile Sticky Bottom Action Bar: stacked cleanly ABOVE DashboardBottomNav (never overlaps) */}
       {selectedItem && (
-        <div className="lg:hidden fixed bottom-[calc(78px+env(safe-area-inset-bottom,0px))] left-3.5 right-3.5 z-40">
-          <div className="boardly-glass-pill px-4 py-2.5 flex items-center justify-between gap-3 shadow-2xl">
-            <div className="min-w-0">
-              <div className="font-doto-title text-[9px] tracking-[0.14em] text-white/60 uppercase">
-                {RARITY_STYLES[selectedItem.rarity || 'common'].label} ·{' '}
-                {selectedItem.type}
+        <div
+          className="lg:hidden fixed left-4 right-4 z-[45]"
+          style={{ bottom: 'calc(88px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div
+            className="rounded-full px-4 py-2.5 flex items-center justify-between gap-3"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: '0 8px 24px -6px rgba(0, 0, 0, 0.22)',
+            }}
+          >
+            <div className="min-w-0 pl-1">
+              <div className="text-[12px] capitalize truncate" style={{ color: 'var(--text-muted)' }}>
+                {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label} · {selectedItem.type}
               </div>
-              <div className="text-sm font-bold text-white truncate">
+              <div className="text-[15px] font-semibold truncate" style={{ color: 'var(--text)' }}>
                 {selectedItem.name}
               </div>
             </div>
@@ -735,14 +981,22 @@ export const LockerPage: React.FC = () => {
               type="button"
               disabled={savingEquip || isItemEquippedInWallet(selectedItem)}
               onClick={() => void handleEquipSelected(selectedItem)}
-              className={`press-scale min-h-[44px] px-5 rounded-full text-xs font-bold tracking-wide shrink-0 cursor-pointer ${
+              className="min-h-[44px] px-5 rounded-full text-[14px] font-semibold shrink-0 cursor-pointer disabled:opacity-60"
+              style={
                 isItemEquippedInWallet(selectedItem)
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                  : 'boardly-red-pill text-white'
-              }`}
+                  ? {
+                      backgroundColor: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-muted)',
+                    }
+                  : {
+                      backgroundColor: 'var(--accent)',
+                      color: '#ffffff',
+                    }
+              }
             >
               {savingEquip
-                ? 'Equipping...'
+                ? 'Equipping…'
                 : isItemEquippedInWallet(selectedItem)
                 ? 'Equipped'
                 : 'Equip'}

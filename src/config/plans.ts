@@ -73,7 +73,7 @@ export const PLANS: {
     features: [
       '2 Practice Tests per day (10 questions/test)',
       '3 Arena Grand National Mocks per day',
-      '5 Boardy AI step derivations per day',
+      '5 Boardly AI step derivations per day',
       'Unlimited access to Boardly Commons PDFs',
       'Daily study streak tracking (PKT midnight reset)',
     ],
@@ -92,7 +92,7 @@ export const PLANS: {
     features: [
       'Unlimited Practice Tests & Sprints',
       'Unlimited Arena Grand National Mocks',
-      'Unlimited Boardy AI Derivations',
+      'Unlimited Boardly AI Derivations',
       'FAST-NUCES Negative Marking Optimizer',
       'Comprehensive Mistakes & Topic Breakdown',
     ],
@@ -160,7 +160,7 @@ export const PLAN_COMPARISON_ROWS: ReadonlyArray<{
     crew: 'Squad Ranked',
   },
   {
-    feature: 'Boardy AI Derivations',
+    feature: 'Boardly AI Derivations',
     free: '5 / day',
     pro: 'Unlimited',
     crew: '5 / day + Crew',
@@ -183,7 +183,7 @@ export const PRO_HIGHLIGHT_BULLETS: ReadonlyArray<{
   },
   {
     title: 'Unlimited AI Step Derivations',
-    description: 'Get instant KaTeX formula walkthroughs and trap analysis from Boardy AI.',
+    description: 'Get instant KaTeX formula walkthroughs and trap analysis from Boardly AI.',
   },
   {
     title: 'Deep Topic & Speed Analytics',

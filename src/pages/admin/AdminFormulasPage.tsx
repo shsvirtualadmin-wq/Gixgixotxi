@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Upload,
@@ -176,12 +177,24 @@ export const AdminFormulasPage: React.FC = () => {
 
   useEffect(() => {
     if (!anyModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (formulaModalOpen) setFormulaModalOpen(false);
+      else if (chapterModalOpen) setChapterModalOpen(false);
+      else if (categoryModalOpen) setCategoryModalOpen(false);
+      else if (categorySheetOpen) setCategorySheetOpen(false);
+      else if (bulkModalOpen && !importingChunked) setBulkModalOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
     const raf = window.requestAnimationFrame(() => {
       document.querySelectorAll('.aqb-sheet-body').forEach((el) => {
         (el as HTMLElement).scrollTop = 0;
       });
     });
-    return () => window.cancelAnimationFrame(raf);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.cancelAnimationFrame(raf);
+    };
   }, [
     formulaModalOpen,
     bulkModalOpen,
@@ -189,6 +202,7 @@ export const AdminFormulasPage: React.FC = () => {
     categorySheetOpen,
     categoryModalOpen,
     chapterModalOpen,
+    importingChunked,
     anyModalOpen,
   ]);
 
@@ -848,12 +862,6 @@ export const AdminFormulasPage: React.FC = () => {
 
   return (
     <div data-admin-page="formulas" className="aqb-page-shell">
-      {/* Ambient red glassmorphism background blobs (exact match to Question Bank) */}
-      <div className="aqb-ambient-blobs" aria-hidden="true">
-        <div className="aqb-blob aqb-blob--top" />
-        <div className="aqb-blob aqb-blob--bottom" />
-      </div>
-
       <div className="aqb-container">
         {/* Feedback Banner */}
         {banner && (
@@ -1843,7 +1851,7 @@ export const AdminFormulasPage: React.FC = () => {
       {/* ======================================================================
           BULK IMPORT FORMULAS 3-STEP WIZARD (Bottom-Sheet Modal)
           ====================================================================== */}
-      {bulkModalOpen && (
+      {bulkModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
           className="aqb-sheet-backdrop"
@@ -2434,13 +2442,14 @@ export const AdminFormulasPage: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================================
           CATEGORY SWITCH & MANAGE BOTTOM SHEET
           ====================================================================== */}
-      {categorySheetOpen && (
+      {categorySheetOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
           className="aqb-sheet-backdrop"
@@ -2555,13 +2564,14 @@ export const AdminFormulasPage: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================================
           ADD / EDIT CATEGORY MODAL
           ====================================================================== */}
-      {categoryModalOpen && (
+      {categoryModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
           className="aqb-sheet-backdrop"
@@ -2641,13 +2651,14 @@ export const AdminFormulasPage: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================================
           ADD / EDIT CHAPTER MODAL
           ====================================================================== */}
-      {chapterModalOpen && (
+      {chapterModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
           className="aqb-sheet-backdrop"
@@ -2735,13 +2746,14 @@ export const AdminFormulasPage: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ======================================================================
           ADD / EDIT FORMULA MODAL (with Live KaTeX Preview)
           ====================================================================== */}
-      {formulaModalOpen && (
+      {formulaModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
           className="aqb-sheet-backdrop"
@@ -2882,7 +2894,8 @@ export const AdminFormulasPage: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

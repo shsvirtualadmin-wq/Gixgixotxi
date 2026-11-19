@@ -22,6 +22,13 @@ import {
   writeOptimisticWalletSnapshot,
 } from '@/lib/swrCache';
 import { isValidAvatar } from '@/lib/matrixAvatarsData';
+import {
+  getEquippedLoadout,
+  getKobans,
+  measureRequest,
+  setCachedEquippedLoadout,
+  setCachedKobans,
+} from '@/utils/userStateSource';
 import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
@@ -50,6 +57,14 @@ const inFlightSingleItemPurchases = new Set<string>();
 const walletSubscribers = new Set<(uid: string, doc: WalletDoc) => void>();
 
 function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
+  setCachedKobans(uid, doc.balance);
+  setCachedEquippedLoadout(uid, {
+    avatar: doc.equipped?.avatar ?? null,
+    frame: doc.equipped?.frame ?? null,
+    banner: doc.equipped?.banner ?? null,
+    nameplate: doc.equipped?.nameplate ?? null,
+    effect: doc.equipped?.effect ?? null,
+  });
   writeOptimisticWalletSnapshot({
     uid,
     balance: doc.balance,
@@ -67,29 +82,66 @@ function notifyWalletSubscribers(uid: string, doc: WalletDoc) {
 
 export function useWallet() {
   const { user } = useAuth();
-  const initialWallet: WalletDoc = (() => {
+  const initialMeta = (() => {
     if (user?.uid && sessionWalletCache[user.uid]) {
-      return sessionWalletCache[user.uid]!;
+      return { wallet: sessionWalletCache[user.uid]!, hasCache: true };
     }
     const optimistic = readOptimisticWalletSnapshot(user?.uid);
+    const cachedKobans = getKobans(user?.uid);
+    const cachedLoadout = getEquippedLoadout(user?.uid);
     if (optimistic) {
       return {
-        balance: optimistic.balance,
-        owned: Array.isArray(optimistic.owned) ? optimistic.owned : [],
-        equipped: optimistic.equipped || DEFAULT_WALLET.equipped,
+        wallet: {
+          balance: cachedKobans.loaded && cachedKobans.balance !== null ? cachedKobans.balance : optimistic.balance,
+          owned: Array.isArray(optimistic.owned) ? optimistic.owned : [],
+          equipped: {
+            effect: cachedLoadout.effect ?? optimistic.equipped?.effect ?? null,
+            frame: cachedLoadout.frame ?? optimistic.equipped?.frame ?? null,
+            nameplate: cachedLoadout.nameplate ?? optimistic.equipped?.nameplate ?? null,
+            avatar: cachedLoadout.avatar ?? optimistic.equipped?.avatar ?? null,
+            banner: cachedLoadout.banner ?? optimistic.equipped?.banner ?? null,
+          },
+        },
+        hasCache: true,
       };
     }
-    return DEFAULT_WALLET;
+    if (cachedKobans.loaded && cachedKobans.balance !== null) {
+      return {
+        wallet: {
+          balance: cachedKobans.balance,
+          owned: [],
+          equipped: {
+            effect: cachedLoadout.effect,
+            frame: cachedLoadout.frame,
+            nameplate: cachedLoadout.nameplate,
+            avatar: cachedLoadout.avatar,
+            banner: cachedLoadout.banner,
+          },
+        },
+        hasCache: true,
+      };
+    }
+    return {
+      wallet: {
+        ...DEFAULT_WALLET,
+        equipped: {
+          effect: cachedLoadout.effect,
+          frame: cachedLoadout.frame,
+          nameplate: cachedLoadout.nameplate,
+          avatar: cachedLoadout.avatar,
+          banner: cachedLoadout.banner,
+        },
+      },
+      hasCache: false,
+    };
   })();
 
-  const [wallet, setWallet] = useState<WalletDoc>(initialWallet);
-  const [loading, setLoading] = useState<boolean>(
-    Boolean(
-      user?.uid &&
-        !sessionWalletCache[user.uid] &&
-        !readOptimisticWalletSnapshot(user.uid)
-    )
+  const [wallet, setWallet] = useState<WalletDoc>(initialMeta.wallet);
+  const [balanceLoaded, setBalanceLoaded] = useState<boolean>(
+    !user?.uid ? true : initialMeta.hasCache
   );
+  const [loading, setLoading] = useState<boolean>(Boolean(user?.uid && !initialMeta.hasCache));
+  const [walletError, setWalletError] = useState<string | null>(null);
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
 
@@ -187,7 +239,13 @@ export function useWallet() {
       }
     }
 
-    setLoading(true);
+    const hasExistingCache = Boolean(
+      sessionWalletCache[uid] || readOptimisticWalletSnapshot(uid) || getKobans(uid).loaded
+    );
+    if (!hasExistingCache) {
+      setLoading(true);
+    }
+    setWalletError(null);
     const walletDocRef = doc(db, 'wallets', uid);
     const userDocRef = doc(db, 'users', uid);
     const unlockedColRef = collection(db, 'users', uid, 'unlocked');
@@ -196,27 +254,32 @@ export function useWallet() {
       try {
         const cachedUserProfile = !forceRefresh ? getSharedUserProfileSnapshot(uid) : null;
 
-        const [snap, userSnap, unlockedSnap] = await Promise.all([
-          getDoc(walletDocRef).catch((err) => {
-            console.error('[useWallet] getDoc wallets error:', err?.code || 'ERROR', `wallets/${uid}`, err);
-            return null;
-          }),
-          cachedUserProfile
-            ? Promise.resolve(null)
-            : getDoc(userDocRef).catch((err) => {
-                console.error('[useWallet] getDoc users error:', err?.code || 'ERROR', `users/${uid}`, err);
+        const [snap, userSnap, unlockedSnap] = await measureRequest(
+          'wallet:firestore-sync',
+          () =>
+            Promise.all([
+              getDoc(walletDocRef).catch((err) => {
+                console.error('[useWallet] getDoc wallets error:', err?.code || 'ERROR', `wallets/${uid}`, err);
                 return null;
               }),
-          getDocs(unlockedColRef).catch((err) => {
-            console.error(
-              '[useWallet] getDocs unlocked error:',
-              err?.code || 'ERROR',
-              `users/${uid}/unlocked`,
-              err
-            );
-            return null;
-          }),
-        ]);
+              cachedUserProfile
+                ? Promise.resolve(null)
+                : getDoc(userDocRef).catch((err) => {
+                    console.error('[useWallet] getDoc users error:', err?.code || 'ERROR', `users/${uid}`, err);
+                    return null;
+                  }),
+              getDocs(unlockedColRef).catch((err) => {
+                console.error(
+                  '[useWallet] getDocs unlocked error:',
+                  err?.code || 'ERROR',
+                  `users/${uid}/unlocked`,
+                  err
+                );
+                return null;
+              }),
+            ]),
+          8000
+        );
 
         const uData: Record<string, any> | null =
           (cachedUserProfile as Record<string, any> | null) ||
@@ -315,7 +378,8 @@ export function useWallet() {
           `wallets/${uid}`,
           err
         );
-        return sessionWalletCache[uid] || DEFAULT_WALLET;
+        setWalletError(err?.message || 'Could not load Kobans wallet.');
+        return sessionWalletCache[uid] || walletRef.current || DEFAULT_WALLET;
       } finally {
         delete inFlightWalletPromises[uid];
       }
@@ -326,6 +390,9 @@ export function useWallet() {
       const resolved = await loadPromise;
       walletRef.current = resolved;
       setWallet(resolved);
+      if (sessionWalletCache[uid] || getKobans(uid).loaded) {
+        setBalanceLoaded(true);
+      }
       return resolved;
     } finally {
       setLoading(false);
@@ -335,14 +402,40 @@ export function useWallet() {
   useEffect(() => {
     if (!user?.uid) {
       setWallet(DEFAULT_WALLET);
+      setBalanceLoaded(true);
       setLoading(false);
       return;
+    }
+
+    const cachedSnap = getKobans(user.uid);
+    const cachedLoadout = getEquippedLoadout(user.uid);
+    if (sessionWalletCache[user.uid]) {
+      setWallet(sessionWalletCache[user.uid]!);
+      setBalanceLoaded(true);
+      setLoading(false);
+    } else if (cachedSnap.loaded && cachedSnap.balance !== null) {
+      setWallet((prev) => ({
+        ...prev,
+        balance: cachedSnap.balance!,
+        equipped: {
+          effect: cachedLoadout.effect ?? prev.equipped.effect,
+          frame: cachedLoadout.frame ?? prev.equipped.frame,
+          nameplate: cachedLoadout.nameplate ?? prev.equipped.nameplate,
+          avatar: cachedLoadout.avatar ?? prev.equipped.avatar,
+          banner: cachedLoadout.banner ?? prev.equipped.banner,
+        },
+      }));
+      setBalanceLoaded(true);
+      setLoading(false);
+    } else {
+      setBalanceLoaded(false);
     }
 
     const onSub = (updatedUid: string, updatedDoc: WalletDoc) => {
       if (updatedUid === user.uid) {
         walletRef.current = updatedDoc;
         setWallet(updatedDoc);
+        setBalanceLoaded(true);
         setLoading(false);
       }
     };
@@ -813,9 +906,19 @@ export function useWallet() {
     }
   }, [user?.uid, fetchWallet]);
 
+  const kobanSnapshot = user?.uid ? getKobans(user.uid) : { balance: null, loaded: true, updatedAt: null };
+  const resolvedBalanceLoaded = !user?.uid ? true : balanceLoaded || kobanSnapshot.loaded;
+  const resolvedBalance =
+    user?.uid && kobanSnapshot.loaded && kobanSnapshot.balance !== null
+      ? kobanSnapshot.balance
+      : wallet.balance;
+
   return {
     wallet,
-    balance: wallet.balance,
+    balance: resolvedBalance,
+    kobanBalance: resolvedBalanceLoaded ? resolvedBalance : null,
+    balanceLoaded: resolvedBalanceLoaded,
+    walletError,
     owned: wallet.owned,
     equipped: wallet.equipped,
     loading,

@@ -427,6 +427,7 @@ function AppInner() {
               </RoleGuard>
             }
           />
+          <Route path="plan" element={<PlansBillingPage />} />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<Navigate to="/profile" replace />} />
           <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
@@ -490,7 +491,8 @@ function AppInner() {
         </Route>
 
         {/* Global shortcuts for plans */}
-        <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
+        <Route path="/plan" element={<Navigate to="/dashboard/plan" replace />} />
+        <Route path="/plans" element={<Navigate to="/dashboard/plan" replace />} />
         <Route path="/commons/contact" element={<Navigate to="/contact" replace />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}

@@ -45,6 +45,11 @@ import {
 } from '@/hooks/useSecurityStatus';
 import { fetchSecuritySummary, type SecuritySummary } from '@/services/securityCenterService';
 import { getDisplayName, getUsernameHandle } from '@/utils/displayName';
+import {
+  getEquippedLoadout,
+  readSwrCache,
+  writeSwrCache,
+} from '@/utils/userStateSource';
 import { SettingsPage } from './SettingsPage';
 import { SettingsGroup } from './SettingsGroup';
 import { SettingsProgressRow, SettingsRow } from './SettingsRow';
@@ -176,9 +181,26 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     updateProfile,
   } = useAuth();
   const { isPro } = useEffectivePlan();
-  const { balance: kobansBalance } = useWallet();
+  const { kobanBalance, balanceLoaded, equipped: walletEquipped } = useWallet();
   const { themeSetting, setTheme } = useTheme();
   const { smoothMode, setSmoothMode } = useSmoothMode();
+
+  const equippedLoadout = useMemo(
+    () =>
+      getEquippedLoadout({
+        uid: user?.uid,
+        equipped: walletEquipped,
+        photoURL: profile?.photoURL || user?.photoURL || null,
+        avatar: profile?.avatar,
+        equippedAvatar: profile?.equippedAvatar,
+        frame: profile?.frame,
+        equippedFrame: profile?.equippedFrame,
+        banner: profile?.banner,
+        nameplate: profile?.nameplate,
+        effect: (profile as { effect?: string } | null)?.effect,
+      }),
+    [user?.uid, user?.photoURL, walletEquipped, profile]
+  );
 
   const [section, setSection] = useState<SettingsSectionId>(() =>
     mapRouteParamToSection(initialSubPage)
@@ -235,8 +257,10 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   );
   const [savingStudyRole, setSavingStudyRole] = useState(false);
 
-  // Security summary (for yellow dot on Security and login row)
-  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null);
+  // Security summary (for yellow dot on Security and login row) — SWR cached for instant render
+  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(() =>
+    user?.uid ? readSwrCache<SecuritySummary>(`sec:summary:${user.uid}`) : null
+  );
 
   useEffect(() => {
     setSection(mapRouteParamToSection(initialSubPage));
@@ -254,9 +278,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
 
   useEffect(() => {
     if (!user?.uid || isGuest) return;
+    const cached = readSwrCache<SecuritySummary>(`sec:summary:${user.uid}`);
+    if (cached) setSecuritySummary(cached);
     let active = true;
     void fetchSecuritySummary()
       .then((res) => {
+        writeSwrCache(`sec:summary:${user.uid}`, res);
         if (active) setSecuritySummary(res);
       })
       .catch(() => {});
@@ -505,7 +532,10 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           >
             <div className="relative">
               <BoardlyAvatar
-                src={profile?.photoURL || undefined}
+                uid={user?.uid}
+                src={equippedLoadout.photoURL || undefined}
+                equippedAvatar={equippedLoadout.avatar}
+                equippedFrameId={equippedLoadout.frame}
                 name={currentDisplayName}
                 size="xl"
               />
@@ -557,14 +587,14 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             icon={<Crown />}
             label="Subscription"
             value={planLabel}
-            onClick={() => navigateTo('/dashboard/plans')}
+            onClick={() => navigateTo('/dashboard/plan')}
           />
           {!isPro && (
             <SettingsRow
               icon={<Sparkles />}
               label="Upgrade to Pro"
               tone="accent"
-              onClick={() => navigateTo('/dashboard/plans')}
+              onClick={() => navigateTo('/dashboard/plan')}
             />
           )}
         </SettingsGroup>
@@ -866,7 +896,15 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
                 }}
               >
                 <KobanIcon size={16} decorative />
-                {kobansBalance.toLocaleString()}
+                {!balanceLoaded || kobanBalance === null ? (
+                  <span
+                    className="inline-block h-3.5 w-10 animate-pulse rounded-full"
+                    style={{ backgroundColor: 'var(--skeleton)' }}
+                    aria-label="Loading Kobans balance"
+                  />
+                ) : (
+                  kobanBalance.toLocaleString()
+                )}
               </span>
             }
             onClick={() => navigateTo('/store')}
@@ -981,7 +1019,15 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       }}
     >
       <KobanIcon size={15} decorative />
-      {kobansBalance.toLocaleString()}
+      {!balanceLoaded || kobanBalance === null ? (
+        <span
+          className="inline-block h-3.5 w-9 animate-pulse rounded-full"
+          style={{ backgroundColor: 'var(--skeleton)' }}
+          aria-label="Loading Kobans balance"
+        />
+      ) : (
+        kobanBalance.toLocaleString()
+      )}
     </span>
   );
 
@@ -992,7 +1038,10 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         key="account"
         leadingElement={
           <BoardlyAvatar
-            src={profile?.photoURL || undefined}
+            uid={user?.uid}
+            src={equippedLoadout.photoURL || undefined}
+            equippedAvatar={equippedLoadout.avatar}
+            equippedFrameId={equippedLoadout.frame}
             name={currentDisplayName}
             size="sm"
           />
@@ -1017,7 +1066,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           icon={<Sparkles />}
           label="Upgrade to Pro"
           tone="accent"
-          onClick={() => navigateTo('/dashboard/plans')}
+          onClick={() => navigateTo('/dashboard/plan')}
         />
       ),
   ].filter(Boolean);
@@ -1242,9 +1291,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       <SwitchAccountSheet
         open={switchAccountOpen}
         onClose={() => setSwitchAccountOpen(false)}
+        uid={user?.uid}
         email={user?.email || profile?.email || ''}
         displayName={currentDisplayName}
-        avatarUrl={profile?.photoURL}
+        avatarUrl={equippedLoadout.photoURL}
+        equippedAvatar={equippedLoadout.avatar}
+        equippedFrameId={equippedLoadout.frame}
         planLabel={planLabel}
         onAddAccount={() => navigateTo('/login')}
         onSignOut={() => setSignOutConfirmOpen(true)}

@@ -128,6 +128,8 @@ export const StorePage: React.FC<StorePageProps> = ({
   const { isDark, toggle: toggleTheme } = useTheme();
   const {
     balance,
+    kobanBalance,
+    balanceLoaded,
     owned,
     equipped,
     loading: walletLoading,
@@ -1028,8 +1030,12 @@ export const StorePage: React.FC<StorePageProps> = ({
             {/* Live Koban Wallet Balance with "+" button */}
             <div className="h-9 pl-2.5 pr-1 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center gap-1.5">
               <KobanIcon size={16} />
-              <span className="text-xs sm:text-sm font-black tabular-nums text-[var(--text-primary)]">
-                {walletLoading ? '…' : balance.toLocaleString()}
+              <span className="text-xs sm:text-sm font-black tabular-nums text-[var(--text-primary)] inline-flex items-center">
+                {!balanceLoaded || kobanBalance === null ? (
+                  <span className="inline-block w-10 h-3.5 rounded-md skeleton" aria-label="Loading balance" />
+                ) : (
+                  kobanBalance.toLocaleString()
+                )}
               </span>
               <button
                 type="button"
@@ -2160,7 +2166,11 @@ export const StorePage: React.FC<StorePageProps> = ({
                         </span>
                         <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[var(--text-primary)]">
                           <KobanIcon size={13} />
-                          {balance.toLocaleString()} Kobans
+                          {!balanceLoaded || kobanBalance === null ? (
+                            <span className="inline-block w-12 h-3.5 rounded-md skeleton" aria-hidden="true" />
+                          ) : (
+                            `${kobanBalance.toLocaleString()} Kobans`
+                          )}
                         </span>
                       </div>
                     </div>
@@ -2299,7 +2309,8 @@ export const StorePage: React.FC<StorePageProps> = ({
         uid={user?.uid}
         userEmail={user?.email || userProfile?.email}
         userName={displayName}
-        kobanBalance={balance}
+        kobanBalance={kobanBalance}
+        balanceLoaded={balanceLoaded}
         currentProExpiresAt={rawProExpiresAt}
         hasPendingProRequest={Boolean(pendingProRequest)}
         onOpenGetKobans={(needed) => {

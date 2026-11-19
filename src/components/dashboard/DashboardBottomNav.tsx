@@ -198,7 +198,13 @@ function DashboardBottomNavComponent() {
     location.pathname === '/settings' ||
     location.pathname.startsWith('/settings/') ||
     location.pathname === '/dashboard/settings' ||
-    location.pathname.startsWith('/dashboard/settings/');
+    location.pathname.startsWith('/dashboard/settings/') ||
+    location.pathname === '/dashboard/plan' ||
+    location.pathname === '/dashboard/plans' ||
+    location.pathname === '/plans' ||
+    location.pathname === '/plan' ||
+    location.pathname === '/wallet' ||
+    location.pathname === '/checkout';
 
   const searchParams = new URLSearchParams(location.search);
   const isInsideChatScreen =

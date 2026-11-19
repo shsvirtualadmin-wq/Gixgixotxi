@@ -1,5 +1,6 @@
 import { auth } from '../lib/firebase';
 import { signInWithCustomToken } from 'firebase/auth';
+import { recordRequestTiming } from '../utils/userStateSource';
 
 const SESSION_ID_STORAGE_KEY = 'boardly_active_session_id_v1';
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -137,6 +138,8 @@ async function fetchWithTimeout(
   const { requireAuth = true, timeoutMs = DEFAULT_TIMEOUT_MS, headers: rawHeaders, ...rest } = init;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const label = `api:${url.split('?')[0]}`;
 
   try {
     const headers = new Headers(rawHeaders || {});
@@ -160,6 +163,9 @@ async function fetchWithTimeout(
       signal: controller.signal,
     });
 
+    const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt;
+    recordRequestTiming(label, elapsed, res.ok ? 'ok' : 'error');
+
     if (res.status === 401) {
       const clone = res.clone();
       const data = await clone.json().catch(() => null);
@@ -174,9 +180,12 @@ async function fetchWithTimeout(
 
     return res;
   } catch (err: any) {
+    const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt;
     if (err?.name === 'AbortError') {
+      recordRequestTiming(label, elapsed, 'timeout');
       throw new Error('Request timed out. Please try again.');
     }
+    recordRequestTiming(label, elapsed, 'error');
     throw err;
   } finally {
     clearTimeout(timer);

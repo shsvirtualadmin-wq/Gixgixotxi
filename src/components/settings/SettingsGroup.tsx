@@ -31,7 +31,10 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
       {label && (
         <h2
           className="mb-2 pl-4 text-[14px] font-medium leading-snug"
-          style={{ color: 'var(--text-muted)' }}
+          style={{
+            color: 'var(--text-muted)',
+            fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+          }}
         >
           {label}
         </h2>

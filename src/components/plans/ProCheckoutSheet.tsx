@@ -1,26 +1,24 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useBodyScrollLock } from '@/utils/scrollLock';
 import {
-  X,
-  Zap,
-  Check,
-  Copy,
-  CheckCircle2,
   AlertCircle,
   ArrowRight,
-  Sparkles,
-  ShieldCheck,
+  Check,
+  CheckCircle2,
   Clock,
+  Copy,
   CreditCard,
+  Sparkles,
+  Tag,
+  Zap,
 } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
-import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
+import { SettingsSheet } from '@/components/settings/SettingsSheet';
 import {
   PLANS,
   REFUND_POLICY_TEXT,
@@ -41,7 +39,6 @@ import {
   redeemProCoupon,
   type ValidatedProCoupon,
 } from '@/services/proSubscriptionService';
-import { Tag } from 'lucide-react';
 
 export interface ProCheckoutSheetProps {
   open: boolean;
@@ -50,7 +47,8 @@ export interface ProCheckoutSheetProps {
   uid?: string | null;
   userEmail?: string | null;
   userName?: string | null;
-  kobanBalance: number;
+  kobanBalance: number | null;
+  balanceLoaded?: boolean;
   currentProExpiresAt?: unknown;
   hasPendingProRequest?: boolean;
   onOpenGetKobans: (neededAmount?: number) => void;
@@ -64,7 +62,9 @@ export interface ProCheckoutSheetProps {
 }
 
 /**
- * Dedicated Boardly Pro Checkout Sheet (Bottom Sheet).
+ * Boardly Pro Checkout Sheet built on SettingsSheet.
+ * Preserves Monthly/Annual switching, Kobans instant payment, JazzCash/Opay manual TID payment,
+ * coupon validation/redemption, no-refund terms, and active/pending purchase lock.
  */
 export function ProCheckoutSheet({
   open,
@@ -74,19 +74,18 @@ export function ProCheckoutSheet({
   userEmail,
   userName,
   kobanBalance,
+  balanceLoaded = true,
   currentProExpiresAt,
   hasPendingProRequest = false,
   onOpenGetKobans,
   onSuccess,
   onStartPracticing,
 }: ProCheckoutSheetProps) {
-  const { isDark } = useTheme();
   const { isGuest } = useAuth();
   const { planStatus, refreshPlanStatus } = useEffectivePlan();
-  const isLight = !isDark;
 
   const [selectedPlanId, setSelectedPlanId] = useState<ProPlanId>(initialPlanId);
-  const [paymentOption, setPaymentOption] = useState<'kobans' | 'pkr'>('kobans');
+  const [paymentOption, setPaymentOption] = useState<'kobans' | 'pkr' | null>(null);
   const [selectedPkrMethod, setSelectedPkrMethod] = useState<PaymentMethodId>('jazzcash');
   const [tidInput, setTidInput] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -116,6 +115,8 @@ export function ProCheckoutSheet({
 
   const kobanBalanceRef = useRef(kobanBalance);
   kobanBalanceRef.current = kobanBalance;
+  const balanceLoadedRef = useRef(balanceLoaded);
+  balanceLoadedRef.current = balanceLoaded;
 
   // Reset state when sheet opens or initialPlanId changes
   useEffect(() => {
@@ -123,23 +124,42 @@ export function ProCheckoutSheet({
       refreshPlanStatus().catch(() => {});
       const resolvedPlan = getProPlanById(initialPlanId);
       setSelectedPlanId(resolvedPlan.id);
-      setPaymentOption(kobanBalanceRef.current >= resolvedPlan.price_kobans ? 'kobans' : 'pkr');
+      const currentBal = kobanBalanceRef.current;
+      if (balanceLoadedRef.current && currentBal !== null && currentBal >= resolvedPlan.price_kobans) {
+        setPaymentOption('kobans');
+      } else {
+        setPaymentOption('pkr');
+      }
       setTidInput('');
       setErrorMsg(null);
       setCouponInput('');
       setCouponError(null);
       setAppliedCoupon(null);
       setCompletedState(null);
-      setIdempotencyKey(`pro_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+      setIdempotencyKey(
+        `pro_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      );
     }
   }, [open, initialPlanId, refreshPlanStatus]);
 
-  // Update idempotencyKey when user switches plan inside the sheet (and re-validate active coupon)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (open) {
+      document.body.setAttribute('data-pro-checkout-open', 'true');
+      return () => {
+        document.body.removeAttribute('data-pro-checkout-open');
+      };
+    }
+    document.body.removeAttribute('data-pro-checkout-open');
+  }, [open]);
+
   const handleSelectPlan = async (nextPlanId: ProPlanId) => {
     if (submitting) return;
     setSelectedPlanId(nextPlanId);
     setErrorMsg(null);
-    setIdempotencyKey(`pro_chk_${nextPlanId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    setIdempotencyKey(
+      `pro_chk_${nextPlanId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    );
     if (appliedCoupon?.code) {
       setCouponLoading(true);
       try {
@@ -176,6 +196,8 @@ export function ProCheckoutSheet({
       setCouponInput(validated.code);
       if (
         !validated.isFreeActivation &&
+        balanceLoadedRef.current &&
+        kobanBalanceRef.current !== null &&
         kobanBalanceRef.current >= validated.finalKobans &&
         paymentOption === 'pkr' &&
         !tidInput.trim()
@@ -196,26 +218,13 @@ export function ProCheckoutSheet({
     setCouponError(null);
   };
 
-  // Lock body scroll & hide floating bottom nav while ProCheckoutSheet is open
-  useBodyScrollLock(open && !isGuest, 'pro-checkout-sheet');
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (open) {
-      document.body.setAttribute('data-pro-checkout-open', 'true');
-      return () => {
-        document.body.removeAttribute('data-pro-checkout-open');
-      };
-    } else {
-      document.body.removeAttribute('data-pro-checkout-open');
-    }
-  }, [open]);
-
   const plan = useMemo(() => getProPlanById(selectedPlanId), [selectedPlanId]);
   const effectiveDurationDays = appliedCoupon?.durationDays || plan.duration_days;
   const effectivePkr = appliedCoupon ? appliedCoupon.finalPkr : plan.price_pkr;
   const effectiveKobans = appliedCoupon ? appliedCoupon.finalKobans : plan.price_kobans;
   const isFreeCouponActivation = Boolean(
-    appliedCoupon && (appliedCoupon.isFreeActivation || (effectivePkr === 0 && effectiveKobans === 0))
+    appliedCoupon &&
+      (appliedCoupon.isFreeActivation || (effectivePkr === 0 && effectiveKobans === 0))
   );
 
   const expiryPreview = useMemo(
@@ -223,10 +232,11 @@ export function ProCheckoutSheet({
     [currentProExpiresAt, effectiveDurationDays]
   );
 
-  const safeBalance = Math.max(0, Math.floor(Number(kobanBalance) || 0));
-  const hasEnoughKobans = safeBalance >= effectiveKobans;
-  const neededKobans = Math.max(0, effectiveKobans - safeBalance);
-  const balanceAfterKobans = Math.max(0, safeBalance - effectiveKobans);
+  const isBalanceReady = balanceLoaded && kobanBalance !== null;
+  const safeBalance = isBalanceReady ? Math.max(0, Math.floor(kobanBalance)) : 0;
+  const hasEnoughKobans = isBalanceReady && safeBalance >= effectiveKobans;
+  const neededKobans = isBalanceReady ? Math.max(0, effectiveKobans - safeBalance) : 0;
+  const balanceAfterKobans = isBalanceReady ? Math.max(0, safeBalance - effectiveKobans) : 0;
 
   const activePkrConfig = useMemo(
     () =>
@@ -235,28 +245,27 @@ export function ProCheckoutSheet({
     [selectedPkrMethod]
   );
 
-  if (!open) return null;
-
-  if (isGuest) {
+  if (open && isGuest) {
     return <GuestProBlockedView variant="sheet" onClose={onClose} />;
   }
 
-  const surfaceBg = isLight ? '#FFFFFF' : '#0F0F14';
-  const cardBg = isLight ? '#F7F7FA' : '#16161E';
-  const elevatedBg = isLight ? '#EFEFF5' : '#1C1C26';
-  const borderCol = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.10)';
-  const textPrimary = isLight ? '#111118' : '#F5F5FA';
-  const textMuted = isLight ? '#5A5A6E' : '#9CA3AF';
-
   const handleCopy = (value: string, label: string) => {
-    navigator.clipboard.writeText(value);
+    void navigator.clipboard?.writeText(value);
     setCopiedField(label);
-    setTimeout(() => setCopiedField(null), 1800);
+    window.setTimeout(() => setCopiedField(null), 1800);
   };
 
   const isLocked =
     !completedState &&
     (planStatus.state === 'active' || planStatus.state === 'pending' || hasPendingProRequest);
+
+  const cleanTid = tidInput.trim();
+  const isSubmitDisabled =
+    submitting ||
+    (!isFreeCouponActivation &&
+      (!paymentOption ||
+        (paymentOption === 'kobans' && !hasEnoughKobans) ||
+        (paymentOption === 'pkr' && (hasPendingProRequest || cleanTid.length < 5))));
 
   const handlePrimarySubmit = async () => {
     if (!uid) {
@@ -267,7 +276,7 @@ export function ProCheckoutSheet({
     if (planStatus.state === 'active') {
       setErrorMsg(
         planStatus.blockReason ||
-          `You already have Boardly Pro (${planStatus.planName}) active until ${planStatus.expiryFormatted}. You can purchase again after your current plan expires.`
+          `You already have Boardly Pro (${planStatus.planName}) active until ${planStatus.expiryFormatted}. You can renew after your current plan expires.`
       );
       return;
     }
@@ -317,6 +326,11 @@ export function ProCheckoutSheet({
       return;
     }
 
+    if (!paymentOption) {
+      setErrorMsg('Choose a payment method to continue.');
+      return;
+    }
+
     if (paymentOption === 'kobans') {
       if (!hasEnoughKobans) {
         setErrorMsg(
@@ -360,17 +374,8 @@ export function ProCheckoutSheet({
         setSubmitting(false);
       }
     } else {
-      // Pay with PKR (JazzCash / Opay)
-      if (hasPendingProRequest) {
-        setErrorMsg(
-          'You already have a pending Pro pass request awaiting manual verification. We verify payments and activate plans within 24 hours.'
-        );
-        return;
-      }
-
-      const cleanTid = tidInput.trim();
       if (cleanTid.length < 5) {
-        setErrorMsg('Please enter your valid Transaction ID (TID) from your JazzCash / Opay receipt.');
+        setErrorMsg('Please enter your Transaction ID (at least 5 characters) from your receipt.');
         return;
       }
 
@@ -410,820 +415,701 @@ export function ProCheckoutSheet({
     }
   };
 
-  return (
-    <div
-      data-fullscreen-modal="true"
-      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="pro-checkout-title"
-    >
-      {/* 1. Backdrop Layer ONLY has blur */}
-      <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-200"
-        onClick={() => !submitting && onClose()}
-        aria-hidden="true"
-      />
-
-      {/* 2. Solid Opaque Bottom Sheet / Modal Surface (NO backdrop-filter on sheet or children) */}
-      <div
-        style={{
-          backgroundColor: surfaceBg,
-          borderColor: borderCol,
-          color: textPrimary,
-          backdropFilter: 'none',
-          WebkitBackdropFilter: 'none',
-        }}
-        className="relative z-10 w-full sm:max-w-[500px] max-h-[92dvh] rounded-t-[28px] sm:rounded-[28px] border flex flex-col shadow-[0_-16px_48px_rgba(0,0,0,0.45)] overflow-hidden transition-transform duration-200 motion-reduce:transition-none"
+  const footerNode =
+    !completedState && !isLocked ? (
+      <button
+        type="button"
+        disabled={isSubmitDisabled}
+        onClick={() => void handlePrimarySubmit()}
+        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white transition-opacity disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+        style={{ backgroundColor: 'var(--accent)' }}
       >
-        {/* Drag Handle (Mobile) */}
-        <div className="pt-2.5 pb-1 flex justify-center sm:hidden shrink-0">
-          <div
-            style={{ backgroundColor: isLight ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.18)' }}
-            className="w-10 h-1 rounded-full"
-          />
-        </div>
+        {submitting ? (
+          <ButtonLineLoader label="Processing…" />
+        ) : isFreeCouponActivation ? (
+          <>
+            <Sparkles className="h-4 w-4 shrink-0" />
+            <span>Activate Pro Pass Free ({appliedCoupon?.code})</span>
+          </>
+        ) : paymentOption === 'kobans' ? (
+          <>
+            <Zap className="h-4 w-4 shrink-0" />
+            <span>Pay with Kobans ({effectiveKobans.toLocaleString()} Kobans)</span>
+          </>
+        ) : (
+          <>
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>Submit payment for verification</span>
+          </>
+        )}
+      </button>
+    ) : undefined;
 
-        {/* Sticky Header */}
-        <div
-          style={{ backgroundColor: surfaceBg, borderColor: borderCol }}
-          className="px-5 py-3.5 border-b flex items-center justify-between gap-3 shrink-0"
-        >
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#E8342A]/15 text-[#E8342A]">
-                <Zap size={14} />
-              </span>
-              <h2
-                id="pro-checkout-title"
-                style={{ color: textPrimary }}
-                className="font-heading font-bold text-base sm:text-lg truncate"
-              >
-                {plan.name}
-              </h2>
-            </div>
-            <p style={{ color: textMuted }} className="text-xs mt-0.5">
-              Unlock unlimited mock tests, AI derivations &amp; full analytics
-            </p>
+  return (
+    <SettingsSheet
+      open={open}
+      onClose={() => {
+        if (!submitting) onClose();
+      }}
+      title={plan.name}
+      showCloseButton
+      footer={footerNode}
+    >
+      {completedState ? (
+        <div className="space-y-4 py-2 text-center">
+          <div
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full"
+            style={{
+              backgroundColor: 'rgba(16, 185, 129, 0.14)',
+              color: '#10b981',
+            }}
+          >
+            <CheckCircle2 className="h-7 w-7" />
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            aria-label="Close Pro checkout"
-            style={{
-              backgroundColor: cardBg,
-              borderColor: borderCol,
-              color: textPrimary,
-            }}
-            className="w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
-          >
-            <X size={18} />
-          </button>
-        </div>
+          {completedState.mode === 'kobans' ? (
+            <div className="space-y-2">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Instant activation
+              </span>
+              <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
+                Pro activated until {completedState.newExpiryLabel}
+              </h3>
+              <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                {completedState.wasExtension && completedState.previousExpiryLabel
+                  ? `Extended from ${completedState.previousExpiryLabel} to ${completedState.newExpiryLabel}.`
+                  : `Your ${completedState.planName} (${completedState.durationDays} days) is now active.`}
+              </p>
 
-        {/* Scrollable Sheet Body */}
-        <div className="px-5 py-4 overflow-y-auto space-y-4 flex-1">
-          {completedState ? (
-            /* ─── SUCCESS STATE ─────────────────────────────────────────────────── */
-            <div className="py-4 space-y-5 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-500 flex items-center justify-center mx-auto">
-                <CheckCircle2 size={30} />
-              </div>
-
-              {completedState.mode === 'kobans' ? (
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-500 font-mono text-[11px] font-bold uppercase tracking-wider">
-                    <Sparkles size={12} />
-                    <span>Instant Activation</span>
+              <div
+                className="mt-3 space-y-2 rounded-[24px] p-4 text-left text-[14px]"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span style={{ color: 'var(--text-muted)' }}>Kobans spent</span>
+                  <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
+                    -{(completedState.kobansSpent ?? 0).toLocaleString()} Kobans
                   </span>
-                  <h3
-                    style={{ color: textPrimary }}
-                    className="font-heading font-extrabold text-xl sm:text-2xl"
-                  >
-                    Pro activated until {completedState.newExpiryLabel}
-                  </h3>
-                  <p style={{ color: textMuted }} className="text-xs sm:text-sm max-w-sm mx-auto">
-                    {completedState.wasExtension && completedState.previousExpiryLabel
-                      ? `Your Boardly Pro pass was extended from ${completedState.previousExpiryLabel} to ${completedState.newExpiryLabel}.`
-                      : `Your ${completedState.planName} (${completedState.durationDays} days) is now active on your account.`}
-                  </p>
-
-                  <div
-                    style={{ backgroundColor: cardBg, borderColor: borderCol }}
-                    className="rounded-2xl border p-3.5 text-left space-y-2 max-w-sm mx-auto mt-3"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <span style={{ color: textMuted }}>Kobans Spent</span>
-                      <span className="font-mono font-bold text-[#E8342A]">
-                        -{(completedState.kobansSpent ?? 0).toLocaleString()} Kobans
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span style={{ color: textMuted }}>Remaining Balance</span>
-                      <span
-                        style={{ color: textPrimary }}
-                        className="font-mono font-bold inline-flex items-center gap-1"
-                      >
-                        <KobanIcon size={12} />
-                        <span>{(completedState.balanceAfter ?? 0).toLocaleString()} Kobans</span>
-                      </span>
-                    </div>
-                  </div>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-500 font-mono text-[11px] font-bold uppercase tracking-wider">
-                    <Clock size={12} />
-                    <span>Verification Queued</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span style={{ color: 'var(--text-muted)' }}>Remaining balance</span>
+                  <span className="inline-flex items-center gap-1 font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
+                    <KobanIcon size={14} decorative />
+                    <span>{(completedState.balanceAfter ?? 0).toLocaleString()} Kobans</span>
                   </span>
-                  <h3
-                    style={{ color: textPrimary }}
-                    className="font-heading font-extrabold text-xl sm:text-2xl"
-                  >
-                    Request received — verified within 24 hours
-                  </h3>
-                  <p style={{ color: textMuted }} className="text-xs sm:text-sm max-w-sm mx-auto">
-                    We received your PKR {completedState.pkrAmount?.toLocaleString()} payment
-                    reference (TID:{' '}
-                    <strong style={{ color: textPrimary }} className="font-mono">
-                      {completedState.tid}
-                    </strong>
-                    ) for {completedState.planName}. Payments are verified manually and your plan
-                    will be activated within 24 hours.
-                  </p>
                 </div>
-              )}
-
-              <div className="pt-2">
-                {completedState.mode === 'kobans' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onStartPracticing?.();
-                    }}
-                    style={{ backgroundColor: '#E8342A', color: '#FFFFFF' }}
-                    className="w-full min-h-[48px] rounded-xl font-heading font-bold text-sm inline-flex items-center justify-center gap-2 shadow-[0_8px_24px_rgba(232,52,42,0.3)] cursor-pointer"
-                  >
-                    <span className="text-[#FFFFFF]">Start practicing</span>
-                    <ArrowRight size={16} className="text-[#FFFFFF]" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    style={{ backgroundColor: '#E8342A', color: '#FFFFFF' }}
-                    className="w-full min-h-[48px] rounded-xl font-heading font-bold text-sm inline-flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <span className="text-[#FFFFFF]">Done</span>
-                  </button>
-                )}
               </div>
-            </div>
-          ) : isLocked ? (
-            /* ─── LOCKED STATE (ACTIVE PRO OR PENDING VERIFICATION) ─────────────── */
-            <div className="py-2 space-y-4">
-              <ProLockedStateCard planStatus={planStatus} compact />
             </div>
           ) : (
-            /* ─── CHECKOUT FORM ─────────────────────────────────────────────────── */
-            <>
-              {/* Plan Duration Switcher (Monthly 30d vs Annual 365d) */}
-              <div
-                style={{ backgroundColor: cardBg, borderColor: borderCol }}
-                className="grid grid-cols-2 gap-1.5 p-1.5 rounded-2xl border"
+            <div className="space-y-2">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{ backgroundColor: 'var(--koban-bg)', color: 'var(--koban)' }}
               >
-                {(['pro_monthly', 'pro_annual'] as ProPlanId[]).map((pid) => {
-                  const p = PLANS[pid];
-                  const active = selectedPlanId === pid;
-                  return (
-                    <button
-                      key={pid}
-                      type="button"
-                      onClick={() => handleSelectPlan(pid)}
-                      style={{
-                        backgroundColor: active ? surfaceBg : 'transparent',
-                        borderColor: active ? '#E8342A' : 'transparent',
-                        color: textPrimary,
-                      }}
-                      className={`min-h-[44px] px-3 py-2 rounded-xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between gap-1.5 ${
-                        active ? 'shadow-sm' : 'opacity-75 hover:opacity-100'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="font-heading font-bold text-xs truncate">
-                          {pid === 'pro_annual' ? 'Annual Pass' : 'Monthly Pass'}
-                        </div>
-                        <div style={{ color: textMuted }} className="font-mono text-[10px]">
-                          PKR {p.price_pkr.toLocaleString()} · {p.duration_days}d
-                        </div>
-                      </div>
-                      {pid === 'pro_annual' && (
-                        <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#E8342A]/15 text-[#E8342A] shrink-0">
-                          -{ANNUAL_SAVINGS_PERCENT}%
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* 1. Summary Card */}
-              <div
-                style={{ backgroundColor: cardBg, borderColor: borderCol }}
-                className="rounded-2xl border p-4 space-y-2.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <span
-                      style={{ color: textMuted }}
-                      className="font-mono text-[10px] uppercase tracking-wider block"
-                    >
-                      Selected Pass
-                    </span>
-                    <span
-                      style={{ color: textPrimary }}
-                      className="font-heading font-bold text-sm sm:text-base"
-                    >
-                      {plan.name}
-                    </span>
-                  </div>
-                  <span
-                    style={{ backgroundColor: elevatedBg, borderColor: borderCol, color: textPrimary }}
-                    className="font-mono text-xs font-bold px-2.5 py-1 rounded-lg border"
-                  >
-                    {effectiveDurationDays} days
-                  </span>
-                </div>
-
-                <div
-                  style={{ borderColor: borderCol }}
-                  className="pt-2 border-t flex items-center justify-between gap-2 flex-wrap"
-                >
-                  <span style={{ color: textMuted }} className="text-xs">
-                    Price &amp; Koban Equivalent
-                  </span>
-                  <span
-                    style={{ color: textPrimary }}
-                    className="font-mono text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 flex-wrap justify-end"
-                  >
-                    {appliedCoupon && effectivePkr < plan.price_pkr && (
-                      <span style={{ color: textMuted }} className="line-through text-[11px] font-normal">
-                        PKR {plan.price_pkr.toLocaleString()}
-                      </span>
-                    )}
-                    <span>PKR {effectivePkr.toLocaleString()}</span>
-                    <span style={{ color: textMuted }}>=</span>
-                    <span className="inline-flex items-center gap-1 text-[#D97706] dark:text-[#FFD66B]">
-                      <KobanIcon size={13} />
-                      <span>{effectiveKobans.toLocaleString()} Kobans</span>
-                    </span>
-                  </span>
-                </div>
-
-                {appliedCoupon && (
-                  <div
-                    style={{ borderColor: borderCol }}
-                    className="pt-2 border-t flex items-center justify-between gap-2 flex-wrap"
-                  >
-                    <span className="text-xs font-semibold text-emerald-500 inline-flex items-center gap-1">
-                      <Tag size={12} />
-                      <span>Coupon Applied ({appliedCoupon.code})</span>
-                    </span>
-                    <span className="font-mono text-xs font-bold text-emerald-500">
-                      -{(appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0)}% OFF ({appliedCoupon.label})
-                    </span>
-                  </div>
-                )}
-
-                <div
-                  style={{ borderColor: borderCol }}
-                  className="pt-2 border-t flex items-center justify-between gap-2 flex-wrap"
-                >
-                  <span style={{ color: textMuted }} className="text-xs">
-                    {expiryPreview.wasAlreadyActive ? 'Pro Extension' : 'New Expiry Date'}
-                  </span>
-                  <span className="font-mono text-xs font-semibold text-emerald-500">
-                    {expiryPreview.wasAlreadyActive && expiryPreview.previousExpiryLabel
-                      ? `Extends your Pro from ${expiryPreview.previousExpiryLabel} to ${expiryPreview.newExpiryLabel}`
-                      : `Active until ${expiryPreview.newExpiryLabel}`}
-                  </span>
-                </div>
-              </div>
-
-              {/* 1B. Promo / Coupon Code Input */}
-              <div
-                style={{ backgroundColor: cardBg, borderColor: borderCol }}
-                className="rounded-2xl border p-3.5 space-y-2"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor="pro-coupon-input"
-                    style={{ color: textMuted }}
-                    className="font-mono text-[10px] uppercase tracking-wider inline-flex items-center gap-1.5"
-                  >
-                    <Tag size={11} className="text-[#E8342A]" />
-                    <span>Have a Coupon or Promo Code?</span>
-                  </label>
-                  {appliedCoupon && (
-                    <button
-                      type="button"
-                      onClick={handleClearCoupon}
-                      disabled={submitting || couponLoading}
-                      className="font-mono text-[11px] font-semibold text-red-500 hover:underline cursor-pointer"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    id="pro-coupon-input"
-                    type="text"
-                    value={couponInput}
-                    disabled={Boolean(appliedCoupon) || couponLoading || submitting}
-                    onChange={(e) => {
-                      setCouponInput(e.target.value.toUpperCase());
-                      if (couponError) setCouponError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !appliedCoupon && !couponLoading) {
-                        e.preventDefault();
-                        handleApplyCoupon();
-                      }
-                    }}
-                    placeholder="e.g. BOARDLY50"
-                    style={{
-                      backgroundColor: surfaceBg,
-                      borderColor: appliedCoupon
-                        ? 'rgba(16, 185, 129, 0.5)'
-                        : couponError
-                        ? 'rgba(239, 68, 68, 0.5)'
-                        : borderCol,
-                      color: textPrimary,
-                    }}
-                    className="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl border font-mono text-xs uppercase focus:outline-none focus:border-[#E8342A] disabled:opacity-70"
-                  />
-                  {!appliedCoupon ? (
-                    <button
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      disabled={couponLoading || submitting || !couponInput.trim()}
-                      style={{
-                        backgroundColor: elevatedBg,
-                        borderColor: borderCol,
-                        color: textPrimary,
-                      }}
-                      className="min-h-[40px] px-3.5 py-1.5 rounded-xl border font-heading font-bold text-xs shrink-0 hover:border-[#E8342A] disabled:opacity-50 cursor-pointer"
-                    >
-                      {couponLoading ? 'Checking...' : 'Apply'}
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-500/15 text-emerald-500 font-mono text-xs font-bold shrink-0">
-                      <Check size={13} />
-                      <span>Applied</span>
-                    </span>
-                  )}
-                </div>
-
-                {couponError && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-red-500 pt-0.5">
-                    <AlertCircle size={13} className="shrink-0" />
-                    <span>{couponError}</span>
-                  </div>
-                )}
-
-                {appliedCoupon && (
-                  <p className="text-[11px] text-emerald-500 font-medium">
-                    {isFreeCouponActivation
-                      ? `100% discount applied! Click "Activate Pro Pass Free" below to unlock ${effectiveDurationDays} days of Boardly Pro immediately.`
-                      : `Discount applied: Price reduced to PKR ${effectivePkr.toLocaleString()} (${effectiveKobans.toLocaleString()} Kobans).`}
-                  </p>
-                )}
-              </div>
-
-              {/* 2. Payment Method Section (hidden when 100% Free Coupon is active) */}
-              {!isFreeCouponActivation && (
-                <div className="space-y-2.5">
-                  <label
-                    style={{ color: textMuted }}
-                    className="block font-mono text-[10px] uppercase tracking-wider"
-                  >
-                    Select Payment Method
-                  </label>
-
-                  {/* Option A: Pay with Kobans */}
-                  <div
-                    onClick={() => {
-                      if (hasEnoughKobans && !submitting) {
-                        setPaymentOption('kobans');
-                        setErrorMsg(null);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if ((e.key === 'Enter' || e.key === ' ') && hasEnoughKobans && !submitting) {
-                        e.preventDefault();
-                        setPaymentOption('kobans');
-                        setErrorMsg(null);
-                      }
-                    }}
-                    aria-disabled={!hasEnoughKobans}
-                    style={{
-                      backgroundColor: cardBg,
-                      borderColor:
-                        paymentOption === 'kobans' && hasEnoughKobans ? '#E8342A' : borderCol,
-                    }}
-                    className={`rounded-2xl border p-3.5 transition-all duration-150 ${
-                      hasEnoughKobans
-                        ? 'cursor-pointer'
-                        : 'opacity-90 cursor-not-allowed'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        <div
-                          style={{
-                            borderColor:
-                              paymentOption === 'kobans' && hasEnoughKobans ? '#E8342A' : borderCol,
-                            backgroundColor:
-                              paymentOption === 'kobans' && hasEnoughKobans
-                                ? '#E8342A'
-                                : 'transparent',
-                          }}
-                          className="w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5"
-                        >
-                          {paymentOption === 'kobans' && hasEnoughKobans && (
-                            <Check size={12} className="text-[#FFFFFF]" strokeWidth={3} />
-                          )}
-                        </div>
-
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              style={{ color: textPrimary }}
-                              className="font-heading font-bold text-sm"
-                            >
-                              Pay with Kobans
-                            </span>
-                            <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500 font-bold">
-                              Instant
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-3 flex-wrap text-xs">
-                            <span style={{ color: textMuted }}>
-                              Your balance:{' '}
-                              <strong style={{ color: textPrimary }} className="font-mono">
-                                {safeBalance.toLocaleString()} Kobans
-                              </strong>
-                            </span>
-                            {hasEnoughKobans && (
-                              <span style={{ color: textMuted }}>
-                                Balance after:{' '}
-                                <strong className="font-mono text-emerald-500">
-                                  {balanceAfterKobans.toLocaleString()} Kobans
-                                </strong>
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <span
-                        style={{ color: textPrimary }}
-                        className="font-mono text-xs font-bold inline-flex items-center gap-1 shrink-0"
-                      >
-                        <KobanIcon size={13} />
-                        <span>{effectiveKobans.toLocaleString()}</span>
-                      </span>
-                    </div>
-
-                    {/* Low balance state with "You need N more Kobans" + "Get Kobans" button */}
-                    {!hasEnoughKobans && (
-                      <div
-                        style={{ backgroundColor: elevatedBg, borderColor: borderCol }}
-                        className="mt-3 pt-2.5 px-3 pb-2.5 rounded-xl border flex items-center justify-between gap-2 flex-wrap"
-                      >
-                        <span className="text-xs font-medium text-amber-500">
-                          You need <strong>{neededKobans.toLocaleString()}</strong> more Kobans
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenGetKobans(Math.max(500, Math.ceil(neededKobans / 100) * 100));
-                          }}
-                          style={{ backgroundColor: '#E8342A', color: '#FFFFFF' }}
-                          className="min-h-[36px] px-3 py-1.5 rounded-lg font-heading font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <KobanIcon size={12} />
-                          <span className="text-[#FFFFFF]">Get Kobans</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Option B: Pay with JazzCash / Opay (PKR) */}
-                  <div
-                    onClick={() => {
-                      if (!submitting) {
-                        setPaymentOption('pkr');
-                        setErrorMsg(null);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if ((e.key === 'Enter' || e.key === ' ') && !submitting) {
-                        e.preventDefault();
-                        setPaymentOption('pkr');
-                        setErrorMsg(null);
-                      }
-                    }}
-                    style={{
-                      backgroundColor: cardBg,
-                      borderColor: paymentOption === 'pkr' ? '#E8342A' : borderCol,
-                    }}
-                    className="rounded-2xl border p-3.5 transition-all duration-150 cursor-pointer space-y-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        <div
-                          style={{
-                            borderColor: paymentOption === 'pkr' ? '#E8342A' : borderCol,
-                            backgroundColor: paymentOption === 'pkr' ? '#E8342A' : 'transparent',
-                          }}
-                          className="w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5"
-                        >
-                          {paymentOption === 'pkr' && (
-                            <Check size={12} className="text-[#FFFFFF]" strokeWidth={3} />
-                          )}
-                        </div>
-
-                        <div className="space-y-0.5 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              style={{ color: textPrimary }}
-                              className="font-heading font-bold text-sm"
-                            >
-                              Pay with {PAYMENT_METHODS_PAIR_LABEL} (PKR)
-                            </span>
-                          </div>
-                          <p style={{ color: textMuted }} className="text-xs">
-                            Send exact PKR amount &amp; submit Transaction ID (manually verified &amp; activated within 24 hours)
-                          </p>
-                        </div>
-                      </div>
-
-                      <span
-                        style={{ color: textPrimary }}
-                        className="font-mono text-xs font-bold shrink-0"
-                      >
-                        PKR {effectivePkr.toLocaleString()}
-                      </span>
-                    </div>
-
-                    {/* Expanded PKR Account Details & TID Input when Option B is selected */}
-                    {paymentOption === 'pkr' && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ borderColor: borderCol }}
-                        className="pt-3 border-t space-y-3 cursor-default"
-                      >
-                        {/* Method selector: JazzCash vs Opay */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {PAYMENT_METHODS_LIST.map((m) => {
-                            const isSelected = selectedPkrMethod === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => setSelectedPkrMethod(m.id)}
-                                style={{
-                                  backgroundColor: isSelected ? surfaceBg : elevatedBg,
-                                  borderColor: isSelected ? '#E8342A' : borderCol,
-                                  color: textPrimary,
-                                }}
-                                className="min-h-[44px] px-3 py-2 rounded-xl border font-heading font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                <CreditCard size={13} className="text-[#E8342A]" />
-                                <span>{m.displayName}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Account Number & Title with Copy Buttons */}
-                        <div
-                          style={{ backgroundColor: surfaceBg, borderColor: borderCol }}
-                          className="rounded-xl border p-3 space-y-2 text-xs"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span style={{ color: textMuted }}>Send Exact Amount</span>
-                            <span
-                              style={{ color: textPrimary }}
-                              className="font-mono font-bold text-sm text-[#E8342A]"
-                            >
-                              PKR {effectivePkr.toLocaleString()}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-2">
-                            <span style={{ color: textMuted }}>
-                              {activePkrConfig.displayName} Account
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                style={{ color: textPrimary }}
-                                className="font-mono font-bold select-all"
-                              >
-                                {activePkrConfig.accountNumber}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleCopy(activePkrConfig.accountNumber, 'accountNumber')
-                                }
-                                style={{ backgroundColor: elevatedBg, borderColor: borderCol }}
-                                className="px-2 py-1 rounded-md border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer"
-                                title="Copy Account Number"
-                              >
-                                {copiedField === 'accountNumber' ? (
-                                  <>
-                                    <Check size={11} className="text-emerald-500" />
-                                    <span className="text-emerald-500">Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy size={11} />
-                                    <span>Copy</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-2">
-                            <span style={{ color: textMuted }}>Account Title</span>
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                style={{ color: textPrimary }}
-                                className="font-mono font-bold select-all"
-                              >
-                                {activePkrConfig.accountTitle}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleCopy(activePkrConfig.accountTitle, 'accountTitle')
-                                }
-                                style={{ backgroundColor: elevatedBg, borderColor: borderCol }}
-                                className="px-2 py-1 rounded-md border text-[11px] font-mono inline-flex items-center gap-1 cursor-pointer"
-                                title="Copy Account Title"
-                              >
-                                {copiedField === 'accountTitle' ? (
-                                  <>
-                                    <Check size={11} className="text-emerald-500" />
-                                    <span className="text-emerald-500">Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy size={11} />
-                                    <span>Copy</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Transaction ID (TID) Field */}
-                        <div className="space-y-1.5">
-                          <label
-                            htmlFor="pro-tid-input"
-                            style={{ color: textPrimary }}
-                            className="block font-heading font-semibold text-xs"
-                          >
-                            Transaction ID (TID / Reference Number)
-                          </label>
-                          <input
-                            id="pro-tid-input"
-                            type="text"
-                            value={tidInput}
-                            onChange={(e) => setTidInput(e.target.value)}
-                            placeholder="e.g. 04291847291"
-                            style={{
-                              backgroundColor: surfaceBg,
-                              borderColor: borderCol,
-                              color: textPrimary,
-                            }}
-                            className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border font-mono text-xs sm:text-sm focus:outline-none focus:border-[#E8342A]"
-                          />
-                          <p style={{ color: textMuted }} className="text-[11px] leading-relaxed">
-                            Send PKR {effectivePkr.toLocaleString()} to our{' '}
-                            {activePkrConfig.displayName} account ({activePkrConfig.accountNumber} ·{' '}
-                            {activePkrConfig.accountTitle}), then paste the SMS/app Transaction ID
-                            above.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Error Message */}
-              {errorMsg && (
-                <div className="rounded-xl bg-red-500/10 border border-red-500/35 p-3 flex items-start gap-2.5 text-xs text-red-500">
-                  <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
-
-              {/* Terms Line: REFUND_POLICY_TEXT + Terms & Privacy links */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-[11px]" style={{ color: textMuted }}>
-                  <ShieldCheck size={14} className="shrink-0 text-emerald-500" />
-                  <span>{REFUND_POLICY_TEXT}</span>
-                </div>
-                <p className="text-[11px] pl-5" style={{ color: textMuted }}>
-                  By completing your purchase, you agree to our{' '}
-                  <Link
-                    to="/terms"
-                    onClick={onClose}
-                    className="underline hover:text-[#E8342A]"
-                    style={{ color: textPrimary }}
-                  >
-                    Terms of Service
-                  </Link>{' '}
-                  and{' '}
-                  <Link
-                    to="/privacy"
-                    onClick={onClose}
-                    className="underline hover:text-[#E8342A]"
-                    style={{ color: textPrimary }}
-                  >
-                    Privacy Policy
-                  </Link>
-                  .
-                </p>
-              </div>
-            </>
+                <Clock className="h-3.5 w-3.5" />
+                Verification queued
+              </span>
+              <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
+                Request received
+              </h3>
+              <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                We received your PKR {completedState.pkrAmount?.toLocaleString()} payment reference
+                (TID: <strong style={{ color: 'var(--text)' }}>{completedState.tid}</strong>) for{' '}
+                {completedState.planName}. Payments are verified manually and plans are activated
+                within 24 hours.
+              </p>
+            </div>
           )}
-        </div>
 
-        {/* Sticky Footer CTA (only shown before completion and when not locked) */}
-        {!completedState && !isLocked && (
-          <div
-            style={{ backgroundColor: surfaceBg, borderColor: borderCol }}
-            className="px-5 py-3.5 border-t shrink-0"
-          >
-            <button
-              type="button"
-              disabled={
-                submitting ||
-                (!isFreeCouponActivation &&
-                  ((paymentOption === 'kobans' && !hasEnoughKobans) ||
-                    (paymentOption === 'pkr' && hasPendingProRequest)))
-              }
-              onClick={handlePrimarySubmit}
-              style={{
-                backgroundColor: '#E8342A',
-                color: '#FFFFFF',
-              }}
-              className="w-full min-h-[48px] px-5 py-3 rounded-xl font-heading font-bold text-sm inline-flex items-center justify-center gap-2 shadow-[0_8px_24px_rgba(232,52,42,0.3)] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer"
-            >
-              {submitting ? (
-                <ButtonLineLoader label="Processing..." />
-              ) : isFreeCouponActivation ? (
-                <>
-                  <Sparkles size={16} className="text-[#FFFFFF] shrink-0" />
-                  <span className="text-[#FFFFFF]">
-                    Activate Pro Pass Free ({appliedCoupon?.code})
-                  </span>
-                </>
-              ) : paymentOption === 'kobans' ? (
-                <>
-                  <Zap size={16} className="text-[#FFFFFF] shrink-0" />
-                  <span className="text-[#FFFFFF]">
-                    Pay with Kobans ({effectiveKobans.toLocaleString()} Kobans)
-                  </span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 size={16} className="text-[#FFFFFF] shrink-0" />
-                  <span className="text-[#FFFFFF]">Submit payment for verification</span>
-                </>
-              )}
-            </button>
+          <div className="pt-2">
+            {completedState.mode === 'kobans' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onStartPracticing?.();
+                }}
+                className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full text-[15px] font-semibold text-white cursor-pointer"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                <span>Start practicing</span>
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex min-h-[50px] w-full items-center justify-center rounded-full text-[15px] font-semibold text-white cursor-pointer"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                Done
+              </button>
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+      ) : isLocked ? (
+        <div className="py-1">
+          <ProLockedStateCard planStatus={planStatus} compact />
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* 1. Pass Switch (Monthly | Annual) */}
+          <div
+            role="tablist"
+            aria-label="Choose pass duration"
+            className="grid grid-cols-2 gap-1.5 rounded-full p-1.5"
+            style={{
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {(['pro_monthly', 'pro_annual'] as ProPlanId[]).map((pid) => {
+              const p = PLANS[pid];
+              const active = selectedPlanId === pid;
+              return (
+                <button
+                  key={pid}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => void handleSelectPlan(pid)}
+                  className="min-h-[44px] rounded-full px-3 text-[13px] font-semibold transition-colors cursor-pointer"
+                  style={
+                    active
+                      ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
+                      : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
+                  }
+                >
+                  {pid === 'pro_annual'
+                    ? `Annual (−${ANNUAL_SAVINGS_PERCENT}%) · PKR ${p.price_pkr.toLocaleString()}`
+                    : `Monthly · PKR ${p.price_pkr}`}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 2. Summary Card */}
+          <div
+            className="overflow-hidden rounded-[24px]"
+            style={{
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between gap-3 px-4 py-3.5"
+              style={{ borderBottom: '1px solid var(--border)' }}
+            >
+              <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                Price and Koban equivalent
+              </span>
+              <span
+                className="text-right text-[14px] font-semibold tabular-nums"
+                style={{ color: 'var(--text)' }}
+              >
+                {appliedCoupon && effectivePkr < plan.price_pkr && (
+                  <span
+                    className="mr-1.5 text-[12px] font-normal line-through"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    PKR {plan.price_pkr.toLocaleString()}
+                  </span>
+                )}
+                PKR {effectivePkr.toLocaleString()} ·{' '}
+                <span style={{ color: 'var(--koban)' }}>
+                  {effectiveKobans.toLocaleString()} Kobans
+                </span>
+              </span>
+            </div>
+
+            {appliedCoupon && (
+              <div
+                className="flex items-center justify-between gap-3 px-4 py-3"
+                style={{ borderBottom: '1px solid var(--border)' }}
+              >
+                <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <Tag className="h-3.5 w-3.5" />
+                  Coupon ({appliedCoupon.code})
+                </span>
+                <span className="text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  −{appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0}%
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+              <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                New expiry date
+              </span>
+              <span className="text-right text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
+                {expiryPreview.newExpiryLabel} ({effectiveDurationDays} days)
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Coupon Pill Input + Apply */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between px-1">
+              <label
+                htmlFor="pro-coupon-input"
+                className="text-[13px] font-medium"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Coupon code
+              </label>
+              {appliedCoupon && (
+                <button
+                  type="button"
+                  onClick={handleClearCoupon}
+                  disabled={submitting || couponLoading}
+                  className="text-[13px] font-medium underline cursor-pointer"
+                  style={{ color: 'var(--danger)' }}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="pro-coupon-input"
+                type="text"
+                value={couponInput}
+                disabled={Boolean(appliedCoupon) || couponLoading || submitting}
+                onChange={(e) => {
+                  setCouponInput(e.target.value.toUpperCase());
+                  if (couponError) setCouponError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !appliedCoupon && !couponLoading) {
+                    e.preventDefault();
+                    void handleApplyCoupon();
+                  }
+                }}
+                placeholder="Enter promo code"
+                className="h-[48px] min-w-0 flex-1 rounded-full px-4 text-[14px] uppercase outline-none placeholder:text-[var(--placeholder)] disabled:opacity-65"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: `1px solid ${couponError ? 'var(--danger-border)' : 'var(--border)'}`,
+                  color: 'var(--text)',
+                }}
+              />
+              {!appliedCoupon ? (
+                <button
+                  type="button"
+                  onClick={() => void handleApplyCoupon()}
+                  disabled={couponLoading || submitting || !couponInput.trim()}
+                  className="h-[48px] shrink-0 rounded-full px-5 text-[14px] font-semibold cursor-pointer disabled:opacity-45"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  {couponLoading ? 'Checking…' : 'Apply'}
+                </button>
+              ) : (
+                <span
+                  className="inline-flex h-[48px] shrink-0 items-center gap-1 rounded-full px-4 text-[13px] font-semibold"
+                  style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
+                >
+                  <Check className="h-4 w-4" />
+                  Applied
+                </span>
+              )}
+            </div>
+            {couponError && (
+              <p className="px-2 text-[12px]" style={{ color: 'var(--danger)' }}>
+                {couponError}
+              </p>
+            )}
+          </div>
+
+          {/* 4. Payment Method Radio Rows */}
+          {!isFreeCouponActivation && (
+            <div className="space-y-2.5">
+              <div className="px-1 text-[13px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                Payment method
+              </div>
+
+              {/* Option A: Pay with Kobans (Instant) */}
+              <div
+                role="radio"
+                aria-checked={paymentOption === 'kobans' && hasEnoughKobans}
+                aria-disabled={!hasEnoughKobans}
+                tabIndex={hasEnoughKobans ? 0 : -1}
+                onClick={() => {
+                  if (hasEnoughKobans && !submitting) {
+                    setPaymentOption('kobans');
+                    setErrorMsg(null);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && hasEnoughKobans && !submitting) {
+                    e.preventDefault();
+                    setPaymentOption('kobans');
+                    setErrorMsg(null);
+                  }
+                }}
+                className={`rounded-[24px] p-4 transition-colors ${
+                  hasEnoughKobans ? 'cursor-pointer' : 'opacity-80'
+                }`}
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border:
+                    paymentOption === 'kobans' && hasEnoughKobans
+                      ? '1.5px solid var(--accent)'
+                      : '1px solid var(--border)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span
+                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+                      style={{
+                        borderColor:
+                          paymentOption === 'kobans' && hasEnoughKobans
+                            ? 'var(--accent)'
+                            : 'var(--border)',
+                        backgroundColor:
+                          paymentOption === 'kobans' && hasEnoughKobans
+                            ? 'var(--accent)'
+                            : 'transparent',
+                      }}
+                    >
+                      {paymentOption === 'kobans' && hasEnoughKobans && (
+                        <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                      )}
+                    </span>
+
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
+                          Pay with Kobans
+                        </span>
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                          style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
+                        >
+                          Instant
+                        </span>
+                      </div>
+
+                      <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                        Your balance:{' '}
+                        {!isBalanceReady ? (
+                          <span
+                            className="inline-block h-3.5 w-14 align-middle animate-pulse rounded-full"
+                            style={{ backgroundColor: 'var(--skeleton)' }}
+                            aria-label="Loading Kobans balance"
+                          />
+                        ) : (
+                          <strong style={{ color: 'var(--text)' }}>
+                            {safeBalance.toLocaleString()} Kobans
+                          </strong>
+                        )}
+                        {hasEnoughKobans && (
+                          <span> · After: {balanceAfterKobans.toLocaleString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold tabular-nums"
+                    style={{ color: 'var(--koban)' }}
+                  >
+                    <KobanIcon size={14} decorative />
+                    {effectiveKobans.toLocaleString()}
+                  </span>
+                </div>
+
+                {isBalanceReady && !hasEnoughKobans && (
+                  <div
+                    className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl px-3.5 py-2.5"
+                    style={{
+                      backgroundColor: 'var(--card)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <span className="text-[13px] font-medium" style={{ color: 'var(--koban)' }}>
+                      You need {neededKobans.toLocaleString()} more Kobans
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenGetKobans(Math.max(500, Math.ceil(neededKobans / 100) * 100));
+                      }}
+                      className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold text-white cursor-pointer"
+                      style={{ backgroundColor: 'var(--accent)' }}
+                    >
+                      <KobanIcon size={13} decorative />
+                      <span>Get Kobans</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Option B: Pay with JazzCash / Opay */}
+              <div
+                role="radio"
+                aria-checked={paymentOption === 'pkr'}
+                tabIndex={0}
+                onClick={() => {
+                  if (!submitting) {
+                    setPaymentOption('pkr');
+                    setErrorMsg(null);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if ((e.key === 'Enter' || e.key === ' ') && !submitting) {
+                    e.preventDefault();
+                    setPaymentOption('pkr');
+                    setErrorMsg(null);
+                  }
+                }}
+                className="rounded-[24px] p-4 transition-colors cursor-pointer space-y-3.5"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border:
+                    paymentOption === 'pkr'
+                      ? '1.5px solid var(--accent)'
+                      : '1px solid var(--border)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <span
+                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+                      style={{
+                        borderColor:
+                          paymentOption === 'pkr' ? 'var(--accent)' : 'var(--border)',
+                        backgroundColor:
+                          paymentOption === 'pkr' ? 'var(--accent)' : 'transparent',
+                      }}
+                    >
+                      {paymentOption === 'pkr' && (
+                        <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                      )}
+                    </span>
+
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
+                        Pay with {PAYMENT_METHODS_PAIR_LABEL}
+                      </div>
+                      <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                        Manually verified within 24 hours
+                      </p>
+                    </div>
+                  </div>
+
+                  <span
+                    className="shrink-0 text-[14px] font-semibold tabular-nums"
+                    style={{ color: 'var(--text)' }}
+                  >
+                    PKR {effectivePkr.toLocaleString()}
+                  </span>
+                </div>
+
+                {paymentOption === 'pkr' && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="space-y-3 border-t pt-3.5 cursor-default"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    {/* Method switch */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {PAYMENT_METHODS_LIST.map((m) => {
+                        const active = selectedPkrMethod === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setSelectedPkrMethod(m.id)}
+                            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-full px-3 text-[13px] font-semibold cursor-pointer"
+                            style={
+                              active
+                                ? {
+                                    backgroundColor: 'var(--card)',
+                                    border: '1.5px solid var(--accent)',
+                                    color: 'var(--text)',
+                                  }
+                                : {
+                                    backgroundColor: 'var(--card)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-muted)',
+                                  }
+                            }
+                          >
+                            <CreditCard className="h-3.5 w-3.5" style={{ color: 'var(--accent)' }} />
+                            <span>{m.displayName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Account Details with Copy buttons */}
+                    <div
+                      className="space-y-2.5 rounded-2xl p-3.5 text-[13px]"
+                      style={{
+                        backgroundColor: 'var(--card)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span style={{ color: 'var(--text-muted)' }}>Exact amount</span>
+                        <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
+                          PKR {effectivePkr.toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {activePkrConfig.displayName} account
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold select-all tabular-nums" style={{ color: 'var(--text)' }}>
+                            {activePkrConfig.accountNumber}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopy(activePkrConfig.accountNumber, 'accountNumber')
+                            }
+                            className="inline-flex min-h-[30px] items-center gap-1 rounded-full px-2.5 text-[12px] font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: 'var(--bg)',
+                              border: '1px solid var(--border)',
+                              color: copiedField === 'accountNumber' ? '#10b981' : 'var(--text)',
+                            }}
+                          >
+                            {copiedField === 'accountNumber' ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span style={{ color: 'var(--text-muted)' }}>Account title</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold select-all" style={{ color: 'var(--text)' }}>
+                            {activePkrConfig.accountTitle}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopy(activePkrConfig.accountTitle, 'accountTitle')
+                            }
+                            className="inline-flex min-h-[30px] items-center gap-1 rounded-full px-2.5 text-[12px] font-medium cursor-pointer"
+                            style={{
+                              backgroundColor: 'var(--bg)',
+                              border: '1px solid var(--border)',
+                              color: copiedField === 'accountTitle' ? '#10b981' : 'var(--text)',
+                            }}
+                          >
+                            {copiedField === 'accountTitle' ? (
+                              <>
+                                <Check className="h-3 w-3" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3 w-3" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Transaction ID pill input */}
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="pro-tid-input"
+                        className="block pl-1 text-[13px] font-medium"
+                        style={{ color: 'var(--text)' }}
+                      >
+                        Transaction ID (TID)
+                      </label>
+                      <input
+                        id="pro-tid-input"
+                        type="text"
+                        value={tidInput}
+                        onChange={(e) => {
+                          setTidInput(e.target.value);
+                          if (errorMsg) setErrorMsg(null);
+                        }}
+                        placeholder="e.g. 04291847291"
+                        className="h-[48px] w-full rounded-full px-4 text-[14px] outline-none placeholder:text-[var(--placeholder)]"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px]"
+              style={{
+                backgroundColor: 'var(--tag-danger-bg)',
+                border: '1px solid var(--danger-border)',
+                color: 'var(--danger)',
+              }}
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {/* No-refund terms + underlined --accent links */}
+          <p className="px-1 text-[12px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            {REFUND_POLICY_TEXT} By continuing you agree to our{' '}
+            <Link
+              to="/terms"
+              onClick={onClose}
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link
+              to="/privacy"
+              onClick={onClose}
+              className="underline"
+              style={{ color: 'var(--accent)' }}
+            >
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        </div>
+      )}
+    </SettingsSheet>
   );
 }

@@ -104,7 +104,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
           <h1
             className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold leading-tight"
-            style={{ color: 'var(--text)' }}
+            style={{
+              color: 'var(--text)',
+              fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+            }}
           >
             {title}
           </h1>
@@ -134,7 +137,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         className="mx-auto w-full max-w-[640px] px-4 pt-4"
         style={{
           paddingBottom: search
-            ? 'calc(96px + env(safe-area-inset-bottom, 0px))'
+            ? 'calc(56px + 16px + 24px + 16px + env(safe-area-inset-bottom, 0px))'
             : 'calc(40px + env(safe-area-inset-bottom, 0px))',
         }}
       >
@@ -154,11 +157,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <div className="pointer-events-auto mx-auto w-full max-w-[640px] px-4">
             <div
               onClick={() => searchInputRef.current?.focus()}
-              className="flex h-[56px] w-full items-center gap-3 rounded-full px-5 transition-shadow"
+              className="settings-search-pill flex h-[56px] w-full items-center gap-3 rounded-full px-5 transition-[border-color,box-shadow] duration-150"
               style={{
                 backgroundColor: 'var(--card)',
                 border: '1px solid var(--border)',
-                boxShadow: '0 8px 24px -6px rgba(0, 0, 0, 0.14)',
               }}
             >
               <Search
@@ -173,8 +175,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 onChange={(e) => search.onChange(e.target.value)}
                 placeholder={search.placeholder || 'Search settings'}
                 aria-label={search.placeholder || 'Search settings'}
-                className="h-full min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-[var(--text-muted)]"
-                style={{ color: 'var(--text)' }}
+                className="settings-search-input h-full min-w-0 flex-1 text-[16px] placeholder:text-[var(--text-muted)]"
+                style={{
+                  color: 'var(--text)',
+                  background: 'transparent',
+                  border: 0,
+                  outline: 0,
+                  boxShadow: 'none',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  borderRadius: 'inherit',
+                  font: 'inherit',
+                }}
               />
               {search.value.trim().length > 0 && (
                 <button

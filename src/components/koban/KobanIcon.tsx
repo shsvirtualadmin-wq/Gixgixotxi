@@ -655,7 +655,7 @@ export const KobanAmount: React.FC<KobanAmountProps> = React.memo(({
 });
 
 export interface KobanChipProps {
-  balance: number;
+  balance: number | null;
   loading?: boolean;
   onClick?: () => void;
   to?: string;
@@ -666,6 +666,7 @@ export interface KobanChipProps {
 
 /**
  * Top Bar Koban Balance Chip — animates the shared <KobanIcon /> and counts smoothly when balance changes.
+ * Never shows 0 as a loading placeholder: displays a skeleton until the real balance is loaded.
  */
 export const KobanChip: React.FC<KobanChipProps> = React.memo(({
   balance,
@@ -676,15 +677,21 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
   styleOverride,
   className = '',
 }) => {
-  const [displayBalance, setDisplayBalance] = React.useState(balance);
+  const isUnloaded = loading || balance === null;
+  const numericBalance = balance ?? 0;
+  const [displayBalance, setDisplayBalance] = React.useState<number | null>(balance);
   const [isBumping, setIsBumping] = React.useState(false);
 
   React.useEffect(() => {
-    if (loading) return;
-    if (displayBalance === balance) return;
+    if (isUnloaded) return;
+    if (displayBalance === null) {
+      setDisplayBalance(numericBalance);
+      return;
+    }
+    if (displayBalance === numericBalance) return;
 
     setIsBumping(true);
-    const diff = balance - displayBalance;
+    const diff = numericBalance - displayBalance;
     const steps = 16;
     const stepTime = 22;
     let currentStep = 0;
@@ -693,7 +700,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
     const timer = setInterval(() => {
       currentStep++;
       if (currentStep >= steps) {
-        setDisplayBalance(balance);
+        setDisplayBalance(numericBalance);
         clearInterval(timer);
         setTimeout(() => setIsBumping(false), 250);
       } else {
@@ -704,7 +711,13 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
     }, stepTime);
 
     return () => clearInterval(timer);
-  }, [balance, loading, displayBalance]);
+  }, [numericBalance, isUnloaded, displayBalance]);
+
+  const shownBalance = displayBalance ?? balance;
+  const accessibleLabel =
+    isUnloaded || shownBalance === null
+      ? 'Loading Kobans balance'
+      : `Kobans balance: ${shownBalance.toLocaleString()}`;
 
   const content = (
     <>
@@ -720,13 +733,13 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
           isBumping ? 'text-[#FFD66B]' : 'text-[var(--text)]'
         }`}
       >
-        {loading && displayBalance === 0 ? (
+        {isUnloaded || shownBalance === null ? (
           <span
-            className="inline-block w-7 h-3.5 rounded-md skeleton"
+            className="inline-block w-8 h-3.5 rounded-md skeleton"
             aria-hidden="true"
           />
         ) : (
-          displayBalance.toLocaleString()
+          shownBalance.toLocaleString()
         )}
       </span>
       {showPlus && (
@@ -748,7 +761,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
         onClick={onClick}
         className={baseClasses}
         title="Your Kobans Balance — Click to get more"
-        aria-label={`Kobans balance: ${displayBalance.toLocaleString()}`}
+        aria-label={accessibleLabel}
       >
         {content}
       </button>
@@ -760,7 +773,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
       to={to}
       className={baseClasses}
       title="Your Kobans Balance — Open Boardly Store"
-      aria-label={`Kobans balance: ${displayBalance.toLocaleString()}`}
+      aria-label={accessibleLabel}
     >
       {content}
     </Link>

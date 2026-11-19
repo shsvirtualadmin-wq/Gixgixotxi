@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, MoreHorizontal, Plus } from 'lucide-react';
+import { Check, MoreHorizontal, Plus, X } from 'lucide-react';
 import { BoardlyAvatar } from '../ui/BoardlyAvatar';
 
 export interface SettingsSheetProps {
@@ -8,6 +8,8 @@ export interface SettingsSheetProps {
   onClose: () => void;
   title?: string;
   alignTitle?: 'center' | 'left';
+  showCloseButton?: boolean;
+  footer?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -16,6 +18,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   onClose,
   title,
   alignTitle = 'left',
+  showCloseButton = false,
+  footer,
   children,
 }) => {
   const sheetRef = useRef<HTMLDivElement | null>(null);
@@ -32,21 +36,19 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    if (contentRef.current) {
-      contentRef.current.scrollTop = 0;
-    }
+    const resetScroll = () => {
+      if (contentRef.current) {
+        contentRef.current.scrollTop = 0;
+      }
+    };
+    resetScroll();
+    const rafId = window.requestAnimationFrame(resetScroll);
 
     const focusTimer = window.setTimeout(() => {
       const sheetEl = sheetRef.current;
       if (!sheetEl) return;
-      const focusable = sheetEl.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      );
-      if (focusable.length > 0) {
-        focusable[0].focus();
-      } else {
-        sheetEl.focus();
-      }
+      sheetEl.focus({ preventScroll: true });
+      resetScroll();
     }, 20);
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,6 +78,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.cancelAnimationFrame(rafId);
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = prevOverflow;
@@ -149,14 +152,41 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
           />
         </div>
 
-        {title && (
-          <div className={`shrink-0 px-5 pt-1 pb-3 ${alignTitle === 'center' ? 'text-center' : 'text-left'}`}>
-            <h3
-              className="text-[19px] font-semibold leading-snug"
-              style={{ color: 'var(--text)' }}
-            >
-              {title}
-            </h3>
+        {(title || showCloseButton) && (
+          <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-1 pb-3">
+            {showCloseButton && alignTitle === 'center' && (
+              <div className="h-9 w-9 shrink-0" aria-hidden="true" />
+            )}
+            {title ? (
+              <h3
+                className={`min-w-0 flex-1 text-[18px] font-semibold leading-snug ${
+                  alignTitle === 'center' ? 'text-center' : 'text-left'
+                }`}
+                style={{
+                  color: 'var(--text)',
+                  fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
+                }}
+              >
+                {title}
+              </h3>
+            ) : (
+              <div className="flex-1" />
+            )}
+            {showCloseButton && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close dialog"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-hover)] active:scale-95 cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <X className="h-4 w-4" strokeWidth={2} />
+              </button>
+            )}
           </div>
         )}
 
@@ -164,11 +194,26 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
           ref={contentRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5"
           style={{
-            paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
+            paddingBottom: footer
+              ? '20px'
+              : 'calc(24px + env(safe-area-inset-bottom, 0px))',
           }}
         >
           {children}
         </div>
+
+        {footer && (
+          <div
+            className="shrink-0 px-5 pt-3"
+            style={{
+              backgroundColor: 'var(--card)',
+              borderTop: '1px solid var(--border)',
+              paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+            }}
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body
@@ -357,18 +402,24 @@ export const AboutBoardlySheet: React.FC<{
 export const SwitchAccountSheet: React.FC<{
   open: boolean;
   onClose: () => void;
+  uid?: string | null;
   email: string;
   displayName: string;
   avatarUrl?: string | null;
+  equippedAvatar?: string | null;
+  equippedFrameId?: string | null;
   planLabel: string;
   onAddAccount: () => void;
   onSignOut: () => void;
 }> = ({
   open,
   onClose,
+  uid,
   email,
   displayName,
   avatarUrl,
+  equippedAvatar,
+  equippedFrameId,
   planLabel,
   onAddAccount,
   onSignOut,
@@ -379,7 +430,7 @@ export const SwitchAccountSheet: React.FC<{
     <SettingsSheet open={open} onClose={onClose} title="Switch account" alignTitle="left">
       {/* Email header with three-dot menu */}
       <div className="relative mb-3 flex items-center justify-between gap-2">
-        <span className="truncate text-[14px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="break-all text-[14px]" style={{ color: 'var(--text-muted)' }}>
           {email || 'Guest account'}
         </span>
         <button
@@ -425,7 +476,10 @@ export const SwitchAccountSheet: React.FC<{
         }}
       >
         <BoardlyAvatar
-          src={avatarUrl || undefined}
+          uid={uid || undefined}
+          photoURL={avatarUrl || undefined}
+          equippedAvatar={equippedAvatar || undefined}
+          equippedFrameId={equippedFrameId || undefined}
           name={displayName}
           size="md"
         />

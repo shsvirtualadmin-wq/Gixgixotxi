@@ -2795,6 +2795,13 @@
       "read_welcome": 0,
       "welcomed_at": 1793688191381,
       "read_at": null
+    },
+    {
+      "user_uid": "guest_1795047943051_22b4386595",
+      "welcomed": 1,
+      "read_welcome": 0,
+      "welcomed_at": 1795047980891,
+      "read_at": null
     }
   ],
   "userReadAnnouncements": [],

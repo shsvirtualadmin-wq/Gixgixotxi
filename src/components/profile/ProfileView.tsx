@@ -55,6 +55,7 @@ import { getCosmeticById, type CosmeticRarity } from '@/data/cosmeticsCatalog';
 import { useWallet } from '@/hooks/useWallet';
 import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
 import { getDisplayName, getUsernameHandle, getRawUsername } from '@/utils/displayName';
+import { getEquippedLoadout } from '@/utils/userStateSource';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { ProfilePostsSection } from './ProfilePostsSection';
 
@@ -293,20 +294,31 @@ function buildImmediateOwnSeed(
       .replace(/^#+/, '')
       .trim();
 
+  const canonicalLoadout = getEquippedLoadout({
+    uid,
+    equipped: walletEquipped,
+    equippedCosmetics: ownProfile?.equippedCosmetics,
+    equippedAvatar: ownProfile?.equippedAvatar,
+    equippedFrame: ownProfile?.equippedFrame,
+    equippedBanner: ownProfile?.equippedBanner,
+    equippedNameplate: ownProfile?.equippedNameplate ?? ownProfile?.nameplate,
+    equippedEffect: ownProfile?.effectId,
+    avatar: ownProfile?.avatar,
+    frame: ownProfile?.frame,
+    banner: ownProfile?.banner,
+    photoURL: ownProfile?.photoURL || currentUser?.photoURL || null,
+  });
+
   const equippedAvatar =
     ownProfile?.equippedAvatar === 'custom'
       ? 'custom'
-      : walletEquipped?.avatar || ownProfile?.equippedAvatar || ownProfile?.avatar || 'avatar-1';
-  const equippedFrame =
-    walletEquipped?.frame || ownProfile?.equippedFrame || ownProfile?.frame || 'none';
-  const equippedBanner =
-    walletEquipped?.banner || ownProfile?.equippedBanner || ownProfile?.banner || 'none';
-  const equippedEffect =
-    walletEquipped?.effect || ownProfile?.equippedCosmetics?.profileEffect || ownProfile?.effectId || 'none';
+      : canonicalLoadout.avatar || 'avatar-1';
+  const equippedFrame = canonicalLoadout.frame || 'none';
+  const equippedBanner = canonicalLoadout.banner || 'none';
+  const equippedEffect = canonicalLoadout.effect || 'none';
   const equippedTitle =
     walletEquipped?.title || ownProfile?.equippedTitle || 'title-rookie';
-  const equippedNameplate =
-    walletEquipped?.nameplate || ownProfile?.nameplate || 'none';
+  const equippedNameplate = canonicalLoadout.nameplate || 'none';
 
   return {
     uid,
@@ -317,7 +329,7 @@ function buildImmediateOwnSeed(
     role: ownProfile?.role || 'student',
     customRole: ownProfile?.customRole || 'Student',
     equippedAvatar,
-    photoURL: ownProfile?.photoURL || currentUser?.photoURL || '',
+    photoURL: canonicalLoadout.photoURL || '',
     equippedFrame,
     equippedBanner,
     equippedTitle,

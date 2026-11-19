@@ -60,6 +60,7 @@ import {
 } from '@/services/deviceUnlockService';
 import { clearCachedAuthAndAdminStorage } from '@/components/dashboard/HamburgerMenuSheet';
 import { getDisplayName } from '@/utils/displayName';
+import { readSwrCache, writeSwrCache } from '@/utils/userStateSource';
 
 export type SecuritySubView =
   | 'overview'
@@ -167,9 +168,16 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const { user, profile, isGuest, signOutUser } = useAuth();
   const [subView, setSubView] = useState<SecuritySubView>('overview');
 
-  // Overview summary state
-  const [summary, setSummary] = useState<SecuritySummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const uid = user?.uid || '';
+
+  // Overview summary state (hydrated instantly from SWR cache)
+  const [summary, setSummary] = useState<SecuritySummary | null>(() =>
+    uid ? readSwrCache<SecuritySummary>(`sec:summary:${uid}`) : null
+  );
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(() =>
+    uid ? !readSwrCache<SecuritySummary>(`sec:summary:${uid}`) : false
+  );
+  const [summaryRowSpinner, setSummaryRowSpinner] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // Device unlock per-device state
@@ -188,8 +196,13 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const [dangerBusy, setDangerBusy] = useState(false);
   const [dangerError, setDangerError] = useState<string | null>(null);
 
-  // Passkeys sub-view state
-  const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
+  // Passkeys sub-view state (SWR cached)
+  const [passkeys, setPasskeys] = useState<PasskeyItem[]>(
+    () => (uid ? readSwrCache<PasskeyItem[]>(`sec:passkeys:${uid}`) : null) || []
+  );
+  const [passkeysLoadedOnce, setPasskeysLoadedOnce] = useState<boolean>(() =>
+    Boolean(uid && readSwrCache<PasskeyItem[]>(`sec:passkeys:${uid}`))
+  );
   const [passkeysLoading, setPasskeysLoading] = useState(false);
   const [passkeysError, setPasskeysError] = useState<string | null>(null);
   const [addingPasskey, setAddingPasskey] = useState(false);
@@ -198,24 +211,39 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const [deletingPasskey, setDeletingPasskey] = useState<PasskeyItem | null>(null);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
 
-  // Active sessions sub-view state
-  const [sessions, setSessions] = useState<ActiveSessionItem[]>([]);
+  // Active sessions sub-view state (SWR cached)
+  const [sessions, setSessions] = useState<ActiveSessionItem[]>(
+    () => (uid ? readSwrCache<ActiveSessionItem[]>(`sec:sessions:${uid}`) : null) || []
+  );
+  const [sessionsLoadedOnce, setSessionsLoadedOnce] = useState<boolean>(() =>
+    Boolean(uid && readSwrCache<ActiveSessionItem[]>(`sec:sessions:${uid}`))
+  );
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [confirmSession, setConfirmSession] = useState<ActiveSessionItem | null>(null);
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
 
-  // Trusted devices sub-view state
-  const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceItem[]>([]);
+  // Trusted devices sub-view state (SWR cached)
+  const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceItem[]>(
+    () => (uid ? readSwrCache<TrustedDeviceItem[]>(`sec:devices:${uid}`) : null) || []
+  );
+  const [devicesLoadedOnce, setDevicesLoadedOnce] = useState<boolean>(() =>
+    Boolean(uid && readSwrCache<TrustedDeviceItem[]>(`sec:devices:${uid}`))
+  );
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [confirmDevice, setConfirmDevice] = useState<TrustedDeviceItem | null>(null);
   const [confirmRemoveAllDevices, setConfirmRemoveAllDevices] = useState(false);
   const [deviceBusy, setDeviceBusy] = useState(false);
 
-  // Security history sub-view state
-  const [events, setEvents] = useState<SecurityEventItem[]>([]);
+  // Security history sub-view state (SWR cached)
+  const [events, setEvents] = useState<SecurityEventItem[]>(
+    () => (uid ? readSwrCache<SecurityEventItem[]>(`sec:events:${uid}`) : null) || []
+  );
+  const [eventsLoadedOnce, setEventsLoadedOnce] = useState<boolean>(() =>
+    Boolean(uid && readSwrCache<SecurityEventItem[]>(`sec:events:${uid}`))
+  );
   const [eventsPage, setEventsPage] = useState(1);
   const [eventsHasMore, setEventsHasMore] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
@@ -239,24 +267,119 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const loadSummary = useCallback(async () => {
     if (!user || isGuest) {
       setSummaryLoading(false);
+      setSummaryRowSpinner(false);
       return;
     }
-    setSummaryLoading(true);
+    const cached = readSwrCache<SecuritySummary>(`sec:summary:${user.uid}`);
+    if (cached) {
+      setSummary(cached);
+      setSummaryLoading(false);
+      setSummaryRowSpinner(false);
+    } else {
+      setSummaryLoading(true);
+      setSummaryRowSpinner(true);
+    }
     setSummaryError(null);
+
+    // Cap row spinner visibility at 900ms so no row ever shows a spinner longer than 1s
+    const spinnerCap = window.setTimeout(() => {
+      setSummaryRowSpinner(false);
+    }, 900);
+
     try {
       const data = await fetchSecuritySummary();
+      writeSwrCache(`sec:summary:${user.uid}`, data);
       setSummary(data);
       onSummaryChange?.(data);
     } catch (err: any) {
       setSummaryError(err?.message || 'Could not load security summary.');
     } finally {
+      window.clearTimeout(spinnerCap);
       setSummaryLoading(false);
+      setSummaryRowSpinner(false);
     }
   }, [user, isGuest, onSummaryChange]);
 
+  // Parallel SWR prefetch on Security overview mount so passkeys, sessions, and trusted devices open instantly
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
+    if (!user?.uid || isGuest) {
+      setSummaryLoading(false);
+      return;
+    }
+    let active = true;
+    const targetUid = user.uid;
+
+    const cachedSummary = readSwrCache<SecuritySummary>(`sec:summary:${targetUid}`);
+    const cachedPasskeys = readSwrCache<PasskeyItem[]>(`sec:passkeys:${targetUid}`);
+    const cachedSessions = readSwrCache<ActiveSessionItem[]>(`sec:sessions:${targetUid}`);
+    const cachedDevices = readSwrCache<TrustedDeviceItem[]>(`sec:devices:${targetUid}`);
+    if (cachedSummary) {
+      setSummary(cachedSummary);
+      setSummaryLoading(false);
+      setSummaryRowSpinner(false);
+    } else {
+      setSummaryLoading(true);
+      setSummaryRowSpinner(true);
+    }
+    if (cachedPasskeys) {
+      setPasskeys(cachedPasskeys);
+      setPasskeysLoadedOnce(true);
+    }
+    if (cachedSessions) {
+      setSessions(cachedSessions);
+      setSessionsLoadedOnce(true);
+    }
+    if (cachedDevices) {
+      setTrustedDevices(cachedDevices);
+      setDevicesLoadedOnce(true);
+    }
+
+    const spinnerCap = window.setTimeout(() => {
+      if (active) setSummaryRowSpinner(false);
+    }, 900);
+
+    void Promise.allSettled([
+      fetchSecuritySummary(),
+      listPasskeys(),
+      listSessions(),
+      listTrustedDevices(),
+    ]).then(([sumRes, pkRes, sesRes, devRes]) => {
+      window.clearTimeout(spinnerCap);
+      if (!active) return;
+
+      if (sumRes.status === 'fulfilled') {
+        writeSwrCache(`sec:summary:${targetUid}`, sumRes.value);
+        setSummary(sumRes.value);
+        onSummaryChange?.(sumRes.value);
+        setSummaryError(null);
+      } else {
+        setSummaryError(sumRes.reason?.message || 'Could not load security summary.');
+      }
+      setSummaryLoading(false);
+      setSummaryRowSpinner(false);
+
+      if (pkRes.status === 'fulfilled') {
+        writeSwrCache(`sec:passkeys:${targetUid}`, pkRes.value);
+        setPasskeys(pkRes.value);
+        setPasskeysLoadedOnce(true);
+      }
+      if (sesRes.status === 'fulfilled') {
+        writeSwrCache(`sec:sessions:${targetUid}`, sesRes.value.sessions);
+        setSessions(sesRes.value.sessions);
+        setSessionsLoadedOnce(true);
+      }
+      if (devRes.status === 'fulfilled') {
+        writeSwrCache(`sec:devices:${targetUid}`, devRes.value);
+        setTrustedDevices(devRes.value);
+        setDevicesLoadedOnce(true);
+      }
+    });
+
+    return () => {
+      active = false;
+      window.clearTimeout(spinnerCap);
+    };
+  }, [user?.uid, isGuest, onSummaryChange]);
 
   useEffect(() => {
     let active = true;
@@ -270,51 +393,66 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   }, [user?.uid]);
 
   const loadPasskeys = useCallback(async () => {
-    setPasskeysLoading(true);
+    const hasCached = Boolean(uid && readSwrCache<PasskeyItem[]>(`sec:passkeys:${uid}`));
+    if (!hasCached && !passkeysLoadedOnce) setPasskeysLoading(true);
     setPasskeysError(null);
     try {
       const list = await listPasskeys();
+      if (uid) writeSwrCache(`sec:passkeys:${uid}`, list);
       setPasskeys(list);
+      setPasskeysLoadedOnce(true);
     } catch (err: any) {
       setPasskeysError(err?.message || 'Could not load passkeys.');
     } finally {
       setPasskeysLoading(false);
     }
-  }, []);
+  }, [uid, passkeysLoadedOnce]);
 
   const loadSessions = useCallback(async () => {
-    setSessionsLoading(true);
+    const hasCached = Boolean(uid && readSwrCache<ActiveSessionItem[]>(`sec:sessions:${uid}`));
+    if (!hasCached && !sessionsLoadedOnce) setSessionsLoading(true);
     setSessionsError(null);
     try {
       const res = await listSessions();
+      if (uid) writeSwrCache(`sec:sessions:${uid}`, res.sessions);
       setSessions(res.sessions);
+      setSessionsLoadedOnce(true);
     } catch (err: any) {
       setSessionsError(err?.message || 'Could not load active sessions.');
     } finally {
       setSessionsLoading(false);
     }
-  }, []);
+  }, [uid, sessionsLoadedOnce]);
 
   const loadTrustedDevices = useCallback(async () => {
-    setDevicesLoading(true);
+    const hasCached = Boolean(uid && readSwrCache<TrustedDeviceItem[]>(`sec:devices:${uid}`));
+    if (!hasCached && !devicesLoadedOnce) setDevicesLoading(true);
     setDevicesError(null);
     try {
       const list = await listTrustedDevices();
+      if (uid) writeSwrCache(`sec:devices:${uid}`, list);
       setTrustedDevices(list);
+      setDevicesLoadedOnce(true);
     } catch (err: any) {
       setDevicesError(err?.message || 'Could not load trusted devices.');
     } finally {
       setDevicesLoading(false);
     }
-  }, []);
+  }, [uid, devicesLoadedOnce]);
 
   const loadHistory = useCallback(async (page = 1, append = false) => {
+    const hasCached = Boolean(uid && readSwrCache<SecurityEventItem[]>(`sec:events:${uid}`));
     if (append) setEventsLoadingMore(true);
-    else setEventsLoading(true);
+    else if (!hasCached && !eventsLoadedOnce) setEventsLoading(true);
     setEventsError(null);
     try {
       const res = await fetchSecurityEvents(page, 20);
-      setEvents((prev) => (append ? [...prev, ...res.events] : res.events));
+      setEvents((prev) => {
+        const next = append ? [...prev, ...res.events] : res.events;
+        if (uid && !append) writeSwrCache(`sec:events:${uid}`, next);
+        return next;
+      });
+      setEventsLoadedOnce(true);
       setEventsPage(res.page);
       setEventsHasMore(res.hasMore);
     } catch (err: any) {
@@ -323,7 +461,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
       setEventsLoading(false);
       setEventsLoadingMore(false);
     }
-  }, []);
+  }, [uid, eventsLoadedOnce]);
 
   useEffect(() => {
     if (subView === 'passkeys') void loadPasskeys();
@@ -1195,14 +1333,16 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               icon={<KeyRound />}
               label="Passkeys & security keys"
               value={
-                summaryLoading
-                  ? undefined
-                  : (summary?.passkeysCount || 0) === 0
+                !summary
+                  ? summaryRowSpinner
+                    ? undefined
+                    : '—'
+                  : (summary.passkeysCount || 0) === 0
                     ? 'Add'
-                    : `${summary?.passkeysCount}`
+                    : `${summary.passkeysCount}`
               }
-              actionValue={!summaryLoading && (summary?.passkeysCount || 0) === 0}
-              loading={summaryLoading}
+              actionValue={Boolean(summary) && (summary?.passkeysCount || 0) === 0}
+              loading={!summary && summaryRowSpinner}
               onClick={() => setSubView('passkeys')}
             />
             {hasPasswordProvider && (
@@ -1255,18 +1395,26 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               icon={<Laptop />}
               label="Active sessions"
               value={
-                summaryLoading ? undefined : String(summary?.activeSessionsCount ?? 1)
+                !summary
+                  ? summaryRowSpinner
+                    ? undefined
+                    : '—'
+                  : String(summary.activeSessionsCount ?? 1)
               }
-              loading={summaryLoading}
+              loading={!summary && summaryRowSpinner}
               onClick={() => setSubView('sessions')}
             />
             <SettingsRow
               icon={<ShieldCheck />}
               label="Trusted devices"
               value={
-                summaryLoading ? undefined : String(summary?.trustedDevicesCount ?? 0)
+                !summary
+                  ? summaryRowSpinner
+                    ? undefined
+                    : '—'
+                  : String(summary.trustedDevicesCount ?? 0)
               }
-              loading={summaryLoading}
+              loading={!summary && summaryRowSpinner}
               onClick={() => setSubView('trusted-devices')}
             />
           </SettingsGroup>

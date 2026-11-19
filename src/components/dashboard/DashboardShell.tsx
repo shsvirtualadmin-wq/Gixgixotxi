@@ -51,8 +51,16 @@ export function DashboardShell() {
     location.pathname.startsWith('/profile/') ||
     location.pathname.startsWith('/dashboard/profile');
   const isSettingsRoute =
-    location.pathname.startsWith('/settings') ||
-    location.pathname.startsWith('/dashboard/settings');
+    location.pathname === '/settings' ||
+    location.pathname.startsWith('/settings/') ||
+    location.pathname === '/dashboard/settings' ||
+    location.pathname.startsWith('/dashboard/settings/') ||
+    location.pathname === '/dashboard/plan' ||
+    location.pathname === '/dashboard/plans' ||
+    location.pathname === '/plans' ||
+    location.pathname === '/plan' ||
+    location.pathname === '/wallet' ||
+    location.pathname === '/checkout';
   const isCommonsRoute =
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
@@ -183,8 +191,8 @@ export function DashboardShell() {
         </DashboardErrorBoundary>
       </main>
 
-      {/* Unified Student Pill Navigation */}
-      <DashboardBottomNav />
+      {/* Unified Student Pill Navigation — hidden on Settings-area pages (Settings, Account, Security, Privacy, Plans and billing) */}
+      {!isSettingsRoute && <DashboardBottomNav />}
 
       {upgradeModalOpen && (
         <Suspense fallback={null}>

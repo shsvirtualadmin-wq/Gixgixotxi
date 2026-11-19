@@ -66,16 +66,16 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
         </span>
       ) : null}
 
-      <span className="min-w-0 flex-1 py-3 text-left">
+      <span className="min-w-0 shrink py-3 text-left">
         <span
-          className="block truncate text-[16px] font-normal leading-snug"
+          className="block text-[16px] font-normal leading-snug"
           style={{ color: textColor }}
         >
           {label}
         </span>
         {subtitle && (
           <span
-            className="mt-0.5 block text-[13px] leading-snug"
+            className="mt-0.5 block text-[13px] leading-snug break-words"
             style={{ color: 'var(--text-muted)' }}
           >
             {subtitle}
@@ -83,7 +83,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
         )}
       </span>
 
-      <span className="ml-3 flex shrink-0 items-center gap-2">
+      <span className="ml-auto pl-3 flex min-w-0 max-w-[65%] shrink items-center justify-end gap-2">
         {dot && (
           <span
             className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"
@@ -95,10 +95,11 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
 
         {value !== undefined && value !== null && (
           <span
-            className="max-w-[160px] truncate text-[15px] font-normal"
+            className="min-w-0 break-words text-right text-[14px] sm:text-[15px] leading-snug"
             style={{
               color: actionValue ? 'var(--accent)' : 'var(--text-muted)',
               fontWeight: actionValue ? 500 : 400,
+              overflowWrap: 'anywhere',
             }}
           >
             {value}
@@ -127,7 +128,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
     </>
   );
 
-  const baseClass = `relative flex min-h-[56px] w-full items-center px-5 transition-colors ${
+  const baseClass = `relative flex min-h-[56px] w-full items-center gap-2 px-5 transition-colors ${
     disabled ? 'opacity-50 cursor-not-allowed' : interactive ? 'cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]' : ''
   }`;
 

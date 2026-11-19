@@ -9,6 +9,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
 import { getDisplayName } from '@/utils/displayName';
+import { getEquippedLoadout } from '@/utils/userStateSource';
 import {
   DashboardMenuContent,
   HamburgerMenuSheet,
@@ -206,8 +207,16 @@ export function DashboardTopBar({
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
+  const { kobanBalance, balanceLoaded, equipped } = useWallet();
   const isPro = !isGuest && effectivePlan.isUnlimited;
+  const headerLoadout = getEquippedLoadout({
+    uid: user?.uid,
+    equipped,
+    avatar: (profile as Record<string, unknown> | null)?.avatar as string | undefined,
+    equippedAvatar: (profile as Record<string, unknown> | null)?.equippedAvatar as string | undefined,
+    equippedFrame: (profile as Record<string, unknown> | null)?.equippedFrame as string | undefined,
+    photoURL: profile?.photoURL || user?.photoURL,
+  });
 
   return (
     <>
@@ -290,13 +299,12 @@ export function DashboardTopBar({
           {/* Right side: Coin chip, Theme toggle, and Profile avatar */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
             {/* Kobans Wallet Chip */}
-            <Link
-              to="/store"
+            <div
               title="Boardly Store & Kobans Wallet"
               className="flex items-center justify-end shrink-0 whitespace-nowrap transition-transform hover:scale-105"
             >
-              <KobanChip balance={kobanBalance} loading={walletLoading} />
-            </Link>
+              <KobanChip balance={kobanBalance} loading={!balanceLoaded} />
+            </div>
 
             {/* Theme Toggle (40px round glass icon button) */}
             <button
@@ -334,11 +342,9 @@ export function DashboardTopBar({
                   realName: profile?.realName ?? profile?.name ?? user?.displayName,
                   username: profile?.username,
                 })}
-                equippedAvatar={
-                  equipped?.avatar ||
-                  (profile as Record<string, unknown> | null)?.avatar as string | undefined
-                }
-                equippedFrameId={equipped?.frame}
+                photoURL={headerLoadout.photoURL}
+                equippedAvatar={headerLoadout.avatar}
+                equippedFrameId={headerLoadout.frame}
                 size={36}
               />
             </button>

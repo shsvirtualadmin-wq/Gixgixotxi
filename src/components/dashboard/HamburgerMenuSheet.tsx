@@ -21,6 +21,11 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { getDisplayName, getUsernameHandle } from '@/utils/displayName';
+import {
+  clearCachedEquippedLoadout,
+  clearCachedKobans,
+  clearSwrCache,
+} from '@/utils/userStateSource';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -39,6 +44,9 @@ export const APP_VERSION = BOARDLY_APP_VERSION;
 export function clearCachedAuthAndAdminStorage() {
   clearSecurityStatusCache();
   clearCachedRewardsState();
+  clearCachedEquippedLoadout();
+  clearCachedKobans();
+  clearSwrCache();
   try {
     const lsKeysToRemove: string[] = [
       'boardly_user_authenticated',
@@ -91,7 +99,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   const { user, profile } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const { isPro } = useEffectivePlan();
-  const { balance } = useWallet();
+  const { kobanBalance, balanceLoaded } = useWallet();
 
   const displayName = getDisplayName(
     {
@@ -148,7 +156,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           {showCoinBalanceInStore ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)] tabular-nums">
               <KobanIcon size={12} decorative />
-              {balance.toLocaleString()}
+              {!balanceLoaded || kobanBalance === null ? (
+                <span className="inline-block w-8 h-3 rounded skeleton" aria-hidden="true" />
+              ) : (
+                kobanBalance.toLocaleString()
+              )}
             </span>
           ) : (
             <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />

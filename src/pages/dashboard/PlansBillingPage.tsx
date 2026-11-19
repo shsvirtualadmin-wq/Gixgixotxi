@@ -1,12 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Zap,
-  Users,
-  ShieldCheck,
+  AlertCircle,
+  CalendarClock,
+  Check,
+  Clock,
+  Crown,
+  Palette,
+  RefreshCw,
   Sparkles,
-  BookOpen,
-  ArrowRight,
+  Users,
+  Zap,
 } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,15 +22,23 @@ import {
   REFUND_POLICY_TEXT,
   ANNUAL_SAVINGS_PERCENT,
   PLAN_COMPARISON_ROWS,
+  computeExtendedProExpiry,
   type ProPlanId,
 } from '@/config/plans';
-import { StatusBanner } from '@/components/plans/StatusBanner';
-import { PlanCard } from '@/components/plans/PlanCard';
-import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { GetKobansModal } from '@/components/koban/GetKobansModal';
 import { fetchStudentProRequests } from '@/services/proSubscriptionService';
+import { SettingsPage } from '@/components/settings/SettingsPage';
+import { SettingsGroup } from '@/components/settings/SettingsGroup';
+import { SettingsRow } from '@/components/settings/SettingsRow';
+import { PageMeta } from '@/components/ui/PageMeta';
+import { getDisplayName } from '@/utils/displayName';
+import {
+  measureRequest,
+  readSwrCache,
+  writeSwrCache,
+} from '@/utils/userStateSource';
 import type { PaymentRequest } from '@/types';
 
 export function PlansBillingPage() {
@@ -41,38 +53,54 @@ export function PlansBillingPage() {
     refreshPlanStatus,
   } = useEffectivePlan();
   const isCrew = source === 'crew';
-  const { balance } = useWallet();
+  const { kobanBalance, balanceLoaded, refreshWallet } = useWallet();
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<ProPlanId>('pro_monthly');
   const [proCardCycle, setProCardCycle] = useState<ProPlanId>('pro_monthly');
 
-  // Get Kobans modal (only opened when student clicks "Get Kobans" inside ProCheckoutSheet due to low balance)
+  // Get Kobans modal (triggered from ProCheckoutSheet when balance is short)
   const [getKobansOpen, setGetKobansOpen] = useState(false);
   const [getKobansInitialAmount, setGetKobansInitialAmount] = useState<number | undefined>(
     undefined
   );
 
-  const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>([]);
+  // SWR-cached payment requests so rows render immediately without long spinners
+  const cacheKey = user?.uid ? `plans:requests:${user.uid}` : '';
+  const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>(
+    () => (cacheKey ? readSwrCache<PaymentRequest[]>(cacheKey) : null) || []
+  );
+  const [requestsError, setRequestsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (Array.isArray(streamedPaymentRequests) && streamedPaymentRequests.length > 0) {
       setStudentProRequests(streamedPaymentRequests);
+      if (cacheKey) writeSwrCache(cacheKey, streamedPaymentRequests);
     }
-  }, [streamedPaymentRequests]);
+  }, [streamedPaymentRequests, cacheKey]);
 
   const loadProRequests = useCallback(async () => {
     if (!user?.uid || isGuest) return;
-    await refreshPlanStatus();
-    const list = await fetchStudentProRequests(user.uid);
-    setStudentProRequests(list);
+    setRequestsError(null);
+    try {
+      const [, list] = await measureRequest(
+        'plans:status-and-requests',
+        () => Promise.all([refreshPlanStatus(), fetchStudentProRequests(user.uid)]),
+        8000
+      );
+      setStudentProRequests(list);
+      writeSwrCache(`plans:requests:${user.uid}`, list);
+    } catch (err: any) {
+      setRequestsError(err?.message || 'Could not refresh subscription status.');
+    }
   }, [user?.uid, isGuest, refreshPlanStatus]);
 
-  // Refresh plan status when the window regains focus or a plan-refresh event is dispatched
+  // Initial background SWR refresh + focus/event listeners
   useEffect(() => {
     if (!user?.uid || isGuest) return;
+    void loadProRequests();
     const onFocusOrRefresh = () => {
-      loadProRequests().catch(() => {});
+      void loadProRequests();
     };
     window.addEventListener('focus', onFocusOrRefresh);
     window.addEventListener('boardly:plan-refresh', onFocusOrRefresh);
@@ -82,259 +110,648 @@ export function PlansBillingPage() {
     };
   }, [user?.uid, isGuest, loadProRequests]);
 
-  if (isGuest) {
-    return <GuestProBlockedView variant="page" />;
-  }
-
   const rawExpiresAt = profile?.planExpiresAt ?? (profile as any)?.premiumExpiresAt ?? null;
   const effectiveIsPro = planStatus.state === 'active';
-  const isPurchaseLocked = planStatus.state === 'active' || planStatus.state === 'pending';
+  const isPendingVerification = planStatus.state === 'pending';
+  const isPurchaseLocked = effectiveIsPro || isPendingVerification;
 
-  const pendingProRequest =
-    studentProRequests.find(
-      (r) => r.status === 'pending' && r.plan !== 'large_crew'
-    ) || null;
-  const latestRejectedProRequest =
-    studentProRequests.find(
-      (r) => r.status === 'rejected' && r.plan !== 'large_crew'
-    ) || null;
+  const pendingProRequest = useMemo(
+    () =>
+      studentProRequests.find(
+        (r) => r.status === 'pending' && r.plan !== 'large_crew'
+      ) || null,
+    [studentProRequests]
+  );
 
-  // Automatically close the checkout sheet if the user's plan becomes active while open
+  const latestRejectedProRequest = useMemo(
+    () =>
+      studentProRequests.find(
+        (r) => r.status === 'rejected' && r.plan !== 'large_crew'
+      ) || null,
+    [studentProRequests]
+  );
+
+  const activeProOption = PLANS[proCardCycle];
+  const activeProExpiryPreview = useMemo(
+    () => computeExtendedProExpiry(rawExpiresAt, activeProOption.duration_days),
+    [rawExpiresAt, activeProOption.duration_days]
+  );
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/settings');
+    }
+  };
+
+  if (isGuest) {
+    return (
+      <SettingsPage title="Plans and billing" onBack={handleBack}>
+        <PageMeta title="Plans and billing — Boardly" />
+        <GuestProBlockedView variant="page" />
+      </SettingsPage>
+    );
+  }
+
   const openProCheckout = (plan: ProPlanId) => {
     if (isPurchaseLocked) return;
     setSelectedCheckoutPlan(plan);
     setCheckoutOpen(true);
   };
 
-  const activeProOption = PLANS[proCardCycle];
+  const displayName = getDisplayName(
+    {
+      display_name: profile?.display_name ?? profile?.displayName,
+      realName: profile?.realName ?? profile?.name ?? user?.displayName,
+      username: profile?.username,
+    },
+    'Student'
+  );
+
+  const proLockHelperText = planStatus.expiryFormatted
+    ? `New purchases are locked while your membership is active. You can renew after ${planStatus.expiryFormatted}.`
+    : 'New purchases are locked while your membership is active.';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-4 pb-28 sm:pb-24 space-y-6">
-      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="font-mono text-[11px] uppercase tracking-widest text-[var(--red)] font-semibold">
-            Account Subscription &amp; Wallet
-          </div>
-          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text)] tracking-tight">
-            Plans &amp; Billing
-          </h1>
-          <p className="text-xs sm:text-sm text-[var(--muted)] max-w-2xl leading-relaxed">
-            Upgrade your practice capacity with Boardly Pro or team up with classmates in a Nakama
-            Crew. {REFUND_POLICY_TEXT}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--card)] border border-[var(--border)] shrink-0 self-start sm:self-auto">
-          <div className="flex items-center gap-2 pr-2 border-r border-[var(--border)]">
-            <KobanIcon size={20} decorative />
-            <div className="leading-tight">
-              <div className="text-[10px] font-mono uppercase text-[var(--muted)]">Kobans</div>
-              <div className="text-sm font-mono font-bold text-[var(--text)] tabular-nums">
-                {balance.toLocaleString()}
-              </div>
-            </div>
-          </div>
-          <Link
-            to="/settings#koban-icon"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-semibold text-[var(--text)] transition-colors"
-          >
-            <span>Customize Koban</span>
-            <ArrowRight size={12} />
-          </Link>
-        </div>
-      </div>
-
-      {/* ─── ACTIVE PLAN STATUS BANNER ─── */}
-      <StatusBanner
-        planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
-        planExpiresAtRaw={rawExpiresAt}
-        planStatus={planStatus}
-        pendingProRequest={pendingProRequest}
-        latestRejectedProRequest={latestRejectedProRequest}
-        onUpgradeOrExtend={() => openProCheckout('pro_monthly')}
+    <SettingsPage title="Plans and billing" onBack={handleBack}>
+      <PageMeta
+        title="Plans and billing — Boardly"
+        description="Manage your Boardly Pro subscription, Kobans balance, and study plans."
       />
 
-      {/* ─── LOCKED STATE (ACTIVE PRO OR PENDING VERIFICATION) VS PURCHASE OPTIONS ─── */}
-      {isPurchaseLocked ? (
-        <ProLockedStateCard planStatus={planStatus} />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
-          {/* 1. Free Tier Card */}
-          <PlanCard
-            title={PLANS.free.name}
-            subtitle={PLANS.free.shortName}
-            icon={<BookOpen size={17} />}
-            pricePkr={PLANS.free.price_pkr}
-            cadenceLabel={PLANS.free.cadenceLabel}
-            priceSubtext={PLANS.free.description}
-            features={PLANS.free.features}
-            featured={false}
-            ctaLabel={currentPlan === 'free' && !effectiveIsPro ? 'Current Plan' : 'Included Base Tier'}
-            ctaVariant="disabled-current"
-          />
-
-          {/* 2. Boardly Pro Card */}
-          <PlanCard
-            title="Boardly Pro"
-            subtitle={
-              proCardCycle === 'pro_annual'
-                ? `Annual Pass · Save ${ANNUAL_SAVINGS_PERCENT}%`
-                : 'Monthly Pass · Full Access'
-            }
-            durationBadge={`${activeProOption.duration_days} Days`}
-            topRightBadge="POPULAR"
-            topRightBadgeTone="pro"
-            icon={<Zap size={17} />}
-            pricePkr={activeProOption.price_pkr}
-            cadenceLabel={activeProOption.cadenceLabel}
-            priceKobans={activeProOption.price_kobans}
-            regularPricePkr={activeProOption.regular_price_pkr}
-            priceSubtext={activeProOption.description}
-            features={activeProOption.features}
-            featured={true}
-            ctaLabel={
-              proCardCycle === 'pro_annual'
-                ? `Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
-                : `Upgrade to Pro, PKR ${PLANS.pro_monthly.price_pkr}/mo`
-            }
-            ctaIcon={<Zap size={15} />}
-            ctaVariant="primary-red"
-            onCtaClick={() => openProCheckout(proCardCycle)}
-            footerSlot={
-              <div className="pt-1 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setProCardCycle((prev) =>
-                      prev === 'pro_monthly' ? 'pro_annual' : 'pro_monthly'
-                    )
-                  }
-                  className="w-full min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] flex items-center justify-between gap-2 transition-colors cursor-pointer"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-[#E8342A]" />
-                    <span>
-                      {proCardCycle === 'pro_monthly'
-                        ? `Switch to Annual (PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}/yr)`
-                        : `Switch to Monthly (PKR ${PLANS.pro_monthly.price_pkr}/mo)`}
-                    </span>
-                  </span>
-                  <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#E8342A]/15 text-[#E8342A]">
-                    Save {ANNUAL_SAVINGS_PERCENT}%
-                  </span>
-                </button>
-              </div>
-            }
-          />
-
-          {/* 3. Nakama Crew Card */}
-          <PlanCard
-            title={PLANS.crew.name}
-            subtitle={PLANS.crew.shortName}
-            icon={<Users size={17} />}
-            pricePkr={PLANS.crew.price_pkr}
-            cadenceLabel={PLANS.crew.cadenceLabel}
-            priceSubtext={PLANS.crew.description}
-            features={PLANS.crew.features}
-            featured={false}
-            ctaLabel={isCrew ? 'Manage Your Crew' : 'Join or Create Crew'}
-            ctaIcon={<Users size={15} />}
-            ctaVariant="outlined"
-            onCtaClick={() => navigate('/dashboard/crew')}
-          />
+      {/* Inline Retry Error Banner (8s timeout / network error) */}
+      {requestsError && (
+        <div
+          role="alert"
+          className="mb-6 flex items-center justify-between gap-3 rounded-[24px] px-5 py-4"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--danger-border)',
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <AlertCircle className="h-5 w-5 shrink-0" style={{ color: 'var(--danger)' }} />
+            <p className="text-[14px] leading-snug" style={{ color: 'var(--text)' }}>
+              {requestsError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadProRequests()}
+            className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold cursor-pointer"
+            style={{
+              backgroundColor: 'var(--bg)',
+              border: '1px solid var(--border)',
+              color: 'var(--accent)',
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry
+          </button>
         </div>
       )}
 
-      {/* ─── COMPACT 3-COLUMN COMPARISON SUMMARY (Free vs Pro vs Crew) ──────── */}
-      <div className="rounded-[22px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
-        <div className="px-4 sm:px-5 py-3 border-b border-[var(--border)] flex items-center justify-between gap-2 bg-[var(--surface-2)]/60">
-          <span className="font-heading font-bold text-xs sm:text-sm text-[var(--text)]">
-            Quick Plan Comparison
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--muted)]">
-            Key Limits &amp; Perks
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[320px]">
-            <thead>
-              <tr className="border-b border-[var(--border)] text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                <th className="py-2.5 px-3.5 sm:px-5 font-semibold">Feature</th>
-                <th className="py-2.5 px-2.5 sm:px-4 font-semibold text-center">Free</th>
-                <th className="py-2.5 px-2.5 sm:px-4 font-bold text-center text-[var(--red)] bg-[var(--red)]/[0.05]">
-                  Pro
-                </th>
-                <th className="py-2.5 px-2.5 sm:px-4 font-semibold text-center">Crew</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)] text-xs">
-              {PLAN_COMPARISON_ROWS.map((row) => (
-                <tr key={row.feature} className="hover:bg-[var(--surface-2)]/40 transition-colors">
-                  <td className="py-2.5 px-3.5 sm:px-5 font-medium text-[var(--text)]">
-                    {row.feature}
-                  </td>
-                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] text-[var(--muted)]">
-                    {row.free}
-                  </td>
-                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] font-bold text-[var(--text)] bg-[var(--red)]/[0.05]">
-                    {row.pro}
-                  </td>
-                  <td className="py-2.5 px-2.5 sm:px-4 text-center font-mono text-[11px] text-[var(--muted)]">
-                    {row.crew}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ─── REFUND POLICY & PAYMENT NOTE FOOTER ────────────────────────────── */}
-      <div className="rounded-[20px] bg-[var(--card)] border border-[var(--border)] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[var(--muted)]">
-        <div className="flex items-center gap-2.5">
-          <ShieldCheck size={16} className="text-emerald-500 shrink-0" />
-          <span>
-            <strong className="text-[var(--text)]">Terms &amp; Refunds:</strong> {REFUND_POLICY_TEXT}{' '}
-            Payments are verified manually and plans are activated within 24 hours after you submit
-            your payment and proof.
-          </span>
-        </div>
-        {!isPurchaseLocked && (
-          <button
-            type="button"
-            onClick={() => openProCheckout('pro_annual')}
-            className="font-heading font-bold text-xs text-[var(--red)] hover:underline shrink-0 text-left sm:text-right cursor-pointer"
+      {/* 1. YOUR PLAN */}
+      {effectiveIsPro ? (
+        <SettingsGroup label="Your plan" helperText={proLockHelperText}>
+          <SettingsRow
+            icon={<Crown />}
+            label="Active plan"
+            value={planStatus.planName}
+            chevron="none"
+          />
+          <SettingsRow
+            icon={<CalendarClock />}
+            label="Expires"
+            value={planStatus.expiryDateTimeFormatted || planStatus.expiryFormatted || 'Active'}
+            chevron="none"
+          />
+          <SettingsRow
+            icon={<Clock />}
+            label="Time remaining"
+            value={planStatus.timeLeftLabel || 'Active'}
+            chevron="none"
+          />
+        </SettingsGroup>
+      ) : isPendingVerification ? (
+        <SettingsGroup
+          label="Your plan"
+          helperText="Payments are verified manually and plans are activated within 24 hours. New purchases are locked while verification is pending."
+        >
+          <SettingsRow
+            icon={<Clock />}
+            label="Payment pending verification"
+            subtitle={
+              planStatus.pendingRequest
+                ? `${planStatus.pendingRequest.planName} · PKR ${planStatus.pendingRequest.amountPkr.toLocaleString()}`
+                : pendingProRequest
+                ? `PKR ${Number(pendingProRequest.amount || 0).toLocaleString()} submitted`
+                : 'Awaiting manual verification'
+            }
+            value="Pending"
+            chevron="none"
+          />
+          {(planStatus.pendingRequest?.tid || pendingProRequest?.TID) && (
+            <SettingsRow
+              label="Transaction ID"
+              value={planStatus.pendingRequest?.tid || pendingProRequest?.TID || ''}
+              chevron="none"
+            />
+          )}
+          {planStatus.pendingRequest?.submittedFormatted && (
+            <SettingsRow
+              label="Submitted"
+              value={planStatus.pendingRequest.submittedFormatted}
+              chevron="none"
+            />
+          )}
+        </SettingsGroup>
+      ) : (
+        <section className="mb-6">
+          <h2
+            className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+            style={{ color: 'var(--text-muted)' }}
           >
-            View Annual Pass (Save {ANNUAL_SAVINGS_PERCENT}%) →
-          </button>
-        )}
-      </div>
+            Your plan
+          </h2>
+          <div
+            className="rounded-[32px] p-5"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                  {isCrew ? planStatus.planName : 'Free tier'}
+                </div>
+                <p className="mt-1 text-[14px] leading-snug" style={{ color: 'var(--text-muted)' }}>
+                  2 practice tests/day, 10 questions/test
+                </p>
+              </div>
+              <span
+                className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                Current
+              </span>
+            </div>
 
-      {/* ─── DEDICATED PRO CHECKOUT SHEET ───────────────────────────────────── */}
+            {latestRejectedProRequest && (
+              <div
+                className="mt-3 rounded-2xl px-3.5 py-2.5 text-[13px]"
+                style={{
+                  backgroundColor: 'var(--tag-danger-bg)',
+                  border: '1px solid var(--danger-border)',
+                  color: 'var(--danger)',
+                }}
+              >
+                Your previous payment request (TID: {latestRejectedProRequest.TID || 'N/A'}) was
+                not approved. You can submit a new payment below.
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => openProCheckout(proCardCycle)}
+              className="mt-4 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>Upgrade to Pro</span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* 2. KOBANS */}
+      <SettingsGroup label="Kobans">
+        <SettingsRow
+          leadingElement={<KobanIcon size={24} decorative />}
+          label="Kobans balance"
+          subtitle="Use Kobans for instant Boardly Pro activation"
+          chevron="none"
+          rightElement={
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-semibold tabular-nums"
+              style={{
+                backgroundColor: 'var(--koban-bg)',
+                border: '1px solid var(--koban-border)',
+                color: 'var(--koban)',
+              }}
+            >
+              <KobanIcon size={15} decorative />
+              {!balanceLoaded || kobanBalance === null ? (
+                <span
+                  className="inline-block h-3.5 w-12 animate-pulse rounded-full"
+                  style={{ backgroundColor: 'var(--skeleton)' }}
+                  aria-label="Loading Kobans balance"
+                />
+              ) : (
+                <span>{kobanBalance.toLocaleString()}</span>
+              )}
+            </span>
+          }
+        />
+        <SettingsRow
+          icon={<Palette />}
+          label="Customize Koban"
+          onClick={() => navigate('/settings/koban-icon')}
+        />
+      </SettingsGroup>
+
+      {/* 3. CHOOSE A PLAN (Hidden for active Pro & pending users so purchase actions stay locked) */}
+      {!isPurchaseLocked && (
+        <section className="mb-6 space-y-4">
+          <h2
+            className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Choose a plan
+          </h2>
+
+          {/* Monthly | Annual (-25%) segmented pill */}
+          <div
+            role="tablist"
+            aria-label="Billing cycle"
+            className="grid grid-cols-2 gap-1.5 rounded-full p-1.5"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={proCardCycle === 'pro_monthly'}
+              onClick={() => setProCardCycle('pro_monthly')}
+              className="min-h-[44px] rounded-full px-4 text-[14px] font-semibold transition-colors cursor-pointer"
+              style={
+                proCardCycle === 'pro_monthly'
+                  ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
+                  : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
+              }
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={proCardCycle === 'pro_annual'}
+              onClick={() => setProCardCycle('pro_annual')}
+              className="min-h-[44px] rounded-full px-4 text-[14px] font-semibold transition-colors cursor-pointer"
+              style={
+                proCardCycle === 'pro_annual'
+                  ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
+                  : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
+              }
+            >
+              Annual (−{ANNUAL_SAVINGS_PERCENT}%)
+            </button>
+          </div>
+
+          {/* Boardly Pro Card */}
+          <div
+            className="rounded-[32px] p-5"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1.5px solid var(--accent)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5" style={{ color: 'var(--accent)' }} />
+                  <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                    Boardly Pro
+                  </h3>
+                </div>
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  {proCardCycle === 'pro_annual'
+                    ? `Annual pass · ${activeProOption.duration_days} days · Save ${ANNUAL_SAVINGS_PERCENT}%`
+                    : `Monthly pass · ${activeProOption.duration_days} days`}
+                </p>
+              </div>
+              <span
+                className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--accent-soft)',
+                  color: 'var(--accent)',
+                }}
+              >
+                {proCardCycle === 'pro_annual' ? `Save ${ANNUAL_SAVINGS_PERCENT}%` : 'Popular'}
+              </span>
+            </div>
+
+            {/* Pricing & Koban Equivalent */}
+            <div
+              className="mt-4 rounded-2xl p-4 space-y-2"
+              style={{
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-[26px] font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+                  PKR {activeProOption.price_pkr.toLocaleString()}
+                </span>
+                <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                  {activeProOption.cadenceLabel}
+                </span>
+                {activeProOption.regular_price_pkr && (
+                  <span
+                    className="text-[13px] line-through tabular-nums"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    PKR {activeProOption.regular_price_pkr.toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--koban)' }}>
+                  <KobanIcon size={15} decorative />
+                  <span>{activeProOption.price_kobans.toLocaleString()} Kobans</span>
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {activeProOption.duration_days} days · Active until{' '}
+                  <strong style={{ color: 'var(--text)' }}>
+                    {activeProExpiryPreview.newExpiryLabel}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Feature Check Rows */}
+            <ul className="mt-4 space-y-2.5">
+              {activeProOption.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2.5 text-[14px] leading-snug"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <Check
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    style={{ color: 'var(--accent)' }}
+                    strokeWidth={2.4}
+                  />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => openProCheckout(proCardCycle)}
+              className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              <Zap className="h-4 w-4" />
+              <span>
+                {proCardCycle === 'pro_annual'
+                  ? `Get Annual Pass · PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
+                  : `Upgrade to Pro · PKR ${PLANS.pro_monthly.price_pkr}/mo`}
+              </span>
+            </button>
+          </div>
+
+          {/* Nakama Crew Card */}
+          <div
+            className="rounded-[32px] p-5"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5" style={{ color: 'var(--text)' }} />
+                  <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                    {PLANS.crew.name}
+                  </h3>
+                </div>
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  {PLANS.crew.description}
+                </p>
+              </div>
+              <span
+                className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
+              >
+                Free squad
+              </span>
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {PLANS.crew.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2.5 text-[14px] leading-snug"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <Check
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    style={{ color: 'var(--text-muted)' }}
+                    strokeWidth={2.2}
+                  />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/crew')}
+              className="mt-5 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold cursor-pointer transition-colors hover:bg-[var(--settings-row-hover)]"
+              style={{
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+              }}
+            >
+              <Users className="h-4 w-4" />
+              <span>{isCrew ? 'Manage your crew' : 'Join or create crew'}</span>
+            </button>
+          </div>
+
+          {/* Free Tier Card */}
+          <div
+            className="rounded-[32px] p-5"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                  {PLANS.free.name}
+                </h3>
+                <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  PKR 0 / forever · {PLANS.free.description}
+                </p>
+              </div>
+              <span
+                className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                {currentPlan === 'free' ? 'Current plan' : 'Base tier'}
+              </span>
+            </div>
+
+            <ul className="mt-4 space-y-2">
+              {PLANS.free.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2.5 text-[14px] leading-snug"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <Check className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2.2} />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* 4. COMPARE PLANS (Stacked readable feature rows — no cramped 4-column table) */}
+      <section className="mb-6">
+        <h2
+          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Compare plans
+        </h2>
+        <div
+          className="overflow-hidden rounded-[32px]"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--settings-card-shadow)',
+          }}
+        >
+          {PLAN_COMPARISON_ROWS.map((row, idx) => (
+            <div
+              key={row.feature}
+              className="px-5 py-4"
+              style={
+                idx < PLAN_COMPARISON_ROWS.length - 1
+                  ? { borderBottom: '1px solid var(--border)' }
+                  : undefined
+              }
+            >
+              <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
+                {row.feature}
+              </div>
+              <div className="mt-2.5 grid grid-cols-3 gap-2">
+                <div
+                  className="rounded-2xl px-3 py-2"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                    Free
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
+                    {row.free}
+                  </div>
+                </div>
+                <div
+                  className="rounded-2xl px-3 py-2"
+                  style={{
+                    backgroundColor: 'var(--accent-soft)',
+                    border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)',
+                  }}
+                >
+                  <div className="text-[11px] font-semibold" style={{ color: 'var(--accent)' }}>
+                    Pro
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>
+                    {row.pro}
+                  </div>
+                </div>
+                <div
+                  className="rounded-2xl px-3 py-2"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  <div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                    Crew
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
+                    {row.crew}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Terms & refunds helper text under the last card */}
+        <p className="mt-3 px-4 text-[13px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          {REFUND_POLICY_TEXT} Payments via JazzCash or Opay are verified manually and plans are
+          activated within 24 hours. Review our{' '}
+          <Link to="/terms" className="underline" style={{ color: 'var(--accent)' }}>
+            Terms of Service
+          </Link>{' '}
+          and{' '}
+          <Link to="/privacy" className="underline" style={{ color: 'var(--accent)' }}>
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </section>
+
+      {/* Dedicated Pro Checkout Sheet (uses SettingsSheet) */}
       <ProCheckoutSheet
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
         initialPlanId={selectedCheckoutPlan}
         uid={user?.uid}
         userEmail={user?.email || profile?.email}
-        userName={profile?.displayName || profile?.name || user?.displayName}
-        kobanBalance={balance}
+        userName={displayName}
+        kobanBalance={kobanBalance}
+        balanceLoaded={balanceLoaded}
         currentProExpiresAt={rawExpiresAt}
-        hasPendingProRequest={planStatus.state === 'pending' || Boolean(pendingProRequest)}
+        hasPendingProRequest={isPendingVerification || Boolean(pendingProRequest)}
         onOpenGetKobans={(needed) => {
           setCheckoutOpen(false);
           setGetKobansInitialAmount(needed);
           setGetKobansOpen(true);
         }}
         onSuccess={() => {
-          loadProRequests();
+          void loadProRequests();
+          void refreshWallet();
         }}
         onStartPracticing={() => navigate('/practice')}
       />
 
-      {/* ─── GET KOBANS MODAL (Only triggered when user clicks "Get Kobans" on low balance) ─── */}
+      {/* Get Kobans Modal (triggered when user clicks "Get Kobans" on low balance) */}
       <GetKobansModal
         isOpen={getKobansOpen}
         onClose={() => {
@@ -343,7 +760,6 @@ export function PlansBillingPage() {
         }}
         initialAmount={getKobansInitialAmount}
       />
-    </div>
+    </SettingsPage>
   );
 }
-
