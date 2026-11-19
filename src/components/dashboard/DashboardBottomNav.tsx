@@ -16,6 +16,7 @@ import {
   Users,
   Menu,
   Compass,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -55,6 +56,7 @@ interface CachedDockMetrics {
   pad: number;
   gap: number;
   slotWidth: number;
+  centerSlotWidth: number;
   slotOffsets: number[];
 }
 
@@ -74,16 +76,21 @@ function isLowEndHardware(): boolean {
 }
 
 function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
-  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
+  const isDesktop = vw >= 768;
+  const hasCenterAiFab = vw < 1024;
   const pad = isDesktop ? 8 : 6;
   const gap = isDesktop ? 6 : 2;
+  const centerSlotWidth = hasCenterAiFab ? (vw < 380 ? 50 : 56) : 0;
   const dockWidth = Math.max(240, Math.round(rect.width));
   const dockHeight = Math.max(52, Math.round(rect.height));
-  const rawSlotWidth = (dockWidth - pad * 2 - gap * (TAB_COUNT - 1)) / TAB_COUNT;
-  const slotWidth = Math.max(40, Math.round(rawSlotWidth));
+  const totalGaps = hasCenterAiFab ? TAB_COUNT : TAB_COUNT - 1;
+  const rawSlotWidth = (dockWidth - pad * 2 - centerSlotWidth - gap * totalGaps) / TAB_COUNT;
+  const slotWidth = Math.max(36, Math.round(rawSlotWidth));
   const slotOffsets: number[] = [];
   for (let i = 0; i < TAB_COUNT; i++) {
-    slotOffsets.push(Math.round(pad + i * (rawSlotWidth + gap)));
+    const extraCenter = hasCenterAiFab && i >= 3 ? centerSlotWidth + gap : 0;
+    slotOffsets.push(Math.round(pad + i * (rawSlotWidth + gap) + extraCenter));
   }
   return {
     dockLeft: rect.left,
@@ -93,6 +100,7 @@ function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
     pad,
     gap,
     slotWidth,
+    centerSlotWidth,
     slotOffsets,
   };
 }
@@ -212,8 +220,12 @@ function DashboardBottomNavComponent() {
     ((location.pathname === '/dashboard/messages' || location.pathname === '/messages') &&
       Boolean(searchParams.get('uid') || searchParams.get('conversationId')));
 
+  const isAiScreen =
+    location.pathname === '/dashboard/ai' || location.pathname.startsWith('/dashboard/ai/');
+
   const shouldHideBottomNav =
     isSettingsScreen ||
+    isAiScreen ||
     isInsideChatScreen ||
     isProfileModalOpen ||
     isExternalModalOpen ||
@@ -305,8 +317,9 @@ function DashboardBottomNavComponent() {
     dockHeight: 64,
     pad: 6,
     gap: 2,
-    slotWidth: 56,
-    slotOffsets: [6, 64, 122, 180, 238, 296],
+    slotWidth: 44,
+    centerSlotWidth: 50,
+    slotOffsets: [6, 52, 98, 196, 242, 288],
   });
 
   const [slotWidth, setSlotWidth] = useState<number>(56);
@@ -430,17 +443,25 @@ function DashboardBottomNavComponent() {
     };
   }, [activeTabId, refreshCachedMetrics]);
 
-  // Fast index lookup from clientX using cached metrics (zero getBoundingClientRect calls)
+  // Fast index lookup from clientX using cached slot centers (accounts for center AI FAB gap on <1024px)
   const getTabByClientX = useCallback(
     (clientX: number): { item: DockTabItem; index: number } => {
       const m = metricsRef.current;
-      const relX = clientX - m.dockLeft - m.pad;
-      const stride = Math.max(1, m.slotWidth + m.gap);
-      const rawIdx = Math.floor(relX / stride);
-      const clampedIdx = Math.max(0, Math.min(TAB_COUNT - 1, rawIdx));
+      const localX = clientX - m.dockLeft;
+      let bestIdx = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < TAB_COUNT; i++) {
+        const offset = m.slotOffsets[i] ?? m.pad + i * (m.slotWidth + m.gap);
+        const center = offset + m.slotWidth / 2;
+        const dist = Math.abs(localX - center);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      }
       return {
-        item: navItems[clampedIdx] || navItems[1],
-        index: clampedIdx,
+        item: navItems[bestIdx] || navItems[1],
+        index: bestIdx,
       };
     },
     [navItems]
@@ -481,6 +502,9 @@ function DashboardBottomNavComponent() {
   const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if ((e.target as HTMLElement | null)?.closest?.('[data-ai-nav-fab="true"]')) {
+      return;
+    }
 
     // Identify target tab from event target or cached slot math (no layout read!)
     const targetBtn = (e.target as HTMLElement | null)?.closest?.(
@@ -627,6 +651,9 @@ function DashboardBottomNavComponent() {
   const handleDockClick = (e: React.MouseEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    if ((e.target as HTMLElement | null)?.closest?.('[data-ai-nav-fab="true"]')) {
+      return;
+    }
     if (Date.now() - lastDragCommitTimeRef.current < 100) {
       return;
     }
@@ -637,6 +664,19 @@ function DashboardBottomNavComponent() {
     }
   };
 
+  const handleOpenAiMentors = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isAuthenticated) {
+        requireAuth('chat with Boardly AI Mentors');
+        return;
+      }
+      navigate('/dashboard/ai');
+    },
+    [isAuthenticated, requireAuth, navigate]
+  );
+
   // Dock wrapper (position: fixed, no filter) contains THREE SIBLINGS, never nested:
   // (a) .plate (static blur layer)  (b) .g > .gi (GPU translate3d bubble, zero blur)  (c) .tabs
   const navBarElement = (
@@ -645,7 +685,7 @@ function DashboardBottomNavComponent() {
       data-bottom-nav-container="true"
       role="tablist"
       aria-label="Student Dashboard Navigation"
-      inert={shouldHideBottomNav || undefined}
+      inert={shouldHideBottomNav ? ('' as unknown as boolean) : undefined}
       aria-hidden={shouldHideBottomNav}
       hidden={shouldHideBottomNav}
       style={
@@ -688,56 +728,75 @@ function DashboardBottomNavComponent() {
         />
       </div>
 
-      {/* (c) .tabs: the 6 evenly-spaced buttons, position relative, z-index above .g */}
+      {/* (c) .tabs: the 6 nav tabs + raised circular Boardly AI Mentors button in center on mobile/tablet */}
       <div className="tabs">
         {navItems.map((item, index) => {
           const isHighlighted = item.id === highlightedId;
           const isSelected = item.id === activeTabId;
 
           return (
-            <button
-              key={item.id}
-              data-nav-tab={item.id}
-              ref={(el) => {
-                btnRefs.current[item.id] = el;
-              }}
-              type="button"
-              role="tab"
-              tabIndex={0}
-              hidden={item.hidden}
-              aria-selected={isSelected}
-              aria-label={item.label}
-              title={item.label}
-              onKeyDown={(e) => handleKeyDown(e, index, item)}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                prefetchTabRouteAndData(item.id, user?.uid);
-              }}
-              onMouseEnter={() => {
-                prefetchTabRouteAndData(item.id, user?.uid);
-              }}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (Date.now() - lastDragCommitTimeRef.current < 100) {
-                  return;
-                }
-                executeTabAction(item);
-              }}
-              className={`sdn-tab-btn min-w-[44px] min-h-[44px] pointer-events-auto ${isHighlighted ? 'is-active' : ''} ${
-                item.hidden ? 'is-hidden' : ''
-              }`}
-            >
-              <span className="shrink-0 flex items-center justify-center relative pointer-events-none">
-                {item.icon}
-                {Boolean(item.badge) && (
-                  <span className="sdn-tab-badge absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
-                    {Number(item.badge) > 9 ? '9+' : item.badge}
-                  </span>
-                )}
-              </span>
-              <span className="sr-only">{item.label}</span>
-            </button>
+            <React.Fragment key={item.id}>
+              {index === 3 && (
+                <div className="sdn-ai-fab-slot lg:hidden" data-ai-nav-fab="true">
+                  <button
+                    type="button"
+                    data-ai-nav-fab="true"
+                    data-testid="bottom-nav-ai-fab"
+                    aria-label="Open Boardly AI Mentors"
+                    title="Boardly AI Mentors"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onClick={handleOpenAiMentors}
+                    className="sdn-ai-fab"
+                  >
+                    <span className="sdn-ai-fab-ring" aria-hidden="true" />
+                    <Sparkles size={22} strokeWidth={2.2} className="relative z-10 text-white" />
+                  </button>
+                </div>
+              )}
+              <button
+                data-nav-tab={item.id}
+                ref={(el) => {
+                  btnRefs.current[item.id] = el;
+                }}
+                type="button"
+                role="tab"
+                tabIndex={0}
+                hidden={item.hidden}
+                aria-selected={isSelected}
+                aria-label={item.label}
+                title={item.label}
+                onKeyDown={(e) => handleKeyDown(e, index, item)}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  prefetchTabRouteAndData(item.id, user?.uid);
+                }}
+                onMouseEnter={() => {
+                  prefetchTabRouteAndData(item.id, user?.uid);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (Date.now() - lastDragCommitTimeRef.current < 100) {
+                    return;
+                  }
+                  executeTabAction(item);
+                }}
+                className={`sdn-tab-btn min-h-[44px] pointer-events-auto ${isHighlighted ? 'is-active' : ''} ${
+                  item.hidden ? 'is-hidden' : ''
+                }`}
+              >
+                <span className="shrink-0 flex items-center justify-center relative pointer-events-none">
+                  {item.icon}
+                  {Boolean(item.badge) && (
+                    <span className="sdn-tab-badge absolute -top-1.5 -right-2 min-w-[16px] h-[16px] px-1 text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                      {Number(item.badge) > 9 ? '9+' : item.badge}
+                    </span>
+                  )}
+                </span>
+                <span className="sr-only">{item.label}</span>
+              </button>
+            </React.Fragment>
           );
         })}
       </div>

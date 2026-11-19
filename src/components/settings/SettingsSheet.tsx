@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, MoreHorizontal, Plus, X } from 'lucide-react';
 import { BoardlyAvatar } from '../ui/BoardlyAvatar';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 export interface SettingsSheetProps {
   open: boolean;
@@ -28,13 +29,13 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   const dragStartYRef = useRef<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
 
-  // Lock background scroll, open at scrollTop = 0, trap focus, return focus on close
+  // Lock background scroll safely via ref-counted lock, open at scrollTop = 0, trap focus, return focus on close
+  useBodyScrollLock(open, 'settings-sheet');
+
   useEffect(() => {
     if (!open) return;
 
     previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
 
     const resetScroll = () => {
       if (contentRef.current) {
@@ -81,7 +82,6 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       window.cancelAnimationFrame(rafId);
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = prevOverflow;
       setDragOffsetY(0);
       previousFocusRef.current?.focus?.();
     };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   CalendarClock,
@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
+import { useAiCredits } from '@/hooks/useAiCredits';
 import {
   PLANS,
   REFUND_POLICY_TEXT,
@@ -44,6 +45,7 @@ import type { PaymentRequest } from '@/types';
 export function PlansBillingPage() {
   const { user, isGuest } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { profile } = useUserProfile();
   const {
     plan: currentPlan,
@@ -54,6 +56,18 @@ export function PlansBillingPage() {
   } = useEffectivePlan();
   const isCrew = source === 'crew';
   const { kobanBalance, balanceLoaded, refreshWallet } = useWallet();
+  const aiCredits = useAiCredits();
+
+  useEffect(() => {
+    if (location.hash === '#boardly-pro-card') {
+      const timer = window.setTimeout(() => {
+        document
+          .getElementById('boardly-pro-card')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+      return () => window.clearTimeout(timer);
+    }
+  }, [location.hash]);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<ProPlanId>('pro_monthly');
@@ -331,6 +345,77 @@ export function PlansBillingPage() {
         </section>
       )}
 
+      {/* 1B. AI MENTOR CREDITS TODAY */}
+      <section className="mb-6" data-testid="plans-ai-credits-card">
+        <h2
+          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          AI Mentor credits today
+        </h2>
+        <div
+          className="rounded-[32px] p-5"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--settings-card-shadow)',
+          }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 shrink-0" style={{ color: 'var(--accent)' }} />
+                <span className="text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
+                  {aiCredits.unlimited
+                    ? 'Unlimited credits'
+                    : `${aiCredits.remaining} of ${aiCredits.limit} credits left`}
+                </span>
+              </div>
+              <p className="mt-1 text-[13px] leading-snug" style={{ color: 'var(--text-muted)' }}>
+                {aiCredits.unlimited
+                  ? 'Superadmin access · Quick, Balanced, Deep & Max unlocked'
+                  : `Resets in ${aiCredits.resetCountdown} (PKT) · ${
+                      aiCredits.plan === 'pro'
+                        ? 'Quick, Balanced, Deep & Max unlocked'
+                        : 'Quick & Balanced unlocked'
+                    }`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/ai')}
+              className="shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-semibold cursor-pointer"
+              style={{
+                backgroundColor: 'var(--bg)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+              }}
+            >
+              Open AI
+            </button>
+          </div>
+          <div
+            className="mt-3.5 h-2 w-full overflow-hidden rounded-full"
+            style={{ backgroundColor: 'var(--bg)' }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${
+                  aiCredits.unlimited
+                    ? 100
+                    : Math.max(
+                        0,
+                        Math.min(100, Math.round((aiCredits.remaining / Math.max(1, aiCredits.limit)) * 100))
+                      )
+                }%`,
+                backgroundColor: 'var(--accent)',
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
       {/* 2. KOBANS */}
       <SettingsGroup label="Kobans">
         <SettingsRow
@@ -420,6 +505,7 @@ export function PlansBillingPage() {
 
           {/* Boardly Pro Card */}
           <div
+            id="boardly-pro-card"
             className="rounded-[32px] p-5"
             style={{
               backgroundColor: 'var(--card)',

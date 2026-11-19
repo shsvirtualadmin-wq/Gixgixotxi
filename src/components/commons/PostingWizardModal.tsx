@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { createCommonsPost } from '@/services/commonsService';
 import { uploadCommonsAttachment } from '@/services/commonsUploadService';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import type { CommonsPost, CommonsPostType, CommonsFileAttachment } from '@/types/commons';
 
 export type WizardPostType =
@@ -224,11 +225,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Lock body scroll & set data-modal-open while open
+  // Lock body scroll safely via ref-counted lock & set data-modal-open while open
+  useBodyScrollLock(isOpen, 'posting-wizard-modal');
+
   useEffect(() => {
     if (!isOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     document.body.setAttribute('data-modal-open', 'true');
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -239,7 +240,6 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.body.style.overflow = prevOverflow;
       document.body.removeAttribute('data-modal-open');
       window.removeEventListener('keydown', handleKeyDown);
     };

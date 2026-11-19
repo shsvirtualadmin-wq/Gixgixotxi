@@ -10,6 +10,8 @@
  * - Transactional emails (/api/send-email & emailTemplates)
  */
 
+import aiConfig from '../../ai-config.json';
+
 export const KOBANS_PER_PKR = 10;
 
 export const REFUND_POLICY_TEXT =
@@ -74,6 +76,7 @@ export const PLANS: {
       '2 Practice Tests per day (10 questions/test)',
       '3 Arena Grand National Mocks per day',
       '5 Boardly AI step derivations per day',
+      `${aiConfig.FREE_CREDITS_PER_DAY} AI Mentor credits per day (Quick & Balanced)`,
       'Unlimited access to Boardly Commons PDFs',
       'Daily study streak tracking (PKT midnight reset)',
     ],
@@ -93,6 +96,7 @@ export const PLANS: {
       'Unlimited Practice Tests & Sprints',
       'Unlimited Arena Grand National Mocks',
       'Unlimited Boardly AI Derivations',
+      `${aiConfig.PRO_CREDITS_PER_DAY} AI Mentor credits/day with Deep & Max thinking`,
       'FAST-NUCES Negative Marking Optimizer',
       'Comprehensive Mistakes & Topic Breakdown',
     ],
@@ -111,6 +115,7 @@ export const PLANS: {
     badge: `Best value · ${ANNUAL_SAVINGS_BADGE}`,
     features: [
       'Everything in Monthly Pass for 365 days',
+      `${aiConfig.PRO_CREDITS_PER_DAY} AI Mentor credits/day with Deep & Max thinking`,
       'Unlimited MDCAT, NET, ECAT & FSc full-length mocks',
       'Priority support & exam session archives',
       'Detailed topic accuracy & weakness tracking',
@@ -130,6 +135,7 @@ export const PLANS: {
       'Up to 30 classmates per private Study Crew',
       'Shared squad leaderboards & solve-time rankings',
       'Crew-wide custom practice challenges',
+      'Whole squad uses the best AI Mentor plan in the crew',
       'Bonus referral & milestone Koban rewards',
       'Eligible for Large Crew Pass upgrades',
     ],
@@ -164,6 +170,12 @@ export const PLAN_COMPARISON_ROWS: ReadonlyArray<{
     free: '5 / day',
     pro: 'Unlimited',
     crew: '5 / day + Crew',
+  },
+  {
+    feature: 'Boardly AI Mentors',
+    free: `${aiConfig.FREE_CREDITS_PER_DAY} credits / day · Quick & Balanced`,
+    pro: `${aiConfig.PRO_CREDITS_PER_DAY} credits / day · Deep & Max`,
+    crew: 'Best plan in squad',
   },
   {
     feature: 'Accuracy & Weak-Topic Analytics',

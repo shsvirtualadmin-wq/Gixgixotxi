@@ -246,6 +246,26 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow write: if isAdmin();
       }
+
+      // Boardly AI Mentors — Chat History (Owner-only read/write, never stores raw attachments)
+      match /aiChats/{chatId} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['mentor', 'title', 'updatedAt', 'messages'])
+          && request.resource.data.mentor is int
+          && request.resource.data.mentor >= 0
+          && request.resource.data.mentor <= 4
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 48
+          && request.resource.data.messages is list
+          && request.resource.data.messages.size() <= 120;
+      }
+
+      // Boardly AI Mentors — Server-enforced Daily Credit Counter (Client read-only; server/function writes only)
+      match /aiUsage/{dateKey} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false;
+      }
     }
 
     // =========================================================================

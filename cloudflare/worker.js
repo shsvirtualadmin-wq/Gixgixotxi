@@ -3606,50 +3606,9 @@ export default {
         return jsonResponse(request, env, { ok: true });
       }
 
-      // 9. Admin Bot Settings
-      if (path === '/api/bots/settings' && method === 'GET') {
-        const user = await authenticateRequest(request, env, true);
-        requireRole(user, ['admin', 'superadmin']);
-        let settings = await db
-          .prepare('SELECT * FROM bot_settings WHERE id = \'default\'')
-          .first();
-        if (!settings) {
-          const now = Date.now();
-          await db
-            .prepare(
-              `INSERT INTO bot_settings (id, enabled, daily_post_limit, posts_per_run, comments_per_run, likes_per_run, updated_at)
-               VALUES ('default', 1, 6, 2, 2, 4, ?1)`
-            )
-            .bind(now)
-            .run();
-          settings = await db.prepare('SELECT * FROM bot_settings WHERE id = \'default\'').first();
-        }
-        return jsonResponse(request, env, { settings });
-      }
-
-      if (path === '/api/bots/settings' && method === 'PUT') {
-        const user = await authenticateRequest(request, env, true);
-        requireRole(user, ['admin', 'superadmin']);
-        const body = await request.json();
-        const enabled = body.enabled !== undefined ? (body.enabled ? 1 : 0) : 1;
-        const dailyPostLimit = Math.max(0, Math.min(50, Number(body.dailyPostLimit ?? 6)));
-        const postsPerRun = Math.max(0, Math.min(12, Number(body.postsPerRun ?? 2)));
-        const commentsPerRun = Math.max(0, Math.min(20, Number(body.commentsPerRun ?? 2)));
-        const likesPerRun = Math.max(0, Math.min(50, Number(body.likesPerRun ?? 4)));
-        const now = Date.now();
-
-        await db
-          .prepare(
-            `INSERT INTO bot_settings (id, enabled, daily_post_limit, posts_per_run, comments_per_run, likes_per_run, updated_at)
-             VALUES ('default', ?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(id) DO UPDATE SET
-               enabled = ?1, daily_post_limit = ?2, posts_per_run = ?3,
-               comments_per_run = ?4, likes_per_run = ?5, updated_at = ?6`
-          )
-          .bind(enabled, dailyPostLimit, postsPerRun, commentsPerRun, likesPerRun, now)
-          .run();
-
-        return jsonResponse(request, env, { ok: true });
+      // 9. Automated bots have been removed (previously published posts remain untouched)
+      if (path === '/api/bots' || path.startsWith('/api/bots/')) {
+        return errorResponse(request, env, 'Automated bots have been removed.', 'GONE', 410);
       }
 
       // =======================================================================

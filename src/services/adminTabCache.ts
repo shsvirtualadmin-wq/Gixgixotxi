@@ -635,7 +635,6 @@ const ADMIN_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   '/admin': () => import('@/pages/admin/AdminOverviewPage'),
   '/admin/users': () => import('@/pages/admin/AdminUsersPage'),
   '/admin/announcements': () => import('@/pages/admin/AdminAnnouncementsPage'),
-  '/admin/bots': () => import('@/pages/admin/AdminBotsPage'),
   '/admin/crews': () => import('@/pages/admin/AdminCrewsPage'),
   '/admin/captains': () => import('@/pages/admin/AdminCaptainsPage'),
   '/admin/certificates': () => import('@/pages/admin/AdminCertificatesPage'),
@@ -723,7 +722,6 @@ export function scheduleIdleAdminPrefetchAll(_uid?: string, isSuperAdmin = false
           '/admin/certificates',
           '/admin/questions',
           '/admin/announcements',
-          '/admin/bots',
         ]
       : ['/admin', '/admin/questions', '/admin/applications', '/admin/payments'];
     for (const p of primaryPaths) {

@@ -399,6 +399,50 @@ function aiTutorPlugin() {
         res.end(JSON.stringify({ error: 'Method not allowed' }));
       });
 
+      // ─── BOARDLY AI MENTORS API (DELEGATES TO /functions/api/ai.js) ───────
+      let aiMentorsModPromise: Promise<any> | null = null;
+      server.middlewares.use('/api/ai', async (req: any, res: any, next: () => void) => {
+        const cleanPath = String(req.url || '/').split('?')[0];
+        if (cleanPath !== '' && cleanPath !== '/') {
+          return next();
+        }
+        try {
+          if (!aiMentorsModPromise) {
+            aiMentorsModPromise = import('./functions/api/ai.js');
+          }
+          const aiMod = await aiMentorsModPromise;
+          const chunks: Buffer[] = [];
+          if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+            await new Promise<void>((resolve) => {
+              req.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+              req.on('end', () => resolve());
+            });
+          }
+          const bodyBuf = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
+          const headers = new Headers();
+          for (const [k, v] of Object.entries(req.headers || {})) {
+            if (Array.isArray(v)) headers.set(k, v.join(', '));
+            else if (typeof v === 'string') headers.set(k, v);
+          }
+          const webReq = new Request(`http://localhost:3000/api/ai`, {
+            method: req.method || 'GET',
+            headers,
+            body: bodyBuf && bodyBuf.length > 0 ? bodyBuf : undefined,
+          });
+          const webRes: Response = await aiMod.handleAiMentorsRequest(webReq, process.env);
+          const outHeaders: Record<string, string> = {};
+          webRes.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+          res.writeHead(webRes.status, outHeaders);
+          const text = await webRes.text();
+          res.end(text);
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'AI Mentors server error.' }));
+        }
+      });
+
       // ─── AI TUTOR API ─────────────────────────────────────────────────────
       server.middlewares.use('/api/ai-tutor', async (req: any, res: any) => {
         if (req.method === 'OPTIONS') {

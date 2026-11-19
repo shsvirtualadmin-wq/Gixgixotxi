@@ -656,21 +656,31 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     return () => observer.disconnect();
   }, [hasMore, loadingMore, loading, handleLoadMore]);
 
-  // Mobile pull-to-refresh touch handlers
+  // Mobile pull-to-refresh touch handlers (never interfere with normal downward scrolling)
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (window.scrollY === 0) {
+    if (window.scrollY <= 0) {
       touchStartY.current = e.touches[0].clientY;
       setIsPulling(true);
+    } else {
+      setIsPulling(false);
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isPulling || window.scrollY > 0) return;
+    if (!isPulling) return;
+    if (window.scrollY > 0) {
+      setIsPulling(false);
+      setPullDistance(0);
+      return;
+    }
     const currentY = e.touches[0].clientY;
     const diff = currentY - touchStartY.current;
-    if (diff > 0) {
-      setPullDistance(Math.min(diff * 0.4, 75));
+    if (diff <= 0) {
+      setIsPulling(false);
+      setPullDistance(0);
+      return;
     }
+    setPullDistance(Math.min(diff * 0.4, 75));
   };
 
   const handleTouchEnd = () => {
@@ -756,7 +766,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-hidden mx-auto space-y-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))]"
+      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-clip mx-auto space-y-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))]"
     >
       {isPublicRoute && (
         <PageMeta
@@ -767,7 +777,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Floating Glass Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
-      <header className="sticky top-2 z-30 glass glass-card allow-backdrop-blur rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-2.5 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-colors">
+      <header className="sticky top-2 z-30 glass glass-card allow-backdrop-blur rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-2.5 w-full max-w-full min-w-0 box-border overflow-x-clip transition-colors">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span
@@ -1070,7 +1080,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       </div>
 
       {/* ── Posts Stream (15 at a time, staggered entry, Facebook-style post skeletons) ── */}
-      <div className="boardly-feed-container stagger-list w-full max-w-full min-w-0 box-border overflow-x-hidden space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
+      <div className="boardly-feed-container stagger-list w-full max-w-full min-w-0 box-border overflow-x-clip space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
         {loading && displayedPosts.length === 0 ? (
           <FeedPostSkeletonList count={3} />
         ) : loadError ? (

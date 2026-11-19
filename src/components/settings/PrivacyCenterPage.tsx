@@ -18,6 +18,7 @@ import { LEGAL_LAST_UPDATED_LABEL, LEGAL_VERSION_DISPLAY } from '@/constants/leg
 export interface PrivacyCenterPageProps {
   onBack: () => void;
   onNavigate: (path: string) => void;
+  onOpenAiPrivacy?: () => void;
   scrollContainer?: 'window' | 'self';
 }
 
@@ -47,6 +48,7 @@ const PRIVACY_APPROACH_CARDS = [
 export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
   onBack,
   onNavigate,
+  onOpenAiPrivacy,
   scrollContainer = 'window',
 }) => {
   return (
@@ -103,6 +105,14 @@ export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
           value={LEGAL_VERSION_DISPLAY}
           chevron="none"
         />
+        {onOpenAiPrivacy && (
+          <SettingsRow
+            icon={<Sparkles />}
+            label="Boardly AI chat history"
+            subtitle="Save chat history toggle & delete all AI chats"
+            onClick={onOpenAiPrivacy}
+          />
+        )}
         <SettingsRow
           icon={<Mail />}
           label="Submit a privacy request"

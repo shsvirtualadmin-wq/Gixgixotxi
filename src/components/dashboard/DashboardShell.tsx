@@ -176,7 +176,7 @@ export function DashboardShell() {
       <main
         inert={isMenuOpen ? true : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
-        className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
+        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''
         } ${
           isSettingsRoute || isProfileRoute

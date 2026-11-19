@@ -251,9 +251,6 @@ const AdminAnnouncementsPage = lazyWithRetry(() =>
 const AdminCommonsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCommonsPage').then(m => ({ default: m.AdminCommonsPage }))
 );
-const AdminBotsPage = lazyWithRetry(() =>
-  import('./pages/admin/AdminBotsPage').then(m => ({ default: m.AdminBotsPage }))
-);
 const AdminPricingPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
 );
@@ -262,6 +259,9 @@ const AdminCertificatesPage = lazyWithRetry(() =>
 );
 const AdminAccessRequestsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminAccessRequestsPage').then(m => ({ default: m.AdminAccessRequestsPage }))
+);
+const AiMentorsPage = lazyWithRetry(() =>
+  import('./pages/dashboard/AiMentorsPage').then(m => ({ default: m.AiMentorsPage }))
 );
 
 // Boardly Commons
@@ -346,7 +346,6 @@ function AppInner() {
           <Route path="wallets" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
           <Route path="wallets/:uid" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
           <Route path="announcements" element={<AdminGuard requireSuperAdmin><AdminAnnouncementsPage /></AdminGuard>} />
-          <Route path="bots" element={<AdminGuard requireSuperAdmin><AdminBotsPage /></AdminGuard>} />
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminGuard requireSuperAdmin><AdminAuditLogsPage /></AdminGuard>} />
           <Route path="crews" element={<AdminGuard requireSuperAdmin><AdminCrewsPage /></AdminGuard>} />
@@ -375,7 +374,6 @@ function AppInner() {
           <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />
-          <Route path="bots" element={<AdminBotsPage />} />
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
@@ -407,6 +405,7 @@ function AppInner() {
           <Route path="rewards" element={<Navigate to="/rewards" replace />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<ArenaDashboardPage />} />
+          <Route path="ai" element={<AiMentorsPage />} />
           <Route path="ai-tutor" element={<AiTutorPage />} />
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />

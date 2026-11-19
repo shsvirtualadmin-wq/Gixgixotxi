@@ -48,7 +48,7 @@ export function PublicLayout() {
   if (isStoreMainPage || isCommonsFeed) {
     return (
       <div
-        className="relative min-h-screen flex flex-col antialiased overflow-x-hidden"
+        className="relative min-h-screen flex flex-col antialiased overflow-x-clip"
         style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
       >
         <BackgroundCanvas />

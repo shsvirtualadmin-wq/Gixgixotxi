@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Sun, Moon, ArrowLeft } from 'lucide-react';
+import { Sun, Moon, ArrowLeft, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
@@ -68,6 +69,7 @@ export function DashboardTopBar({
   title,
 }: Props) {
   const { signOutUser, isAdmin, isGuest } = useAuth();
+  const { requireAuth } = useAuthGate();
   const { user, profile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -296,8 +298,27 @@ export function DashboardTopBar({
             </div>
           </div>
 
-          {/* Right side: Coin chip, Theme toggle, and Profile avatar */}
+          {/* Right side: AI Mentors (desktop), Coin chip, Theme toggle, and Profile avatar */}
           <div className="flex items-center gap-2 shrink-0 ml-auto">
+            {/* Desktop (1024px+) AI Mentors navigation item */}
+            <button
+              type="button"
+              data-testid="topbar-ai-mentors-btn"
+              onClick={() => {
+                if (!user) {
+                  requireAuth('chat with Boardly AI Mentors');
+                  return;
+                }
+                navigate('/dashboard/ai');
+              }}
+              aria-label="Open Boardly AI Mentors"
+              title="Boardly AI Mentors"
+              className="hidden lg:inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full dashboard-topbar-icon-btn text-[13px] font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0 whitespace-nowrap"
+            >
+              <Sparkles size={15} strokeWidth={2.1} className="text-[var(--accent)]" />
+              <span>AI Mentors</span>
+            </button>
+
             {/* Kobans Wallet Chip */}
             <div
               title="Boardly Store & Kobans Wallet"

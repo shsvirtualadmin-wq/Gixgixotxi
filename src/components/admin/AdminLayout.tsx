@@ -21,7 +21,6 @@ import {
   Award,
   Tag,
   Megaphone,
-  Bot,
   Lock,
   KeyRound,
   MessageSquare,
@@ -77,7 +76,6 @@ const SECONDARY_NAV: AdminNavItem[] = [
   { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2, permission: 'certificates.issue', superAdminOnly: true },
   { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award, permission: 'tests.manage', superAdminOnly: true },
   { to: '/admin/crews', label: 'Crews', icon: Shield, permission: 'users.view', superAdminOnly: true },
-  { to: '/admin/bots', label: 'Bots', icon: Bot, permission: 'tests.manage', superAdminOnly: true },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal, permission: 'audit.view', superAdminOnly: true },
   { to: '/admin/health', label: 'Health & Tests', icon: Activity, superAdminOnly: true },
 ];

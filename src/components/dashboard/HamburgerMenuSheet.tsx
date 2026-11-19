@@ -26,6 +26,7 @@ import {
   clearCachedKobans,
   clearSwrCache,
 } from '@/utils/userStateSource';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -218,10 +219,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 };
 
 export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({ isOpen, onClose }) => {
+  useBodyScrollLock(isOpen, 'hamburger-menu-sheet');
+
   useEffect(() => {
     if (!isOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -231,7 +232,6 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({ isOpen, 
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
     };
   }, [isOpen, onClose]);
 

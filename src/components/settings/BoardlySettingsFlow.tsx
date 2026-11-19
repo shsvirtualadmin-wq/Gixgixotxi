@@ -24,6 +24,7 @@ import {
   ShoppingBag,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   Trophy,
   User,
   Users,
@@ -50,6 +51,12 @@ import {
   readSwrCache,
   writeSwrCache,
 } from '@/utils/userStateSource';
+import { useAiCredits } from '@/hooks/useAiCredits';
+import {
+  deleteAllAiChatsFromFirestore,
+  getSaveChatHistoryPref,
+  setSaveChatHistoryPref,
+} from '@/services/aiMentorsService';
 import { SettingsPage } from './SettingsPage';
 import { SettingsGroup } from './SettingsGroup';
 import { SettingsProgressRow, SettingsRow } from './SettingsRow';
@@ -81,7 +88,8 @@ export type SettingsSectionId =
   | 'notifications-rewards'
   | 'notifications-announcements'
   | 'security'
-  | 'privacy';
+  | 'privacy'
+  | 'boardly-ai';
 
 const COSMETIC_ROLE_OPTIONS = [
   'Matric Student (9th)',
@@ -147,6 +155,9 @@ function mapRouteParamToSection(param?: string): SettingsSectionId {
     case 'privacy':
     case 'legal':
       return 'privacy';
+    case 'ai':
+    case 'boardly-ai':
+      return 'boardly-ai';
     default:
       return 'main';
   }
@@ -182,6 +193,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   } = useAuth();
   const { isPro } = useEffectivePlan();
   const { kobanBalance, balanceLoaded, equipped: walletEquipped } = useWallet();
+  const aiCredits = useAiCredits();
   const { themeSetting, setTheme } = useTheme();
   const { smoothMode, setSmoothMode } = useSmoothMode();
 
@@ -234,6 +246,14 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       return true;
     }
   });
+
+  // Boardly AI Mentors privacy controls
+  const [saveAiChatHistory, setSaveAiChatHistory] = useState<boolean>(() =>
+    getSaveChatHistoryPref()
+  );
+  const [deleteAiChatsConfirmOpen, setDeleteAiChatsConfirmOpen] = useState(false);
+  const [deletingAiChats, setDeletingAiChats] = useState(false);
+  const [aiDataFeedback, setAiDataFeedback] = useState<string | null>(null);
 
   // Notification preferences (persisted per user)
   const [notifPrefs, setNotifPrefs] = useState(() => {
@@ -414,8 +434,91 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       <PrivacyCenterPage
         onBack={() => setSection('main')}
         onNavigate={navigateTo}
+        onOpenAiPrivacy={() => setSection('boardly-ai')}
         scrollContainer={scrollContainer}
       />
+    );
+  }
+
+  if (section === 'boardly-ai') {
+    const handleConfirmDeleteAllAiChats = async () => {
+      if (!user?.uid) return;
+      setDeletingAiChats(true);
+      setAiDataFeedback(null);
+      try {
+        const deleted = await deleteAllAiChatsFromFirestore(user.uid);
+        setDeleteAiChatsConfirmOpen(false);
+        setAiDataFeedback(
+          deleted > 0
+            ? `Deleted ${deleted} saved AI chat${deleted === 1 ? '' : 's'}.`
+            : 'No saved AI chats were found.'
+        );
+      } catch (err: any) {
+        setDeleteAiChatsConfirmOpen(false);
+        setAiDataFeedback(err?.message || 'Could not delete AI chats. Try again.');
+      } finally {
+        setDeletingAiChats(false);
+      }
+    };
+
+    return (
+      <SettingsPage
+        title="Boardly AI"
+        onBack={() => setSection('privacy')}
+        scrollContainer={scrollContainer}
+      >
+        <SettingsGroup label="Mentors">
+          <SettingsRow
+            icon={<Sparkles />}
+            label="Open Boardly AI Mentors"
+            subtitle="Noor, Zain, Sehar, Hamza & Mahnoor"
+            onClick={() => navigateTo('/dashboard/ai')}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup
+          label="Chat history & privacy"
+          helperText="When turned off, every Boardly AI Mentor chat behaves as a temporary chat and is not saved to your history."
+        >
+          <SettingsToggleRow
+            icon={<MessageCircle />}
+            label="Save chat history"
+            checked={saveAiChatHistory}
+            onChange={(val) => {
+              setSaveAiChatHistory(val);
+              setSaveChatHistoryPref(val);
+            }}
+          />
+        </SettingsGroup>
+
+        <SettingsGroup danger>
+          <SettingsRow
+            icon={<Trash2 />}
+            label="Delete all AI chats"
+            subtitle="Permanently clears your saved AI Mentor conversations"
+            tone="danger"
+            chevron="none"
+            onClick={() => setDeleteAiChatsConfirmOpen(true)}
+          />
+        </SettingsGroup>
+
+        {aiDataFeedback && (
+          <p className="px-4 text-[13px] font-medium" style={{ color: 'var(--accent)' }}>
+            {aiDataFeedback}
+          </p>
+        )}
+
+        <SettingsConfirmSheet
+          open={deleteAiChatsConfirmOpen}
+          onClose={() => setDeleteAiChatsConfirmOpen(false)}
+          title="Delete all AI chats?"
+          description="This permanently removes all saved Boardly AI Mentor conversations from your account. This action cannot be undone."
+          confirmLabel="Delete all chats"
+          tone="danger"
+          loading={deletingAiChats}
+          onConfirm={handleConfirmDeleteAllAiChats}
+        />
+      </SettingsPage>
     );
   }
 
@@ -854,6 +957,54 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         scrollContainer={scrollContainer}
       >
         <SettingsGroup
+          label="Boardly AI Mentors"
+          helperText={
+            aiCredits.unlimited
+              ? 'Superadmin access includes unlimited AI Mentor credits with Quick, Balanced, Deep, and Max thinking.'
+              : aiCredits.plan === 'pro'
+              ? `Daily limit: ${aiCredits.limit} credits/day · Deep & Max thinking unlocked · resets at midnight PKT.`
+              : `Daily limit: ${aiCredits.limit} credits/day (Quick & Balanced) · Deep & Max locked on Free · resets at midnight PKT.`
+          }
+        >
+          <SettingsProgressRow
+            label="AI Mentor credits"
+            percentRemaining={
+              aiCredits.unlimited
+                ? 100
+                : Math.max(
+                    0,
+                    Math.min(100, Math.round((aiCredits.remaining / Math.max(1, aiCredits.limit)) * 100))
+                  )
+            }
+            rightText={
+              aiCredits.unlimited
+                ? 'Unlimited'
+                : `${aiCredits.remaining} of ${aiCredits.limit} left`
+            }
+            resetsText={
+              aiCredits.unlimited
+                ? 'Superadmin'
+                : `Resets in ${aiCredits.resetCountdown} (PKT)`
+            }
+          />
+          <SettingsRow
+            icon={<Sparkles />}
+            label="Deep & Max thinking"
+            value={aiCredits.unlimited || aiCredits.plan === 'pro' ? 'Unlocked' : 'Locked on Free'}
+            chevron="none"
+          />
+          {!aiCredits.unlimited && aiCredits.plan !== 'pro' && (
+            <SettingsRow
+              icon={<Crown />}
+              label="Upgrade to Pro"
+              subtitle="Unlock 100 AI Mentor credits/day with Deep & Max"
+              tone="accent"
+              onClick={() => navigateTo('/dashboard/plan#boardly-pro-card')}
+            />
+          )}
+        </SettingsGroup>
+
+        <SettingsGroup
           label={isPro ? 'Pro plan allowances' : 'Daily free plan limits'}
           helperText={
             isPro
@@ -1091,7 +1242,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         onClick={() => setSection('general')}
       />
     ),
-    matchesSearch('usage and limits', 'limits', 'kobans', 'quota') && (
+    matchesSearch('usage and limits', 'limits', 'kobans', 'quota', 'ai credits', 'deep', 'max') && (
       <SettingsRow
         key="usage"
         icon={<BarChart3 />}
@@ -1099,6 +1250,23 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         onClick={() => setSection('usage')}
       />
     ),
+    matchesSearch('boardly ai', 'ai mentors', 'noor', 'zain', 'sehar', 'hamza', 'mahnoor', 'chat') && (
+      <SettingsRow
+        key="boardly-ai"
+        icon={<Sparkles />}
+        label="Boardly AI"
+        onClick={() => navigateTo('/dashboard/ai')}
+      />
+    ),
+    normalizedSearch &&
+      matchesSearch('save chat history', 'delete all ai chats', 'ai privacy', 'ai history') && (
+        <SettingsRow
+          key="boardly-ai-privacy"
+          icon={<Trash2 />}
+          label="Boardly AI chat history"
+          onClick={() => setSection('boardly-ai')}
+        />
+      ),
     matchesSearch('notifications', 'alerts', 'reminders') && (
       <SettingsRow
         key="notifications"
