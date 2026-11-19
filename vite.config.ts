@@ -408,7 +408,10 @@ function aiTutorPlugin() {
         }
         try {
           if (!aiMentorsModPromise) {
-            aiMentorsModPromise = import('./functions/api/ai.js');
+            aiMentorsModPromise = server.ssrLoadModule('/functions/api/ai.js').catch((err: any) => {
+              aiMentorsModPromise = null;
+              throw err;
+            });
           }
           const aiMod = await aiMentorsModPromise;
           const chunks: Buffer[] = [];

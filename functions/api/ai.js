@@ -17,7 +17,7 @@
  * - OWNER_EMAIL / SUPERADMIN_EMAILS / SUPERADMIN_UIDS (optional)
  */
 
-import aiConfig from '../../ai-config.json' with { type: 'json' };
+import aiConfig from '../../ai-config.json';
 
 const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 const DEFAULT_FIRESTORE_DATABASE_ID =
