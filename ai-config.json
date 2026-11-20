@@ -1,6 +1,7 @@
 {
   "FREE_CREDITS_PER_DAY": 5,
-  "PRO_CREDITS_PER_DAY": 100,
+  "PRO_CREDITS_PER_DAY": 50,
+  "PLUS_CREDITS_PER_DAY": 100,
   "DEFAULT_MODEL": "gemini-4-hydrogen",
   "FALLBACK_MODEL": "gemini-3.1-flash-lite",
   "TIMEZONE": "Asia/Karachi",

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import {
   buildFallbackCreditsStatus,
   cacheAiCreditsStatus,
@@ -12,18 +13,27 @@ import { getPktResetInfo } from '@/utils/aiMentorsLogic';
 
 export function useAiCredits() {
   const { user, isGuest, isSuperAdmin } = useAuth();
-  const { isPro, source } = useEffectivePlan();
+  const { plan, isPro, isPlus, source } = useEffectivePlan();
+  const { config: plansConfig } = usePlansConfig();
 
   const uid = user?.uid || null;
   const fallback = buildFallbackCreditsStatus({
+    plan,
     isPro,
+    isPlus,
     isSuperAdmin,
     source,
+    plansConfig,
   });
 
   const [status, setStatus] = useState<AiCreditsStatus>(() => {
     const cached = getCachedAiCreditsStatus(uid);
-    if (cached && cached.isPro === fallback.isPro && cached.isSuperAdmin === fallback.isSuperAdmin) {
+    if (
+      cached &&
+      cached.plan === fallback.plan &&
+      cached.isSuperAdmin === fallback.isSuperAdmin &&
+      cached.dailyLimit === fallback.dailyLimit
+    ) {
       return cached;
     }
     return fallback;
@@ -31,11 +41,13 @@ export function useAiCredits() {
   const [loading, setLoading] = useState<boolean>(false);
   const [resetLabel, setResetLabel] = useState<string>(() => getPktResetInfo().countdownLabel);
 
-  // Sync live plan changes immediately (e.g. when Pro activates)
+  // Sync live plan or config/plans changes immediately (e.g. when Pro or Plus activates)
   useEffect(() => {
     setStatus((prev) => {
       if (
+        prev.plan === fallback.plan &&
         prev.isPro === fallback.isPro &&
+        prev.isPlus === fallback.isPlus &&
         prev.isSuperAdmin === fallback.isSuperAdmin &&
         prev.dailyLimit === fallback.dailyLimit
       ) {
@@ -44,6 +56,8 @@ export function useAiCredits() {
       return {
         ...prev,
         isPro: fallback.isPro,
+        isPlus: fallback.isPlus,
+        isPaid: fallback.isPaid,
         isSuperAdmin: fallback.isSuperAdmin,
         isUnlimited: fallback.isUnlimited,
         deepMaxUnlocked: fallback.deepMaxUnlocked,
@@ -56,11 +70,13 @@ export function useAiCredits() {
       };
     });
   }, [
+    fallback.plan,
     fallback.isPro,
+    fallback.isPlus,
+    fallback.isPaid,
     fallback.isSuperAdmin,
     fallback.isUnlimited,
     fallback.deepMaxUnlocked,
-    fallback.plan,
     fallback.source,
     fallback.dailyLimit,
   ]);
@@ -69,14 +85,21 @@ export function useAiCredits() {
     if (!uid || isGuest || uid.startsWith('guest_')) return;
     setLoading(true);
     try {
-      const live = await fetchAiCreditsStatus(uid, { isPro, isSuperAdmin, source });
+      const live = await fetchAiCreditsStatus(uid, {
+        plan,
+        isPro,
+        isPlus,
+        isSuperAdmin,
+        source,
+        plansConfig,
+      });
       setStatus(live);
     } catch {
       // Keep fallback / cached state if server is temporarily unavailable
     } finally {
       setLoading(false);
     }
-  }, [uid, isGuest, isPro, isSuperAdmin, source]);
+  }, [uid, isGuest, plan, isPro, isPlus, isSuperAdmin, source, plansConfig]);
 
   useEffect(() => {
     void refresh();
@@ -146,6 +169,8 @@ export function useAiCredits() {
     unlimited: status.isUnlimited,
     plan: status.plan,
     isPro: status.isPro,
+    isPlus: status.isPlus,
+    isPaid: status.isPaid,
     deepMaxUnlocked: status.deepMaxUnlocked,
     resetCountdown: resetLabel,
     loading,

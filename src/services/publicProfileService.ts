@@ -518,33 +518,88 @@ export function normalizePublicProfileDoc(
         : typeof u.followingCount === 'number'
         ? Math.max(0, u.followingCount)
         : 0,
-    proBadge: (() => {
-      if (uid.startsWith('guest_') || botMatch) return null;
-      // If server D1 explicitly resolved proBadge (string or null), respect it if active Pro
-      if (p.proBadge !== undefined) {
-        if (p.proBadge === null) {
-          // Check if Firestore user doc has active Pro and badge wasn't explicitly hidden
-          if (u.proBadgeVisible === false || p.proBadgeVisible === false) return null;
-        } else if (isValidProBadgeDesign(p.proBadge)) {
-          return normalizeProBadgeDesign(p.proBadge);
-        }
-      }
+    plan: (() => {
       const unified = resolveUnifiedPlanStatus({
         uid,
         email: u.email || p.email || null,
         role: resolvedRole,
         isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
         plan: u.plan ?? p.plan ?? null,
+        planTier: u.planTier ?? p.planTier ?? null,
         isPremium: u.isPremium ?? p.isPremium ?? null,
+        isPro: u.isPro ?? p.isPro ?? null,
+        isPlus: u.isPlus ?? p.isPlus ?? null,
         proPlanId: u.proPlanId ?? p.proPlanId ?? null,
+        plusPlanId: u.plusPlanId ?? p.plusPlanId ?? null,
         planStartedAt: u.planStartedAt ?? p.planStartedAt,
         updatedAt: u.updatedAt ?? p.updatedAt,
         planExpiresAt: u.planExpiresAt ?? p.planExpiresAt ?? p.verifiedBadges?.proUntil,
         premiumExpiresAt: u.premiumExpiresAt ?? p.premiumExpiresAt,
+        proUntil: u.proUntil ?? p.proUntil ?? p.verifiedBadges?.proUntil,
+        plusUntil: u.plusUntil ?? p.plusUntil ?? p.verifiedBadges?.plusUntil,
         isSuperAdmin,
       });
-      const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
-      if (!isActivePro) return null;
+      return unified.planTier;
+    })(),
+    planTier: (() => {
+      const unified = resolveUnifiedPlanStatus({
+        uid,
+        email: u.email || p.email || null,
+        role: resolvedRole,
+        isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
+        plan: u.plan ?? p.plan ?? null,
+        planTier: u.planTier ?? p.planTier ?? null,
+        isPremium: u.isPremium ?? p.isPremium ?? null,
+        isPro: u.isPro ?? p.isPro ?? null,
+        isPlus: u.isPlus ?? p.isPlus ?? null,
+        proPlanId: u.proPlanId ?? p.proPlanId ?? null,
+        plusPlanId: u.plusPlanId ?? p.plusPlanId ?? null,
+        planStartedAt: u.planStartedAt ?? p.planStartedAt,
+        updatedAt: u.updatedAt ?? p.updatedAt,
+        planExpiresAt: u.planExpiresAt ?? p.planExpiresAt ?? p.verifiedBadges?.proUntil,
+        premiumExpiresAt: u.premiumExpiresAt ?? p.premiumExpiresAt,
+        proUntil: u.proUntil ?? p.proUntil ?? p.verifiedBadges?.proUntil,
+        plusUntil: u.plusUntil ?? p.plusUntil ?? p.verifiedBadges?.plusUntil,
+        isSuperAdmin,
+      });
+      return unified.planTier;
+    })(),
+    proBadge: (() => {
+      if (uid.startsWith('guest_') || botMatch) return null;
+      const unified = resolveUnifiedPlanStatus({
+        uid,
+        email: u.email || p.email || null,
+        role: resolvedRole,
+        isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
+        plan: u.plan ?? p.plan ?? null,
+        planTier: u.planTier ?? p.planTier ?? null,
+        isPremium: u.isPremium ?? p.isPremium ?? null,
+        isPro: u.isPro ?? p.isPro ?? null,
+        isPlus: u.isPlus ?? p.isPlus ?? null,
+        proPlanId: u.proPlanId ?? p.proPlanId ?? null,
+        plusPlanId: u.plusPlanId ?? p.plusPlanId ?? null,
+        planStartedAt: u.planStartedAt ?? p.planStartedAt,
+        updatedAt: u.updatedAt ?? p.updatedAt,
+        planExpiresAt: u.planExpiresAt ?? p.planExpiresAt ?? p.verifiedBadges?.proUntil,
+        premiumExpiresAt: u.premiumExpiresAt ?? p.premiumExpiresAt,
+        proUntil: u.proUntil ?? p.proUntil ?? p.verifiedBadges?.proUntil,
+        plusUntil: u.plusUntil ?? p.plusUntil ?? p.verifiedBadges?.plusUntil,
+        isSuperAdmin,
+      });
+      const isPlusMember = unified.planTier === 'plus' || Boolean(unified.isPlus);
+      // If server D1 explicitly resolved proBadge (string or null), respect it if active paid
+      if (p.proBadge !== undefined) {
+        if (p.proBadge === null) {
+          if (u.proBadgeVisible === false || p.proBadgeVisible === false) return null;
+        } else if (typeof p.proBadge === 'string' && p.proBadge.startsWith('plus:')) {
+          return p.proBadge;
+        } else if (isValidProBadgeDesign(p.proBadge)) {
+          const norm = normalizeProBadgeDesign(p.proBadge);
+          return isPlusMember ? `plus:${norm}` : norm;
+        }
+      }
+      const isActivePaid = unified.state === 'active' || Boolean(unified.isPro) || isPlusMember;
+      if (!isActivePaid) return null;
       const isVisible =
         u.proBadgeVisible !== undefined
           ? Boolean(u.proBadgeVisible)
@@ -553,9 +608,10 @@ export function normalizePublicProfileDoc(
           : true;
       if (!isVisible) return null;
       const candidateDesign = u.proBadgeDesign || p.proBadgeDesign || p.proBadge || u.proBadge;
-      return isValidProBadgeDesign(candidateDesign)
+      const baseDesign = isValidProBadgeDesign(candidateDesign)
         ? normalizeProBadgeDesign(candidateDesign)
         : DEFAULT_PRO_BADGE_DESIGN;
+      return isPlusMember ? `plus:${baseDesign}` : baseDesign;
     })(),
     updatedAt: u.updatedAt || p.updatedAt || null,
   };

@@ -410,7 +410,7 @@ export function notifyReferralRewardCredited(params: {
 }
 
 /**
- * 7A. Boardly Pro payment request received (PKR via JazzCash / Opay)
+ * 7A. Boardly Pro / Plus payment request received (PKR via JazzCash / Opay)
  */
 export function notifyProRequestReceived(params: {
   requestId: string;
@@ -418,6 +418,7 @@ export function notifyProRequestReceived(params: {
   studentName?: string;
   studentEmail?: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   pkrAmount: number;
   paymentMethod: string;
@@ -427,7 +428,7 @@ export function notifyProRequestReceived(params: {
 }
 
 /**
- * 7B. Boardly Pro activated or extended (via Kobans instant checkout OR Admin PKR approval)
+ * 7B. Boardly Pro / Plus activated or extended (via Kobans instant checkout OR Admin PKR approval)
  */
 export function notifyProActivated(params: {
   recordId: string;
@@ -435,6 +436,7 @@ export function notifyProActivated(params: {
   studentName?: string;
   studentEmail?: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   expiresAtLabel: string;
   wasExtension?: boolean;
@@ -451,7 +453,7 @@ export function notifyProActivated(params: {
 }
 
 /**
- * 7C. Boardly Pro PKR payment request rejected by admin
+ * 7C. Boardly Pro / Plus PKR payment request rejected by admin
  */
 export function notifyProRequestRejected(params: {
   requestId: string;
@@ -459,12 +461,42 @@ export function notifyProRequestRejected(params: {
   studentName?: string;
   studentEmail?: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   pkrAmount: number;
   reason: string;
   transactionId?: string;
   adminEmail?: string;
 }): void {
   triggerTransactionalEmail('pro_request_rejected', params.requestId, params);
+}
+
+/**
+ * 7D. Boardly Pro / Plus expiry reminder (3 days before expiry)
+ */
+export function notifyPlanExpiryReminder(params: {
+  recordId: string;
+  studentUid: string;
+  studentName?: string;
+  studentEmail?: string;
+  planTier: 'pro' | 'plus';
+  expiresAtLabel: string;
+  daysLeft: number;
+}): void {
+  triggerTransactionalEmail('plan_expiry_reminder', params.recordId, params);
+}
+
+/**
+ * 7E. Boardly Pro / Plus expired notification
+ */
+export function notifyPlanExpired(params: {
+  recordId: string;
+  studentUid: string;
+  studentName?: string;
+  studentEmail?: string;
+  planTier: 'pro' | 'plus';
+  expiredAtLabel: string;
+}): void {
+  triggerTransactionalEmail('plan_expired', params.recordId, params);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

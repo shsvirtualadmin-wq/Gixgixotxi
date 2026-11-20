@@ -34,6 +34,7 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { useSmoothMode } from '@/utils/smoothMode';
@@ -192,7 +193,8 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     signOutUser,
     updateProfile,
   } = useAuth();
-  const { isPro } = useEffectivePlan();
+  const { isPro, isPlus, isPaid, planTier, planStatus } = useEffectivePlan();
+  const { config: plansConfig } = usePlansConfig();
   const { kobanBalance, balanceLoaded, equipped: walletEquipped } = useWallet();
   const aiCredits = useAiCredits();
   const { themeSetting, setTheme } = useTheme();
@@ -411,7 +413,13 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return roles.join(', ');
   }, [isSuperAdmin, isAdmin, isCaptain, isGuest]);
 
-  const planLabel = isPro ? 'Boardly Pro' : isGuest ? 'Guest' : 'Free';
+  const planLabel = isPlus
+    ? 'Boardly Plus'
+    : isPro
+    ? 'Boardly Pro'
+    : isGuest
+    ? 'Guest'
+    : 'Free';
 
   const nextResetDateLabel = useMemo(() => {
     const tomorrow = new Date();
@@ -693,14 +701,22 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             value={planLabel}
             onClick={() => navigateTo('/dashboard/plan')}
           />
-          {!isPro && (
+          {!isPaid ? (
             <SettingsRow
               icon={<Sparkles />}
               label="Upgrade to Pro"
               tone="accent"
               onClick={() => navigateTo('/dashboard/plan')}
             />
-          )}
+          ) : !isPlus && !isSuperAdmin ? (
+            <SettingsRow
+              icon={<Sparkles />}
+              label="Upgrade to Plus"
+              subtitle={`${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2x Pro)`}
+              tone="accent"
+              onClick={() => navigateTo('/dashboard/plan#boardly-plus-card')}
+            />
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup danger>
@@ -784,11 +800,11 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             chevron="down"
             onClick={() => setAppearanceSheetOpen(true)}
           />
-          {isPro && (
+          {isPaid && (
             <SettingsRow
               icon={<Crown />}
-              label="Pro badge"
-              subtitle="Customize how your Pro badge looks"
+              label={isPlus ? 'Plus & Pro badge' : 'Pro badge'}
+              subtitle={`Customize how your ${isPlus ? 'Plus' : 'Pro'} badge looks`}
               onClick={() => setSection('customize-pro-badge')}
             />
           )}
@@ -962,9 +978,11 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           helperText={
             aiCredits.unlimited
               ? 'Superadmin access includes unlimited AI Mentor credits with Quick, Balanced, Deep, and Max thinking.'
+              : aiCredits.plan === 'plus'
+              ? `Boardly Plus · Daily limit: ${aiCredits.limit} credits/day (2x Pro) · Deep & Max thinking unlocked · resets at midnight PKT.`
               : aiCredits.plan === 'pro'
-              ? `Daily limit: ${aiCredits.limit} credits/day · Deep & Max thinking unlocked · resets at midnight PKT.`
-              : `Daily limit: ${aiCredits.limit} credits/day (Quick & Balanced) · Deep & Max locked on Free · resets at midnight PKT.`
+              ? `Boardly Pro · Daily limit: ${aiCredits.limit} credits/day · Deep & Max thinking unlocked · resets at midnight PKT.`
+              : `Free plan · Daily limit: ${aiCredits.limit} credits/day (Quick & Balanced) · Deep & Max locked on Free · resets at midnight PKT.`
           }
         >
           <SettingsProgressRow
@@ -991,39 +1009,72 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           <SettingsRow
             icon={<Sparkles />}
             label="Deep & Max thinking"
-            value={aiCredits.unlimited || aiCredits.plan === 'pro' ? 'Unlocked' : 'Locked on Free'}
+            value={
+              aiCredits.unlimited || aiCredits.plan === 'pro' || aiCredits.plan === 'plus'
+                ? 'Unlocked'
+                : 'Locked on Free'
+            }
             chevron="none"
           />
-          {!aiCredits.unlimited && aiCredits.plan !== 'pro' && (
+          {!aiCredits.unlimited && aiCredits.plan === 'free' && (
             <SettingsRow
               icon={<Crown />}
               label="Upgrade to Pro"
-              subtitle="Unlock 100 AI Mentor credits/day with Deep & Max"
+              subtitle={`Unlock ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day with Deep & Max (or ${plansConfig.plus.aiCreditsPerDay}/day on Plus)`}
               tone="accent"
               onClick={() => navigateTo('/dashboard/plan#boardly-pro-card')}
+            />
+          )}
+          {!aiCredits.unlimited && aiCredits.plan === 'pro' && (
+            <SettingsRow
+              icon={<Sparkles />}
+              label="Upgrade to Plus"
+              subtitle={`Get ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2x Pro)`}
+              tone="accent"
+              onClick={() => navigateTo('/dashboard/plan#boardly-plus-card')}
             />
           )}
         </SettingsGroup>
 
         <SettingsGroup
-          label={isPro ? 'Pro plan allowances' : 'Daily free plan limits'}
+          label={
+            planTier === 'plus'
+              ? 'Plus plan allowances'
+              : isPaid
+              ? 'Pro plan allowances'
+              : 'Daily free plan limits'
+          }
           helperText={
-            isPro
-              ? 'Your Boardly Pro membership includes full access to Grand Line Mock Tests, Formula Vault, and 100 daily AI Mentor credits with Deep & Max thinking.'
-              : 'Free plan limits reset daily. Upgrade to Pro for unlimited mock tests and 100 daily AI Mentor credits.'
+            planTier === 'plus'
+              ? `Your Boardly Plus membership includes everything in Pro plus ${plansConfig.plus.aiCreditsPerDay} daily AI Mentor credits with Deep & Max thinking.`
+              : isPaid
+              ? `Your Boardly Pro membership includes full access to Grand Line Mock Tests, Formula Vault, and ${plansConfig.pro.aiCreditsPerDay} daily AI Mentor credits with Deep & Max thinking.`
+              : `Free plan limits reset daily. Upgrade to Pro (${plansConfig.pro.aiCreditsPerDay} AI credits/day) or Plus (${plansConfig.plus.aiCreditsPerDay} AI credits/day) for unlimited mock tests.`
           }
         >
           <SettingsProgressRow
             label="Mock tests"
             percentRemaining={100}
-            rightText={isPro ? 'Unlimited' : '100% remaining'}
-            resetsText={isPro ? 'Included with Pro' : `Resets ${nextResetDateLabel}`}
+            rightText={isPaid ? 'Unlimited' : '100% remaining'}
+            resetsText={
+              planTier === 'plus'
+                ? 'Included with Plus'
+                : isPaid
+                ? 'Included with Pro'
+                : `Resets ${nextResetDateLabel}`
+            }
           />
           <SettingsProgressRow
             label="Practice sets"
             percentRemaining={100}
-            rightText="100% remaining"
-            resetsText={`Resets ${nextResetDateLabel}`}
+            rightText={isPaid ? 'Unlimited' : '100% remaining'}
+            resetsText={
+              planTier === 'plus'
+                ? 'Included with Plus'
+                : isPaid
+                ? 'Included with Pro'
+                : `Resets ${nextResetDateLabel}`
+            }
           />
         </SettingsGroup>
 
@@ -1225,13 +1276,38 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         onClick={() => setSwitchAccountOpen(true)}
       />
     ),
-    !isPro &&
-      matchesSearch('upgrade to pro', 'pro', 'subscription', 'plan') && (
+    !isPaid &&
+      matchesSearch('upgrade to pro', 'pro', 'plus', 'subscription', 'plan') && (
         <SettingsRow
           key="upgrade"
           icon={<Sparkles />}
           label="Upgrade to Pro"
           tone="accent"
+          onClick={() => navigateTo('/dashboard/plan')}
+        />
+      ),
+    isPaid &&
+      !isPlus &&
+      !isSuperAdmin &&
+      matchesSearch('upgrade to plus', 'plus', 'pro', 'subscription', 'plan') && (
+        <SettingsRow
+          key="upgrade-plus"
+          icon={<Sparkles />}
+          label="Upgrade to Plus"
+          tone="accent"
+          onClick={() => navigateTo('/dashboard/plan#boardly-plus-card')}
+        />
+      ),
+    isPlus &&
+      matchesSearch('boardly plus', 'plus', 'subscription', 'plan') && (
+        <SettingsRow
+          key="active-plus"
+          icon={<Sparkles />}
+          label={
+            planStatus.isSuperAdmin
+              ? 'Boardly Plus · Unlimited'
+              : `Boardly Plus · Active until ${planStatus.expiryFormatted || 'Active'}`
+          }
           onClick={() => navigateTo('/dashboard/plan')}
         />
       ),

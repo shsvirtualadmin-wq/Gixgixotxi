@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
 export type UserRole = 'student' | 'crew' | 'captain' | 'ambassador' | 'admin' | 'super_admin' | 'superadmin';
-export type UserPlan = 'free' | 'pro';
+export type UserPlan = 'free' | 'pro' | 'plus';
 
 export interface UserProfile {
   uid: string;
@@ -16,9 +16,15 @@ export interface UserProfile {
   role: UserRole | string;
   customRole?: string | null;
   plan: UserPlan;
+  planTier?: UserPlan;
   status?: string;
+  isPro?: boolean;
+  isPlus?: boolean;
   isPremium?: boolean;
   proPlanId?: string | null;
+  plusPlanId?: string | null;
+  proUntil?: Timestamp | string | null;
+  plusUntil?: Timestamp | string | null;
   planExpiresAt?: Timestamp | null;
   premiumExpiresAt?: Timestamp | null;
   premiumSource?: string | null;
@@ -166,6 +172,8 @@ export interface PublicProfile {
   equippedBadges?: string[];
   verifiedBadges?: {
     proUntil?: Timestamp | { seconds: number; nanoseconds?: number } | null;
+    plusUntil?: Timestamp | { seconds: number; nanoseconds?: number } | null;
+    planTier?: UserPlan;
     captain?: boolean;
     staff?: boolean;
   };
@@ -178,6 +186,8 @@ export interface PublicProfile {
   customAvatarUrl?: string | null;
   equippedFrameId?: string | null;
   proBadge?: string | null;
+  plan?: UserPlan;
+  planTier?: UserPlan;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 
@@ -382,11 +392,16 @@ export interface PaymentRequest {
   userEmail?: string;
   displayName?: string;
   userName?: string;
-  requestType?: 'pro_pass' | 'koban_topup' | 'large_crew';
+  requestType?: 'pro_pass' | 'plus_pass' | 'koban_topup' | 'large_crew';
   amount: number;
   amount_pkr?: number;
-  plan: 'pro' | 'pro_monthly' | 'pro_annual' | 'large_crew' | string;
+  expectedAmountPkr?: number;
+  plan: 'pro' | 'pro_monthly' | 'pro_annual' | 'plus' | 'plus_monthly' | 'plus_annual' | 'large_crew' | string;
+  planTier?: 'pro' | 'plus';
+  billing?: 'monthly' | 'annual';
   planName?: string;
+  proToPlusCreditDays?: number;
+  previousPlan?: UserPlan;
   crewId?: string | null;
   crewName?: string | null;
   durationDays?: number;
@@ -457,7 +472,7 @@ export interface CrewApplication {
 
 export interface WalletLedgerEntry {
   id: string;
-  type: 'grant' | 'deduction' | 'purchase' | 'pro_purchase' | 'captain_allotment';
+  type: 'grant' | 'deduction' | 'purchase' | 'pro_purchase' | 'plus_purchase' | 'captain_allotment';
   amount: number;
   balanceBefore?: number;
   balance_before?: number;

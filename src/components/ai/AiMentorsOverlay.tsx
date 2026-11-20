@@ -11,6 +11,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAiCredits } from '@/hooks/useAiCredits';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { getDisplayName } from '@/utils/displayName';
 import {
@@ -61,7 +62,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
   const navigate = useNavigate();
   const { user, isGuest } = useAuth();
   const { profile } = useUserProfile();
-  const { credits, applyServerUpdate } = useAiCredits();
+  const { credits, resetCountdown, applyServerUpdate } = useAiCredits();
+  const { config: plansConfig } = usePlansConfig();
 
   useBodyScrollLock(true, 'ai-mentors-overlay');
 
@@ -438,7 +440,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             resetAt: err.resetAt,
           });
         }
-        if (err.code === 'PRO_DEPTH_REQUIRED' || err.code === 'INSUFFICIENT_CREDITS') {
+        if (
+          (err.code === 'PRO_DEPTH_REQUIRED' || err.code === 'INSUFFICIENT_CREDITS') &&
+          credits.plan !== 'plus'
+        ) {
           setUpgradeSheetReason(err.message);
         }
       }
@@ -515,10 +520,14 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     void sendPayload(retryText, retryAttachments, trimmedHistory);
   };
 
-  const handleUpgradeNavigate = () => {
+  const handleUpgradeNavigate = (targetTier: 'pro' | 'plus' = 'pro') => {
     setUpgradeSheetReason(null);
     onClose();
-    navigate('/dashboard/plan#boardly-pro-card');
+    navigate(
+      targetTier === 'plus'
+        ? '/dashboard/plan#boardly-plus-card'
+        : '/dashboard/plan#boardly-pro-card'
+    );
   };
 
   const handleOpenPastPapers = () => {
@@ -566,7 +575,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             chats={savedChats}
             activeChatId={currentThread.chatId}
             activeMentor={mentorId}
+            plan={credits.plan}
             isPro={credits.isPro}
+            isPlus={credits.isPlus}
+            dailyLimit={credits.dailyLimit}
             isSuperAdmin={credits.isSuperAdmin}
             planSource={credits.source}
             onSelectMentor={handleSelectMentor}
@@ -574,7 +586,11 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             onDeleteChat={handleDeleteSavedChat}
             onNewChat={() => startFreshChat(mentorId)}
             onUpgradeClick={() =>
-              setUpgradeSheetReason('Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.')
+              setUpgradeSheetReason(
+                credits.plan === 'pro'
+                  ? `Upgrade to Boardly Plus for ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2× Pro).`
+                  : `Upgrade to Boardly Pro for ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day and Deep & Max thinking.`
+              )
             }
           />
         </aside>
@@ -800,11 +816,17 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             dailyLimit={credits.dailyLimit}
             isUnlimited={credits.isUnlimited}
             isPro={credits.isPro}
+            plan={credits.plan}
+            resetCountdown={resetCountdown}
+            proDailyLimit={plansConfig.pro.aiCreditsPerDay}
+            plusDailyLimit={plansConfig.plus.aiCreditsPerDay}
             onSend={(text, atts) => void sendPayload(text, atts)}
             onOpenMentorPicker={() => setMentorPickerOpen(true)}
             onOpenDepthGauge={() => setDepthGaugeOpen(true)}
             onOpenPastPapers={handleOpenPastPapers}
-            onOpenUpgrade={(reason) => setUpgradeSheetReason(reason)}
+            onOpenUpgrade={(reason) => {
+              if (credits.plan !== 'plus') setUpgradeSheetReason(reason);
+            }}
           />
         </div>
       </div>
@@ -833,7 +855,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               chats={savedChats}
               activeChatId={currentThread.chatId}
               activeMentor={mentorId}
+              plan={credits.plan}
               isPro={credits.isPro}
+              isPlus={credits.isPlus}
+              dailyLimit={credits.dailyLimit}
               isSuperAdmin={credits.isSuperAdmin}
               planSource={credits.source}
               onSelectMentor={handleSelectMentor}
@@ -843,7 +868,9 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               onUpgradeClick={() => {
                 setMobileHistoryOpen(false);
                 setUpgradeSheetReason(
-                  'Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.'
+                  credits.plan === 'pro'
+                    ? `Upgrade to Boardly Plus for ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2× Pro).`
+                    : `Upgrade to Boardly Pro for ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day and Deep & Max thinking.`
                 );
               }}
               onCloseMobileDrawer={() => setMobileHistoryOpen(false)}
@@ -871,17 +898,20 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         onLockedDepthClick={(depthLabel) => {
           setDepthGaugeOpen(false);
           setUpgradeSheetReason(
-            `${depthLabel} thinking is unlocked on Boardly Pro (100 credits/day).`
+            `${depthLabel} thinking is unlocked on Boardly Pro (${plansConfig.pro.aiCreditsPerDay}/day) and Boardly Plus (${plansConfig.plus.aiCreditsPerDay}/day).`
           );
         }}
         onClose={() => setDepthGaugeOpen(false)}
       />
 
       <AiUpgradeSheet
-        open={Boolean(upgradeSheetReason)}
+        open={Boolean(upgradeSheetReason) && credits.plan !== 'plus'}
+        currentPlan={credits.plan}
         reason={
           upgradeSheetReason ||
-          'Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.'
+          (credits.plan === 'pro'
+            ? `Upgrade to Boardly Plus for ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2× Pro).`
+            : `Upgrade to Boardly Pro for ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day and Deep & Max thinking.`)
         }
         onClose={() => setUpgradeSheetReason(null)}
         onUpgrade={handleUpgradeNavigate}

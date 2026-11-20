@@ -41,6 +41,11 @@ export interface CrewMember {
   avatarKey?: string;
   avatarVariant?: string;
   isPro?: boolean;
+  isPlus?: boolean;
+  plan?: 'free' | 'pro' | 'plus';
+  planTier?: 'free' | 'pro' | 'plus';
+  plusUntil?: string | null;
+  planExpiresAt?: string | null;
   equipped?: {
     effect?: string | null;
     frame?: string | null;
@@ -72,6 +77,9 @@ export interface CrewDoc {
   streak: number;
   currentQuestions: number;
   goalQuestions: number;
+  hasProMember?: boolean;
+  hasPlusMember?: boolean;
+  effectivePlan?: 'free' | 'pro' | 'plus';
   createdAt?: unknown;
   updatedAt?: unknown;
 }

@@ -24,7 +24,8 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
   userDisplayName,
 }) => {
   const { user } = useAuth();
-  const { settings, isActivePro, isPendingVerification, saving, saveProBadge } = useProBadge();
+  const { settings, isActivePro, isActivePlus, isPendingVerification, saving, saveProBadge } =
+    useProBadge();
 
   const [draft, setDraft] = useState<ProBadgeSettings>(settings);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
@@ -89,7 +90,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
     return (
       <div className="space-y-5">
         <div className="stg-group">
-          <div className="stg-group-label">Pro Membership Required</div>
+          <div className="stg-group-label">Pro &amp; Plus Membership Required</div>
           <div className="stg-card">
             <div className="stg-row stg-row--static">
               <div className="stg-row-left">
@@ -98,15 +99,15 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 </span>
                 <div className="min-w-0">
                   <div className="stg-row-label font-semibold">
-                    Pro Badge Collection (31 Designs)
+                    Pro &amp; Plus Badge Collection (31 Designs)
                   </div>
                   <div className="text-xs text-[var(--menu-subtext)]">
-                    Active Boardly Pro members only
+                    Active Boardly Pro &amp; Plus members only
                   </div>
                 </div>
               </div>
               <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30 shrink-0">
-                Pro Only
+                Pro &amp; Plus
               </span>
             </div>
 
@@ -121,7 +122,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 <span className="stg-row-value">Pending</span>
               </div>
             ) : (
-              <Link to="/dashboard/plans" className="stg-row">
+              <Link to="/dashboard/plan" className="stg-row">
                 <div className="stg-row-left">
                   <span className="stg-row-icon">
                     <Crown className="w-4 h-4 text-[#D71921]" />
@@ -135,7 +136,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
             )}
           </div>
           <p className="stg-footnote">
-            Active Boardly Pro members can equip any of 31 custom animated and static Pro badges next to their name across Commons, leaderboards, chat, crews, and profiles.
+            Active Boardly Pro and Boardly Plus members can equip custom badges next to their name across Commons, leaderboards, chat, crews, and profiles.
           </p>
         </div>
 
@@ -187,7 +188,13 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 {realName}
               </span>
               {draft.visible ? (
-                <ProBadge design={draft.design} size="lg" animated priority />
+                <ProBadge
+                  design={draft.design}
+                  tier={isActivePlus ? 'plus' : 'pro'}
+                  size="lg"
+                  animated
+                  priority
+                />
               ) : (
                 <span className="text-xs italic text-[var(--menu-subtext)]">(Hidden)</span>
               )}
@@ -199,7 +206,13 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 {realName}
               </span>
               {draft.visible && (
-                <ProBadge design={draft.design} size="sm" animated priority />
+                <ProBadge
+                  design={draft.design}
+                  tier={isActivePlus ? 'plus' : 'pro'}
+                  size="sm"
+                  animated
+                  priority
+                />
               )}
               <span className="text-[11px] text-[var(--menu-subtext)]">· 2m</span>
             </div>

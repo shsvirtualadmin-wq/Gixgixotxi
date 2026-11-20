@@ -157,7 +157,7 @@ export const PrivacyPage: React.FC = () => {
               <li>
                 <strong>Manual payment verification &amp; zero refunds:</strong> Payment details and
                 payment proof are collected solely to verify your purchase manually and activate
-                your plan within 24 hours. All Pro and Premium purchases are final and
+                your plan within 24 hours. All Pro, Plus and Premium purchases are final and
                 non-refundable once submitted or activated.
               </li>
               <li>
@@ -315,17 +315,17 @@ export const PrivacyPage: React.FC = () => {
                   </tr>
                   <tr>
                     <td className="p-3 align-top">
-                      <strong className="text-[var(--text)]">Rewards, Kobans &amp; Pro Payments</strong>
+                      <strong className="text-[var(--text)]">Rewards, Kobans &amp; Plan Payments</strong>
                       <br />
                       Koban wallet balance and ledger, daily/milestone reward claims, referral codes
-                      and IP hashes, Pro plan status/expiry, and manual payment verification records
+                      and IP hashes, Pro &amp; Plus plan status/expiry, and manual payment verification records
                       (payment method such as JazzCash/Opay, PKR amount, Transaction ID / TID, and
                       payment proof if submitted).
                     </td>
                     <td className="p-3 align-top">
                       Maintain your Koban balance, prevent referral farming, and manually verify
                       your purchase to activate your plan within 24 hours. Payment proof and payment
-                      details are collected <strong>only</strong> to verify the purchase. All Pro
+                      details are collected <strong>only</strong> to verify the purchase. All Pro, Plus
                       and Premium purchases are final and non-refundable once submitted or
                       activated.
                     </td>
@@ -452,11 +452,11 @@ export const PrivacyPage: React.FC = () => {
               </li>
               <li>
                 <strong>Manual Payment Channels (JazzCash &amp; Opay):</strong> When you purchase a
-                Boardly Pro or Premium pass or Kobans in PKR, you transfer funds through your own
+                Boardly Pro, Plus, or Premium pass or Kobans in PKR, you transfer funds through your own
                 JazzCash or Opay account and submit the payment details and proof (Transaction ID /
                 TID) to Boardly. We collect payment proof and payment details <strong>only</strong>{' '}
                 to manually verify your purchase and activate your plan within 24 hours. Boardly
-                does not collect or store your bank card numbers or mobile wallet PINs. All Pro and
+                does not collect or store your bank card numbers or mobile wallet PINs. All Pro, Plus and
                 Premium purchases are final and non-refundable once submitted or activated (zero
                 refunds).
               </li>

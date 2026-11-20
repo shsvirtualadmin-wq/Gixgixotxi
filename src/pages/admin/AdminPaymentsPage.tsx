@@ -44,13 +44,19 @@ import {
 } from '@/utils/couponMapper';
 import { getBubbleTouchHandlers } from '@/utils/bubbleTouch';
 import type { PaymentRequest, KobanRequest } from '@/types';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
+import {
+  getPlanTierFromPlanId,
+  getBillingFromPlanId,
+  computeAnnualPrice,
+} from '@/lib/planTier';
 
 const TAB_ITEMS: Array<{
   id: 'plans' | 'kobans' | 'coupons';
   label: string;
   shortLabel: string;
 }> = [
-  { id: 'plans', label: 'Pro Subscriptions', shortLabel: 'Pro Plans' },
+  { id: 'plans', label: 'Plan Subscriptions', shortLabel: 'Plans' },
   { id: 'kobans', label: 'Kobans Purchases', shortLabel: 'Kobans' },
   { id: 'coupons', label: 'Coupons & Promos', shortLabel: 'Coupons' },
 ];
@@ -86,11 +92,13 @@ export function AdminPaymentsPage() {
   const [couponRedemptions, setCouponRedemptions] = useState<NormalizedAdminCouponRedemption[]>([]);
   const [expandedRedemptionIds, setExpandedRedemptionIds] = useState<Record<string, boolean>>({});
 
+  const { config: plansConfig } = usePlansConfig();
   // Create Coupon Form State
   const [newCouponCode, setNewCouponCode] = useState('');
   const [newCouponLabel, setNewCouponLabel] = useState('');
   const [newCouponDiscountPct, setNewCouponDiscountPct] = useState<string>('50');
   const [newCouponMaxUses, setNewCouponMaxUses] = useState<string>('100');
+  const [newCouponAppliesTo, setNewCouponAppliesTo] = useState<string>('all');
   const [creatingCoupon, setCreatingCoupon] = useState(false);
 
   // Plan Reject modal dialog
@@ -218,6 +226,7 @@ export function AdminPaymentsPage() {
           percentOff: isOneYearPro ? 100 : parsedPct,
           discountPercent: isOneYearPro ? 100 : parsedPct,
           maxRedemptions: parsedMaxUses,
+          appliesTo: newCouponAppliesTo,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -329,7 +338,12 @@ export function AdminPaymentsPage() {
     setActionInProgress(req.id);
     try {
       await approvePaymentRequest(user.email, req);
-      setBannerNotice(`Approved Pro upgrade for ${req.userName || req.userEmail}.`);
+      const isPlusReq =
+        getPlanTierFromPlanId(String((req as any).planId || req.plan || '')) === 'plus' ||
+        (req as any).planTier === 'plus';
+      setBannerNotice(
+        `Approved ${isPlusReq ? 'Boardly Plus' : 'Boardly Pro'} upgrade for ${req.userName || req.userEmail}.`
+      );
       setTimeout(() => setBannerNotice(null), 3000);
       await loadData();
     } catch (err) {
@@ -588,6 +602,28 @@ export function AdminPaymentsPage() {
           ) : (
             filteredPlanRequests.map((req) => {
               const reqAny = req as Record<string, any>;
+              const rawPlanId = String(reqAny.planId || req.plan || 'pro_monthly');
+              const isCrewReq = req.plan === 'large_crew';
+              const isPlusReq =
+                !isCrewReq &&
+                (getPlanTierFromPlanId(rawPlanId) === 'plus' || reqAny.planTier === 'plus');
+              const isAnnualReq =
+                getBillingFromPlanId(rawPlanId) === 'annual' ||
+                req.durationDays === 365 ||
+                (req.durationMonths ?? 1) >= 12;
+              const expectedPkr = isCrewReq
+                ? null
+                : isPlusReq
+                  ? isAnnualReq
+                    ? computeAnnualPrice(plansConfig.plus.pricePkrMonthly, plansConfig.annualDiscountPercent)
+                    : plansConfig.plus.pricePkrMonthly
+                  : isAnnualReq
+                    ? computeAnnualPrice(plansConfig.pro.pricePkrMonthly, plansConfig.annualDiscountPercent)
+                    : plansConfig.pro.pricePkrMonthly;
+              const paidPkr = Number(req.amount_pkr ?? req.amount ?? 0);
+              const hasPriceMismatch =
+                expectedPkr !== null && !reqAny.couponCode && paidPkr > 0 && paidPkr !== expectedPkr;
+
               return (
                 <div
                   key={req.id}
@@ -599,19 +635,33 @@ export function AdminPaymentsPage() {
                       <span className="font-heading font-bold text-sm text-[var(--text)]">
                         {req.userName || req.userEmail || 'Student'}
                       </span>
-                      <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border border-[#D71921]/45 bg-[#D71921]/15 text-[#ff6b72] font-bold">
-                        {req.plan === 'large_crew'
+                      <span
+                        className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border font-bold ${
+                          isPlusReq
+                            ? 'border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-300'
+                            : 'border-[#D71921]/45 bg-[#D71921]/15 text-[#ff6b72]'
+                        }`}
+                      >
+                        {isCrewReq
                           ? 'Large Crew Pass'
-                          : req.plan === 'pro_annual' ||
-                              req.durationDays === 365 ||
-                              (req.durationMonths ?? 1) >= 12
-                            ? 'Pro Pass · Annual (365d)'
-                            : 'Pro Pass · Monthly (30d)'}
+                          : isPlusReq
+                            ? isAnnualReq
+                              ? 'Plus Pass · Annual (365d)'
+                              : 'Plus Pass · Monthly (30d)'
+                            : isAnnualReq
+                              ? 'Pro Pass · Annual (365d)'
+                              : 'Pro Pass · Monthly (30d)'}
                       </span>
                       {reqAny.couponCode && (
                         <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-bold inline-flex items-center gap-1">
                           <Tag size={10} />
                           <span>Coupon: {reqAny.couponCode}</span>
+                        </span>
+                      )}
+                      {hasPriceMismatch && (
+                        <span className="text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border border-amber-500/60 bg-amber-500/15 text-amber-600 dark:text-amber-300 font-bold inline-flex items-center gap-1">
+                          <AlertCircle size={10} />
+                          <span>Expected PKR {expectedPkr?.toLocaleString()}</span>
                         </span>
                       )}
                       <span
@@ -626,7 +676,7 @@ export function AdminPaymentsPage() {
                         {req.status}
                       </span>
                       <span className="text-[11px] font-mono tabular-nums text-[var(--text-muted)]">
-                        PKR {(req.amount_pkr ?? req.amount ?? 0).toLocaleString()} via{' '}
+                        PKR {paidPkr.toLocaleString()} via{' '}
                         {formatPaymentMethodLabel(req.method)}
                       </span>
                     </div>
@@ -701,7 +751,13 @@ export function AdminPaymentsPage() {
                         className="bubble-touch bubble-touch-ripple lg-nothing-red-btn px-4 py-2 text-xs font-heading font-bold flex items-center gap-1.5 cursor-pointer"
                       >
                         <CheckCircle2 size={13} />
-                        <span>Approve &amp; Activate Pro</span>
+                        <span>
+                          {isCrewReq
+                            ? 'Approve Crew'
+                            : isPlusReq
+                              ? 'Approve & Activate Plus'
+                              : 'Approve & Activate Pro'}
+                        </span>
                       </button>
                     </div>
                   )}
@@ -912,7 +968,28 @@ export function AdminPaymentsPage() {
                 />
               </div>
 
-              <div className="sm:col-span-2 lg:col-span-1 flex">
+              <div className="lg:col-span-2 space-y-1.5">
+                <label
+                  htmlFor="coupon-applies-to"
+                  className="block font-mono text-[11px] text-[var(--text-muted)] px-1"
+                >
+                  Applies To
+                </label>
+                <select
+                  id="coupon-applies-to"
+                  value={newCouponAppliesTo}
+                  onChange={(e) => setNewCouponAppliesTo(e.target.value)}
+                  className="lg-nothing-input w-full px-3 py-2.5 text-xs font-mono"
+                >
+                  <option value="all">All Plans (Pro &amp; Plus)</option>
+                  <option value="pro_monthly">Pro Monthly</option>
+                  <option value="pro_annual">Pro Annual</option>
+                  <option value="plus_monthly">Plus Monthly</option>
+                  <option value="plus_annual">Plus Annual</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2 lg:col-span-2 flex">
                 <button
                   type="button"
                   disabled={creatingCoupon || !newCouponCode.trim()}

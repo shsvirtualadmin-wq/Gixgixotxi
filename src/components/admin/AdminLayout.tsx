@@ -25,6 +25,7 @@ import {
   KeyRound,
   MessageSquare,
   BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDisplayInitial, getDisplayName } from '@/utils/displayName';
@@ -71,6 +72,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
+  { to: '/admin/plans', label: 'Plans & Pricing', icon: Sparkles, permission: 'users.plan', superAdminOnly: true },
   { to: '/admin/kobans', label: 'Kobans', icon: AdminKobanNavIcon, permission: 'coupons.grant', superAdminOnly: true },
   { to: '/admin/pricing', label: 'Store Pricing', icon: Tag, permission: 'coupons.grant', superAdminOnly: true },
   { to: '/admin/signatures?tab=signature', label: 'Certificate Signature', icon: FileCheck2, permission: 'certificates.issue', superAdminOnly: true },

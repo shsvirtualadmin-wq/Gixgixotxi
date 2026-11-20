@@ -286,7 +286,7 @@ export const KobanStyleCustomizer: React.FC<KobanStyleCustomizerProps> = ({
                           <span className="stg-row-label font-medium">{d.name}</span>
                           {d.proOnly && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/35 text-[9px] font-mono font-bold text-amber-600 dark:text-amber-300">
-                              <Lock size={9} /> PRO
+                              <Lock size={9} /> Pro &amp; Plus
                             </span>
                           )}
                         </div>

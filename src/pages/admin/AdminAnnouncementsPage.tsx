@@ -26,6 +26,7 @@ import {
   updateWelcomeAnnouncement,
   WELCOME_ANNOUNCEMENT_ID,
   type AnnouncementItem,
+  type AnnouncementTargetAudience,
 } from '@/services/notificationService';
 
 export function AdminAnnouncementsPage() {
@@ -46,6 +47,7 @@ export function AdminAnnouncementsPage() {
   // New Broadcast Announcement form state
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [targetAudience, setTargetAudience] = useState<AnnouncementTargetAudience>('all');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -133,6 +135,7 @@ export function AdminAnnouncementsPage() {
       await createAnnouncement({
         title,
         message,
+        targetAudience,
         adminUser: {
           uid: user.uid,
           email: user.email,
@@ -142,8 +145,9 @@ export function AdminAnnouncementsPage() {
 
       setTitle('');
       setMessage('');
+      setTargetAudience('all');
       setSuccessMsg(
-        'Announcement posted successfully! All students can now view it in their Notifications.'
+        'Announcement posted successfully! Targeted students can now view it in their Notifications.'
       );
       await loadData();
     } catch (err: unknown) {
@@ -391,6 +395,38 @@ export function AdminAnnouncementsPage() {
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
+              Target Audience
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: 'all', label: 'All users' },
+                  { id: 'free', label: 'Free' },
+                  { id: 'pro', label: 'Pro' },
+                  { id: 'plus', label: 'Plus' },
+                  { id: 'crew', label: 'Crew' },
+                ] as const
+              ).map((aud) => (
+                <button
+                  key={aud.id}
+                  type="button"
+                  onClick={() => setTargetAudience(aud.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold border transition-colors cursor-pointer ${
+                    targetAudience === aud.id
+                      ? aud.id === 'plus'
+                        ? 'bg-amber-500 text-black border-amber-500'
+                        : 'bg-[var(--red)] text-white border-[var(--red)]'
+                      : 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  {aud.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between pt-2">
             <span className="text-xs text-[var(--muted)] flex items-center gap-1.5">
               <Shield size={13} className="text-[var(--red)]" />
@@ -452,6 +488,11 @@ export function AdminAnnouncementsPage() {
                   <div className="space-y-2 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge color="red">Announcement</Badge>
+                      {a.targetAudience && a.targetAudience !== 'all' && (
+                        <Badge color={a.targetAudience === 'plus' ? 'amber' : 'neutral'}>
+                          Audience: {a.targetAudience.toUpperCase()}
+                        </Badge>
+                      )}
                       <h3
                         className="font-bold text-sm text-[var(--text)]"
                         style={{ fontFamily: 'var(--font-heading)' }}

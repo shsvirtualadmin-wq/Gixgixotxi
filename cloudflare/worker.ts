@@ -6464,13 +6464,23 @@ ${urls
           .catch(() => null);
       }
 
-      const expA = parseAnyMs(userDoc?.planExpiresAt);
-      const expB = parseAnyMs(userDoc?.premiumExpiresAt);
-      let expiryMs = expA !== null && expB !== null ? Math.max(expA, expB) : expA ?? expB;
+      const expA = parseAnyMs(userDoc?.plusUntil);
+      const expB = parseAnyMs(userDoc?.planExpiresAt);
+      const expC = parseAnyMs(userDoc?.premiumExpiresAt);
+      const expD = parseAnyMs(userDoc?.proUntil);
+      const expCandidates = [expA, expB, expC, expD].filter((x): x is number => x !== null);
+      let expiryMs: number | null = expCandidates.length > 0 ? Math.max(...expCandidates) : null;
 
       if (d1Lock && d1Lock.state === 'active' && Number(d1Lock.expires_at || 0) > serverNowMs) {
         const lockExp = Number(d1Lock.expires_at);
-        if (userDoc === null || (expiryMs !== null && expiryMs > serverNowMs) || userDoc?.isPremium === true || userDoc?.plan === 'pro') {
+        if (
+          userDoc === null ||
+          (expiryMs !== null && expiryMs > serverNowMs) ||
+          userDoc?.isPremium === true ||
+          userDoc?.plan === 'pro' ||
+          userDoc?.plan === 'plus' ||
+          userDoc?.isPlus === true
+        ) {
           expiryMs = expiryMs ? Math.max(expiryMs, lockExp) : lockExp;
         } else if (env.DB) {
           await env.DB.prepare('DELETE FROM pro_purchase_locks WHERE uid = ?').bind(uid).run().catch(() => {});
@@ -6479,9 +6489,19 @@ ${urls
 
       const hasFutureExpiry = expiryMs !== null && expiryMs > serverNowMs;
       const isExpired = expiryMs !== null && expiryMs <= serverNowMs;
-      const rawPlan = String(userDoc?.proPlanId || userDoc?.plan || d1Lock?.plan_id || '').toLowerCase();
-      const isFlaggedPro = Boolean(
-        userDoc?.isPremium === true ||
+      const rawPlan = String(
+        userDoc?.plusPlanId || userDoc?.planTier || userDoc?.plan || userDoc?.proPlanId || d1Lock?.plan_id || ''
+      ).toLowerCase();
+      const isFlaggedPlus = Boolean(
+        userDoc?.isPlus === true ||
+          rawPlan === 'plus' ||
+          rawPlan === 'plus_monthly' ||
+          rawPlan === 'plus_annual'
+      );
+      const isFlaggedPaid = Boolean(
+        isFlaggedPlus ||
+          userDoc?.isPremium === true ||
+          userDoc?.isPro === true ||
           rawPlan === 'pro' ||
           rawPlan === 'pro_monthly' ||
           rawPlan === 'pro_annual'
@@ -6516,11 +6536,24 @@ ${urls
       }
 
       const isAnnual = rawPlan.includes('annual') || (hasFutureExpiry && expiryMs! - serverNowMs > 45 * 86400000);
-      const planId = isAnnual ? 'pro_annual' : 'pro_monthly';
-      const planName = isAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass';
+      const activeTier = isFlaggedPlus ? 'plus' : 'pro';
+      const planId = isFlaggedPlus
+        ? isAnnual
+          ? 'plus_annual'
+          : 'plus_monthly'
+        : isAnnual
+        ? 'pro_annual'
+        : 'pro_monthly';
+      const planName = isFlaggedPlus
+        ? isAnnual
+          ? 'Boardly Plus, Annual Pass'
+          : 'Boardly Plus, Monthly Pass'
+        : isAnnual
+        ? 'Boardly Pro, Annual Pass'
+        : 'Boardly Pro, Monthly Pass';
 
       let resolvedStatus: Record<string, any>;
-      if (hasFutureExpiry || (isFlaggedPro && !isExpired)) {
+      if (hasFutureExpiry || (isFlaggedPaid && !isExpired)) {
         const daysLeft = hasFutureExpiry
           ? Math.max(1, Math.ceil((expiryMs! - serverNowMs) / 86400000))
           : isAnnual
@@ -6528,10 +6561,18 @@ ${urls
           : 30;
         const expFmt = hasFutureExpiry ? formatDateShort(expiryMs!) : 'Active (No expiry date set)';
         const expDtFmt = hasFutureExpiry ? formatDateTimePkt(expiryMs!) : 'Active (No expiry date set)';
-        const timeLeft = hasFutureExpiry ? formatTimeLeft(expiryMs!, serverNowMs) : 'Active Pro membership';
+        const timeLeft = hasFutureExpiry
+          ? formatTimeLeft(expiryMs!, serverNowMs)
+          : isFlaggedPlus
+          ? 'Active Plus membership'
+          : 'Active Pro membership';
         resolvedStatus = {
           state: 'active',
+          planTier: activeTier,
+          plan: activeTier,
+          isPaid: true,
           isPro: true,
+          isPlus: isFlaggedPlus,
           isPersonalPro: true,
           isSuperAdmin: authedUser.role === 'superadmin',
           isCrewPro: false,
@@ -6545,22 +6586,44 @@ ${urls
           daysLeft,
           timeLeftLabel: timeLeft,
           pendingRequest: null,
-          canStartPurchase: false,
-          blockReason: `You already have Boardly Pro (${planName}) active until ${expFmt} (${timeLeft}). You can purchase a plan again after your current plan expires.`,
+          canStartPurchase: !isFlaggedPlus,
+          blockReason: isFlaggedPlus
+            ? `You already have Boardly Plus (${planName}) active until ${expFmt} (${timeLeft}).`
+            : `You already have Boardly Pro (${planName}) active until ${expFmt} (${timeLeft}). You can upgrade to Plus anytime.`,
         };
       } else if (activePending) {
-        const pAnnual = String(activePending.plan || '').toLowerCase().includes('annual');
+        const pRaw = String(activePending.plan || '').toLowerCase();
+        const pPlus = pRaw.includes('plus');
+        const pAnnual = pRaw.includes('annual');
+        const pId = pPlus
+          ? pAnnual
+            ? 'plus_annual'
+            : 'plus_monthly'
+          : pAnnual
+          ? 'pro_annual'
+          : 'pro_monthly';
         const pName = String(
-          activePending.planName || (pAnnual ? 'Boardly Pro, Annual Pass' : 'Boardly Pro, Monthly Pass')
+          activePending.planName ||
+            (pPlus
+              ? pAnnual
+                ? 'Boardly Plus, Annual Pass'
+                : 'Boardly Plus, Monthly Pass'
+              : pAnnual
+              ? 'Boardly Pro, Annual Pass'
+              : 'Boardly Pro, Monthly Pass')
         );
         const subMs = parseAnyMs(activePending.createdAt ?? activePending.submittedAt);
         resolvedStatus = {
           state: 'pending',
+          planTier: 'free',
+          plan: 'free',
+          isPaid: false,
           isPro: false,
+          isPlus: false,
           isPersonalPro: false,
           isSuperAdmin: false,
           isCrewPro: false,
-          planId: pAnnual ? 'pro_annual' : 'pro_monthly',
+          planId: pId,
           planName: pName,
           startMs: null,
           startFormatted: null,
@@ -6571,9 +6634,13 @@ ${urls
           timeLeftLabel: null,
           pendingRequest: {
             id: String(activePending.id || ''),
-            planId: pAnnual ? 'pro_annual' : 'pro_monthly',
+            planId: pId,
             planName: pName,
-            amountPkr: Number(activePending.amount_pkr ?? activePending.amount ?? (pAnnual ? 1791 : 199)),
+            amountPkr: Number(
+              activePending.amount_pkr ??
+                activePending.amount ??
+                (pPlus ? (pAnnual ? 3591 : 399) : pAnnual ? 1791 : 199)
+            ),
             method: String(activePending.method || 'jazzcash'),
             tid: String(activePending.TID || activePending.transactionId || ''),
             submittedAtMs: subMs,
@@ -6586,7 +6653,11 @@ ${urls
       } else {
         resolvedStatus = {
           state: 'none',
+          planTier: 'free',
+          plan: 'free',
+          isPaid: false,
           isPro: false,
+          isPlus: false,
           isPersonalPro: false,
           isSuperAdmin: false,
           isCrewPro: false,
@@ -6611,19 +6682,40 @@ ${urls
 
       if (method === 'POST') {
         const body = (await req.clone().json().catch(() => ({}))) as Record<string, any>;
+        const requestedPlanId = String(body.planId || body.plan || '').toLowerCase();
+        const requestedIsPlus =
+          requestedPlanId.includes('plus') ||
+          String(body.planTier || body.tier || '').toLowerCase() === 'plus';
+
         if (resolvedStatus.state === 'active') {
-          return jsonResponse(
-            {
-              ok: false,
-              code: 'PRO_ALREADY_ACTIVE',
-              state: 'active',
-              serverNowMs,
-              status: resolvedStatus,
-              error: resolvedStatus.blockReason,
-            },
-            409,
-            cors
-          );
+          if (resolvedStatus.isPlus && !requestedIsPlus) {
+            return jsonResponse(
+              {
+                ok: false,
+                code: 'PLUS_ALREADY_INCLUDES_PRO',
+                state: 'active',
+                serverNowMs,
+                status: resolvedStatus,
+                error: 'You already have Plus, which includes Pro',
+              },
+              409,
+              cors
+            );
+          }
+          if (!requestedIsPlus) {
+            return jsonResponse(
+              {
+                ok: false,
+                code: 'PRO_ALREADY_ACTIVE',
+                state: 'active',
+                serverNowMs,
+                status: resolvedStatus,
+                error: resolvedStatus.blockReason,
+              },
+              409,
+              cors
+            );
+          }
         }
 
         if (resolvedStatus.state === 'pending') {

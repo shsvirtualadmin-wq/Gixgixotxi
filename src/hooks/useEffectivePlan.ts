@@ -1,20 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile, forceRefreshUserProfile } from './useUserProfile';
+import { usePlansConfig } from './usePlansConfig';
 import {
   resolveUnifiedPlanStatus,
   parseExpiryMillis,
   type UnifiedPlanStatusResult,
 } from '@/config/plans';
+import {
+  getPlan,
+  planRank,
+  resolveEffectiveCrewPlan,
+  type PlanTier,
+  type PlansConfigDoc,
+} from '@/lib/planTier';
 
 export interface EffectivePlanResult {
+  /** True for Pro, Plus, Crew Pro/Plus, and Superadmin (equivalent to hasAtLeast('pro')) */
   isPro: boolean;
+  /** True strictly for Plus, Crew Plus, and Superadmin (equivalent to plusAndAbove) */
+  isPlus: boolean;
+  /** True for any paid plan (Pro or Plus, personal or crew, or Superadmin) */
+  isPaid: boolean;
   isUnlimited: boolean;
   isSuperAdmin: boolean;
   source: 'superadmin' | 'personal' | 'crew' | 'none';
-  plan: 'pro' | 'free';
+  plan: PlanTier;
+  planTier: PlanTier;
+  crewPlanTier: PlanTier;
   crewName?: string;
   loading: boolean;
   status: 'loading' | 'ready' | 'error';
@@ -22,6 +37,8 @@ export interface EffectivePlanResult {
   planStatus: UnifiedPlanStatusResult;
   refreshPlanStatus: () => Promise<void>;
   paymentRequests?: any[];
+  hasAtLeast: (required: PlanTier) => boolean;
+  plusAndAbove: boolean;
 }
 
 // ── Superadmin Identity Checker (Strictly from verified Firebase Auth custom claims) ──
@@ -49,28 +66,47 @@ export function clearPlanCache(uid?: string) {
   }
 }
 
-// ── Pure Plan Resolver (used by hook and by /admin/health pure logic tests) ──
+// ── Pure Plan Resolver (used by hook and by /admin/health & unit tests) ──
 export interface PlanResolverInput {
   email?: string | null;
   role?: string | null;
   uid?: string | null;
   isGuest?: boolean;
   plan?: string | null;
+  planTier?: string | null;
+  isPro?: boolean | null;
+  isPlus?: boolean | null;
   isPremium?: boolean | null;
   proPlanId?: string | null;
+  plusPlanId?: string | null;
   planStartedAt?: unknown;
   updatedAt?: unknown;
+  proUntil?: unknown;
+  plusUntil?: unknown;
   planExpiresAt?: unknown;
   premiumExpiresAt?: unknown;
   pendingRequests?: Array<Record<string, any>> | null;
+  plansConfig?: Partial<PlansConfigDoc> | null;
   nowMs?: number;
   crew?: {
     tier?: 'free' | 'paid' | string;
     paid_until?: string | null;
     hasProMember?: boolean;
+    hasPlusMember?: boolean;
+    effectivePlan?: string | null;
     isProShared?: boolean;
     name?: string;
-    members?: Array<{ uid?: string; isPro?: boolean; plan?: string }>;
+    members?: Array<{
+      uid?: string;
+      isPro?: boolean;
+      isPlus?: boolean;
+      isPremium?: boolean;
+      plan?: string;
+      planTier?: string;
+      plusUntil?: unknown;
+      planExpiresAt?: unknown;
+      premiumExpiresAt?: unknown;
+    }>;
   } | null;
   inCrew?: boolean;
   isSuperAdminClaim?: boolean;
@@ -84,39 +120,81 @@ export function isCrewPaidActive(paidUntil?: string | null, nowMs: number = Date
 
 const noopRefresh = async () => {};
 
+function makeResult(
+  tier: PlanTier,
+  source: EffectivePlanResult['source'],
+  isSuperAdmin: boolean,
+  crewPlanTier: PlanTier,
+  crewName: string | undefined,
+  planStatus: UnifiedPlanStatusResult
+): EffectivePlanResult {
+  const isPaidVal = planRank(tier) >= 1;
+  const isPlusVal = planRank(tier) >= 2;
+  return {
+    isPro: isPaidVal,
+    isPlus: isPlusVal,
+    isPaid: isPaidVal,
+    isUnlimited: isPaidVal,
+    isSuperAdmin,
+    source,
+    plan: tier,
+    planTier: tier,
+    crewPlanTier,
+    crewName,
+    loading: false,
+    status: 'ready',
+    error: null,
+    planStatus,
+    refreshPlanStatus: noopRefresh,
+    hasAtLeast: (required: PlanTier) => planRank(tier) >= planRank(required),
+    plusAndAbove: isPlusVal,
+  };
+}
+
 export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanResult {
-  const nowMs = typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
-  const isSuper = isSuperAdminEmailOrRole(input.email, input.role, input.uid, input.isSuperAdminClaim);
-
-  const expA = parseExpiryMillis(input.planExpiresAt);
-  const expB = parseExpiryMillis(input.premiumExpiresAt);
-  const expiryMs =
-    expA !== null && expB !== null ? Math.max(expA, expB) : expA !== null ? expA : expB;
-  const isExpired = expiryMs !== null && expiryMs <= nowMs;
-  const isPrem = Boolean(
-    input.isPremium ||
-      input.plan === 'pro' ||
-      input.plan === 'pro_monthly' ||
-      input.plan === 'pro_annual'
+  const nowMs =
+    typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
+  const isSuper = isSuperAdminEmailOrRole(
+    input.email,
+    input.role,
+    input.uid,
+    input.isSuperAdminClaim
   );
-  const personalPro = isPrem && !isExpired;
 
-  // Check Crew shared Pro
-  let crewProActive = false;
+  // Personal plan tier (without superadmin override)
+  const personalPlan: PlanTier = getPlan(
+    {
+      uid: input.uid,
+      email: input.email,
+      role: 'student',
+      isGuest: input.isGuest,
+      isSuperAdmin: false,
+      isSuperAdminClaim: false,
+      plan: input.plan,
+      planTier: input.planTier,
+      isPro: input.isPro,
+      isPlus: input.isPlus,
+      isPremium: input.isPremium,
+      proPlanId: input.proPlanId,
+      plusPlanId: input.plusPlanId,
+      proUntil: input.proUntil,
+      plusUntil: input.plusUntil,
+      planExpiresAt: input.planExpiresAt,
+      premiumExpiresAt: input.premiumExpiresAt,
+    },
+    nowMs
+  );
+
+  // Check Crew effective highest plan (Free < Pro < Plus)
+  let crewPlanTier: PlanTier = 'free';
   let crewName: string | undefined;
   if (input.inCrew && input.crew) {
-    const crewData = input.crew;
-    const isPaidLargeCrew = crewData.tier === 'paid' && isCrewPaidActive(crewData.paid_until, nowMs);
-    const legacySharing =
-      crewData.isProShared !== false &&
-      (crewData.hasProMember === true ||
-        (Array.isArray(crewData.members) &&
-          crewData.members.some(
-            (m) => (m.isPro === true || m.plan === 'pro') && (!input.uid || m.uid !== input.uid || personalPro)
-          )));
-    if (isPaidLargeCrew || legacySharing) {
-      crewProActive = true;
-      crewName = crewData.name || 'Study Crew';
+    crewPlanTier = resolveEffectiveCrewPlan(input.crew, nowMs, {
+      excludeSelfUid: input.uid,
+      selfPersonalPlan: personalPlan,
+    });
+    if (planRank(crewPlanTier) >= 1) {
+      crewName = input.crew.name || 'Study Crew';
     }
   }
 
@@ -126,81 +204,51 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
     role: input.role,
     isGuest: input.isGuest,
     plan: input.plan,
+    planTier: input.planTier,
+    isPro: input.isPro,
+    isPlus: input.isPlus,
     isPremium: input.isPremium,
     proPlanId: input.proPlanId,
+    plusPlanId: input.plusPlanId,
     planStartedAt: input.planStartedAt,
     updatedAt: input.updatedAt,
+    proUntil: input.proUntil,
+    plusUntil: input.plusUntil,
     planExpiresAt: input.planExpiresAt,
     premiumExpiresAt: input.premiumExpiresAt,
     pendingRequests: input.pendingRequests,
-    isCrewPro: crewProActive,
+    isCrewPro: planRank(crewPlanTier) >= 1,
+    isCrewPlus: crewPlanTier === 'plus',
+    crewPlanTier,
     crewName: crewName || null,
     isSuperAdmin: isSuper,
+    plansConfig: input.plansConfig,
     nowMs,
   });
 
-  // 1. Superadmin ALWAYS has Pro / Unlimited everywhere with zero exceptions
+  // 1. Superadmin ALWAYS has Plus / highest access everywhere
   if (isSuper) {
-    return {
-      isPro: true,
-      isUnlimited: true,
-      isSuperAdmin: true,
-      source: 'superadmin',
-      plan: 'pro',
-      loading: false,
-      status: 'ready',
-      error: null,
-      planStatus: unifiedStatus,
-      refreshPlanStatus: noopRefresh,
-    };
+    return makeResult('plus', 'superadmin', true, crewPlanTier, crewName, unifiedStatus);
   }
 
-  // 2. Personal Pro active
-  if (unifiedStatus.isPersonalPro) {
-    return {
-      isPro: true,
-      isUnlimited: true,
-      isSuperAdmin: false,
-      source: 'personal',
-      plan: 'pro',
-      loading: false,
-      status: 'ready',
-      error: null,
-      planStatus: unifiedStatus,
-      refreshPlanStatus: noopRefresh,
-    };
+  // 2. Compare personal plan vs crew plan -> highest wins
+  if (planRank(personalPlan) >= planRank(crewPlanTier) && planRank(personalPlan) >= 1) {
+    return makeResult(personalPlan, 'personal', false, crewPlanTier, crewName, unifiedStatus);
   }
 
-  // 3. Crew shared Pro
-  if (crewProActive) {
-    return {
-      isPro: true,
-      isUnlimited: true,
-      isSuperAdmin: false,
-      source: 'crew',
-      plan: 'pro',
-      crewName: crewName || 'Study Crew',
-      loading: false,
-      status: 'ready',
-      error: null,
-      planStatus: unifiedStatus,
-      refreshPlanStatus: noopRefresh,
-    };
+  if (planRank(crewPlanTier) >= 1) {
+    return makeResult(
+      crewPlanTier,
+      'crew',
+      false,
+      crewPlanTier,
+      crewName || 'Study Crew',
+      unifiedStatus
+    );
   }
 
-  // 4. Free starter (or pending verification)
-  return {
-    isPro: false,
-    isUnlimited: false,
-    isSuperAdmin: false,
-    source: 'none',
-    plan: 'free',
-    loading: false,
-    status: 'ready',
-    error: null,
-    planStatus: unifiedStatus,
-    refreshPlanStatus: noopRefresh,
-  };
+  // 3. Free starter (or expired Pro/Plus)
+  return makeResult('free', 'none', false, 'free', undefined, unifiedStatus);
 }
 
 interface SharedCrewEntry {
@@ -298,13 +346,12 @@ export async function forceRefreshPaymentRequests(uid?: string | null): Promise<
 }
 
 /**
- * Single source of truth hook for user's effective plan and purchase lock state.
- * Guarantees zero flicker for Superadmin, 3 states (loading, ready, error),
- * real-time listener on `users/{uid}` and `paymentRequests`, and automatic expiry transition.
+ * Single source of truth hook for user's effective plan (Free < Pro < Plus) and purchase lock state.
  */
 export function useEffectivePlan(): EffectivePlanResult {
   const { user: authUser, isGuest, isSuperAdmin: authIsSuperAdmin } = useAuth();
   const { profile, loading: profileLoading, error: profileError } = useUserProfile();
+  const { config: plansConfig } = usePlansConfig();
 
   const currentEmail = authUser?.email || auth.currentUser?.email || profile?.email;
   const currentUid = authUser?.uid || auth.currentUser?.uid || profile?.uid;
@@ -476,16 +523,19 @@ export function useEffectivePlan(): EffectivePlanResult {
   const nowMs = Date.now() + (paymentEntry?.serverTimeOffsetMs || 0);
 
   // Automatic timer to transition plan status the exact moment an active plan expires
-  const expA = parseExpiryMillis(profile?.planExpiresAt);
-  const expB = parseExpiryMillis(profile?.premiumExpiresAt);
-  const activeExpiryMs =
-    expA !== null && expB !== null ? Math.max(expA, expB) : expA !== null ? expA : expB;
+  const rawProfile = profile as Record<string, any> | null;
+  const expCandidates = [
+    parseExpiryMillis(rawProfile?.plusUntil),
+    parseExpiryMillis(rawProfile?.planExpiresAt),
+    parseExpiryMillis(rawProfile?.premiumExpiresAt),
+    parseExpiryMillis(rawProfile?.proUntil),
+  ].filter((v): v is number => v !== null);
+  const activeExpiryMs = expCandidates.length > 0 ? Math.max(...expCandidates) : null;
 
   useEffect(() => {
     if (!activeExpiryMs) return;
     const msUntilExpiry = activeExpiryMs - (Date.now() + (paymentEntry?.serverTimeOffsetMs || 0));
     if (msUntilExpiry <= 0) return;
-    // Schedule an automatic re-evaluation when the plan expires (cap timer at 24h to avoid 32-bit overflow)
     const delay = Math.min(msUntilExpiry + 250, 24 * 60 * 60 * 1000);
     const timer = setTimeout(() => {
       setExpiryTick((t) => t + 1);
@@ -501,13 +551,20 @@ export function useEffectivePlan(): EffectivePlanResult {
     uid: currentUid,
     isGuest: Boolean(isGuest || (currentUid && currentUid.startsWith('guest_'))),
     plan: profile?.plan,
+    planTier: rawProfile?.planTier,
+    isPro: rawProfile?.isPro,
+    isPlus: rawProfile?.isPlus,
     isPremium: profile?.isPremium,
-    proPlanId: (profile as Record<string, any> | null)?.proPlanId,
-    planStartedAt: (profile as Record<string, any> | null)?.planStartedAt,
+    proPlanId: rawProfile?.proPlanId,
+    plusPlanId: rawProfile?.plusPlanId,
+    planStartedAt: rawProfile?.planStartedAt,
     updatedAt: profile?.updatedAt,
+    proUntil: rawProfile?.proUntil,
+    plusUntil: rawProfile?.plusUntil,
     planExpiresAt: profile?.planExpiresAt,
     premiumExpiresAt: profile?.premiumExpiresAt,
     pendingRequests: paymentEntry?.requests || [],
+    plansConfig,
     crew: crewData,
     inCrew,
     nowMs,
@@ -541,13 +598,19 @@ export function useEffectivePlan(): EffectivePlanResult {
     return {
       ...withRefresh,
       isPro: false,
+      isPlus: false,
+      isPaid: false,
       isUnlimited: false,
       isSuperAdmin: false,
+      plusAndAbove: false,
       source: 'none',
       plan: 'free',
+      planTier: 'free',
+      crewPlanTier: 'free',
       loading: true,
       status: 'loading',
       error: null,
+      hasAtLeast: (req: PlanTier) => req === 'free',
     };
   }
 
@@ -568,4 +631,3 @@ export function useEffectivePlan(): EffectivePlanResult {
 }
 
 export default useEffectivePlan;
-

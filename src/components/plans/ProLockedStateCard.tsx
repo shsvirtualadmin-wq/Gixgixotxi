@@ -25,26 +25,41 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
       planStatus.expiryFormatted ||
       'Active membership';
     const timeLeftDisplay = planStatus.timeLeftLabel || 'Active';
+    const isPlus = planStatus.isPersonalPlus || planStatus.isSuperAdmin;
 
     return (
       <div
         data-testid="pro-locked-active-card"
-        className={`relative overflow-hidden rounded-2xl border border-emerald-500/30 dark:border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.07] via-[var(--bg-card)] to-amber-500/[0.05] shadow-sm ${
-          compact ? 'p-5' : 'p-6 sm:p-8'
-        }`}
+        className={`relative overflow-hidden rounded-2xl border ${
+          isPlus
+            ? 'border-amber-500/35 bg-gradient-to-br from-amber-500/[0.08] via-[var(--bg-card)] to-yellow-500/[0.05]'
+            : 'border-emerald-500/30 dark:border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.07] via-[var(--bg-card)] to-amber-500/[0.05]'
+        } shadow-sm ${compact ? 'p-5' : 'p-6 sm:p-8'}`}
       >
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 text-emerald-600 dark:text-emerald-400">
-              <Crown className="w-5 h-5" />
+            <div
+              className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+                isPlus
+                  ? 'bg-amber-500/15 border-amber-500/35 text-amber-600 dark:text-amber-400'
+                  : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+              }`}
+            >
+              {isPlus ? <Sparkles className="w-5 h-5" /> : <Crown className="w-5 h-5" />}
             </div>
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest mb-1.5">
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-widest mb-1.5 ${
+                  isPlus
+                    ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                }`}
+              >
                 <CheckCircle2 className="w-3 h-3" />
-                Active Membership · Purchase Locked
+                Active Membership
               </div>
               <h3 className="text-lg sm:text-xl font-black text-[var(--text-primary)] tracking-tight">
-                You already have Boardly Pro
+                {isPlus ? 'You already have Plus, which includes Pro' : 'You already have Boardly Pro'}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
                 Your <span className="font-bold text-[var(--text-primary)]">{planStatus.planName}</span> is currently active on your account with full unlimited access.
@@ -93,13 +108,9 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-3.5 py-2.5 text-xs text-[var(--text-secondary)]">
           <Lock className="w-4 h-4 text-[var(--text-muted)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            New purchases and plan upgrades are locked while your membership is active.{' '}
-            <span className="font-semibold text-[var(--text-primary)]">
-              You can buy or renew Boardly Pro again after your current plan expires
-              {planStatus.expiryFormatted && planStatus.expiryFormatted !== 'Unlimited' && !planStatus.expiryFormatted.startsWith('Active')
-                ? ` on ${planStatus.expiryFormatted}`
-                : ''}.
-            </span>
+            {isPlus
+              ? 'You already have Plus, which includes Pro. You can renew Boardly Plus to extend your current expiry date.'
+              : 'You already have Boardly Pro active. You can upgrade to Boardly Plus anytime — your unused Pro days are credited to Plus.'}
           </p>
         </div>
       </div>

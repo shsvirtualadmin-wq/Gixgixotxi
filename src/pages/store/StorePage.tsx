@@ -71,14 +71,16 @@ import {
 } from '@/components/store/FilterSheet';
 import { CartDrawer } from '@/components/store/CartDrawer';
 import {
-  PLANS,
-  ANNUAL_SAVINGS_PERCENT,
+  buildPlansCatalog,
+  buildPlanFaqItems,
+  evaluatePlanPurchaseEligibility,
   REFUND_POLICY_TEXT,
   PRO_HIGHLIGHT_BULLETS,
-  PRO_FAQ_ITEMS,
   getProStatusSummary,
-  type ProPlanId,
+  type PaidPlanId,
 } from '@/config/plans';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
+import { computeProToPlusCreditDays, PLUS_ALREADY_INCLUDES_PRO_MSG } from '@/lib/planTier';
 import { StatusBanner } from '@/components/plans/StatusBanner';
 import { PlanCard } from '@/components/plans/PlanCard';
 import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
@@ -225,28 +227,46 @@ export const StorePage: React.FC<StorePageProps> = ({
   >(undefined);
   const [proCheckoutOpen, setProCheckoutOpen] = useState(false);
   const [proCheckoutPlanId, setProCheckoutPlanId] =
-    useState<ProPlanId>('pro_monthly');
+    useState<PaidPlanId>('pro_monthly');
+  const [membershipBilling, setMembershipBilling] = useState<'monthly' | 'annual'>('monthly');
   const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>(
     []
   );
+  const { config: plansConfig } = usePlansConfig();
+  const plansCatalog = useMemo(() => buildPlansCatalog(plansConfig), [plansConfig]);
+  const planFaqItems = useMemo(() => buildPlanFaqItems(plansConfig), [plansConfig]);
   const { source: planSource, planStatus, refreshPlanStatus } = useEffectivePlan();
   const isCrew = planSource === 'crew';
 
   const rawProExpiresAt =
-    userProfile?.planExpiresAt ?? (userProfile as any)?.premiumExpiresAt ?? null;
+    userProfile?.plusUntil ??
+    userProfile?.planExpiresAt ??
+    (userProfile as any)?.premiumExpiresAt ??
+    null;
   const proStatusSummary = useMemo(
     () =>
       getProStatusSummary({
-        plan: planStatus.isPersonalPro ? 'pro' : 'free',
-        isPremium: planStatus.isPersonalPro,
+        plan: planStatus.isPersonalPlus ? 'plus' : planStatus.isPersonalPro ? 'pro' : 'free',
+        isPremium: planStatus.isPersonalPro || planStatus.isPersonalPlus,
+        isPlus: planStatus.isPersonalPlus,
         proPlanId: planStatus.planId,
         planExpiresAt: planStatus.expiryMs ?? rawProExpiresAt,
+        plusUntil: planStatus.isPersonalPlus ? planStatus.expiryMs ?? rawProExpiresAt : null,
         isSuperAdmin: planStatus.isSuperAdmin,
       }),
     [planStatus, rawProExpiresAt]
   );
   const effectiveIsPro = planStatus.state === 'active';
-  const isPurchaseLocked = planStatus.state === 'active' || planStatus.state === 'pending';
+  const effectiveIsPlus = planStatus.isPlus;
+  const isPendingReview = planStatus.state === 'pending';
+  const proToPlusCreditDays = useMemo(() => {
+    if (!planStatus.isPersonalPro || planStatus.isPersonalPlus || !planStatus.daysLeft) return 0;
+    return computeProToPlusCreditDays(
+      planStatus.daysLeft,
+      plansConfig.pro.pricePkrMonthly,
+      plansConfig.plus.pricePkrMonthly
+    );
+  }, [planStatus, plansConfig]);
 
   const loadStudentProRequests = useCallback(async () => {
     if (!user?.uid || isGuest) return;
@@ -294,16 +314,23 @@ export const StorePage: React.FC<StorePageProps> = ({
   );
 
   const handleOpenProCheckout = useCallback(
-    (planId: ProPlanId) => {
+    (planId: PaidPlanId) => {
       if (!user) {
         navigate('/login');
         return;
       }
-      if (isPurchaseLocked) return;
+      const eligibility = evaluatePlanPurchaseEligibility(planStatus, planId);
+      if (!eligibility.allowed) {
+        setToast({
+          type: 'error',
+          text: eligibility.reason || PLUS_ALREADY_INCLUDES_PRO_MSG,
+        });
+        return;
+      }
       setProCheckoutPlanId(planId);
       setProCheckoutOpen(true);
     },
-    [user, navigate, isPurchaseLocked]
+    [user, navigate, planStatus]
   );
 
   const [coinBurstActive, setCoinBurstActive] = useState(false);
@@ -1104,10 +1131,10 @@ export const StorePage: React.FC<StorePageProps> = ({
                 }`}
               >
                 <Crown className="w-3.5 h-3.5" />
-                <span>Boardly Pro</span>
+                <span>Pro &amp; Plus</span>
                 {effectiveIsPro && (
                   <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
-                    Active
+                    {effectiveIsPlus ? 'Plus' : 'Pro'}
                   </span>
                 )}
               </button>
@@ -1130,86 +1157,184 @@ export const StorePage: React.FC<StorePageProps> = ({
         {mainView === 'membership' && isGuest ? (
           <GuestProBlockedView variant="page" />
         ) : mainView === 'membership' ? (
-          /* ─── BOARDLY PRO MEMBERSHIP VIEW (Un-nested pass cards, normal bold heading font, ProCheckoutSheet) ─── */
+          /* ─── BOARDLY PRO & PLUS MEMBERSHIP VIEW ─── */
           <div className="space-y-6 pb-20">
-            {/* Pro Status Banner (shown when student is already Pro or has a pending/rejected Pro request) */}
             {(effectiveIsPro || planStatus.state === 'pending' || pendingProRequest || latestRejectedProRequest) && (
               <StatusBanner
-                planId={effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
+                planId={effectiveIsPlus ? 'plus' : effectiveIsPro ? 'pro' : isCrew ? 'crew' : 'free'}
                 planExpiresAtRaw={rawProExpiresAt}
                 planStatus={planStatus}
                 pendingProRequest={pendingProRequest}
                 latestRejectedProRequest={latestRejectedProRequest}
-                onUpgradeOrExtend={() => handleOpenProCheckout('pro_monthly')}
+                onUpgradeOrExtend={() =>
+                  handleOpenProCheckout(
+                    effectiveIsPlus
+                      ? membershipBilling === 'annual'
+                        ? 'plus_annual'
+                        : 'plus_monthly'
+                      : membershipBilling === 'annual'
+                      ? 'pro_annual'
+                      : 'pro_monthly'
+                  )
+                }
+                onUpgradeToPlus={() =>
+                  handleOpenProCheckout(
+                    membershipBilling === 'annual' ? 'plus_annual' : 'plus_monthly'
+                  )
+                }
               />
             )}
 
-            {/* Header Block (Normal bold heading font, NOT pixel/mono font) */}
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#E8342A]/10 border border-[#E8342A]/30 text-[#E8342A] text-[11px] font-mono font-bold uppercase tracking-wider">
-                <Crown className="w-3.5 h-3.5" />
-                <span>Boardly Pro Scholar Pass</span>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#E8342A]/10 border border-[#E8342A]/30 text-[#E8342A] text-[11px] font-mono font-bold uppercase tracking-wider">
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>Boardly Pro &amp; Plus Passes</span>
+                </div>
+                <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text-primary)] tracking-tight leading-tight">
+                  Unlock Unlimited Mock Tests, Deep AI &amp; Exclusive Perks
+                </h2>
+                <p className="font-body text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
+                  Pay instantly using your Koban wallet balance or via JazzCash / Opay.{' '}
+                  {REFUND_POLICY_TEXT}
+                </p>
               </div>
-              <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text-primary)] tracking-tight leading-tight">
-                Unlock Unlimited Mock Tests, Analytics &amp; Exclusive Perks
-              </h2>
-              <p className="font-body text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
-                Pay instantly using your Koban wallet balance or via JazzCash / Opay.{' '}
-                {REFUND_POLICY_TEXT}
-              </p>
+
+              {!isPendingReview && (
+                <div className="inline-flex p-1 rounded-full bg-[var(--bg-card)] border border-[var(--border)] self-start sm:self-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setMembershipBilling('monthly')}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      membershipBilling === 'monthly'
+                        ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMembershipBilling('annual')}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      membershipBilling === 'annual'
+                        ? 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <span>Annual</span>
+                    <span className="text-[10px] font-mono text-[#E8342A]">
+                      -{plansConfig.annualDiscountPercent}%
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Locked state when Active or Pending vs Pass Cards when Free */}
-            {isPurchaseLocked ? (
+            {isPendingReview ? (
               <ProLockedStateCard planStatus={planStatus} />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-                {/* Monthly Pass Card */}
-                <PlanCard
-                  title="Monthly Pass"
-                  subtitle="Full Pro access for 30 days"
-                  durationBadge={`${PLANS.pro_monthly.duration_days} Days`}
-                  icon={<Zap size={17} />}
-                  pricePkr={PLANS.pro_monthly.price_pkr}
-                  cadenceLabel={PLANS.pro_monthly.cadenceLabel}
-                  priceKobans={PLANS.pro_monthly.price_kobans}
-                  priceSubtext={PLANS.pro_monthly.description}
-                  features={PLANS.pro_monthly.features}
-                  featured={false}
-                  ctaLabel={`Get Monthly Pass, PKR ${PLANS.pro_monthly.price_pkr}`}
-                  ctaIcon={<Zap size={15} />}
-                  ctaVariant="primary-red"
-                  onCtaClick={() => handleOpenProCheckout('pro_monthly')}
-                />
+                {(() => {
+                  const proPlan =
+                    membershipBilling === 'annual'
+                      ? plansCatalog.pro_annual
+                      : plansCatalog.pro_monthly;
+                  const plusPlan =
+                    membershipBilling === 'annual'
+                      ? plansCatalog.plus_annual
+                      : plansCatalog.plus_monthly;
+                  const proCtaDisabled = effectiveIsPlus || (planStatus.isPersonalPro && !effectiveIsPlus);
+                  const proCtaLabel = effectiveIsPlus
+                    ? 'Included in Plus'
+                    : planStatus.isPersonalPro
+                    ? 'Current plan'
+                    : `Upgrade to Pro · PKR ${proPlan.price_pkr.toLocaleString()}${
+                        membershipBilling === 'annual' ? '/yr' : '/mo'
+                      }`;
+                  const plusCtaLabel = effectiveIsPlus
+                    ? `Extend Plus · PKR ${plusPlan.price_pkr.toLocaleString()}${
+                        membershipBilling === 'annual' ? '/yr' : '/mo'
+                      }`
+                    : `Upgrade to Plus · PKR ${plusPlan.price_pkr.toLocaleString()}${
+                        membershipBilling === 'annual' ? '/yr' : '/mo'
+                      }`;
 
-                {/* Annual Pass Card */}
-                <PlanCard
-                  title="Annual Pass"
-                  subtitle="Full year of uninterrupted exam prep"
-                  durationBadge={`${PLANS.pro_annual.duration_days} Days`}
-                  topRightBadge={`Best value · Save ${ANNUAL_SAVINGS_PERCENT}%`}
-                  topRightBadgeTone="pro"
-                  icon={<Crown size={17} />}
-                  pricePkr={PLANS.pro_annual.price_pkr}
-                  cadenceLabel={PLANS.pro_annual.cadenceLabel}
-                  priceKobans={PLANS.pro_annual.price_kobans}
-                  regularPricePkr={PLANS.pro_annual.regular_price_pkr}
-                  priceSubtext={PLANS.pro_annual.description}
-                  features={PLANS.pro_annual.features}
-                  featured={true}
-                  ctaLabel={`Get Annual Pass, PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`}
-                  ctaIcon={<Crown size={15} />}
-                  ctaVariant="primary-gradient"
-                  onCtaClick={() => handleOpenProCheckout('pro_annual')}
-                />
+                  return (
+                    <>
+                      <PlanCard
+                        title="Boardly Pro"
+                        subtitle={
+                          membershipBilling === 'annual'
+                            ? `Annual pass · ${proPlan.duration_days} days`
+                            : `Monthly pass · ${proPlan.duration_days} days`
+                        }
+                        durationBadge={`${proPlan.duration_days} Days`}
+                        topRightBadge="Popular"
+                        topRightBadgeTone="pro"
+                        icon={<Crown size={17} />}
+                        pricePkr={proPlan.price_pkr}
+                        cadenceLabel={proPlan.cadenceLabel}
+                        priceKobans={proPlan.price_kobans}
+                        regularPricePkr={proPlan.regular_price_pkr}
+                        priceSubtext={
+                          planStatus.isPersonalPro && !effectiveIsPlus && planStatus.expiryFormatted
+                            ? `Active until ${planStatus.expiryFormatted}`
+                            : proPlan.description
+                        }
+                        features={proPlan.features}
+                        featured={false}
+                        accentVariant="pro"
+                        ctaLabel={proCtaLabel}
+                        ctaIcon={<Crown size={15} />}
+                        ctaVariant={proCtaDisabled ? 'disabled-current' : 'primary-red'}
+                        ctaDisabled={proCtaDisabled}
+                        onCtaClick={() => handleOpenProCheckout(proPlan.id)}
+                      />
+
+                      <PlanCard
+                        title="Boardly Plus"
+                        subtitle={
+                          membershipBilling === 'annual'
+                            ? `Annual pass · ${plusPlan.duration_days} days`
+                            : `Monthly pass · ${plusPlan.duration_days} days`
+                        }
+                        durationBadge={`${plusPlan.duration_days} Days`}
+                        topRightBadge="Best value"
+                        topRightBadgeTone="plus"
+                        icon={<Sparkles size={17} />}
+                        pricePkr={plusPlan.price_pkr}
+                        cadenceLabel={plusPlan.cadenceLabel}
+                        priceKobans={plusPlan.price_kobans}
+                        regularPricePkr={plusPlan.regular_price_pkr}
+                        priceSubtext={
+                          effectiveIsPlus && planStatus.expiryFormatted
+                            ? `Active until ${planStatus.expiryFormatted}`
+                            : planStatus.isPersonalPro
+                            ? proToPlusCreditDays > 0
+                              ? `Your unused Pro days are credited to Plus (+${proToPlusCreditDays} bonus days)`
+                              : 'Your unused Pro days are credited to Plus'
+                            : plusPlan.description
+                        }
+                        features={plusPlan.features}
+                        featured={true}
+                        accentVariant="plus"
+                        ctaLabel={plusCtaLabel}
+                        ctaIcon={<Sparkles size={15} />}
+                        ctaVariant="primary-plus"
+                        onCtaClick={() => handleOpenProCheckout(plusPlan.id)}
+                      />
+                    </>
+                  );
+                })()}
               </div>
             )}
 
-            {/* "What you get with Pro" 4-bullet list */}
+            {/* "What you get with Pro & Plus" 4-bullet list */}
             <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
-                  What you get with Pro
+                  What you get with Pro &amp; Plus
                 </h3>
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
                   Full Scholar Access
@@ -1254,7 +1379,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {PRO_FAQ_ITEMS.map((faq) => (
+                {planFaqItems.map((faq) => (
                   <div
                     key={faq.question}
                     className="rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] p-4 space-y-1.5"

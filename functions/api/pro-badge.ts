@@ -16,6 +16,7 @@ import {
   type ProBadgeDesignId,
 } from '../../src/lib/proBadgeDesigns';
 import { resolveUnifiedPlanStatus } from '../../src/config/plans';
+import type { PlanTier } from '../../src/lib/planTier';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -95,10 +96,10 @@ export async function checkUserActiveProServer(
   env?: RewardsEnv,
   nowMs = Date.now(),
   bearerToken?: string | null
-): Promise<{ isActivePro: boolean; isPendingPayment: boolean }> {
+): Promise<{ isActivePro: boolean; isPlus: boolean; planTier: PlanTier; isPendingPayment: boolean }> {
   const uid = String(user.uid || '').trim();
   if (!uid || user.isGuest || uid.startsWith('guest_')) {
-    return { isActivePro: false, isPendingPayment: false };
+    return { isActivePro: false, isPlus: false, planTier: 'free', isPendingPayment: false };
   }
 
   let fsDoc: Record<string, any> | null = null;
@@ -144,17 +145,25 @@ export async function checkUserActiveProServer(
     role: fsDoc?.role || user.role || (user.isAdminOrAbove ? 'admin' : 'student'),
     isGuest: false,
     plan: fsDoc?.plan ?? user.plan ?? null,
-    isPremium: fsDoc?.isPremium ?? (user.plan === 'pro' ? true : null),
+    planTier: fsDoc?.planTier ?? null,
+    isPremium: fsDoc?.isPremium ?? (user.plan === 'pro' || user.plan === 'plus' ? true : null),
+    isPro: fsDoc?.isPro ?? null,
+    isPlus: fsDoc?.isPlus ?? (user.plan === 'plus' ? true : null),
     proPlanId: fsDoc?.proPlanId ?? null,
+    plusPlanId: fsDoc?.plusPlanId ?? null,
     planStartedAt: fsDoc?.planStartedAt,
     updatedAt: fsDoc?.updatedAt,
     planExpiresAt: fsDoc?.planExpiresAt,
     premiumExpiresAt: fsDoc?.premiumExpiresAt,
+    proUntil: fsDoc?.proUntil,
+    plusUntil: fsDoc?.plusUntil,
     nowMs,
   });
 
   return {
-    isActivePro: unified.state === 'active' || Boolean(unified.isPro),
+    isActivePro: unified.state === 'active' || Boolean(unified.isPaid || unified.isPro),
+    isPlus: Boolean(unified.isPlus),
+    planTier: unified.planTier,
     isPendingPayment: unified.state === 'pending',
   };
 }
@@ -257,16 +266,22 @@ export async function resolveProBadgesBatch(
       role,
       isGuest,
       plan: uRow?.plan ?? null,
+      planTier: uRow?.plan_tier ?? uRow?.planTier ?? null,
       isPremium: uRow?.is_pro ?? uRow?.isPremium ?? null,
+      isPlus: uRow?.is_plus ?? uRow?.isPlus ?? null,
       planExpiresAt: uRow?.plan_expires_at ?? uRow?.planExpiresAt ?? null,
       premiumExpiresAt: uRow?.premium_expires_at ?? uRow?.premiumExpiresAt ?? null,
+      proUntil: uRow?.pro_until ?? uRow?.proUntil ?? null,
+      plusUntil: uRow?.plus_until ?? uRow?.plusUntil ?? null,
       nowMs,
     });
 
-    const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+    const isActivePro = unified.state === 'active' || Boolean(unified.isPaid || unified.isPro);
     const pref = badgeByUid.get(uid) || DEFAULT_PRO_BADGE_SETTINGS;
     const resolvedBadge: ProBadgeDesignId | null =
-      isActivePro && pref.visible ? pref.design : null;
+      isActivePro && pref.visible
+        ? ((unified.isPlus ? `plus:${pref.design}` : pref.design) as ProBadgeDesignId)
+        : null;
 
     resolvedProBadgeCache.set(uid, {
       proBadge: resolvedBadge,
@@ -365,7 +380,12 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
 
   const proCheck =
     typeof opts.activeProOverride === 'boolean'
-      ? { isActivePro: opts.activeProOverride, isPendingPayment: false }
+      ? {
+          isActivePro: opts.activeProOverride,
+          isPlus: false,
+          planTier: (opts.activeProOverride ? 'pro' : 'free') as PlanTier,
+          isPendingPayment: false,
+        }
       : await checkUserActiveProServer(currentUser, env, nowMs, authHeader);
 
   if (method === 'GET') {
@@ -375,6 +395,8 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
         design: DEFAULT_PRO_BADGE_DESIGN,
         visible: true,
         activePro: false,
+        isPlus: false,
+        planTier: 'free',
         proBadge: null,
         updatedAt: null,
       });
@@ -407,7 +429,9 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
           design,
           visible,
           activePro: proCheck.isActivePro,
-          proBadge,
+          isPlus: proCheck.isPlus,
+          planTier: proCheck.planTier,
+          proBadge: proCheck.isPlus && proBadge ? `plus:${proBadge}` : proBadge,
           updatedAt: Number(row.updated_at || 0),
         });
       }
@@ -427,7 +451,9 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
       design: DEFAULT_PRO_BADGE_DESIGN,
       visible: true,
       activePro: proCheck.isActivePro,
-      proBadge,
+      isPlus: proCheck.isPlus,
+      planTier: proCheck.planTier,
+      proBadge: proCheck.isPlus && proBadge ? `plus:${proBadge}` : proBadge,
       updatedAt: null,
     });
   }
@@ -472,12 +498,12 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
     );
   }
 
-  // Enforce active Pro plan check on PUT (rejected with 403 if not active Pro)
+  // Enforce active Pro or Plus plan check on PUT (rejected with 403 if Free)
   if (!proCheck.isActivePro) {
     return jsonResponse(
       {
         ok: false,
-        error: 'An active Boardly Pro plan is required to choose and save a Pro badge.',
+        error: 'An active Boardly Pro or Plus plan is required to choose and save a badge.',
         code: 'PRO_REQUIRED',
       },
       403
@@ -520,7 +546,9 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
     design,
     visible,
     activePro: true,
-    proBadge: effectiveProBadge,
+    isPlus: proCheck.isPlus,
+    planTier: proCheck.planTier,
+    proBadge: proCheck.isPlus && effectiveProBadge ? `plus:${effectiveProBadge}` : effectiveProBadge,
     updatedAt: nowMs,
   });
 }

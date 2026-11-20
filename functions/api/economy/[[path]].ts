@@ -14,15 +14,46 @@ import {
   COSMETICS_CATALOG,
   LEGACY_COSMETICS_CATALOG,
 } from '../../../src/data/cosmeticsCatalog';
-import { getProPlanById, computeExtendedProExpiry } from '../../../src/config/plans';
+import { getPlanById, getProPlanById, computeExtendedProExpiry } from '../../../src/config/plans';
+import {
+  DEFAULT_PLANS_CONFIG,
+  normalizePlansConfig,
+  getPlan,
+  getPlanTierFromPlanId,
+  getBillingFromPlanId,
+  computeProToPlusCreditDays,
+  parsePlanExpiryMs,
+  PLUS_ALREADY_INCLUDES_PRO_MSG,
+  type PlansConfigDoc,
+} from '../../../src/lib/planTier';
 
 const ALL_KNOWN_COSMETICS = [...COSMETICS_CATALOG, ...LEGACY_COSMETICS_CATALOG];
 const inFlightEconomyPurchases = new Set<string>();
 const completedEconomyPurchases = new Map<string, Record<string, any>>();
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+let cachedPlansConfigServer: { value: PlansConfigDoc; expiresAt: number } | null = null;
+
+async function loadPlansConfigServer(fsHelper: HybridFirestoreHelper): Promise<PlansConfigDoc> {
+  const now = Date.now();
+  if (cachedPlansConfigServer && cachedPlansConfigServer.expiresAt > now) {
+    return cachedPlansConfigServer.value;
+  }
+  try {
+    const raw = await fsHelper.getDoc('config/plans');
+    const normalized = raw ? normalizePlansConfig(raw) : DEFAULT_PLANS_CONFIG;
+    cachedPlansConfigServer = { value: normalized, expiresAt: now + 60_000 };
+    return normalized;
+  } catch {
+    return DEFAULT_PLANS_CONFIG;
+  }
+}
 
 export interface EconomyEnv extends RewardsEnv {
   DB?: any;
 }
+
+export type CouponAppliesTo = 'all' | 'pro_monthly' | 'pro_annual' | 'plus_monthly' | 'plus_annual';
 
 export interface NormalizedCoupon {
   id: string;
@@ -30,6 +61,7 @@ export interface NormalizedCoupon {
   label: string;
   type: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   discountType: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
+  appliesTo: CouponAppliesTo;
   percentOff: number;
   discountPercent: number;
   amountOffPkr: number;
@@ -389,12 +421,22 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
           ? `${normalizedPct}% Off Pro Pass`
           : `${code} Promo`;
 
+  const rawAppliesTo = String(raw.appliesTo ?? raw.applies_to ?? 'all').trim().toLowerCase();
+  const appliesTo: CouponAppliesTo =
+    rawAppliesTo === 'pro_monthly' ||
+    rawAppliesTo === 'pro_annual' ||
+    rawAppliesTo === 'plus_monthly' ||
+    rawAppliesTo === 'plus_annual'
+      ? rawAppliesTo
+      : 'all';
+
   return {
     id: String(raw.id || `promo_${code.toLowerCase()}`),
     code,
     label: cleanLabel,
     type: discountType,
     discountType,
+    appliesTo,
     percentOff: normalizedPct,
     discountPercent: normalizedPct,
     amountOffPkr,
@@ -415,9 +457,10 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
 
 export function computeCouponPricingForPlan(
   coupon: NormalizedCoupon,
-  planIdRaw?: string | null
+  planIdRaw?: string | null,
+  plansConfig?: PlansConfigDoc
 ) {
-  const plan = getProPlanById(planIdRaw);
+  const plan = plansConfig ? getPlanById(planIdRaw, plansConfig) : getProPlanById(planIdRaw);
   const originalPkr = plan.price_pkr;
   const originalKobans = plan.price_kobans;
 
@@ -454,9 +497,12 @@ export function computeCouponPricingForPlan(
 
   return {
     planId: plan.id,
+    planTier: plan.tier,
     planName:
       coupon.discountType === '1_year_free_pro'
-        ? 'Boardly Pro, Annual Pass'
+        ? plan.tier === 'plus'
+          ? 'Boardly Plus, Annual Pass'
+          : 'Boardly Pro, Annual Pass'
         : plan.name,
     originalPkr,
     discountPkr,
@@ -839,7 +885,17 @@ async function validateCouponForUser(
     };
   }
 
-  const pricing = computeCouponPricingForPlan(coupon, planIdRaw);
+  const plansConfig = await loadPlansConfigServer(fsHelper);
+  const targetPlan = getPlanById(planIdRaw, plansConfig);
+  if (coupon.appliesTo && coupon.appliesTo !== 'all' && coupon.appliesTo !== targetPlan.id) {
+    return {
+      valid: false,
+      code: 'COUPON_PLAN_MISMATCH',
+      error: `Coupon code "${cleanCode}" applies only to ${coupon.appliesTo.replace('_', ' ')}.`,
+    };
+  }
+
+  const pricing = computeCouponPricingForPlan(coupon, targetPlan.id, plansConfig);
   return {
     valid: true,
     coupon,
@@ -936,10 +992,25 @@ async function recordCouponRedemptionAtomically(
 }
 
 function resolvePlanIdFromBody(body: Record<string, any>, fallback = 'pro_monthly'): string {
-  if (body.planId && typeof body.planId === 'string') return body.planId.trim();
-  const cycle = String(body.billingCycle || body.cycle || '').trim().toLowerCase();
-  if (cycle === 'annual' || cycle === 'yearly' || cycle === 'pro_annual') return 'pro_annual';
-  if (cycle === 'monthly' || cycle === 'pro_monthly') return 'pro_monthly';
+  const rawPlanId = String(body.planId || '').trim().toLowerCase();
+  if (
+    rawPlanId === 'pro_monthly' ||
+    rawPlanId === 'pro_annual' ||
+    rawPlanId === 'plus_monthly' ||
+    rawPlanId === 'plus_annual'
+  ) {
+    return rawPlanId;
+  }
+  const tierRaw = String(body.tier || body.planTier || body.plan || '').trim().toLowerCase();
+  const isPlus = tierRaw === 'plus' || rawPlanId.includes('plus');
+  const cycle = String(body.billingCycle || body.cycle || rawPlanId || '').trim().toLowerCase();
+  if (cycle === 'annual' || cycle === 'yearly' || cycle === 'pro_annual' || cycle === 'plus_annual') {
+    return isPlus ? 'plus_annual' : 'pro_annual';
+  }
+  if (cycle === 'monthly' || cycle === 'pro_monthly' || cycle === 'plus_monthly') {
+    return isPlus ? 'plus_monthly' : 'pro_monthly';
+  }
+  if (isPlus) return 'plus_monthly';
   return fallback;
 }
 
@@ -1115,13 +1186,49 @@ export async function handleEconomyApiRequest(context: {
 
     const { coupon, pricing } = validation;
 
-    // If this is a 100%-off / Free Pro grant coupon, activate Boardly Pro immediately on the server!
+    // If this is a 100%-off / Free grant coupon, activate Boardly Pro or Plus immediately on the server!
     if (pricing.isFreeGrant) {
+      const nowMs = Date.now();
+      const plansConfig = await loadPlansConfigServer(fsHelper);
       const userDoc = await fsHelper.getDoc(`users/${verifiedUser.uid}`);
-      const currentExpiryRaw = userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? null;
-      const extension = computeExtendedProExpiry(currentExpiryRaw, pricing.effectiveDurationDays);
+      const currentTier = getPlan(userDoc, nowMs);
+      const targetTier = getPlanTierFromPlanId(pricing.planId);
+
+      if (currentTier === 'plus' && targetTier === 'pro') {
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'PLUS_ALREADY_INCLUDES_PRO',
+            error: PLUS_ALREADY_INCLUDES_PRO_MSG,
+          },
+          409
+        );
+      }
+
+      const currentExpiryRaw =
+        userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null;
+      const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
+      let proCreditDays = 0;
+      let totalDurationDays = pricing.effectiveDurationDays;
+      let extension;
+      if (currentTier === 'pro' && targetTier === 'plus') {
+        const remainingProDays =
+          currentExpiryMs && currentExpiryMs > nowMs
+            ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
+            : 0;
+        proCreditDays = computeProToPlusCreditDays(
+          remainingProDays,
+          plansConfig.pro.pricePkrMonthly,
+          plansConfig.plus.pricePkrMonthly
+        );
+        totalDurationDays = pricing.effectiveDurationDays + proCreditDays;
+        extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
+      } else {
+        extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
+      }
+
       const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
-      const nowIso = new Date().toISOString();
+      const nowIso = new Date(nowMs).toISOString();
 
       const { redemptionId, updatedCoupon } = await recordCouponRedemptionAtomically(
         fsHelper,
@@ -1136,21 +1243,27 @@ export async function handleEconomyApiRequest(context: {
         }
       );
 
-      // Update user's Pro status server-side
+      // Update user's Pro or Plus status server-side
       await fsHelper.setDoc(
         `users/${verifiedUser.uid}`,
         {
           uid: verifiedUser.uid,
-          plan: 'pro',
-          tier: 'pro',
+          plan: targetTier,
+          tier: targetTier,
+          planTier: targetTier,
           isPremium: true,
-          proPlanId: pricing.planId,
+          isPro: targetTier === 'pro',
+          isPlus: targetTier === 'plus',
+          planId: pricing.planId,
+          proPlanId: targetTier === 'pro' ? pricing.planId : null,
+          plusPlanId: targetTier === 'plus' ? pricing.planId : null,
           premiumSource: 'coupon',
           AppliedCouponCode: coupon.code,
           planStartedAt: nowIso,
           planExpiresAt: newExpiryIso,
           premiumExpiresAt: extension.newExpiryMs,
-          proUntil: newExpiryIso,
+          proUntil: targetTier === 'pro' ? newExpiryIso : null,
+          plusUntil: targetTier === 'plus' ? newExpiryIso : null,
           updatedAt: nowIso,
         },
         true
@@ -1159,10 +1272,13 @@ export async function handleEconomyApiRequest(context: {
       return jsonResponse({
         ok: true,
         activatedPro: true,
+        activatedPlus: targetTier === 'plus',
+        planTier: targetTier,
+        proCreditDays,
         redemptionId,
         planId: pricing.planId,
         planName: pricing.planName,
-        durationDays: pricing.effectiveDurationDays,
+        durationDays: totalDurationDays,
         newExpiryMs: extension.newExpiryMs,
         newExpiryIso,
         newExpiryLabel: extension.newExpiryLabel,
@@ -1221,7 +1337,38 @@ export async function handleEconomyApiRequest(context: {
       );
     }
 
-    const plan = getProPlanById(resolvePlanIdFromBody(body, 'pro_monthly'));
+    const plansConfig = await loadPlansConfigServer(fsHelper);
+    const plan = getPlanById(resolvePlanIdFromBody(body, 'pro_monthly'), plansConfig);
+    const targetTier = plan.tier;
+    const nowMs = Date.now();
+    const userDocForGuard = await fsHelper.getDoc(`users/${verifiedUser.uid}`);
+    const currentTierForGuard = getPlan(userDocForGuard, nowMs);
+    if (currentTierForGuard === 'plus' && targetTier === 'pro') {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'PLUS_ALREADY_INCLUDES_PRO',
+          error: PLUS_ALREADY_INCLUDES_PRO_MSG,
+        },
+        409
+      );
+    }
+
+    let proCreditDaysPreview = 0;
+    const upgradedFromPro = currentTierForGuard === 'pro' && targetTier === 'plus';
+    if (upgradedFromPro) {
+      const currentExpMs = parsePlanExpiryMs(
+        userDocForGuard?.proUntil ?? userDocForGuard?.planExpiresAt ?? userDocForGuard?.premiumExpiresAt
+      );
+      const remainingProDays =
+        currentExpMs && currentExpMs > nowMs ? Math.ceil((currentExpMs - nowMs) / DAY_MS) : 0;
+      proCreditDaysPreview = computeProToPlusCreditDays(
+        remainingProDays,
+        plansConfig.pro.pricePkrMonthly,
+        plansConfig.plus.pricePkrMonthly
+      );
+    }
+
     const couponCode = String(body.couponCode || '').trim().toUpperCase();
     let finalAmountPkr = plan.price_pkr;
     let discountPkr = 0;
@@ -1287,7 +1434,7 @@ export async function handleEconomyApiRequest(context: {
       );
     }
 
-    // Also check if user already has a pending Pro payment request (unless forceAllowMultiple in test or different plan)
+    // Also check if user already has a pending payment request
     const userPending = existingPlanReqs.find((r) => {
       const rUid = String(r.data.userId || r.data.uid || '');
       const st = String(r.data.status || '').toLowerCase();
@@ -1298,8 +1445,8 @@ export async function handleEconomyApiRequest(context: {
       // Allow submitting if TID is different, or update pending doc
     }
 
-    const nowIso = new Date().toISOString();
-    const requestId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const nowIso = new Date(nowMs).toISOString();
+    const requestId = `pay_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
     const methodClean = String(body.paymentMethod || body.method || 'jazzcash').toLowerCase();
 
     const paymentDocPayload: Record<string, any> = {
@@ -1313,9 +1460,13 @@ export async function handleEconomyApiRequest(context: {
           (verifiedUser.email ? verifiedUser.email.split('@')[0] : 'Student')
       ),
       plan: plan.id,
+      planId: plan.id,
+      planTier: targetTier,
       planName: plan.name,
       durationDays: plan.duration_days,
-      durationMonths: plan.id === 'pro_annual' ? 12 : 1,
+      durationMonths: getBillingFromPlanId(plan.id) === 'annual' ? 12 : 1,
+      upgradedFromPro,
+      proCreditDaysPreview,
       amount: finalAmountPkr,
       amount_pkr: finalAmountPkr,
       originalAmountPkr: plan.price_pkr,
@@ -1340,7 +1491,7 @@ export async function handleEconomyApiRequest(context: {
 
     if (validatedCoupon) {
       const approxExpiryIso = new Date(
-        Date.now() + plan.duration_days * 24 * 60 * 60 * 1000
+        nowMs + (plan.duration_days + proCreditDaysPreview) * DAY_MS
       ).toISOString();
       await recordCouponRedemptionAtomically(
         fsHelper,
@@ -1358,6 +1509,8 @@ export async function handleEconomyApiRequest(context: {
     return jsonResponse({
       ok: true,
       requestId,
+      planTier: targetTier,
+      proCreditDaysPreview,
       amountPkr: finalAmountPkr,
       originalAmountPkr: plan.price_pkr,
       discountPkr,
@@ -1392,6 +1545,8 @@ export async function handleEconomyApiRequest(context: {
       ![
         'pro_monthly',
         'pro_annual',
+        'plus_monthly',
+        'plus_annual',
         'monthly',
         'annual',
         'yearly',
@@ -1401,13 +1556,15 @@ export async function handleEconomyApiRequest(context: {
         {
           ok: false,
           code: 'BAD_INPUT',
-          error: `Invalid Pro plan ID "${rawPlanInput}". Expected "pro_monthly" or "pro_annual".`,
+          error: `Invalid plan ID "${rawPlanInput}". Expected "pro_monthly", "pro_annual", "plus_monthly", or "plus_annual".`,
         },
         400
       );
     }
 
-    const plan = getProPlanById(resolvePlanIdFromBody(body, 'pro_monthly'));
+    const plansConfig = await loadPlansConfigServer(fsHelper);
+    const plan = getPlanById(resolvePlanIdFromBody(body, 'pro_monthly'), plansConfig);
+    const targetTier = plan.tier;
     const couponCode = String(body.couponCode || '').trim().toUpperCase();
     const rawIdempotency = String(
       body.idempotencyKey || request.headers.get('X-Idempotency-Key') || ''
@@ -1415,7 +1572,7 @@ export async function handleEconomyApiRequest(context: {
       .trim()
       .replace(/[^a-zA-Z0-9_-]/g, '_')
       .slice(0, 64);
-    const proCacheKey = rawIdempotency ? `pro:${verifiedUser.uid}:${rawIdempotency}` : '';
+    const proCacheKey = rawIdempotency ? `plan:${verifiedUser.uid}:${rawIdempotency}` : '';
 
     if (proCacheKey && completedEconomyPurchases.has(proCacheKey)) {
       return jsonResponse({
@@ -1428,7 +1585,7 @@ export async function handleEconomyApiRequest(context: {
         {
           ok: false,
           code: 'PURCHASE_IN_PROGRESS',
-          error: 'Your Boardly Pro purchase is already being processed. Please wait.',
+          error: `Your ${plan.name} purchase is already being processed. Please wait.`,
         },
         409
       );
@@ -1465,8 +1622,8 @@ export async function handleEconomyApiRequest(context: {
       }
 
       const ledgerId = rawIdempotency
-        ? `pro_koban_${rawIdempotency}`
-        : `pro_koban_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        ? `${targetTier}_koban_${rawIdempotency}`
+        : `${targetTier}_koban_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
       const [walletDoc, userDoc, existingLedgerDoc] = await Promise.all([
         fsHelper.getDoc(`wallets/${verifiedUser.uid}`),
@@ -1475,6 +1632,21 @@ export async function handleEconomyApiRequest(context: {
           ? fsHelper.getDoc(`wallets/${verifiedUser.uid}/ledger/${ledgerId}`)
           : Promise.resolve(null),
       ]);
+
+      const nowMs = Date.now();
+      const activeTier = getPlan(userDoc, nowMs);
+
+      // Block buying Pro while Plus is active
+      if (activeTier === 'plus' && targetTier === 'pro') {
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'PLUS_ALREADY_INCLUDES_PRO',
+            error: PLUS_ALREADY_INCLUDES_PRO_MSG,
+          },
+          409
+        );
+      }
 
       const walletBal =
         walletDoc && typeof walletDoc.balance === 'number' && Number.isFinite(walletDoc.balance)
@@ -1496,17 +1668,19 @@ export async function handleEconomyApiRequest(context: {
           ok: true,
           alreadyProcessed: true,
           planId: existingLedgerDoc.planId || plan.id,
+          planTier: existingLedgerDoc.planTier || targetTier,
           planName: existingLedgerDoc.planName || plan.name,
           durationDays: Number(existingLedgerDoc.durationDays || plan.duration_days),
+          proCreditDays: Number(existingLedgerDoc.proCreditDays || 0),
           kobansSpent: Math.abs(Number(existingLedgerDoc.amount ?? finalKobansCost)),
           discountKobans: Number(existingLedgerDoc.discountKobans ?? discountKobans),
           balanceBefore: Number(existingLedgerDoc.balanceBefore ?? currentBalance),
           newBalance: Number(existingLedgerDoc.balanceAfter ?? currentBalance),
           wasExtension: false,
           previousExpiryLabel: null,
-          newExpiryMs: Number(userDoc?.premiumExpiresAt || Date.now() + plan.duration_days * 86_400_000),
+          newExpiryMs: Number(userDoc?.premiumExpiresAt || nowMs + plan.duration_days * DAY_MS),
           newExpiryIso: String(
-            userDoc?.planExpiresAt || new Date(Date.now() + plan.duration_days * 86_400_000).toISOString()
+            userDoc?.planExpiresAt || new Date(nowMs + plan.duration_days * DAY_MS).toISOString()
           ),
           newExpiryLabel: 'Active',
           ledgerId,
@@ -1530,12 +1704,34 @@ export async function handleEconomyApiRequest(context: {
 
       const newBalance =
         isAdmin && currentBalance < finalKobansCost ? currentBalance : currentBalance - finalKobansCost;
-      const currentExpiryRaw = userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? null;
-      const extension = computeExtendedProExpiry(currentExpiryRaw, plan.duration_days);
-      const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
-      const nowIso = new Date().toISOString();
+      const currentExpiryRaw =
+        userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null;
+      const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
 
-      // Write wallet, user Pro upgrade, and ledger entry
+      let proCreditDays = 0;
+      let totalDurationDays = plan.duration_days;
+      let extension;
+
+      if (activeTier === 'pro' && targetTier === 'plus') {
+        const remainingProDays =
+          currentExpiryMs && currentExpiryMs > nowMs
+            ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
+            : 0;
+        proCreditDays = computeProToPlusCreditDays(
+          remainingProDays,
+          plansConfig.pro.pricePkrMonthly,
+          plansConfig.plus.pricePkrMonthly
+        );
+        totalDurationDays = plan.duration_days + proCreditDays;
+        extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
+      } else {
+        extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
+      }
+
+      const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
+      const nowIso = new Date(nowMs).toISOString();
+
+      // Write wallet, user plan upgrade, and ledger entry
       await Promise.all([
         fsHelper.setDoc(
           `wallets/${verifiedUser.uid}`,
@@ -1557,15 +1753,21 @@ export async function handleEconomyApiRequest(context: {
           `users/${verifiedUser.uid}`,
           {
             uid: verifiedUser.uid,
-            plan: 'pro',
-            tier: 'pro',
+            plan: targetTier,
+            tier: targetTier,
+            planTier: targetTier,
             isPremium: true,
-            proPlanId: plan.id,
+            isPro: targetTier === 'pro',
+            isPlus: targetTier === 'plus',
+            planId: plan.id,
+            proPlanId: targetTier === 'pro' ? plan.id : null,
+            plusPlanId: targetTier === 'plus' ? plan.id : null,
             premiumSource: 'kobans',
             planStartedAt: nowIso,
             planExpiresAt: newExpiryIso,
             premiumExpiresAt: extension.newExpiryMs,
-            proUntil: newExpiryIso,
+            proUntil: targetTier === 'pro' ? newExpiryIso : null,
+            plusUntil: targetTier === 'plus' ? newExpiryIso : null,
             kobans: newBalance,
             kobanBalance: newBalance,
             ...(validatedCoupon ? { AppliedCouponCode: validatedCoupon.code } : {}),
@@ -1577,16 +1779,18 @@ export async function handleEconomyApiRequest(context: {
           `wallets/${verifiedUser.uid}/ledger/${ledgerId}`,
           {
             type: 'purchase',
-            purchaseSubtype: 'pro_purchase',
+            purchaseSubtype: targetTier === 'plus' ? 'plus_purchase' : 'pro_purchase',
             amount: -finalKobansCost,
             balanceBefore: currentBalance,
             balanceAfter: newBalance,
             planId: plan.id,
+            planTier: targetTier,
             planName: plan.name,
-            durationDays: plan.duration_days,
+            durationDays: totalDurationDays,
+            proCreditDays,
             couponCode: validatedCoupon ? validatedCoupon.code : null,
             discountKobans,
-            reason: `${extension.wasAlreadyActive ? 'Extended' : 'Unlocked'} ${plan.name} (${plan.duration_days} days) with ${finalKobansCost.toLocaleString()} Kobans`,
+            reason: `${extension.wasAlreadyActive ? 'Extended' : activeTier === 'pro' && targetTier === 'plus' ? 'Upgraded to' : 'Unlocked'} ${plan.name} (${totalDurationDays} days${proCreditDays > 0 ? ` incl. +${proCreditDays}d Pro credit` : ''}) with ${finalKobansCost.toLocaleString()} Kobans`,
             actorUid: verifiedUser.uid,
             createdAt: nowIso,
           },
@@ -1611,13 +1815,16 @@ export async function handleEconomyApiRequest(context: {
       const responsePayload = {
         ok: true,
         planId: plan.id,
+        planTier: targetTier,
         planName: plan.name,
-        durationDays: plan.duration_days,
+        durationDays: totalDurationDays,
+        proCreditDays,
         kobansSpent: finalKobansCost,
         discountKobans,
         balanceBefore: currentBalance,
         newBalance,
         wasExtension: extension.wasAlreadyActive,
+        upgradedFromPro: activeTier === 'pro' && targetTier === 'plus',
         previousExpiryLabel: extension.previousExpiryLabel,
         newExpiryMs: extension.newExpiryMs,
         newExpiryIso,
@@ -2116,6 +2323,15 @@ export async function handleEconomyApiRequest(context: {
             ? '1-Year Free Pro Campaign'
             : `${cleanPct}% Off Pro Pass`;
 
+      const rawAppliesTo = String(body.appliesTo ?? body.applies_to ?? 'all').trim().toLowerCase();
+      const safeAppliesTo: CouponAppliesTo =
+        rawAppliesTo === 'pro_monthly' ||
+        rawAppliesTo === 'pro_annual' ||
+        rawAppliesTo === 'plus_monthly' ||
+        rawAppliesTo === 'plus_annual'
+          ? rawAppliesTo
+          : 'all';
+
       const nowIso = new Date().toISOString();
       const newRaw = {
         id: `promo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2123,6 +2339,8 @@ export async function handleEconomyApiRequest(context: {
         label: safeLabel,
         type: discountTypeVal,
         discount_type: discountTypeVal,
+        appliesTo: safeAppliesTo,
+        applies_to: safeAppliesTo,
         percentOff: isOneYearPro ? 100 : cleanPct,
         percent_off: isOneYearPro ? 100 : cleanPct,
         discountPercent: isOneYearPro ? 100 : cleanPct,

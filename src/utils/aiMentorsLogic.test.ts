@@ -12,11 +12,13 @@ import {
   resolveMentorIdFromParam,
   FREE_AI_CREDITS_PER_DAY,
   PRO_AI_CREDITS_PER_DAY,
+  PLUS_AI_CREDITS_PER_DAY,
 } from './aiMentorsLogic';
 
 test('shared ai-config limits match spec', () => {
   assert.equal(FREE_AI_CREDITS_PER_DAY, 5);
-  assert.equal(PRO_AI_CREDITS_PER_DAY, 100);
+  assert.equal(PRO_AI_CREDITS_PER_DAY, 50);
+  assert.equal(PLUS_AI_CREDITS_PER_DAY, 100);
 });
 
 test('calculateMessageCreditCost matches depth, text, photo, PDF, and history rules', () => {

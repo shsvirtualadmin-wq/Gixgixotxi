@@ -99,7 +99,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 }) => {
   const { user, profile } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
-  const { isPro } = useEffectivePlan();
+  const { isPro, isPlus } = useEffectivePlan();
   const { kobanBalance, balanceLoaded } = useWallet();
 
   const displayName = getDisplayName(
@@ -135,10 +135,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>
 
-        {!isPro && (
+        {!isPro ? (
           <button
             type="button"
-            onClick={() => onNavigate('/plans')}
+            onClick={() => onNavigate('/dashboard/plan')}
             className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors cursor-pointer"
           >
             <span className="inline-flex items-center gap-2.5 min-w-0">
@@ -147,7 +147,19 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
             </span>
             <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
-        )}
+        ) : !isPlus ? (
+          <button
+            type="button"
+            onClick={() => onNavigate('/dashboard/plan')}
+            className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2.5 min-w-0">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span className="truncate">Upgrade to Plus</span>
+            </span>
+            <ChevronRight className="w-4 h-4 shrink-0" />
+          </button>
+        ) : null}
 
         <button type="button" onClick={() => onNavigate('/store')} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">

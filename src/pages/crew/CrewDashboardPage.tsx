@@ -246,8 +246,12 @@ export function CrewDashboardPage() {
   }, [user]);
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
-  // PRO BADGE RULE: Show "PRO ACTIVE" badge and "Pro" chip only when the crew actually has an active Pro plan
-  const crewHasActivePro = Boolean(crew?.hasProMember);
+  const crewHasActivePlus = Boolean(
+    crew?.hasPlusMember ||
+      crew?.effectivePlan === 'plus' ||
+      crew?.members?.some((m) => m.isPlus || m.plan === 'plus' || m.proBadge?.startsWith('plus:'))
+  );
+  const crewHasActivePro = Boolean(crew?.hasProMember || crewHasActivePlus);
 
   const squadName =
     crew?.name?.trim() && crew.name.trim() !== '1'
@@ -666,9 +670,14 @@ export function CrewDashboardPage() {
                       </button>
                     )}
 
-                    {/* PRO BADGE RULE: Show Pro badge ONLY when crew actually has active Pro */}
+                    {/* PRO / PLUS BADGE RULE */}
                     {crewHasActivePro && (
-                      <ProBadge design={crew?.proBadge || 'ember'} size="md" animated />
+                      <ProBadge
+                        design={crew?.proBadge || 'ember'}
+                        tier={crewHasActivePlus ? 'plus' : 'pro'}
+                        size="md"
+                        animated
+                      />
                     )}
 
                     {crew.isLocked && (
@@ -1050,9 +1059,14 @@ export function CrewDashboardPage() {
                                 </span>
                               )}
 
-                              {/* PRO BADGE RULE: Show Pro badge ONLY when crew has active Pro AND member is Pro */}
-                              {crewHasActivePro && (m.proBadge || m.isPro) && (
-                                <ProBadge design={m.proBadge || 'ember'} size="sm" listMode />
+                              {/* PRO / PLUS BADGE RULE */}
+                              {crewHasActivePro && (m.proBadge || m.isPro || m.isPlus) && (
+                                <ProBadge
+                                  design={m.proBadge || 'ember'}
+                                  tier={m.isPlus || m.plan === 'plus' ? 'plus' : 'pro'}
+                                  size="sm"
+                                  listMode
+                                />
                               )}
 
                               {isCurrentUser && (

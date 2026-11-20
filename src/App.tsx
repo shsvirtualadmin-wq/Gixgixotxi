@@ -212,6 +212,9 @@ const AdminOverviewPage = lazyWithRetry(() =>
 const AdminUsersPage = lazyWithRetry(() =>
   import('./pages/admin/AdminUsersPage').then(m => ({ default: m.AdminUsersPage }))
 );
+const AdminPlansPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminPlansPage').then(m => ({ default: m.AdminPlansPage }))
+);
 const AdminQuestionsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminQuestionsPage').then(m => ({ default: m.AdminQuestionsPage }))
 );
@@ -338,6 +341,7 @@ function AppInner() {
 
           {/* SuperAdmin-only pages */}
           <Route path="users" element={<AdminGuard requireSuperAdmin><AdminUsersPage /></AdminGuard>} />
+          <Route path="plans" element={<AdminGuard requireSuperAdmin><AdminPlansPage /></AdminGuard>} />
           <Route path="pricing" element={<AdminGuard requireSuperAdmin><AdminPricingPage /></AdminGuard>} />
           <Route path="kobans" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
           <Route path="wallets" element={<AdminGuard requireSuperAdmin><AdminKobansPage /></AdminGuard>} />
@@ -368,6 +372,7 @@ function AppInner() {
           <Route path="formulas" element={<AdminFormulasPage />} />
           <Route path="formula-bank" element={<AdminFormulasPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="plans" element={<AdminPlansPage />} />
           <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
           <Route path="announcements" element={<AdminAnnouncementsPage />} />

@@ -30,6 +30,8 @@ import {
   buildProActivatedStudentEmail,
   buildProActivatedAdminEmail,
   buildProRequestRejectedStudentEmail,
+  buildPlanExpiryReminderEmail,
+  buildPlanExpiredEmail,
   buildCertificateIssuedStudentEmail,
   buildAdminSampleTestEmail,
   verifyEmailBalanceSanity,
@@ -116,6 +118,8 @@ const VALID_EVENT_TYPES = new Set<TransactionalEmailEventType>([
   'pro_request_received',
   'pro_activated',
   'pro_request_rejected',
+  'plan_expiry_reminder',
+  'plan_expired',
   'certificate_issued',
   'admin_test_email',
 ]);
@@ -1636,12 +1640,14 @@ export async function handleSendEmailRequest(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // EVENT 7A: PRO PAYMENT REQUEST RECEIVED (PKR via JazzCash / Opay)
+  // EVENT 7A: PRO / PLUS PAYMENT REQUEST RECEIVED (PKR via JazzCash / Opay)
   // ───────────────────────────────────────────────────────────────────────────
   else if (eventType === 'pro_request_received') {
     const planName = String(data.planName || 'Boardly Pro Pass');
+    const planTier: 'pro' | 'plus' =
+      data.planTier === 'plus' || planName.toLowerCase().includes('plus') ? 'plus' : 'pro';
     const durationDays = Math.max(1, Number(data.durationDays || 30));
-    const pkrAmount = Math.max(1, Number(data.pkrAmount || 199));
+    const pkrAmount = Math.max(1, Number(data.pkrAmount || (planTier === 'plus' ? 399 : 199)));
     const paymentMethod = String(data.paymentMethod || data.method || 'jazzcash');
     const transactionId = String(data.transactionId || data.TID || '');
 
@@ -1649,6 +1655,7 @@ export async function handleSendEmailRequest(
       const studentTpl = buildProRequestReceivedStudentEmail({
         studentName: studentDisplayName,
         planName,
+        planTier,
         durationDays,
         pkrAmount,
         paymentMethod,
@@ -1675,6 +1682,7 @@ export async function handleSendEmailRequest(
       studentEmail: verifiedStudentEmail || 'Not linked',
       studentUid: targetStudentUid,
       planName,
+      planTier,
       durationDays,
       pkrAmount,
       paymentMethod,
@@ -1696,10 +1704,12 @@ export async function handleSendEmailRequest(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // EVENT 7B: PRO ACTIVATED OR EXTENDED (Kobans instant checkout OR Admin PKR approval)
+  // EVENT 7B: PRO / PLUS ACTIVATED OR EXTENDED (Kobans instant checkout OR Admin PKR approval)
   // ───────────────────────────────────────────────────────────────────────────
   else if (eventType === 'pro_activated') {
     const planName = String(data.planName || 'Boardly Pro Pass');
+    const planTier: 'pro' | 'plus' =
+      data.planTier === 'plus' || planName.toLowerCase().includes('plus') ? 'plus' : 'pro';
     const durationDays = Math.max(1, Number(data.durationDays || 30));
     const expiresAtLabel = String(data.expiresAtLabel || 'Active');
     const wasExtension = Boolean(data.wasExtension);
@@ -1746,6 +1756,7 @@ export async function handleSendEmailRequest(
       const studentTpl = buildProActivatedStudentEmail({
         studentName: studentDisplayName,
         planName,
+        planTier,
         durationDays,
         expiresAtLabel,
         wasExtension,
@@ -1777,6 +1788,7 @@ export async function handleSendEmailRequest(
       studentEmail: verifiedStudentEmail || undefined,
       studentUid: targetStudentUid,
       planName,
+      planTier,
       durationDays,
       expiresAtLabel,
       paidWith,
@@ -1803,18 +1815,20 @@ export async function handleSendEmailRequest(
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // EVENT 7C: PRO PAYMENT REQUEST REJECTED BY ADMIN
+  // EVENT 7C: PRO / PLUS PAYMENT REQUEST REJECTED BY ADMIN
   // ───────────────────────────────────────────────────────────────────────────
   else if (eventType === 'pro_request_rejected') {
     if (!callerIsAdmin) {
       return new Response(
-        JSON.stringify({ ok: false, error: 'Only admins can send Pro request rejection emails.' }),
+        JSON.stringify({ ok: false, error: 'Only admins can send plan request rejection emails.' }),
         { status: 403, headers: jsonHeaders }
       );
     }
 
     const planName = String(data.planName || 'Boardly Pro Pass');
-    const pkrAmount = Math.max(1, Number(data.pkrAmount || 199));
+    const planTier: 'pro' | 'plus' =
+      data.planTier === 'plus' || planName.toLowerCase().includes('plus') ? 'plus' : 'pro';
+    const pkrAmount = Math.max(1, Number(data.pkrAmount || (planTier === 'plus' ? 399 : 199)));
     const reason = String(data.reason || 'Transaction ID could not be verified.');
     const transactionId = data.transactionId ? String(data.transactionId) : undefined;
 
@@ -1822,6 +1836,7 @@ export async function handleSendEmailRequest(
       const studentTpl = buildProRequestRejectedStudentEmail({
         studentName: studentDisplayName,
         planName,
+        planTier,
         pkrAmount,
         reason,
         transactionId,
@@ -1832,6 +1847,78 @@ export async function handleSendEmailRequest(
         to: verifiedStudentEmail,
         template: studentTpl,
         idempotencyKey: `pro_request_rejected:${recordId}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 7D: PLAN EXPIRY REMINDER (Pro or Plus expiring soon)
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'plan_expiry_reminder') {
+    if (!callerIsAdmin) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Only admins or scheduled jobs can send expiry reminders.' }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
+    const planTier: 'pro' | 'plus' = data.planTier === 'plus' ? 'plus' : 'pro';
+    const expiresAtLabel = String(data.expiresAtLabel || 'soon');
+    const daysRemaining = Math.max(1, Math.floor(Number(data.daysRemaining || 3)));
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildPlanExpiryReminderEmail({
+        studentName: studentDisplayName,
+        planTier,
+        expiresAtLabel,
+        daysRemaining,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `plan_expiry_reminder:${recordId}:student`,
+        eventType,
+        recipientRole: 'student',
+        recordId,
+        rawEventData: data,
+        forceResend,
+      });
+      results.push({ role: 'student', ...rStudent });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EVENT 7E: PLAN EXPIRED (Pro or Plus expired directly to Free)
+  // ───────────────────────────────────────────────────────────────────────────
+  else if (eventType === 'plan_expired') {
+    if (!callerIsAdmin) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Only admins or scheduled jobs can send plan expired emails.' }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
+    const planTier: 'pro' | 'plus' = data.planTier === 'plus' ? 'plus' : 'pro';
+    const expiredAtLabel = String(data.expiredAtLabel || 'today');
+
+    if (verifiedStudentEmail) {
+      const studentTpl = buildPlanExpiredEmail({
+        studentName: studentDisplayName,
+        planTier,
+        expiredAtLabel,
+        appUrl,
+      });
+      const rStudent = await dispatchViaResendWithRetry({
+        env,
+        to: verifiedStudentEmail,
+        template: studentTpl,
+        idempotencyKey: `plan_expired:${recordId}:student`,
         eventType,
         recipientRole: 'student',
         recordId,

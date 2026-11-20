@@ -1,21 +1,27 @@
 import React, { useEffect } from 'react';
 import { Check, Sparkles, X, Zap } from 'lucide-react';
-import { ANNUAL_SAVINGS_PERCENT, PLANS } from '@/config/plans';
-import { PRO_AI_CREDITS_PER_DAY } from '@/utils/aiMentorsLogic';
+import { buildPlansCatalog } from '@/config/plans';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
+import type { AiPlan } from '@/utils/aiMentorsLogic';
 
 interface AiUpgradeSheetProps {
   open: boolean;
   reason: string;
+  currentPlan?: AiPlan;
   onClose: () => void;
-  onUpgrade: () => void;
+  onUpgrade: (targetTier: 'pro' | 'plus') => void;
 }
 
 export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
   open,
   reason,
+  currentPlan = 'free',
   onClose,
   onUpgrade,
 }) => {
+  const { config } = usePlansConfig();
+  const catalog = buildPlansCatalog(config);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -28,14 +34,39 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  // Never show an upgrade sheet to Plus users
+  if (!open || currentPlan === 'plus') return null;
+
+  const isTargetPlus = currentPlan === 'pro';
+  const monthlyPlan = isTargetPlus ? catalog.plus_monthly : catalog.pro_monthly;
+  const annualPlan = isTargetPlus ? catalog.plus_annual : catalog.pro_annual;
+  const freeToProMultiplier = Math.max(
+    2,
+    Math.round(config.pro.aiCreditsPerDay / Math.max(1, config.free.aiCreditsPerDay))
+  );
+  const proToPlusMultiplier = Math.max(
+    2,
+    Math.round(config.plus.aiCreditsPerDay / Math.max(1, config.pro.aiCreditsPerDay))
+  );
+
+  const benefits = isTargetPlus
+    ? [
+        `${config.plus.aiCreditsPerDay} AI Mentor credits every day (${proToPlusMultiplier}× Pro)`,
+        'Everything in Boardly Pro + Deep & Max AI thinking',
+        'Your unused Pro days are credited automatically to Plus',
+      ]
+    : [
+        `${config.pro.aiCreditsPerDay} AI Mentor credits every day (${freeToProMultiplier}× Free)`,
+        'Unlock Deep & Max thinking for tough board & entry-test derivations',
+        `Need even more? Boardly Plus gives ${config.plus.aiCreditsPerDay} credits/day`,
+      ];
 
   return (
     <div
       className="fixed inset-0 z-[10060] flex items-end lg:items-center justify-center p-0 lg:p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Upgrade to Boardly Pro"
+      aria-label={isTargetPlus ? 'Upgrade to Boardly Plus' : 'Upgrade to Boardly Pro'}
     >
       <div
         className="fixed inset-0 bg-black/55 backdrop-blur-[2px]"
@@ -57,10 +88,17 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
           <div className="flex items-center gap-2.5">
             <span
               className="flex h-10 w-10 items-center justify-center rounded-full"
-              style={{
-                backgroundColor: 'var(--accent-soft)',
-                color: 'var(--accent)',
-              }}
+              style={
+                isTargetPlus
+                  ? {
+                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.12))',
+                      color: '#d97706',
+                    }
+                  : {
+                      backgroundColor: 'var(--accent-soft)',
+                      color: 'var(--accent)',
+                    }
+              }
             >
               <Sparkles className="h-5 w-5" />
             </span>
@@ -72,7 +110,7 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
                   color: 'var(--text)',
                 }}
               >
-                Boardly Pro
+                {isTargetPlus ? 'Boardly Plus' : 'Boardly Pro'}
               </h3>
               <p className="mt-0.5 text-[13px] leading-snug" style={{ color: 'var(--text-muted)' }}>
                 {reason}
@@ -96,11 +134,7 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
 
         {/* 3 crisp benefits */}
         <ul className="mt-4 space-y-2.5">
-          {[
-            `${PRO_AI_CREDITS_PER_DAY} AI Mentor credits every day (20× Free)`,
-            'Unlock Deep & Max thinking for tough board & entry-test derivations',
-            'Unlimited Practice Tests, Grand Line Mocks & AI Step Derivations',
-          ].map((line) => (
+          {benefits.map((line) => (
             <li
               key={line}
               className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -108,7 +142,7 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
             >
               <Check
                 className="mt-0.5 h-4 w-4 shrink-0"
-                style={{ color: 'var(--accent)' }}
+                style={{ color: isTargetPlus ? '#d97706' : 'var(--accent)' }}
                 strokeWidth={2.5}
               />
               <span>{line}</span>
@@ -116,7 +150,7 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
           ))}
         </ul>
 
-        {/* Live pricing box from PLANS */}
+        {/* Live pricing box from config/plans */}
         <div
           className="mt-4 rounded-[22px] px-4 py-3 flex items-center justify-between gap-3"
           style={{
@@ -130,26 +164,34 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
                 className="text-[22px] font-bold tabular-nums"
                 style={{ fontFamily: "'Doto', var(--font-dot), sans-serif", color: 'var(--text)' }}
               >
-                PKR {PLANS.pro_monthly.price_pkr}
+                PKR {monthlyPlan.price_pkr.toLocaleString()}
               </span>
               <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
                 /month
               </span>
             </div>
             <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-              Or PKR {PLANS.pro_annual.price_pkr.toLocaleString()}/year (Annual −{ANNUAL_SAVINGS_PERCENT}%) · or {PLANS.pro_monthly.price_kobans.toLocaleString()} Kobans
+              Or PKR {annualPlan.price_pkr.toLocaleString()}/year (Annual −{config.annualDiscountPercent}%) · or {monthlyPlan.price_kobans.toLocaleString()} Kobans
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={onUpgrade}
+          onClick={() => onUpgrade(isTargetPlus ? 'plus' : 'pro')}
           className="mt-4 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer transition-opacity hover:opacity-95"
-          style={{ backgroundColor: 'var(--accent)' }}
+          style={
+            isTargetPlus
+              ? { background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }
+              : { backgroundColor: 'var(--accent)' }
+          }
         >
           <Zap className="h-4 w-4" />
-          <span>Upgrade to Pro</span>
+          <span>
+            {isTargetPlus
+              ? `Upgrade to Plus for ${config.plus.aiCreditsPerDay} credits/day`
+              : 'Upgrade to Pro'}
+          </span>
         </button>
       </div>
     </div>

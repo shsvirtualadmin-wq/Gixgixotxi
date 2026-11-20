@@ -2,6 +2,7 @@ import aiConfig from '../../ai-config.json';
 
 export type AiDepthId = 0 | 1 | 2 | 3;
 export type AiMentorId = 0 | 1 | 2 | 3 | 4;
+export type AiPlan = 'free' | 'pro' | 'plus';
 
 export interface AiDepthConfig {
   id: AiDepthId;
@@ -34,7 +35,33 @@ export const AI_DEPTHS = aiConfig.DEPTHS as AiDepthConfig[];
 export const AI_MENTORS = aiConfig.MENTORS as AiMentorConfig[];
 export const FREE_AI_CREDITS_PER_DAY = aiConfig.FREE_CREDITS_PER_DAY;
 export const PRO_AI_CREDITS_PER_DAY = aiConfig.PRO_CREDITS_PER_DAY;
+export const PLUS_AI_CREDITS_PER_DAY =
+  typeof (aiConfig as any).PLUS_CREDITS_PER_DAY === 'number'
+    ? (aiConfig as any).PLUS_CREDITS_PER_DAY
+    : 100;
 export const AI_COST_RULES = aiConfig.COST_RULES;
+
+export function getDailyCreditsLimit(
+  plan: AiPlan,
+  overrides?: {
+    free?: { aiCreditsPerDay?: number };
+    pro?: { aiCreditsPerDay?: number };
+    plus?: { aiCreditsPerDay?: number };
+  } | null
+): number {
+  if (plan === 'plus') {
+    return overrides?.plus?.aiCreditsPerDay ?? PLUS_AI_CREDITS_PER_DAY;
+  }
+  if (plan === 'pro') {
+    return overrides?.pro?.aiCreditsPerDay ?? PRO_AI_CREDITS_PER_DAY;
+  }
+  return overrides?.free?.aiCreditsPerDay ?? FREE_AI_CREDITS_PER_DAY;
+}
+
+export function isDepthAllowedForPlan(depth: number, plan: AiPlan): boolean {
+  const cfg = getDepthConfig(depth);
+  return cfg.freeAllowed || plan === 'pro' || plan === 'plus';
+}
 
 export interface CreditCostInput {
   depth: number;

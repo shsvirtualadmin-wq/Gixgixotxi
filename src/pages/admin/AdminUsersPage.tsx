@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Lock,
+  Download,
+  Sparkles,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +27,7 @@ import {
   backfillMissingDisplayNames,
   cleanupOrphanUserProfiles,
   getUserDisplayName,
+  bulkUpdateUsersPlan,
 } from '@/services/adminService';
 import { backfillAllPublicProfiles } from '@/services/publicProfileService';
 import { formatStudentId } from '@/utils/shortId';
@@ -33,6 +36,7 @@ import type { UserProfile, UserTwoFactorBadgeLabel, UserTwoFactorSummary } from 
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
 
 const PAGE_SIZE = 50;
 
@@ -50,6 +54,8 @@ interface UserRowProps {
   user: UserProfile;
   badge2fa: UserTwoFactorBadgeLabel;
   isSuperAdmin: boolean;
+  isChecked?: boolean;
+  onToggleCheck?: (uid: string) => void;
   onSelect: (user: UserProfile, section?: UserOverrideSection) => void;
 }
 
@@ -82,7 +88,10 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
   const name = getUserDisplayName(u);
   const isSuspended = !!(u.suspended || u.isSuspended);
   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
-  const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
+  const resolvedTier = isGuestUser ? 'free' : getPlan(u);
+  const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
+  const rawBadgeDesign = (u as any).proBadgeDesign || (u as any).proBadge || 'ember';
+  const badgeDesign = resolvedTier === 'plus' ? `plus:${rawBadgeDesign}` : rawBadgeDesign;
   const studentId = formatStudentId(u);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
   const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
@@ -181,7 +190,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
               >
                 {u.role || 'Student'}
               </span>
-              {isPro ? (
+              {isPaidUser ? (
                 <span
                   onClick={(e) => {
                     e.stopPropagation();
@@ -189,9 +198,9 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
                   }}
                   className="inline-flex items-center gap-1"
                 >
-                  <ProBadge design={(u as any).proBadge || (u as any).proBadgeDesign || 'ember'} size="sm" listMode />
+                  <ProBadge design={badgeDesign} size="sm" listMode />
                   <span className="text-[10px] font-mono text-[var(--muted)]">
-                    badge: {(u as any).proBadgeDesign || (u as any).proBadge || 'ember'}
+                    {resolvedTier === 'plus' ? 'Plus' : 'Pro'}
                     {(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
                   </span>
                 </span>
@@ -234,12 +243,17 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
   user: u,
   badge2fa,
   isSuperAdmin,
+  isChecked = false,
+  onToggleCheck,
   onSelect,
 }: UserRowProps) {
   const name = getUserDisplayName(u);
   const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
-  const isPro = !isGuestUser && (u.plan === 'pro' || u.isPremium);
-  const badgeId = (u as any).proBadgeDesign || (u as any).proBadge || (isPro ? 'ember' : null);
+  const resolvedTier = isGuestUser ? 'free' : getPlan(u);
+  const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
+  const rawBadgeId = (u as any).proBadgeDesign || (u as any).proBadge || (isPaidUser ? 'ember' : null);
+  const badgeId =
+    resolvedTier === 'plus' ? `plus:${rawBadgeId || 'ember'}` : rawBadgeId;
   const studentId = formatStudentId(u);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
   const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
@@ -254,6 +268,16 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       {/* 1. Student Name */}
       <td className="py-3.5 px-5">
         <div className="flex items-center gap-2.5">
+          {!isGuestUser && onToggleCheck && (
+            <input
+              type="checkbox"
+              checked={isChecked}
+              aria-label={`Select ${name}`}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onToggleCheck(u.uid)}
+              className="w-3.5 h-3.5 accent-[#D71921] cursor-pointer shrink-0"
+            />
+          )}
           <BoardlyAvatar
             uid={u.uid}
             equippedAvatar={u.equipped?.avatar || u.avatar}
@@ -266,7 +290,7 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
               <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
                 {name}
               </span>
-              {isPro && (
+              {isPaidUser && (
                 <ProBadge design={badgeId || 'ember'} size="sm" listMode />
               )}
               {isGuestUser && (
@@ -275,9 +299,10 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
                 </span>
               )}
             </div>
-            {isPro && badgeId && (
+            {isPaidUser && (
               <span className="text-[10px] font-mono text-[var(--muted)] block leading-tight mt-0.5">
-                badge: {badgeId}{(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
+                {resolvedTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'}
+                {(u as any).proBadgeVisible === false ? ' (badge hidden)' : ''}
               </span>
             )}
           </div>
@@ -407,8 +432,12 @@ export function AdminUsersPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'guest' | 'registered' | 'pro'>('all');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<
+    'all' | 'guest' | 'registered' | 'pro' | 'plus'
+  >('all');
   const [twoFactorFilter, setTwoFactorFilter] = useState<TwoFactorFilterValue>('all');
+  const [selectedUids, setSelectedUids] = useState<Set<string>>(() => new Set());
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -646,16 +675,18 @@ export function AdminUsersPage() {
         if (roleFilter === 'crew' && u.role !== 'crew') return false;
       }
 
-      // 2. Plan & Account Type Filter (Guest / Registered / Pro)
+      // 2. Plan & Account Type Filter (Guest / Registered / Pro / Plus)
       const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
-      const isPro = !isGuestUser && (u.plan === 'pro' || !!u.isPremium);
+      const resolvedTier = isGuestUser ? 'free' : getPlan(u);
       if (accountTypeFilter === 'guest' && !isGuestUser) return false;
       if (accountTypeFilter === 'registered' && isGuestUser) return false;
-      if (accountTypeFilter === 'pro' && !isPro) return false;
+      if (accountTypeFilter === 'pro' && resolvedTier !== 'pro') return false;
+      if (accountTypeFilter === 'plus' && resolvedTier !== 'plus') return false;
 
       if (planFilter !== 'all') {
-        if (planFilter === 'pro' && !isPro) return false;
-        if (planFilter === 'free' && (isPro || isGuestUser)) return false;
+        if (planFilter === 'plus' && resolvedTier !== 'plus') return false;
+        if (planFilter === 'pro' && resolvedTier !== 'pro') return false;
+        if (planFilter === 'free' && (resolvedTier !== 'free' || isGuestUser)) return false;
         if (planFilter === 'guest' && !isGuestUser) return false;
         if (planFilter === 'registered' && isGuestUser) return false;
       }
@@ -716,6 +747,74 @@ export function AdminUsersPage() {
     const startIdx = (safePage - 1) * PAGE_SIZE;
     return filteredUsers.slice(startIdx, startIdx + PAGE_SIZE);
   }, [filteredUsers, safePage]);
+
+  const handleToggleSelectUid = useCallback((uid: string) => {
+    setSelectedUids((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  }, []);
+
+  const handleBulkPlanAction = async (targetPlan: 'free' | 'pro' | 'plus') => {
+    if (!user?.email || selectedUids.size === 0) return;
+    setBulkApplying(true);
+    setBackfillMessage(null);
+    try {
+      const targets = allUsers
+        .filter((u) => selectedUids.has(u.uid))
+        .map((u) => ({ uid: u.uid, email: u.email, profile: u }));
+      const res = await bulkUpdateUsersPlan(user.email, targets, targetPlan, 30);
+      setBackfillMessage(
+        `Bulk plan update complete: ${res.updated} user(s) set to ${targetPlan.toUpperCase()}${
+          res.failed > 0 ? ` (${res.failed} failed)` : ''
+        }.`
+      );
+      setSelectedUids(new Set());
+      await loadUsers({ force: true });
+    } catch (err: unknown) {
+      setBackfillMessage(
+        'Bulk plan update failed: ' + (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setBulkApplying(false);
+    }
+  };
+
+  const handleExportCsv = () => {
+    const headers = ['UID', 'Short ID', 'Name', 'Email', 'Role', 'Plan', 'Plan Expiry', 'Status'];
+    const escapeCell = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const rows = filteredUsers.map((u) => {
+      const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+      const tier = isGuestUser ? 'guest' : getPlan(u);
+      const expMs = parsePlanExpiryMs(
+        tier === 'plus'
+          ? (u as any).plusUntil ?? u.planExpiresAt ?? u.premiumExpiresAt
+          : (u as any).proUntil ?? u.planExpiresAt ?? u.premiumExpiresAt
+      );
+      return [
+        u.uid,
+        formatStudentId(u),
+        getUserDisplayName(u),
+        isSuperAdmin ? u.email || '' : maskEmail(u.email),
+        u.role || 'student',
+        tier,
+        expMs ? new Date(expMs).toISOString().slice(0, 10) : '',
+        u.suspended || u.isSuspended ? 'suspended' : 'active',
+      ]
+        .map(escapeCell)
+        .join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `boardly-users-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const isInitialLoading = (profileLoading || loadState === 'loading') && allUsers.length === 0;
 
@@ -812,6 +911,17 @@ export function AdminUsersPage() {
             <UserCheck size={14} />
             <span>{backfilling ? 'Filling names...' : 'Fill missing names'}</span>
             {backfilling && <ButtonLineLoader />}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            disabled={filteredUsers.length === 0}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+            title="Export filtered users including plan & expiry to CSV"
+          >
+            <Download size={14} />
+            <span>Export CSV</span>
           </button>
 
           <button
@@ -963,14 +1073,19 @@ export function AdminUsersPage() {
                       { id: 'registered', label: 'Registered' },
                       { id: 'guest', label: 'Guest' },
                       { id: 'pro', label: 'Pro' },
+                      { id: 'plus', label: 'Plus' },
                     ].map(({ id, label }) => (
                       <button
                         key={id}
                         type="button"
-                        onClick={() => setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro')}
+                        onClick={() =>
+                          setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro' | 'plus')
+                        }
                         className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
                           accountTypeFilter === id
-                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                            ? id === 'plus'
+                              ? 'border-amber-500 bg-amber-500 text-black font-semibold'
+                              : 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
                             : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                         }`}
                       >
@@ -989,6 +1104,7 @@ export function AdminUsersPage() {
                       { id: 'all', label: 'All plans' },
                       { id: 'free', label: 'Free' },
                       { id: 'pro', label: 'Pro' },
+                      { id: 'plus', label: 'Plus' },
                     ].map(({ id, label }) => (
                       <button
                         key={id}
@@ -996,7 +1112,9 @@ export function AdminUsersPage() {
                         onClick={() => setPlanFilter(id)}
                         className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
                           planFilter === id
-                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                            ? id === 'plus'
+                              ? 'border-amber-500 bg-amber-500 text-black font-semibold'
+                              : 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
                             : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                         }`}
                       >
@@ -1066,6 +1184,49 @@ export function AdminUsersPage() {
               </div>
             </div>
           </div>
+
+          {selectedUids.size > 0 && isSuperAdmin && (
+            <div className="p-3.5 rounded-[20px] bg-[var(--card)] border border-amber-500/40 flex items-center justify-between flex-wrap gap-3">
+              <span className="text-xs font-mono font-bold text-[var(--text)]">
+                {selectedUids.size} user{selectedUids.size === 1 ? '' : 's'} selected
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  disabled={bulkApplying}
+                  onClick={() => void handleBulkPlanAction('pro')}
+                  className="px-3 py-1.5 rounded-full bg-[#D71921] text-white text-xs font-heading font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  Grant Pro (30d)
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkApplying}
+                  onClick={() => void handleBulkPlanAction('plus')}
+                  className="px-3 py-1.5 rounded-full bg-amber-500 text-black text-xs font-heading font-semibold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                >
+                  <Sparkles size={12} />
+                  <span>Grant Plus (30d)</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkApplying}
+                  onClick={() => void handleBulkPlanAction('free')}
+                  className="px-3 py-1.5 rounded-full border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:border-[var(--text)] disabled:opacity-50 cursor-pointer"
+                >
+                  Revoke to Free
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkApplying}
+                  onClick={() => setSelectedUids(new Set())}
+                  className="px-2.5 py-1.5 text-xs font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ─── USERS LIST: MOBILE CARDS (block md:hidden) ─────────────────────── */}
           <div className="block md:hidden space-y-3">
@@ -1246,6 +1407,8 @@ export function AdminUsersPage() {
                         user={u}
                         badge2fa={badge2fa}
                         isSuperAdmin={isSuperAdmin}
+                        isChecked={selectedUids.has(u.uid)}
+                        onToggleCheck={isSuperAdmin ? handleToggleSelectUid : undefined}
                         onSelect={handleSelectUser}
                       />
                     );

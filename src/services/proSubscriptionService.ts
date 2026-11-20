@@ -8,16 +8,24 @@ import {
   query,
   where,
   limit,
-  runTransaction,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import {
   getProPlanById,
   computeExtendedProExpiry,
+  computeProToPlusCreditDays,
+  evaluatePlanPurchaseEligibility,
   resolveUnifiedPlanStatus,
   type ProPlanId,
+  type PlansConfigDoc,
 } from '@/config/plans';
+import {
+  getBillingFromPlanId,
+  getPlanTierFromPlanId,
+  PLUS_ALREADY_INCLUDES_PRO_MSG,
+} from '@/lib/planTier';
+import { fetchPlansConfigOnce } from '@/hooks/usePlansConfig';
 import { clearPlanCache, forceRefreshPaymentRequests } from '@/hooks/useEffectivePlan';
 import { forceRefreshUserProfile } from '@/hooks/useUserProfile';
 import {
@@ -30,12 +38,15 @@ export interface ProKobanPurchaseResult {
   success: boolean;
   alreadyProcessed: boolean;
   planId: ProPlanId;
+  planTier: 'pro' | 'plus';
   planName: string;
   durationDays: number;
+  extraCreditDays: number;
   kobansCharged: number;
   balanceBefore: number;
   balanceAfter: number;
   wasExtension: boolean;
+  wasUpgradeFromPro: boolean;
   previousExpiryLabel: string | null;
   newExpiryMs: number;
   newExpiryIso: string;
@@ -56,7 +67,11 @@ function sanitizeIdempotencyKey(raw: string): string {
 }
 
 async function callServerProPurchaseGuard(params: {
-  endpoint: '/api/pro/purchase' | '/api/pro/submit-payment' | '/api/pro/activate' | '/api/pro/purchase-guard';
+  endpoint:
+    | '/api/pro/purchase'
+    | '/api/pro/submit-payment'
+    | '/api/pro/activate'
+    | '/api/pro/purchase-guard';
   uid: string;
   planId: ProPlanId;
   planName: string;
@@ -71,7 +86,7 @@ async function callServerProPurchaseGuard(params: {
 }): Promise<{ serverNowMs: number }> {
   if (params.uid.startsWith('guest_')) {
     const err = new Error(
-      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+      'Guest accounts cannot purchase Boardly Pro or Plus. Please create a registered account to upgrade.'
     ) as Error & { code?: string; status?: number };
     err.code = 'GUEST_UPGRADE_FORBIDDEN';
     err.status = 403;
@@ -100,6 +115,8 @@ async function callServerProPurchaseGuard(params: {
       body: JSON.stringify({
         uid: params.uid,
         planId: params.planId,
+        planTier: getPlanTierFromPlanId(params.planId),
+        billing: getBillingFromPlanId(params.planId),
         planName: params.planName,
         durationDays: params.durationDays,
         amountPkr: params.amountPkr,
@@ -112,13 +129,12 @@ async function callServerProPurchaseGuard(params: {
       }),
     });
   } catch {
-    // If network call to auxiliary worker fails locally, fallback to Firestore transaction guard
     return { serverNowMs: Date.now() };
   }
 
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || data?.ok === false) {
-    console.error('[proSubscriptionService] Pro purchase guard rejected:', {
+    console.error('[proSubscriptionService] Plan purchase guard rejected:', {
       status: resp.status,
       url: resp.url || params.endpoint,
       body: data,
@@ -126,8 +142,8 @@ async function callServerProPurchaseGuard(params: {
     const message =
       data?.error ||
       (resp.status === 403
-        ? 'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
-        : 'You cannot start another purchase while you have an active plan or a payment awaiting verification.');
+        ? 'Guest accounts cannot purchase Boardly Pro or Plus. Please create a registered account to upgrade.'
+        : 'You cannot start another purchase right now.');
     const err = new Error(message) as Error & { code?: string; status?: number };
     err.code = data?.code || (resp.status === 403 ? 'FORBIDDEN' : 'CONFLICT');
     err.status = resp.status;
@@ -140,34 +156,49 @@ async function callServerProPurchaseGuard(params: {
 }
 
 /**
- * Pure helper used both inside the Firestore transaction and by unit/integration tests
- * to verify balance, compute deduction, and compute the new or extended Pro expiry date.
+ * Pure helper used for balance verification, Koban deduction, and new/extended expiry math
+ * (including Pro -> Plus unused Pro day credit and Plus renewal extension).
  */
 export function calculateProPurchaseOutcome(params: {
   planId: string;
   currentBalance: number;
   currentExpiryRaw: unknown;
+  currentPlanTier?: 'free' | 'pro' | 'plus';
+  plansConfig?: Partial<PlansConfigDoc> | null;
   nowMs?: number;
 }): {
   planId: ProPlanId;
+  planTier: 'pro' | 'plus';
   planName: string;
   durationDays: number;
+  extraCreditDays: number;
   pricePkr: number;
   priceKobans: number;
   balanceBefore: number;
   delta: number;
   balanceAfter: number;
   wasExtension: boolean;
+  wasUpgradeFromPro: boolean;
   previousExpiryMs: number | null;
   previousExpiryLabel: string | null;
   newExpiryMs: number;
   newExpiryIso: string;
   newExpiryLabel: string;
 } {
-  // Always read price and duration from the server/shared PLANS config, never trusting the client
-  const plan = getProPlanById(params.planId);
+  const nowMs = typeof params.nowMs === 'number' && Number.isFinite(params.nowMs) ? params.nowMs : Date.now();
+  const plan = getProPlanById(params.planId, params.plansConfig);
+  const targetTier = getPlanTierFromPlanId(plan.id);
+  const currentTier = params.currentPlanTier || 'free';
+
+  if (currentTier === 'plus' && targetTier === 'pro') {
+    const err = new Error(PLUS_ALREADY_INCLUDES_PRO_MSG) as Error & { code?: string; status?: number };
+    err.code = 'PLUS_ALREADY_INCLUDES_PRO';
+    err.status = 409;
+    throw err;
+  }
+
   const balanceBefore = Math.max(0, Math.floor(Number(params.currentBalance) || 0));
-  const priceKobans = plan.price_kobans; // 1,990 for monthly, 17,910 for annual
+  const priceKobans = plan.price_kobans;
 
   if (balanceBefore < priceKobans) {
     const needed = priceKobans - balanceBefore;
@@ -181,22 +212,45 @@ export function calculateProPurchaseOutcome(params: {
 
   const delta = -priceKobans;
   const balanceAfter = balanceBefore + delta;
+
+  // Compute Pro -> Plus unused day credit
+  let extraCreditDays = 0;
+  let wasUpgradeFromPro = false;
+  if (currentTier === 'pro' && targetTier === 'plus') {
+    const prevCheck = computeExtendedProExpiry(params.currentExpiryRaw, 0, nowMs);
+    if (prevCheck.isCurrentlyActive && prevCheck.currentExpiryMs) {
+      const remainingProDays = Math.max(
+        0,
+        Math.ceil((prevCheck.currentExpiryMs - nowMs) / (24 * 60 * 60 * 1000))
+      );
+      const proMonthly = getProPlanById('pro_monthly', params.plansConfig).price_pkr;
+      const plusMonthly = getProPlanById('plus_monthly', params.plansConfig).price_pkr;
+      extraCreditDays = computeProToPlusCreditDays(remainingProDays, proMonthly, plusMonthly);
+      wasUpgradeFromPro = true;
+    }
+  }
+
   const extension = computeExtendedProExpiry(
     params.currentExpiryRaw,
     plan.duration_days,
-    params.nowMs
+    nowMs,
+    extraCreditDays,
+    wasUpgradeFromPro // Pro -> Plus starts now + plan duration + credited Pro days
   );
 
   return {
     planId: plan.id,
+    planTier: targetTier,
     planName: plan.name,
-    durationDays: plan.duration_days,
+    durationDays: plan.duration_days + extraCreditDays,
+    extraCreditDays,
     pricePkr: plan.price_pkr,
     priceKobans,
     balanceBefore,
     delta,
     balanceAfter,
-    wasExtension: extension.wasAlreadyActive,
+    wasExtension: !wasUpgradeFromPro && extension.wasAlreadyActive,
+    wasUpgradeFromPro,
     previousExpiryMs: extension.previousExpiryMs,
     previousExpiryLabel: extension.previousExpiryLabel,
     newExpiryMs: extension.newExpiryMs,
@@ -205,17 +259,6 @@ export function calculateProPurchaseOutcome(params: {
   };
 }
 
-/**
- * Pay with Kobans:
- * Runs server-side guard + atomic Firestore transaction that:
- * 1. Verifies the user does NOT already have an active Pro plan or pending manual payment
- * 2. Verifies the student's wallet balance
- * 3. Deducts `price_kobans` (read strictly from PLANS config)
- * 4. Activates Pro for 30 or 365 days
- * 5. Writes an immutable ledger entry with `balance_before` (`balanceBefore`) and `balance_after` (`balanceAfter`)
- * 6. Uses an `idempotencyKey` and per-UID lock so a double-tap or two tabs cannot charge twice
- * 7. Sends the "Pro activated" / receipt email after commit
- */
 export interface ValidatedCouponInfo {
   id: string;
   code: string;
@@ -230,6 +273,7 @@ export interface ValidatedCouponInfo {
   maxRedemptions: number;
   redemptionCount: number;
   planId: ProPlanId;
+  planTier?: 'pro' | 'plus';
   planName: string;
   originalPkr: number;
   discountPkr: number;
@@ -278,6 +322,7 @@ export async function redeemProCoupon(params: {
   activatedPro: boolean;
   redemptionId?: string;
   planId: ProPlanId;
+  planTier?: 'pro' | 'plus';
   planName: string;
   durationDays: number;
   newExpiryMs?: number;
@@ -306,18 +351,24 @@ export async function redeemProCoupon(params: {
   }
 
   if (data.activatedPro && params.uid) {
+    const activatedTier = getPlanTierFromPlanId(data.planId || params.planId);
     clearPlanCache(params.uid);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         for (const lsKey of [`cached_profile_${params.uid}`, `boardly_user_profile_${params.uid}`]) {
           const existingRaw = window.localStorage.getItem(lsKey);
           const parsed = existingRaw ? JSON.parse(existingRaw) : { uid: params.uid };
-          parsed.plan = 'pro';
+          parsed.plan = activatedTier;
+          parsed.planTier = activatedTier;
           parsed.isPremium = true;
+          parsed.isPlus = activatedTier === 'plus';
           parsed.proPlanId = data.planId;
           parsed.premiumSource = 'coupon';
           parsed.planExpiresAt = data.newExpiryIso;
           parsed.premiumExpiresAt = data.newExpiryMs;
+          if (activatedTier === 'plus') {
+            parsed.plusUntil = data.newExpiryIso;
+          }
           window.localStorage.setItem(lsKey, JSON.stringify(parsed));
         }
         window.dispatchEvent(new Event('boardly:plan-refresh'));
@@ -341,18 +392,20 @@ export async function purchaseProWithKobans(params: {
 }): Promise<ProKobanPurchaseResult> {
   const { uid, planId } = params;
   if (!uid) {
-    throw new Error('Please sign in to purchase Boardly Pro.');
+    throw new Error('Please sign in to purchase a Boardly plan.');
   }
   if (uid.startsWith('guest_')) {
     const err = new Error(
-      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+      'Guest accounts cannot purchase Boardly Pro or Plus. Please create a registered account to upgrade.'
     ) as Error & { code?: string; status?: number };
     err.code = 'GUEST_UPGRADE_FORBIDDEN';
     err.status = 403;
     throw err;
   }
 
-  const plan = getProPlanById(planId);
+  const plansConfig = await fetchPlansConfigOnce();
+  const plan = getProPlanById(planId, plansConfig);
+  const planTier = getPlanTierFromPlanId(plan.id);
   const safeKey = sanitizeIdempotencyKey(params.idempotencyKey);
   const cacheKey = `${uid}:${safeKey}`;
 
@@ -361,7 +414,7 @@ export async function purchaseProWithKobans(params: {
   }
   if (inFlightProKeys.has(cacheKey) || inFlightPurchaseUids.has(uid)) {
     const err = new Error(
-      'Your Pro pass purchase is already being processed. Please wait a moment.'
+      'Your plan purchase is already being processed. Please wait a moment.'
     ) as Error & { code?: string; status?: number };
     err.code = 'PURCHASE_IN_PROGRESS';
     err.status = 409;
@@ -372,7 +425,6 @@ export async function purchaseProWithKobans(params: {
   inFlightPurchaseUids.add(uid);
 
   try {
-    // 1. Enforce server-authoritative guard before executing purchase
     await callServerProPurchaseGuard({
       endpoint: '/api/pro/purchase',
       uid,
@@ -387,7 +439,7 @@ export async function purchaseProWithKobans(params: {
 
     const token = await auth.currentUser?.getIdToken().catch(() => null);
     if (!token) {
-      throw new Error('Authentication required to purchase Boardly Pro.');
+      throw new Error('Authentication required to purchase with Kobans.');
     }
 
     const resp = await fetch('/api/pro/purchase-kobans', {
@@ -400,6 +452,7 @@ export async function purchaseProWithKobans(params: {
       body: JSON.stringify({
         uid,
         planId: plan.id,
+        planTier,
         couponCode: params.couponCode || null,
         idempotencyKey: safeKey,
       }),
@@ -407,20 +460,21 @@ export async function purchaseProWithKobans(params: {
 
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data?.ok) {
-      console.error('[proSubscriptionService] Pro purchase with Kobans failed:', {
+      console.error('[proSubscriptionService] Plan purchase with Kobans failed:', {
         status: resp.status,
         url: resp.url || '/api/pro/purchase-kobans',
         body: data,
       });
       const err = new Error(
-        data?.error || 'Could not complete Boardly Pro purchase with Kobans.'
+        data?.error || `Could not complete ${plan.name} purchase with Kobans.`
       ) as Error & { code?: string; status?: number };
       err.code = data?.code || 'PRO_PURCHASE_FAILED';
       err.status = resp.status;
       throw err;
     }
 
-    // Record the active lock on the server D1 store so another tab is immediately aware
+    const resolvedTier = getPlanTierFromPlanId(data.planId || plan.id);
+
     callServerProPurchaseGuard({
       endpoint: '/api/pro/activate',
       uid,
@@ -436,38 +490,45 @@ export async function purchaseProWithKobans(params: {
 
     const result: ProKobanPurchaseResult = {
       success: true,
-      alreadyProcessed: false,
+      alreadyProcessed: Boolean(data.alreadyProcessed),
       planId: data.planId || plan.id,
+      planTier: resolvedTier,
       planName: data.planName || plan.name,
-      durationDays: data.durationDays || plan.duration_days,
+      durationDays: Number(data.durationDays || plan.duration_days),
+      extraCreditDays: Number(data.extraCreditDays || 0),
       kobansCharged: Number(data.kobansSpent ?? plan.price_kobans),
       balanceBefore: Number(data.balanceBefore ?? 0),
       balanceAfter: Number(data.newBalance ?? 0),
       wasExtension: Boolean(data.wasExtension),
+      wasUpgradeFromPro: Boolean(data.wasUpgradeFromPro),
       previousExpiryLabel: data.previousExpiryLabel || null,
       newExpiryMs: Number(data.newExpiryMs || Date.now() + plan.duration_days * 86_400_000),
       newExpiryIso: String(
         data.newExpiryIso || new Date(Date.now() + plan.duration_days * 86_400_000).toISOString()
       ),
       newExpiryLabel: String(data.newExpiryLabel || 'Active'),
-      ledgerId: String(data.ledgerId || `pro_koban_${safeKey}`),
+      ledgerId: String(data.ledgerId || `${resolvedTier}_koban_${safeKey}`),
     };
 
     completedProCache.set(cacheKey, result);
     clearPlanCache(uid);
 
-    // Update both localStorage profile cache keys so all UI hooks reflect Pro status immediately
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         for (const lsKey of [`cached_profile_${uid}`, `boardly_user_profile_${uid}`]) {
           const existingRaw = window.localStorage.getItem(lsKey);
           const parsed = existingRaw ? JSON.parse(existingRaw) : { uid };
-          parsed.plan = 'pro';
+          parsed.plan = resolvedTier;
+          parsed.planTier = resolvedTier;
           parsed.isPremium = true;
+          parsed.isPlus = resolvedTier === 'plus';
           parsed.proPlanId = result.planId;
           parsed.premiumSource = 'kobans';
           parsed.planExpiresAt = result.newExpiryIso;
           parsed.premiumExpiresAt = result.newExpiryMs;
+          if (resolvedTier === 'plus') {
+            parsed.plusUntil = result.newExpiryIso;
+          }
           parsed.kobans = result.balanceAfter;
           window.localStorage.setItem(lsKey, JSON.stringify(parsed));
         }
@@ -485,15 +546,22 @@ export async function purchaseProWithKobans(params: {
     forceRefreshUserProfile(uid).catch(() => {});
 
     // Create in-app notification for student
+    const planTitle = resolvedTier === 'plus' ? 'Boardly Plus Activated!' : 'Boardly Pro Activated!';
+    const creditNote =
+      result.extraCreditDays > 0
+        ? ` Includes +${result.extraCreditDays} bonus days credited from your remaining Pro pass.`
+        : '';
     try {
       await setDoc(
-        doc(db, 'notifications', `pro_active_${result.ledgerId}`),
+        doc(db, 'notifications', `${resolvedTier}_active_${result.ledgerId}`),
         {
           userId: uid,
           type: 'system',
-          title: 'Boardly Pro Activated!',
-          message: `${result.planName} is now active until ${result.newExpiryLabel}. Enjoy unlimited mock tests, full analytics, and exclusive Pro perks!`,
-          link: '/dashboard/plans',
+          title: planTitle,
+          message: `${result.planName} is now active until ${result.newExpiryLabel}.${creditNote} Enjoy unlimited mock tests, full analytics, and ${
+            resolvedTier === 'plus' ? plansConfig.plus.aiCreditsPerDay : plansConfig.pro.aiCreditsPerDay
+          } AI Mentor credits/day!`,
+          link: '/dashboard/plan',
           read: false,
           createdAt: serverTimestamp(),
         },
@@ -508,6 +576,7 @@ export async function purchaseProWithKobans(params: {
       studentUid: uid,
       studentName: params.userName || 'Student',
       studentEmail: params.userEmail,
+      planTier: resolvedTier,
       planName: result.planName,
       durationDays: result.durationDays,
       expiresAtLabel: result.newExpiryLabel,
@@ -528,14 +597,20 @@ export async function purchaseProWithKobans(params: {
 }
 
 /**
- * Pure validation helper for PKR Pro payment requests (checks TID format, pending request lock, and duplicate TID).
+ * Pure validation helper for PKR Pro/Plus payment requests.
  */
 export function validateProPaymentRequestInput(params: {
   uid: string;
   planId: string;
   method: string;
   transactionId: string;
-  existingStudentPendingRequests?: Array<{ id: string; status: string; requestType?: string; plan?: string }>;
+  plansConfig?: Partial<PlansConfigDoc> | null;
+  existingStudentPendingRequests?: Array<{
+    id: string;
+    status: string;
+    requestType?: string;
+    plan?: string;
+  }>;
   existingDuplicateTidMatches?: Array<{ id: string; transactionId?: string; TID?: string }>;
 }): {
   normalizedTid: string;
@@ -543,18 +618,18 @@ export function validateProPaymentRequestInput(params: {
   plan: ReturnType<typeof getProPlanById>;
 } {
   if (!params.uid) {
-    throw new Error('Please sign in to submit a Pro pass payment request.');
+    throw new Error('Please sign in to submit a plan payment request.');
   }
   if (params.uid.startsWith('guest_')) {
     const err = new Error(
-      'Guest accounts cannot purchase Boardly Pro. Please create a registered account to upgrade.'
+      'Guest accounts cannot purchase Boardly Pro or Plus. Please create a registered account to upgrade.'
     ) as Error & { code?: string; status?: number };
     err.code = 'GUEST_UPGRADE_FORBIDDEN';
     err.status = 403;
     throw err;
   }
 
-  const plan = getProPlanById(params.planId);
+  const plan = getProPlanById(params.planId, params.plansConfig);
   const rawTid = String(params.transactionId || '').trim();
   if (rawTid.length < 5) {
     throw new Error('Please enter a valid Transaction ID (TID) of at least 5 characters.');
@@ -569,7 +644,14 @@ export function validateProPaymentRequestInput(params: {
     params.existingStudentPendingRequests.some(
       (r) =>
         r.status === 'pending' &&
-        (r.requestType === 'pro_pass' || r.plan === 'pro' || r.plan === 'pro_monthly' || r.plan === 'pro_annual')
+        (r.requestType === 'pro_pass' ||
+          r.requestType === 'plus_pass' ||
+          r.plan === 'pro' ||
+          r.plan === 'pro_monthly' ||
+          r.plan === 'pro_annual' ||
+          r.plan === 'plus' ||
+          r.plan === 'plus_monthly' ||
+          r.plan === 'plus_annual')
     )
   ) {
     const err = new Error(
@@ -600,10 +682,7 @@ export function validateProPaymentRequestInput(params: {
 }
 
 /**
- * Pay with PKR (JazzCash / Opay):
- * - Verifies Firebase ID token and executes duplicate TID check + optional coupon discount on the server (`/api/pro/submit-payment`)
- * - Never queries other users' `paymentRequests` or `kobanRequests` from the client (fixing the "Missing or insufficient permissions." error)
- * - Creates a `pending` payment request scoped strictly to the user's own `uid`
+ * Pay with PKR (JazzCash / Opay) for Pro or Plus (supports Free->Pro, Free->Plus, Pro->Plus upgrade, Plus renewal; blocks Plus->Pro).
  */
 export async function submitProPaymentRequest(params: {
   uid: string;
@@ -614,11 +693,13 @@ export async function submitProPaymentRequest(params: {
   transactionId: string;
   couponCode?: string | null;
 }): Promise<{ requestId: string; planName: string; amountPkr: number; tid: string }> {
+  const plansConfig = await fetchPlansConfigOnce();
   const preCheck = validateProPaymentRequestInput({
     uid: params.uid,
     planId: params.planId,
     method: params.method,
     transactionId: params.transactionId,
+    plansConfig,
   });
 
   if (inFlightPurchaseUids.has(params.uid)) {
@@ -634,8 +715,9 @@ export async function submitProPaymentRequest(params: {
 
   try {
     const { normalizedTid, normalizedMethod, plan } = preCheck;
+    const planTier = getPlanTierFromPlanId(plan.id);
+    const billing = getBillingFromPlanId(plan.id);
 
-    // 1. Read ONLY the current student's own profile and own paymentRequests (allowed by Firestore rules)
     const [userSnap, studentReqsSnap] = await Promise.all([
       getDoc(doc(db, 'users', params.uid)).catch(() => null),
       getDocs(
@@ -650,43 +732,43 @@ export async function submitProPaymentRequest(params: {
         ...(d.data() as Record<string, any>),
       }));
 
-    // Check unified plan status before allowing any payment submission
     const currentStatus = resolveUnifiedPlanStatus({
       uid: params.uid,
       email: params.userEmail || userData?.email,
       role: userData?.role,
       plan: userData?.plan,
+      planTier: userData?.planTier,
+      isPro: userData?.isPro,
+      isPlus: userData?.isPlus,
       isPremium: userData?.isPremium,
       proPlanId: userData?.proPlanId,
+      plusPlanId: userData?.plusPlanId,
       planStartedAt: userData?.planStartedAt,
       updatedAt: userData?.updatedAt,
+      proUntil: userData?.proUntil,
+      plusUntil: userData?.plusUntil,
       planExpiresAt: userData?.planExpiresAt,
       premiumExpiresAt: userData?.premiumExpiresAt,
       pendingRequests: existingStudentReqs,
+      plansConfig,
     });
 
-    if (currentStatus.state === 'active') {
+    const eligibility = evaluatePlanPurchaseEligibility(currentStatus, plan.id, plansConfig);
+    if (!eligibility.allowed) {
       const err = new Error(
-        currentStatus.blockReason ||
-          `You already have Boardly Pro (${currentStatus.planName}) active until ${currentStatus.expiryFormatted}. You can purchase again after your current plan expires.`
+        eligibility.reason || 'You cannot start this plan purchase right now.'
       ) as Error & { code?: string; status?: number };
-      err.code = 'PRO_ALREADY_ACTIVE';
-      err.status = 409;
-      throw err;
-    }
-
-    if (currentStatus.state === 'pending') {
-      const err = new Error(
-        currentStatus.blockReason ||
-          'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
-      ) as Error & { code?: string; status?: number };
-      err.code = 'PAYMENT_PENDING_VERIFICATION';
+      err.code =
+        currentStatus.state === 'pending'
+          ? 'PAYMENT_PENDING_VERIFICATION'
+          : currentStatus.isPersonalPlus && planTier === 'pro'
+            ? 'PLUS_ALREADY_INCLUDES_PRO'
+            : 'PRO_ALREADY_ACTIVE';
       err.status = 409;
       throw err;
     }
 
     const existingStudentPending = existingStudentReqs.filter((r) => r.status === 'pending');
-    // Check own requests for duplicate TID
     const ownDuplicateMatches = existingStudentReqs
       .filter((r) => {
         const t = String(r.transactionId || r.TID || '').trim().toUpperCase();
@@ -699,11 +781,11 @@ export async function submitProPaymentRequest(params: {
       planId: params.planId,
       method: params.method,
       transactionId: params.transactionId,
+      plansConfig,
       existingStudentPendingRequests: existingStudentPending as any,
       existingDuplicateTidMatches: ownDuplicateMatches,
     });
 
-    // 2. Submit via server-side Worker endpoint (`/api/pro/submit-payment`) which performs cross-user TID duplicate checks, coupon validation, and D1 lock
     const token = await auth.currentUser?.getIdToken().catch(() => null);
     let serverRequestId = '';
     let finalAmountPkr = plan.price_pkr;
@@ -725,8 +807,13 @@ export async function submitProPaymentRequest(params: {
           userEmail: params.userEmail || userData?.email || '',
           userName: params.userName || userData?.displayName || userData?.name || 'Student',
           planId: plan.id,
+          planTier,
+          billing,
           planName: plan.name,
           durationDays: plan.duration_days,
+          expectedAmountPkr: plan.price_pkr,
+          proToPlusCreditDays: eligibility.extraPlusDays,
+          previousPlan: currentStatus.planTier,
           paymentMethod: normalizedMethod,
           method: normalizedMethod,
           transactionId: normalizedTid,
@@ -747,33 +834,39 @@ export async function submitProPaymentRequest(params: {
         serverRequestId = String(data.requestId);
       }
       if (data?.paymentRequest) {
-        finalAmountPkr = Number(data.paymentRequest.amount_pkr ?? data.paymentRequest.amount ?? plan.price_pkr);
+        finalAmountPkr = Number(
+          data.paymentRequest.amount_pkr ?? data.paymentRequest.amount ?? plan.price_pkr
+        );
         discountPkr = Number(data.paymentRequest.discountPkr ?? 0);
         appliedCouponCode = data.paymentRequest.couponCode || appliedCouponCode;
       }
       wroteOnServer = Boolean(data?.wroteOnServer);
     }
 
-    const durationMonths = plan.id === 'pro_annual' ? 12 : 1;
+    const durationMonths = billing === 'annual' ? 12 : 1;
     let finalDocId = serverRequestId;
 
-    // 3. Ensure the paymentRequest document exists in Firestore (own-uid create with status: 'pending' is allowed by firestore.rules)
     if (!wroteOnServer) {
       const paymentPayload: Record<string, any> = {
         uid: params.uid,
         userId: params.uid,
         userEmail: params.userEmail || userData?.email || '',
         userName: params.userName || userData?.displayName || userData?.name || 'Student',
-        requestType: 'pro_pass',
+        requestType: planTier === 'plus' ? 'plus_pass' : 'pro_pass',
         plan: plan.id,
+        planTier,
+        billing,
         planName: plan.name,
         durationDays: plan.duration_days,
         durationMonths,
         amount: finalAmountPkr,
         amount_pkr: finalAmountPkr,
+        expectedAmountPkr: finalAmountPkr,
         originalAmountPkr: plan.price_pkr,
         discountPkr,
         couponCode: appliedCouponCode,
+        proToPlusCreditDays: eligibility.extraPlusDays,
+        previousPlan: currentStatus.planTier,
         method: normalizedMethod,
         TID: normalizedTid,
         transactionId: normalizedTid,
@@ -799,6 +892,7 @@ export async function submitProPaymentRequest(params: {
       studentUid: params.uid,
       studentName: params.userName,
       studentEmail: params.userEmail,
+      planTier,
       planName: plan.name,
       durationDays: plan.duration_days,
       pkrAmount: finalAmountPkr,
@@ -818,7 +912,7 @@ export async function submitProPaymentRequest(params: {
 }
 
 /**
- * Fetches the current student's Pro payment requests sorted newest first.
+ * Fetches the current student's Pro/Plus payment requests sorted newest first.
  */
 export async function fetchStudentProRequests(uid: string): Promise<PaymentRequest[]> {
   if (!uid) return [];

@@ -26,6 +26,7 @@ import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import {
   fetchKobanRequests,
@@ -107,6 +108,7 @@ function StatusChip({ status }: { status: KobanStudentStatus }) {
 
 export function AdminKobansPage() {
   const { user, hasPermission } = useAuth();
+  const { config: plansConfig } = usePlansConfig();
   const canGrantKobans = hasPermission('coupons.grant');
   const [requestAccessOpen, setRequestAccessOpen] = useState(false);
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
@@ -660,6 +662,13 @@ export function AdminKobansPage() {
                   <KobanIcon size={13} />
                   <span>10 Kobans = PKR 1</span>
                 </span>
+                <span className="akb-rate-chip">
+                  <span>Pro: {plansConfig.pro.priceKobansMonthly.toLocaleString()}</span>
+                  <span>·</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-bold">
+                    Plus: {plansConfig.plus.priceKobansMonthly.toLocaleString()}
+                  </span>
+                </span>
               </div>
               <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-snug m-0">
                 Search student wallets, adjust balances, and review mobile payment requests.
@@ -946,10 +955,18 @@ export function AdminKobansPage() {
                           <StatusChip status={selectedUser.status} />
                           <span
                             className={`akb-chip ${
-                              selectedUser.plan === 'pro' ? 'akb-chip--pro' : 'akb-chip--muted'
+                              selectedUser.plan === 'plus'
+                                ? 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold'
+                                : selectedUser.plan === 'pro'
+                                  ? 'akb-chip--pro'
+                                  : 'akb-chip--muted'
                             }`}
                           >
-                            {selectedUser.plan === 'pro' ? 'Pro' : 'Free'}
+                            {selectedUser.plan === 'plus'
+                              ? 'Plus'
+                              : selectedUser.plan === 'pro'
+                                ? 'Pro'
+                                : 'Free'}
                           </span>
                           <span className="akb-chip akb-chip--muted">{selectedUser.role}</span>
                         </div>

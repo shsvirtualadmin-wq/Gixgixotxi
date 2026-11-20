@@ -7,7 +7,8 @@ export interface PlanCardProps {
   subtitle?: string;
   durationBadge?: string;
   topRightBadge?: string;
-  topRightBadgeTone?: 'pro' | 'gold' | 'neutral';
+  topRightBadgeTone?: 'pro' | 'plus' | 'gold' | 'neutral';
+  accentVariant?: 'default' | 'pro' | 'plus';
   icon?: ReactNode;
   pricePkr: number;
   cadenceLabel?: string;
@@ -18,13 +19,13 @@ export interface PlanCardProps {
   featured?: boolean;
   ctaLabel: string;
   ctaIcon?: ReactNode;
-  ctaVariant: 'primary-red' | 'primary-gradient' | 'outlined' | 'disabled-current';
+  ctaVariant: 'primary-red' | 'primary-gradient' | 'primary-plus' | 'outlined' | 'disabled-current';
   onCtaClick?: () => void;
   footerSlot?: ReactNode;
 }
 
 /**
- * Reusable PlanCard component used across `/dashboard/plans` and `/store` (Boardly Pro tab).
+ * Reusable PlanCard component used across `/dashboard/plans` and `/store` (Membership tab).
  * Enforces identical radius, padding, 1px border, unclipped top-right badge,
  * baseline-aligned PriceBlock, consistent check-icon feature list, and full-width 46px+ CTA button.
  */
@@ -34,6 +35,7 @@ export function PlanCard({
   durationBadge,
   topRightBadge,
   topRightBadgeTone = 'pro',
+  accentVariant,
   icon,
   pricePkr,
   cadenceLabel,
@@ -48,10 +50,14 @@ export function PlanCard({
   onCtaClick,
   footerSlot,
 }: PlanCardProps) {
-  const isDisabled = ctaVariant === 'disabled-current';
+  const effectiveAccent = accentVariant ?? (featured ? 'pro' : 'default');
+  const isPlusAccent = effectiveAccent === 'plus';
+  const isProAccent = effectiveAccent === 'pro';
 
   const badgeClasses =
-    topRightBadgeTone === 'gold'
+    topRightBadgeTone === 'plus'
+      ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-600 dark:text-amber-300 border-amber-500/45'
+      : topRightBadgeTone === 'gold'
       ? 'bg-amber-500/15 text-amber-500 border-amber-500/35'
       : topRightBadgeTone === 'neutral'
       ? 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)]'
@@ -60,7 +66,9 @@ export function PlanCard({
   return (
     <div
       className={`rounded-[24px] p-5 sm:p-6 bg-[var(--card)] border flex flex-col justify-between transition-all duration-200 ${
-        featured
+        isPlusAccent
+          ? 'border-amber-500/60 shadow-[0_14px_38px_rgba(245,158,11,0.14)]'
+          : isProAccent
           ? 'border-[var(--red)] shadow-[0_14px_38px_rgba(232,52,42,0.11)]'
           : 'border-[var(--border)]'
       }`}
@@ -72,7 +80,9 @@ export function PlanCard({
             {icon && (
               <div
                 className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                  featured
+                  isPlusAccent
+                    ? 'bg-gradient-to-br from-amber-500/20 to-yellow-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400'
+                    : isProAccent
                     ? 'bg-[var(--red)]/10 border-[var(--red)]/30 text-[var(--red)]'
                     : 'bg-[var(--surface-2)] border-[var(--border)] text-[var(--text)]'
                 }`}
@@ -114,7 +124,7 @@ export function PlanCard({
             priceKobans={priceKobans}
             regularPricePkr={regularPricePkr}
             subtext={priceSubtext}
-            accentColor={featured ? 'pro' : 'default'}
+            accentColor={isPlusAccent ? 'gold' : isProAccent ? 'pro' : 'default'}
           />
         </div>
 
@@ -124,7 +134,9 @@ export function PlanCard({
             <li key={feat} className="flex items-start gap-2.5 leading-snug">
               <div
                 className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                  featured
+                  isPlusAccent
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : isProAccent
                     ? 'bg-[var(--red)]/15 text-[var(--red)]'
                     : 'bg-emerald-500/15 text-emerald-500'
                 }`}
@@ -157,6 +169,19 @@ export function PlanCard({
           >
             {ctaIcon && <span className="shrink-0 flex items-center">{ctaIcon}</span>}
             <span>{ctaLabel}</span>
+          </button>
+        ) : ctaVariant === 'primary-plus' ? (
+          <button
+            type="button"
+            onClick={onCtaClick}
+            style={{
+              background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 50%, #B45309 100%)',
+              color: '#FFFFFF',
+            }}
+            className="w-full min-h-[46px] px-4 py-2.5 rounded-xl text-[#FFFFFF] font-heading font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 shadow-[0_8px_24px_rgba(217,119,6,0.3)] hover:brightness-110 transition-all duration-200 cursor-pointer"
+          >
+            {ctaIcon && <span className="shrink-0 flex items-center text-[#FFFFFF]">{ctaIcon}</span>}
+            <span className="text-[#FFFFFF]">{ctaLabel}</span>
           </button>
         ) : ctaVariant === 'primary-gradient' ? (
           <button

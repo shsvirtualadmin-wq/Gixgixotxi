@@ -16,7 +16,7 @@ const SECTIONS = [
   { id: 'commons-community', title: '6. Boardly Commons, Crews & Direct Chat' },
   { id: 'moderation-admin', title: '7. Moderation & Administrator Access' },
   { id: 'rewards-kobans', title: '8. Rewards, Referrals & Kobans' },
-  { id: 'pro-payments', title: '9. Boardly Pro, Manual Payments & Zero Refunds' },
+  { id: 'pro-payments', title: '9. Boardly Pro & Plus, Manual Payments & Zero Refunds' },
   { id: 'acceptable-use', title: '10. Acceptable Use & Anti-Abuse Rules' },
   { id: 'intellectual-property', title: '11. Intellectual Property & User Content' },
   { id: 'university-disclaimer', title: '12. University & Exam Non-Affiliation' },
@@ -153,7 +153,7 @@ export const TermsPage: React.FC = () => {
               <li>
                 <strong>Manual payment verification (within 24 hours) &amp; zero refunds:</strong>{' '}
                 Payments are verified manually. After you submit your payment and proof, we verify
-                it and activate your plan within 24 hours. All Pro and Premium purchases are final
+                it and activate your plan within 24 hours. All Pro, Plus and Premium purchases are final
                 and non-refundable once submitted or activated (zero refunds).
               </li>
               <li>
@@ -443,14 +443,13 @@ export const TermsPage: React.FC = () => {
 
           <section id="pro-payments" className="scroll-mt-28 space-y-4">
             <h2 className="font-dot text-2xl text-[var(--text)]">
-              9. Boardly Pro, Manual Payments &amp; Zero Refunds
+              9. Boardly Pro &amp; Plus, Manual Payments &amp; Zero Refunds
             </h2>
             <ul className="list-disc pl-5 space-y-2.5">
               <li>
-                <strong>Plans &amp; Pricing:</strong> Boardly offers fixed-duration Pro passes,
-                including the Monthly Pass (30 days, PKR 199 or 1,990 Kobans) and Annual Pass (365
-                days, PKR 1,791 or 17,910 Kobans), as well as optional Koban packs. Prices are
-                displayed in Pakistani Rupees (PKR) before checkout.
+                <strong>Plans &amp; Pricing:</strong> Boardly offers fixed-duration Pro and Plus passes
+                (Monthly 30-day and Annual 365-day passes), as well as optional Koban packs. Current
+                PKR and Koban prices are displayed on the Plans &amp; Billing page before checkout.
               </li>
               <li>
                 <strong>How Payment &amp; Manual Verification Work:</strong> Payments are verified
@@ -460,19 +459,19 @@ export const TermsPage: React.FC = () => {
                 (Transaction ID / TID). After you submit your payment and proof, our team verifies
                 it and activates your plan <strong>within 24 hours</strong> (we do not promise
                 instant activation for manual payments). You may also redeem an existing in-app
-                Koban balance toward a Pro pass.
+                Koban balance for instant Pro or Plus activation.
               </li>
               <li>
-                <strong>When Your Plan Starts &amp; Expiry Extension:</strong> Your Pro pass starts
-                once your payment is verified and activated (or if you already have an active Pro
-                pass, the new duration is added onto your current expiry date). Passes do not
-                auto-renew or auto-charge your account when they expire. Submitting fake, altered,
-                or duplicate Transaction IDs will result in rejection and may lead to account
-                suspension.
+                <strong>When Your Plan Starts, Upgrades &amp; Expiry:</strong> Your pass starts once
+                verified and activated. Upgrading from an active Pro pass to Boardly Plus credits
+                your unused Pro days toward Plus. Renewing Plus extends your Plus expiry date. When
+                a Pro or Plus pass expires, your account returns directly to the Free tier (passes
+                do not auto-renew or auto-charge). Submitting fake, altered, or duplicate
+                Transaction IDs will result in rejection and may lead to account suspension.
               </li>
               <li>
                 <strong>Zero Refunds Policy (All Purchases Final):</strong> We have a strict{' '}
-                <strong>zero refunds</strong> policy. All Pro, Premium, and Koban purchases are{' '}
+                <strong>zero refunds</strong> policy. All Pro, Plus, Premium, and Koban purchases are{' '}
                 <strong>final and non-refundable once submitted or activated</strong>. Please verify
                 your selected plan and payment amount carefully before submitting your payment.
               </li>

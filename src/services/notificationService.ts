@@ -76,11 +76,14 @@ export interface AppNotification {
   senderId?: string;
 }
 
+export type AnnouncementTargetAudience = 'all' | 'free' | 'pro' | 'plus' | 'crew';
+
 export interface AnnouncementItem {
   id: string;
   title: string;
   message: string;
   isPinned?: boolean;
+  targetAudience?: AnnouncementTargetAudience;
   authorId: string;
   authorEmail: string;
   authorName: string;
@@ -1154,9 +1157,10 @@ export async function ensureWelcomeNotificationForUser(userId: string): Promise<
 export async function createAnnouncement(params: {
   title: string;
   message: string;
+  targetAudience?: AnnouncementTargetAudience;
   adminUser: { uid: string; email?: string | null; displayName?: string | null };
 }): Promise<string> {
-  const { title, message, adminUser } = params;
+  const { title, message, targetAudience = 'all', adminUser } = params;
 
   if (!isUserSuperAdmin(adminUser)) {
     throw new Error('Unauthorized: Only the superadmin can create announcements.');
@@ -1176,6 +1180,7 @@ export async function createAnnouncement(params: {
     title: cleanTitle,
     message: cleanMessage,
     isPinned: false,
+    targetAudience,
     authorId: adminUser.uid,
     authorEmail: adminUser.email || '',
     authorName: adminUser.displayName || 'Superadmin',
@@ -1240,6 +1245,7 @@ export async function fetchAnnouncements(limitCount = 50, userId?: string): Prom
               title: data.title || '',
               message: data.message || '',
               isPinned: Boolean(data.isPinned),
+              targetAudience: (data.targetAudience as AnnouncementTargetAudience) || 'all',
               authorId: data.authorId || '',
               authorEmail: data.authorEmail || '',
               authorName: data.authorName || 'Superadmin',

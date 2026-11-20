@@ -65,7 +65,24 @@ service cloud.firestore {
       );
     }
 
-    // Blocks owner updates to any protected role, admin, superAdmin, captain, claimsUpdatedAt, plan, pro, or wallet fields
+    // Helper functions for checking paid plan tiers (pro or plus)
+    function isPaidPlan(uid) {
+      let userData = get(/databases/$(database)/documents/users/$(uid)).data;
+      return userData.plan in ['pro', 'plus'] ||
+        userData.planTier in ['pro', 'plus'] ||
+        userData.isPremium == true ||
+        userData.isPro == true ||
+        userData.isPlus == true;
+    }
+
+    function isPlusPlan(uid) {
+      let userData = get(/databases/$(database)/documents/users/$(uid)).data;
+      return userData.plan == 'plus' ||
+        userData.planTier == 'plus' ||
+        userData.isPlus == true;
+    }
+
+    // Blocks owner updates to any protected role, admin, superAdmin, captain, claimsUpdatedAt, plan, pro, plus, aiUsage, or wallet fields
     function ownerUpdatesOnlySafeUserFields() {
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
         'role',
@@ -77,17 +94,26 @@ service cloud.firestore {
         'claimsUpdatedAt',
         'claimsUpdatedAtMs',
         'plan',
+        'planTier',
+        'planId',
         'pro',
+        'isPro',
+        'plus',
+        'isPlus',
         'tier',
         'kobans',
         'kobanBalance',
         'proUntil',
+        'plusUntil',
         'paid_until',
         'planExpiresAt',
         'premiumExpiresAt',
         'isPremium',
         'proPlanId',
+        'plusPlanId',
         'premiumSource',
+        'aiUsage',
+        'aiCreditsUsed',
         'isBanned',
         'isSuspended',
         'suspended',
@@ -96,7 +122,7 @@ service cloud.firestore {
       ]);
     }
 
-    // Blocks owner from creating a user doc with role, isAdmin, superAdmin, isCaptain, claimsUpdatedAt, plan, or pro
+    // Blocks owner from creating a user doc with role, isAdmin, superAdmin, isCaptain, claimsUpdatedAt, plan, pro, plus, or aiUsage
     function ownerCreatesOnlySafeUserFields() {
       return (
         (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
@@ -108,16 +134,25 @@ service cloud.firestore {
         (!('claimsUpdatedAt' in request.resource.data)) &&
         (!('claimsUpdatedAtMs' in request.resource.data)) &&
         (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
+        (!('planTier' in request.resource.data) || request.resource.data.planTier == 'free') &&
+        (!('planId' in request.resource.data) || request.resource.data.planId == null) &&
         (!('pro' in request.resource.data) || request.resource.data.pro == false) &&
+        (!('isPro' in request.resource.data) || request.resource.data.isPro == false) &&
+        (!('plus' in request.resource.data) || request.resource.data.plus == false) &&
+        (!('isPlus' in request.resource.data) || request.resource.data.isPlus == false) &&
         (!('tier' in request.resource.data) || request.resource.data.tier == 'free') &&
         (!('kobans' in request.resource.data) || request.resource.data.kobans == 0) &&
         (!('kobanBalance' in request.resource.data) || request.resource.data.kobanBalance == 0) &&
         (!('proUntil' in request.resource.data) || request.resource.data.proUntil == null) &&
+        (!('plusUntil' in request.resource.data) || request.resource.data.plusUntil == null) &&
         (!('paid_until' in request.resource.data) || request.resource.data.paid_until == null) &&
         (!('planExpiresAt' in request.resource.data) || request.resource.data.planExpiresAt == null) &&
         (!('premiumExpiresAt' in request.resource.data) || request.resource.data.premiumExpiresAt == null) &&
         (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
-        (!('proPlanId' in request.resource.data) || request.resource.data.proPlanId == null)
+        (!('proPlanId' in request.resource.data) || request.resource.data.proPlanId == null) &&
+        (!('plusPlanId' in request.resource.data) || request.resource.data.plusPlanId == null) &&
+        (!('aiUsage' in request.resource.data)) &&
+        (!('aiCreditsUsed' in request.resource.data) || request.resource.data.aiCreditsUsed == 0)
       );
     }
 
@@ -373,6 +408,12 @@ service cloud.firestore {
 
     match /settings/{docId} {
       allow read, write: if isSuperAdmin();
+    }
+
+    // Plan pricing & AI credit limits (public read so client & pricing pages stay synced; admin-only write)
+    match /config/plans {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /config/{docId} {

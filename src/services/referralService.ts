@@ -127,32 +127,55 @@ export async function processAmbassadorReferralOnSignup(params: {
       signedUpAt: serverTimestamp(),
     });
 
-    // 5. Award 1 extra week of Pro access to the ambassador
+    // 5. Award 1 extra week of paid access to the ambassador — NEVER downgrade an active Plus user to Pro!
     const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-    let baseTime = Date.now();
+    const nowMs = Date.now();
+    let baseTime = nowMs;
 
-    const existingExpiry = ambassadorData.planExpiresAt || ambassadorData.premiumExpiresAt;
+    const existingExpiry =
+      (ambassadorData as any).plusUntil ||
+      ambassadorData.planExpiresAt ||
+      ambassadorData.premiumExpiresAt;
     if (existingExpiry) {
       let expMs = 0;
       if (typeof (existingExpiry as { toMillis?: () => number }).toMillis === 'function') {
         expMs = (existingExpiry as { toMillis: () => number }).toMillis();
       } else if (typeof (existingExpiry as { seconds?: number }).seconds === 'number') {
         expMs = (existingExpiry as { seconds: number }).seconds * 1000;
+      } else if (typeof existingExpiry === 'string') {
+        const parsed = new Date(existingExpiry).getTime();
+        if (!Number.isNaN(parsed)) expMs = parsed;
       }
       if (expMs > baseTime) {
         baseTime = expMs;
       }
     }
 
-    const newExpiry = Timestamp.fromMillis(baseTime + oneWeekMs);
+    const rawAmbPlan = String(ambassadorData.plan || '').trim().toLowerCase();
+    const isActivePlusAmbassador =
+      (rawAmbPlan === 'plus' ||
+        (ambassadorData as any).planTier === 'plus' ||
+        (ambassadorData as any).isPlus === true) &&
+      baseTime > nowMs;
 
-    await updateDoc(doc(db, 'users', ambassadorUid), {
-      plan: 'pro',
+    const preservedPlan = isActivePlusAmbassador ? 'plus' : 'pro';
+    const newExpiryMs = baseTime + oneWeekMs;
+    const newExpiry = Timestamp.fromMillis(newExpiryMs);
+
+    const ambUpdate: Record<string, any> = {
+      plan: preservedPlan,
+      planTier: preservedPlan,
       isPremium: true,
       planExpiresAt: newExpiry,
       premiumExpiresAt: newExpiry,
       ambassadorBonusWeeks: increment(1),
-    });
+    };
+    if (isActivePlusAmbassador) {
+      ambUpdate.isPlus = true;
+      ambUpdate.plusUntil = new Date(newExpiryMs).toISOString();
+    }
+
+    await updateDoc(doc(db, 'users', ambassadorUid), ambUpdate);
 
     // 6. Send in-app notification to ambassador (deterministic ID prevents duplicates)
     const safeNewName =
@@ -165,7 +188,9 @@ export async function processAmbassadorReferralOnSignup(params: {
         userId: ambassadorUid,
         type: 'reward',
         title: 'New Student Joined via Your Link!',
-        message: `${safeNewName}${newShortId ? ` (#${newShortId})` : ''} signed up using your link! You earned 1 bonus week of Boardly Pro access.`,
+        message: `${safeNewName}${newShortId ? ` (#${newShortId})` : ''} signed up using your link! You earned 1 bonus week of ${
+          isActivePlusAmbassador ? 'Boardly Plus' : 'Boardly Pro'
+        } access.`,
         link: '/dashboard/rewards',
         read: false,
         createdAt: serverTimestamp(),

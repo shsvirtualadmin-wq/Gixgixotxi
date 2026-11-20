@@ -455,34 +455,145 @@ function getPktDateAndReset(nowMs = Date.now()) {
   };
 }
 
-function isPersonalProUserDoc(userDoc, nowMs) {
-  if (!userDoc) return false;
+let cachedPlansCredits = null;
+
+function getFallbackPlansCredits() {
+  return {
+    free: Number(aiConfig.FREE_CREDITS_PER_DAY || 5),
+    pro: Number(aiConfig.PRO_CREDITS_PER_DAY || 50),
+    plus: Number(aiConfig.PLUS_CREDITS_PER_DAY || 100),
+  };
+}
+
+async function fetchPlansCreditsConfig(baseUrl, accessToken) {
+  const now = Date.now();
+  if (cachedPlansCredits && cachedPlansCredits.expiresAt > now) {
+    return cachedPlansCredits.credits;
+  }
+  const fallback = getFallbackPlansCredits();
+  try {
+    const doc = await getFirestoreDoc(baseUrl, accessToken, 'config/plans');
+    const credits = {
+      free: Math.max(1, Number(doc?.free?.aiCreditsPerDay || fallback.free)),
+      pro: Math.max(1, Number(doc?.pro?.aiCreditsPerDay || fallback.pro)),
+      plus: Math.max(1, Number(doc?.plus?.aiCreditsPerDay || fallback.plus)),
+    };
+    cachedPlansCredits = { credits, expiresAt: now + 60_000 };
+    return credits;
+  } catch {
+    return fallback;
+  }
+}
+
+function planTierRank(plan) {
+  if (plan === 'plus') return 2;
+  if (plan === 'pro') return 1;
+  return 0;
+}
+
+function resolvePersonalPlanFromUserDoc(userDoc, nowMs) {
+  if (!userDoc) return 'free';
+  const rawPlan = String(userDoc.planTier || userDoc.plan || '').trim().toLowerCase();
+  const isFlaggedPlus =
+    userDoc.isPlus === true ||
+    rawPlan === 'plus' ||
+    rawPlan === 'plus_monthly' ||
+    rawPlan === 'plus_annual';
+
+  const plusUntilMs = parseExpiryMs(userDoc.plusUntil);
   const expA = parseExpiryMs(userDoc.planExpiresAt);
   const expB = parseExpiryMs(userDoc.premiumExpiresAt);
-  const expiryMs =
-    expA !== null && expB !== null ? Math.max(expA, expB) : expA !== null ? expA : expB;
-  const hasFutureExpiry = expiryMs !== null && expiryMs > nowMs;
-  const isExpired = expiryMs !== null && expiryMs <= nowMs;
-  const rawPlan = String(userDoc.plan || '').trim().toLowerCase();
+  const proUntilMs = parseExpiryMs(userDoc.proUntil);
+
+  // If user is on Plus, Plus expires directly to Free (never drops to Pro).
+  if (isFlaggedPlus || plusUntilMs !== null) {
+    const plusCandidates = [plusUntilMs, expA, expB].filter((v) => v !== null);
+    const plusExpiryMs = plusCandidates.length > 0 ? Math.max(...plusCandidates) : null;
+    if (plusExpiryMs !== null) {
+      return plusExpiryMs > nowMs ? 'plus' : 'free';
+    }
+    return isFlaggedPlus ? 'plus' : 'free';
+  }
+
+  const proCandidates = [proUntilMs, expA, expB].filter((v) => v !== null);
+  const proExpiryMs = proCandidates.length > 0 ? Math.max(...proCandidates) : null;
+  const hasFutureExpiry = proExpiryMs !== null && proExpiryMs > nowMs;
+  const isExpired = proExpiryMs !== null && proExpiryMs <= nowMs;
   const isFlaggedPro =
+    userDoc.isPro === true ||
     userDoc.isPremium === true ||
     rawPlan === 'pro' ||
     rawPlan === 'pro_monthly' ||
     rawPlan === 'pro_annual' ||
     rawPlan === 'premium';
-  return hasFutureExpiry || (isFlaggedPro && !isExpired);
+
+  if (hasFutureExpiry || (isFlaggedPro && !isExpired)) {
+    return 'pro';
+  }
+  return 'free';
+}
+
+function resolveCrewMemberPlan(member, nowMs) {
+  if (!member || typeof member !== 'object') return 'free';
+  const raw = String(member.planTier || member.plan || '').trim().toLowerCase();
+  const plusExp = parseExpiryMs(member.plusUntil || member.planExpiresAt);
+  if (member.isPlus === true || raw === 'plus' || raw === 'plus_monthly' || raw === 'plus_annual') {
+    if (plusExp !== null && plusExp <= nowMs) return 'free';
+    return 'plus';
+  }
+  const proExp = parseExpiryMs(member.proUntil || member.planExpiresAt);
+  if (member.isPro === true || raw === 'pro' || raw === 'pro_monthly' || raw === 'pro_annual' || raw === 'premium') {
+    if (proExp !== null && proExp <= nowMs) return 'free';
+    return 'pro';
+  }
+  return 'free';
+}
+
+function resolveCrewBestPlan(crewDoc, nowMs) {
+  if (!crewDoc) return 'free';
+  let best = 'free';
+
+  const paidUntilMs = parseExpiryMs(crewDoc.paid_until);
+  if (crewDoc.tier === 'paid' && paidUntilMs !== null && paidUntilMs > nowMs) {
+    best = 'pro';
+  }
+
+  if (crewDoc.isProShared !== false) {
+    const declared = String(crewDoc.effectivePlan || '').trim().toLowerCase();
+    if (declared === 'plus' || crewDoc.hasPlusMember === true) {
+      best = 'plus';
+    } else if ((declared === 'pro' || crewDoc.hasProMember === true) && planTierRank(best) < 1) {
+      best = 'pro';
+    }
+
+    if (Array.isArray(crewDoc.members)) {
+      for (const m of crewDoc.members) {
+        const mPlan = resolveCrewMemberPlan(m, nowMs);
+        if (planTierRank(mPlan) > planTierRank(best)) {
+          best = mPlan;
+        }
+      }
+    }
+  }
+
+  return best;
 }
 
 async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser) {
+  const planCredits = await fetchPlansCreditsConfig(baseUrl, accessToken);
+
   if (authUser.isSuperAdmin) {
     return {
-      plan: 'pro',
+      plan: 'plus',
       isPro: true,
+      isPlus: true,
+      isPaid: true,
       isSuperAdmin: true,
       isUnlimited: true,
       deepMaxUnlocked: true,
       source: 'superadmin',
-      dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
+      dailyLimit: planCredits.plus,
+      planCredits,
     };
   }
 
@@ -493,63 +604,43 @@ async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser) {
     `users/${encodeURIComponent(authUser.uid)}`
   );
 
-  if (isPersonalProUserDoc(userDoc, nowMs)) {
-    return {
-      plan: 'pro',
-      isPro: true,
-      isSuperAdmin: false,
-      isUnlimited: false,
-      deepMaxUnlocked: true,
-      source: 'personal',
-      dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
-    };
-  }
+  const personalPlan = resolvePersonalPlanFromUserDoc(userDoc, nowMs);
+  let crewPlan = 'free';
 
-  // Inherit best plan inside Nakama Crew (matches src/hooks/useEffectivePlan.ts)
+  // Inherit highest plan inside Nakama Crew (matches src/hooks/useEffectivePlan.ts)
   const crewId = userDoc?.crewId ? String(userDoc.crewId).trim() : '';
-  if (crewId) {
+  if (crewId && personalPlan !== 'plus') {
     const crewDoc = await getFirestoreDoc(
       baseUrl,
       accessToken,
       `crews/${encodeURIComponent(crewId)}`
     ).catch(() => null);
-
-    if (crewDoc) {
-      const paidUntilMs = parseExpiryMs(crewDoc.paid_until);
-      const isPaidLargeCrew = crewDoc.tier === 'paid' && paidUntilMs !== null && paidUntilMs > nowMs;
-      const legacySharing =
-        crewDoc.isProShared !== false &&
-        (crewDoc.hasProMember === true ||
-          (Array.isArray(crewDoc.members) &&
-            crewDoc.members.some(
-              (m) =>
-                m &&
-                (m.isPro === true ||
-                  String(m.plan || '').toLowerCase() === 'pro' ||
-                  String(m.plan || '').toLowerCase() === 'premium')
-            )));
-      if (isPaidLargeCrew || legacySharing) {
-        return {
-          plan: 'pro',
-          isPro: true,
-          isSuperAdmin: false,
-          isUnlimited: false,
-          deepMaxUnlocked: true,
-          source: 'crew',
-          dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
-        };
-      }
-    }
+    crewPlan = resolveCrewBestPlan(crewDoc, nowMs);
   }
 
+  const useCrew = planTierRank(crewPlan) > planTierRank(personalPlan);
+  const effectivePlan = useCrew ? crewPlan : personalPlan;
+  const source = effectivePlan === 'free' ? 'none' : useCrew ? 'crew' : 'personal';
+  const isPaid = effectivePlan !== 'free';
+  const isPlus = effectivePlan === 'plus';
+  const dailyLimit =
+    effectivePlan === 'plus'
+      ? planCredits.plus
+      : effectivePlan === 'pro'
+      ? planCredits.pro
+      : planCredits.free;
+
   return {
-    plan: 'free',
-    isPro: false,
+    plan: effectivePlan,
+    isPro: isPaid,
+    isPlus,
+    isPaid,
     isSuperAdmin: false,
     isUnlimited: false,
-    deepMaxUnlocked: false,
-    source: 'none',
-    dailyLimit: aiConfig.FREE_CREDITS_PER_DAY,
+    deepMaxUnlocked: isPaid,
+    source,
+    dailyLimit,
+    planCredits,
   };
 }
 
@@ -717,14 +808,18 @@ export async function handleAiMentorsRequest(request, env) {
   // 2. Superadmin Unlimited path: verified cryptographically from signed Firebase ID token,
   //    so Superadmin never stalls or fails on Firestore / FIREBASE_SERVICE_ACCOUNT availability.
   if (authUser.isSuperAdmin) {
+    const fallbackCredits = getFallbackPlansCredits();
     planInfo = {
-      plan: 'pro',
+      plan: 'plus',
       isPro: true,
+      isPlus: true,
+      isPaid: true,
       isSuperAdmin: true,
       isUnlimited: true,
       deepMaxUnlocked: true,
       source: 'superadmin',
-      dailyLimit: aiConfig.PRO_CREDITS_PER_DAY,
+      dailyLimit: fallbackCredits.plus,
+      planCredits: fallbackCredits,
     };
   } else {
     if (!sa) {
@@ -775,6 +870,8 @@ export async function handleAiMentorsRequest(request, env) {
       dailyLimit: planInfo.dailyLimit,
       isUnlimited: planInfo.isUnlimited,
       isPro: planInfo.isPro,
+      isPlus: Boolean(planInfo.isPlus),
+      isPaid: Boolean(planInfo.isPaid ?? planInfo.isPro),
       isSuperAdmin: planInfo.isSuperAdmin,
       deepMaxUnlocked: planInfo.deepMaxUnlocked,
       plan: planInfo.plan,
@@ -818,7 +915,7 @@ export async function handleAiMentorsRequest(request, env) {
   if (!depthCfg.freeAllowed && !planInfo.deepMaxUnlocked) {
     return jsonResponse(
       {
-        error: `${depthCfg.label} thinking is a Boardly Pro feature. Upgrade to unlock Deep & Max thinking.`,
+        error: `${depthCfg.label} thinking is unlocked on Boardly Pro and Boardly Plus. Upgrade to unlock Deep & Max thinking.`,
         code: 'PRO_DEPTH_REQUIRED',
         creditsLeft,
         dailyLimit: planInfo.dailyLimit,
@@ -836,16 +933,24 @@ export async function handleAiMentorsRequest(request, env) {
   // 4. Compute exact server credit cost & enforce daily cap
   const cost = computeServerMessageCost(depthId, validated.contents);
   if (!planInfo.isUnlimited && creditsLeft < cost) {
+    const pc = planInfo.planCredits || getFallbackPlansCredits();
+    const zeroMsg =
+      planInfo.plan === 'plus'
+        ? `You have used all ${planInfo.dailyLimit} AI Mentor credits for today. Your credits reset at midnight PKT.`
+        : planInfo.plan === 'pro'
+        ? `You have used all ${planInfo.dailyLimit} Pro credits for today. Upgrade to Boardly Plus for ${pc.plus} credits/day or wait for the midnight PKT reset.`
+        : `You have used all ${planInfo.dailyLimit} Free credits for today. Upgrade to Boardly Pro (${pc.pro}/day) or Boardly Plus (${pc.plus}/day), or wait for the midnight PKT reset.`;
     return jsonResponse(
       {
         error:
           creditsLeft === 0
-            ? 'You have used all your AI Mentor credits for today. Upgrade to Pro for 100 credits/day or wait for the midnight PKT reset.'
+            ? zeroMsg
             : `This message needs ${cost} credits, but you only have ${creditsLeft} left today.`,
         code: 'INSUFFICIENT_CREDITS',
         cost,
         creditsLeft,
         dailyLimit: planInfo.dailyLimit,
+        plan: planInfo.plan,
         resetAt,
       },
       402

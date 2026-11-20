@@ -48,6 +48,7 @@ export function DashboardSidebar() {
   };
 
   const isPro = !isGuest && effectivePlan.isUnlimited;
+  const isPlus = !isGuest && effectivePlan.isPlus;
   const { effectiveProBadge } = useProBadge();
   const displayName = getDisplayName(
     {
@@ -231,11 +232,15 @@ export function DashboardSidebar() {
               <Sparkles size={18} />
               <span>Plans &amp; Upgrade</span>
             </div>
-            {!isPro && (
+            {!isPro ? (
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--text)] text-[var(--bg)] font-semibold">
                 Pro
               </span>
-            )}
+            ) : !isPlus ? (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold">
+                Plus
+              </span>
+            ) : null}
           </NavLink>
         )}
 
@@ -322,7 +327,7 @@ export function DashboardSidebar() {
               </div>
             )}
             <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">
-              {isGuest ? 'Guest' : isPro ? 'Pro Member' : 'Free Starter'}
+              {isGuest ? 'Guest' : isPlus ? 'Plus Member' : isPro ? 'Pro Member' : 'Free Starter'}
             </p>
           </div>
         </div>

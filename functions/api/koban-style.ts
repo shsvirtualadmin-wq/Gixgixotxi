@@ -13,6 +13,7 @@ import {
   validateKobanStylePayload,
   type KobanStyleSettings,
 } from '../../src/lib/kobanStyle';
+import { hasAtLeast } from '../../src/lib/planTier';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -69,7 +70,12 @@ async function userHasActivePlan(
   user: { uid: string; plan?: string; isAdminOrAbove?: boolean; role?: string; isGuest?: boolean },
   env?: RewardsEnv
 ): Promise<boolean> {
-  if (user.isAdminOrAbove || user.role === 'captain' || user.plan === 'pro') {
+  if (
+    user.isAdminOrAbove ||
+    user.role === 'captain' ||
+    user.plan === 'pro' ||
+    user.plan === 'plus'
+  ) {
     return true;
   }
   if (user.isGuest) {
@@ -85,14 +91,15 @@ async function userHasActivePlan(
       );
       const userDoc = await store.getDoc(`users/${user.uid}`);
       if (userDoc) {
-        const plan = String(userDoc.plan || userDoc.subscription_tier || '').toLowerCase();
-        const isPro = Boolean(userDoc.isPro || userDoc.is_pro || plan === 'pro');
+        if (hasAtLeast(userDoc, 'pro')) {
+          return true;
+        }
         const subscribedPlans = Array.isArray(userDoc.subscribedPlans)
           ? userDoc.subscribedPlans
           : Array.isArray(userDoc.subscribed_plans)
           ? userDoc.subscribed_plans
           : [];
-        if (isPro || subscribedPlans.length > 0) {
+        if (subscribedPlans.length > 0) {
           return true;
         }
       }
@@ -243,7 +250,7 @@ export async function handleKobanStyleRequest(opts: HandleKobanStyleOptions): Pr
       return jsonResponse(
         {
           ok: false,
-          error: 'This Koban icon design requires an active Boardly Pro plan.',
+          error: 'This Koban icon design requires an active Boardly Pro or Plus plan.',
           code: 'PRO_REQUIRED',
         },
         403

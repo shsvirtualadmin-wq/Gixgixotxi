@@ -20,6 +20,7 @@ import {
 } from '@/services/adminTabCache';
 import { recordCrewPaymentActionServer } from '@/services/crewBackend';
 import { DEFAULT_CREW_PRICING } from '@/config/crewPricing';
+import { resolveEffectiveCrewPlan } from '@/lib/planTier';
 import {
   Search,
   Sparkles,
@@ -567,6 +568,29 @@ export function AdminCrewsPage() {
                         {crewDetails.members?.length || 0} / {crewDetails.maxMembers || 5} members
                       </strong>
                     </div>
+                    {(() => {
+                      const effPlan = resolveEffectiveCrewPlan(crewDetails);
+                      return (
+                        <div>
+                          Effective Crew Plan:{' '}
+                          <strong
+                            className={
+                              effPlan === 'plus'
+                                ? 'text-amber-400'
+                                : effPlan === 'pro'
+                                  ? 'text-emerald-400'
+                                  : 'text-white/75'
+                            }
+                          >
+                            {effPlan === 'plus'
+                              ? 'Boardly Plus (Shared · 100 AI/day)'
+                              : effPlan === 'pro'
+                                ? 'Boardly Pro (Shared · 50 AI/day)'
+                                : 'Free Tier'}
+                          </strong>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <button

@@ -34,6 +34,8 @@ export type EmailEventType =
   | 'pro_request_received'
   | 'pro_activated'
   | 'pro_request_rejected'
+  | 'plan_expiry_reminder'
+  | 'plan_expired'
   | 'test_started'
   | 'test_completed'
   | 'daily_admin_digest'
@@ -118,6 +120,7 @@ export function verifyEmailBalanceSanity(params: {
 export type KobanReceiptSubType =
   | 'store_purchase'
   | 'pro_pass_purchase'
+  | 'plus_pass_purchase'
   | 'daily_claim'
   | 'daily_checkin'
   | 'milestone_claim'
@@ -146,9 +149,15 @@ export function getEmailLogoUrl(appUrl = 'https://boardly.cfd'): string {
 export const EMAIL_EVENT_LABELS: Record<string, string> = {
   STORE_PURCHASE: 'Store purchase',
   PRO_PASS_PURCHASE: 'Pro pass purchase',
+  PLUS_PASS_PURCHASE: 'Plus pass purchase',
   PRO_REQUEST_RECEIVED: 'Pro request received',
+  PLUS_REQUEST_RECEIVED: 'Plus request received',
   PRO_PASS_ACTIVATED: 'Pro pass activated',
+  PLUS_PASS_ACTIVATED: 'Plus pass activated',
   PRO_REQUEST_REJECTED: 'Pro request rejected',
+  PLUS_REQUEST_REJECTED: 'Plus request rejected',
+  PLAN_EXPIRY_REMINDER: 'Plan expiry reminder',
+  PLAN_EXPIRED: 'Plan expired',
   KOBAN_PURCHASE_APPROVED: 'Koban purchase approved',
   KOBAN_PURCHASE_REJECTED: 'Koban purchase rejected',
   KOBAN_PURCHASE_REQUEST: 'Koban purchase request',
@@ -2080,6 +2089,7 @@ export function buildFirebaseEmailVerificationEmail(params: {
 export function buildProRequestReceivedStudentEmail(params: {
   studentName: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   amountPkr?: number;
   pkrAmount?: number;
@@ -2090,22 +2100,26 @@ export function buildProRequestReceivedStudentEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.submittedAt);
-  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const isPlusTier =
+    params.planTier === 'plus' || String(params.planName || '').toLowerCase().includes('plus');
+  const tierShort = isPlusTier ? 'Plus' : 'Pro';
+  const tierFull = isPlusTier ? 'Boardly Plus' : 'Boardly Pro';
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? (isPlusTier ? 399 : 199));
   const methodDisplay = formatPaymentMethodLabel(params.paymentMethod);
-  const subject = `Pro request received: ${params.planName} — Boardly`;
+  const subject = `${tierShort} request received: ${params.planName} — Boardly`;
   const preheader = `We received your ${methodDisplay} payment reference (${params.transactionId}) for ${params.planName}.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'Pro Request Received',
+    badgeText: `${tierShort} Request Received`,
     badgeColor: 'gold',
-    heading: 'We received your Boardly Pro request',
+    heading: `We received your ${tierFull} request`,
     introHtml: `<p style="margin:0;">Thank you, <strong>${escapeHtml(
       params.studentName || 'Student'
     )}</strong>! Your payment transfer reference for <strong>${escapeHtml(
       params.planName
-    )}</strong> is in our verification queue. We will verify it within 2 hours and email you as soon as Pro is active.</p>`,
+    )}</strong> is in our verification queue. We will verify it within 2 hours and email you as soon as ${tierShort} is active.</p>`,
     detailsRows: [
       { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
       { label: 'Amount', value: `PKR ${pkr.toLocaleString()}`, highlightGold: true },
@@ -2123,7 +2137,7 @@ export function buildProRequestReceivedStudentEmail(params: {
   });
 
   const text = [
-    `BOARDLY — Pro request received (${params.planName})`,
+    `BOARDLY — ${tierShort} request received (${params.planName})`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
     `We received your payment request for ${params.planName} (${params.durationDays} days).`,
@@ -2145,6 +2159,7 @@ export function buildProRequestReceivedAdminEmail(params: {
   studentName: string;
   studentEmail: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   amountPkr?: number;
   pkrAmount?: number;
@@ -2155,20 +2170,25 @@ export function buildProRequestReceivedAdminEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.submittedAt);
-  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const isPlusTier =
+    params.planTier === 'plus' || String(params.planName || '').toLowerCase().includes('plus');
+  const tierFull = isPlusTier ? 'Boardly Plus' : 'Boardly Pro';
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? (isPlusTier ? 399 : 199));
   const methodDisplay = formatPaymentMethodLabel(params.paymentMethod);
-  const eventLabel = formatEmailEventLabel('PRO_REQUEST_RECEIVED');
+  const eventLabel = formatEmailEventLabel(
+    isPlusTier ? 'PLUS_REQUEST_RECEIVED' : 'PRO_REQUEST_RECEIVED'
+  );
   const subject = `${eventLabel}: ${params.planName} (PKR ${pkr.toLocaleString()}) by ${params.studentName || 'Student'}`;
   const preheader = `${params.studentName} (${params.studentEmail}) submitted TID ${params.transactionId} via ${methodDisplay}.`;
-  const reviewUrl = `${appUrl}/admin/payments?type=pro&request_id=${encodeURIComponent(params.requestId)}`;
+  const reviewUrl = `${appUrl}/admin/payments?type=${isPlusTier ? 'plus' : 'pro'}&request_id=${encodeURIComponent(params.requestId)}`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
     badgeText: eventLabel,
-    badgeColor: 'red',
+    badgeColor: isPlusTier ? 'gold' : 'red',
     heading: `${eventLabel}: ${params.planName}`,
-    introHtml: `<p style="margin:0;">A student submitted a PKR payment transfer for Boardly Pro verification.</p>`,
+    introHtml: `<p style="margin:0;">A student submitted a PKR payment transfer for ${tierFull} verification.</p>`,
     studentIdentity: {
       name: params.studentName || 'Student',
       email: params.studentEmail,
@@ -2210,6 +2230,7 @@ export function buildProRequestReceivedAdminEmail(params: {
 export function buildProActivatedStudentEmail(params: {
   studentName: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   expiryFormatted?: string;
   expiresAtLabel?: string;
@@ -2229,11 +2250,15 @@ export function buildProActivatedStudentEmail(params: {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.activatedAt);
   const expiryLabel = params.expiresAtLabel || params.expiryFormatted || 'Active';
+  const isPlusTier =
+    params.planTier === 'plus' || String(params.planName || '').toLowerCase().includes('plus');
+  const tierShort = isPlusTier ? 'Plus' : 'Pro';
+  const tierFull = isPlusTier ? 'Boardly Plus' : 'Boardly Pro';
   const isKobanPayment =
     params.paidWith === 'kobans' ||
     (typeof params.kobansSpent === 'number' && params.kobansSpent > 0);
   const spent = isKobanPayment ? Math.abs(Math.floor(params.kobansSpent || 0)) : 0;
-  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? (isPlusTier ? 399 : 199));
   const methodLabel = isKobanPayment
     ? 'Kobans Wallet'
     : formatPaymentMethodLabel(params.paymentMethod || 'jazzcash');
@@ -2241,15 +2266,17 @@ export function buildProActivatedStudentEmail(params: {
     ? `${spent.toLocaleString()} Kobans (PKR ${Math.round(spent / 10).toLocaleString()})`
     : `PKR ${pkr.toLocaleString()}`;
 
-  const subject = `Pro activated: ${params.planName} active until ${expiryLabel} — Boardly`;
-  const preheader = `Your ${params.planName} is active until ${expiryLabel}. Start practicing with unlimited tests and AI derivations.`;
+  const subject = `${tierShort} activated: ${params.planName} active until ${expiryLabel} — Boardly`;
+  const preheader = isPlusTier
+    ? `Your ${params.planName} is active until ${expiryLabel}. Enjoy 100 AI Mentor credits/day, Deep & Max thinking, and everything in Pro.`
+    : `Your ${params.planName} is active until ${expiryLabel}. Start practicing with unlimited tests and 50 AI Mentor credits/day.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: params.wasExtension ? 'Pro Extended' : 'Pro Activated',
-    badgeColor: 'green',
-    heading: `Boardly Pro active until ${expiryLabel}!`,
+    badgeText: params.wasExtension ? `${tierShort} Extended` : `${tierShort} Activated`,
+    badgeColor: isPlusTier ? 'gold' : 'green',
+    heading: `${tierFull} active until ${expiryLabel}!`,
     introHtml: `<p style="margin:0;">Congratulations, <strong>${escapeHtml(
       params.studentName || 'Student'
     )}</strong>! Your <strong>${escapeHtml(
@@ -2258,13 +2285,17 @@ export function buildProActivatedStudentEmail(params: {
       params.wasExtension && params.previousExpiryLabel
         ? ` (extended from ${escapeHtml(params.previousExpiryLabel)} to ${escapeHtml(expiryLabel)})`
         : ''
-    }. Enjoy unlimited practice tests, Arena National Mocks, and Boardy AI derivations.</p>`,
+    }. ${
+      isPlusTier
+        ? 'Enjoy 100 AI Mentor credits per day (2x Pro), Deep &amp; Max AI thinking, your Plus badge, and everything in Boardly Pro.'
+        : 'Enjoy unlimited practice tests, Arena National Mocks, and 50 AI Mentor credits per day with Deep &amp; Max thinking.'
+    }</p>`,
     ...(isKobanPayment &&
     typeof params.balanceBefore === 'number' &&
     typeof params.newBalance === 'number'
       ? {
           kobanHighlight: {
-            label: 'Pro Pass Purchase',
+            label: `${tierShort} Pass Purchase`,
             amountText: `-${spent.toLocaleString()} Kobans`,
             subtext: `Balance before: ${params.balanceBefore.toLocaleString()} Kobans  •  New Balance: ${params.newBalance.toLocaleString()} Kobans`,
             isNegative: true,
@@ -2273,7 +2304,7 @@ export function buildProActivatedStudentEmail(params: {
       : {}),
     detailsRows: [
       { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
-      { label: 'Pro active until', value: expiryLabel, highlightGold: true },
+      { label: `${tierShort} active until`, value: expiryLabel, highlightGold: true },
       { label: 'Payment method', value: methodLabel },
       ...(isKobanPayment
         ? [
@@ -2318,7 +2349,7 @@ export function buildProActivatedStudentEmail(params: {
   });
 
   const text = [
-    `BOARDLY PRO ACTIVATED — ${params.planName}`,
+    `${tierFull.toUpperCase()} ACTIVATED — ${params.planName}`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
     `Your ${params.planName} (${params.durationDays} days) is now active until ${expiryLabel}!`,
@@ -2344,6 +2375,7 @@ export function buildProActivatedAdminEmail(params: {
   studentName: string;
   studentEmail?: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   durationDays: number;
   expiryFormatted?: string;
   expiresAtLabel?: string;
@@ -2362,18 +2394,28 @@ export function buildProActivatedAdminEmail(params: {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.activatedAt);
   const expiryLabel = params.expiresAtLabel || params.expiryFormatted || 'Active';
+  const isPlusTier =
+    params.planTier === 'plus' || String(params.planName || '').toLowerCase().includes('plus');
+  const tierShort = isPlusTier ? 'Plus' : 'Pro';
+  const tierFull = isPlusTier ? 'Boardly Plus' : 'Boardly Pro';
   const isKobanPayment =
     params.paidWith === 'kobans' ||
     (typeof params.kobansSpent === 'number' && params.kobansSpent > 0);
   const spent = isKobanPayment ? Math.abs(Math.floor(params.kobansSpent || 0)) : 0;
-  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? (isPlusTier ? 399 : 199));
   const eventLabel = formatEmailEventLabel(
-    isKobanPayment ? 'PRO_PASS_PURCHASE' : 'PRO_PASS_ACTIVATED'
+    isPlusTier
+      ? isKobanPayment
+        ? 'PLUS_PASS_PURCHASE'
+        : 'PLUS_PASS_ACTIVATED'
+      : isKobanPayment
+      ? 'PRO_PASS_PURCHASE'
+      : 'PRO_PASS_ACTIVATED'
   );
   const methodLabel = isKobanPayment
     ? 'Kobans Wallet'
     : formatPaymentMethodLabel(params.paymentMethod || 'jazzcash');
-  const txId = params.transactionId || `pro_${Date.now()}`;
+  const txId = params.transactionId || `${tierShort.toLowerCase()}_${Date.now()}`;
 
   const subject = isKobanPayment
     ? `${eventLabel}: ${params.planName} (-${spent.toLocaleString()} Kobans) by ${params.studentName || 'Student'}`
@@ -2385,9 +2427,9 @@ export function buildProActivatedAdminEmail(params: {
     subject,
     preheader,
     badgeText: eventLabel,
-    badgeColor: 'green',
+    badgeColor: isPlusTier ? 'gold' : 'green',
     heading: `${eventLabel} · ${params.studentName || 'Student'}`,
-    introHtml: `<p style="margin:0;">Boardly Pro was activated via <strong>${escapeHtml(
+    introHtml: `<p style="margin:0;">${tierFull} was activated via <strong>${escapeHtml(
       methodLabel
     )}</strong>${params.adminEmail ? ` (approved by ${escapeHtml(params.adminEmail)})` : ''}.</p>`,
     studentIdentity: {
@@ -2399,7 +2441,7 @@ export function buildProActivatedAdminEmail(params: {
     detailsRows: [
       { label: 'Event type', value: eventLabel },
       { label: 'Plan', value: `${params.planName} (${params.durationDays} days)` },
-      { label: 'Pro active until', value: expiryLabel, highlightGold: true },
+      { label: `${tierShort} active until`, value: expiryLabel, highlightGold: true },
       { label: 'Payment method', value: methodLabel },
       ...(isKobanPayment
         ? [
@@ -2471,6 +2513,7 @@ export function buildProActivatedAdminEmail(params: {
 export function buildProRequestRejectedStudentEmail(params: {
   studentName: string;
   planName: string;
+  planTier?: 'pro' | 'plus';
   amountPkr?: number;
   pkrAmount?: number;
   paymentMethod?: string;
@@ -2481,14 +2524,17 @@ export function buildProRequestRejectedStudentEmail(params: {
 }): RenderedEmailTemplate {
   const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
   const timeStr = formatPktDateTime(params.rejectedAt);
-  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? 199);
-  const subject = `Pro request rejected: ${params.planName} — Boardly`;
+  const isPlusTier =
+    params.planTier === 'plus' || String(params.planName || '').toLowerCase().includes('plus');
+  const tierShort = isPlusTier ? 'Plus' : 'Pro';
+  const pkr = Number(params.pkrAmount ?? params.amountPkr ?? (isPlusTier ? 399 : 199));
+  const subject = `${tierShort} request rejected: ${params.planName} — Boardly`;
   const preheader = `We could not verify your payment reference for ${params.planName}. See details inside.`;
 
   const html = renderBaseHtmlLayout({
     subject,
     preheader,
-    badgeText: 'Pro Request Rejected',
+    badgeText: `${tierShort} Request Rejected`,
     badgeColor: 'red',
     heading: `We could not verify your ${params.planName} request`,
     introHtml: `<p style="margin:0 0 10px 0;">Hi <strong>${escapeHtml(
@@ -2515,7 +2561,7 @@ export function buildProRequestRejectedStudentEmail(params: {
   });
 
   const text = [
-    `BOARDLY — Pro request rejected (${params.planName})`,
+    `BOARDLY — ${tierShort} request rejected (${params.planName})`,
     ``,
     `Hi ${params.studentName || 'Student'},`,
     `We could not verify your payment request for ${params.planName} (PKR ${pkr.toLocaleString()}).`,
@@ -2524,6 +2570,99 @@ export function buildProRequestRejectedStudentEmail(params: {
     ``,
     REFUND_POLICY_TEXT,
     `Submit a corrected request: ${appUrl}/dashboard/plans`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildPlanExpiryReminderEmail(params: {
+  studentName: string;
+  planTier: 'pro' | 'plus';
+  expiresAtLabel: string;
+  daysLeft: number;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const isPlus = params.planTier === 'plus';
+  const tierFull = isPlus ? 'Boardly Plus' : 'Boardly Pro';
+  const subject = `Your ${tierFull} expires in ${params.daysLeft} day${params.daysLeft === 1 ? '' : 's'} — Boardly`;
+  const preheader = `Renew ${tierFull} before ${params.expiresAtLabel} to keep uninterrupted access.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: `${tierFull} Expiring Soon`,
+    badgeColor: 'gold',
+    heading: `Your ${tierFull} expires in ${params.daysLeft} day${params.daysLeft === 1 ? '' : 's'}`,
+    introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>, your <strong>${tierFull}</strong> pass expires on <strong>${escapeHtml(
+      params.expiresAtLabel
+    )}</strong>. ${
+      isPlus
+        ? 'When Plus expires, your account automatically returns to the Free plan (5 AI Mentor credits/day). Renew early to keep 100 AI Mentor credits/day, Deep &amp; Max thinking, and unlimited mocks.'
+        : 'Renew early to keep unlimited practice tests, 50 AI Mentor credits/day, and Deep &amp; Max thinking.'
+    }</p>`,
+    detailsRows: [
+      { label: 'Current plan', value: tierFull, highlightGold: isPlus },
+      { label: 'Expires on', value: params.expiresAtLabel, highlightRed: true },
+      { label: 'Time remaining', value: `${params.daysLeft} day${params.daysLeft === 1 ? '' : 's'}` },
+    ],
+    ctaLabel: `Renew ${tierFull}`,
+    ctaUrl: `${appUrl}/dashboard/plan`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Your ${tierFull} expires in ${params.daysLeft} day${params.daysLeft === 1 ? '' : 's'}`,
+    ``,
+    `Hi ${params.studentName || 'Student'},`,
+    `Your ${tierFull} pass expires on ${params.expiresAtLabel}.`,
+    `Renew here: ${appUrl}/dashboard/plan`,
+  ].join('\n');
+
+  return { subject, preheader, html, text };
+}
+
+export function buildPlanExpiredEmail(params: {
+  studentName: string;
+  planTier: 'pro' | 'plus';
+  expiredAtLabel: string;
+  appUrl?: string;
+}): RenderedEmailTemplate {
+  const appUrl = (params.appUrl || 'https://boardly.cfd').replace(/\/+$/, '');
+  const isPlus = params.planTier === 'plus';
+  const tierFull = isPlus ? 'Boardly Plus' : 'Boardly Pro';
+  const subject = `Your ${tierFull} has ended — Boardly`;
+  const preheader = `Your ${tierFull} pass expired on ${params.expiredAtLabel}. Your account is now on Boardly Free.`;
+
+  const html = renderBaseHtmlLayout({
+    subject,
+    preheader,
+    badgeText: 'Plan Expired',
+    badgeColor: 'neutral',
+    heading: `Your ${tierFull} pass has ended`,
+    introHtml: `<p style="margin:0;">Hi <strong>${escapeHtml(
+      params.studentName || 'Student'
+    )}</strong>, your <strong>${tierFull}</strong> pass ended on <strong>${escapeHtml(
+      params.expiredAtLabel
+    )}</strong> and your account is now on <strong>Boardly Free</strong> (all your progress, streaks, and Kobans are safe). You can renew Boardly Pro or Boardly Plus anytime from Billing.</p>`,
+    detailsRows: [
+      { label: 'Previous plan', value: tierFull },
+      { label: 'Current plan', value: 'Boardly Free' },
+      { label: 'Ended on', value: params.expiredAtLabel },
+    ],
+    ctaLabel: 'Renew Plan',
+    ctaUrl: `${appUrl}/dashboard/plan`,
+    appUrl,
+  });
+
+  const text = [
+    `BOARDLY — Your ${tierFull} pass has ended`,
+    ``,
+    `Hi ${params.studentName || 'Student'},`,
+    `Your ${tierFull} pass ended on ${params.expiredAtLabel}. Your account is now on Boardly Free.`,
+    `Renew anytime: ${appUrl}/dashboard/plan`,
   ].join('\n');
 
   return { subject, preheader, html, text };

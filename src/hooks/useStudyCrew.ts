@@ -25,6 +25,9 @@ export interface CrewMember {
   questionsSolved?: number;
   streak?: number;
   isPro?: boolean;
+  isPlus?: boolean;
+  plan?: 'free' | 'pro' | 'plus';
+  planTier?: 'free' | 'pro' | 'plus';
   proBadge?: string | null;
   avatarKey?: string;
   avatarVariant?: string;
@@ -51,6 +54,8 @@ export interface CrewDoc {
   isLocked: boolean;
   streak: number;
   hasProMember?: boolean;
+  hasPlusMember?: boolean;
+  effectivePlan?: 'free' | 'pro' | 'plus';
   weakChapters?: { chapter: string; errorCount: number }[];
   tier?: 'free' | 'paid';
   paid_until?: string | null;
@@ -71,21 +76,36 @@ export function generateCrewCode(): string {
 }
 
 function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
-  const mappedMembers: CrewMember[] = members.map((m) => ({
-    uid: m.userUid,
-    displayName: m.userName || 'Student',
-    email: m.userEmail || '',
-    joinedAt: new Date(m.joinedAt || Date.now()).toISOString(),
-    role: m.role === 'captain' ? 'leader' : 'member',
-    status: m.status,
-    activeToday: true,
-    questionsSolved: 0,
-    streak: 1,
-    isPro: true,
-    proBadge: (m as any).proBadge || null,
-  }));
+  const mappedMembers: CrewMember[] = members.map((m) => {
+    const rawBadge = (m as any).proBadge || null;
+    const isPlusMember =
+      (m as any).plan === 'plus' ||
+      (m as any).planTier === 'plus' ||
+      Boolean((m as any).isPlus) ||
+      (typeof rawBadge === 'string' && rawBadge.startsWith('plus:'));
+    return {
+      uid: m.userUid,
+      displayName: m.userName || 'Student',
+      email: m.userEmail || '',
+      joinedAt: new Date(m.joinedAt || Date.now()).toISOString(),
+      role: m.role === 'captain' ? 'leader' : 'member',
+      status: m.status,
+      activeToday: true,
+      questionsSolved: 0,
+      streak: 1,
+      isPro: true,
+      isPlus: isPlusMember,
+      plan: isPlusMember ? 'plus' : 'pro',
+      planTier: isPlusMember ? 'plus' : 'pro',
+      proBadge: rawBadge,
+    };
+  });
 
   if (mappedMembers.length === 0) {
+    const rawCrewBadge = (crew as any).proBadge || null;
+    const crewIsPlus =
+      (crew as any).effectivePlan === 'plus' ||
+      (typeof rawCrewBadge === 'string' && rawCrewBadge.startsWith('plus:'));
     mappedMembers.push({
       uid: crew.captainUid,
       displayName: crew.captainName || 'Captain',
@@ -97,9 +117,17 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       questionsSolved: 0,
       streak: 1,
       isPro: true,
-      proBadge: (crew as any).proBadge || null,
+      isPlus: crewIsPlus,
+      plan: crewIsPlus ? 'plus' : 'pro',
+      planTier: crewIsPlus ? 'plus' : 'pro',
+      proBadge: rawCrewBadge,
     });
   }
+
+  const hasPlusMember =
+    mappedMembers.some((m) => m.isPlus || m.plan === 'plus') ||
+    (crew as any).effectivePlan === 'plus' ||
+    Boolean((crew as any).hasPlusMember);
 
   return {
     id: crew.id,
@@ -116,6 +144,8 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     isLocked: crew.status === 'suspended',
     streak: 1,
     hasProMember: true,
+    hasPlusMember,
+    effectivePlan: hasPlusMember ? 'plus' : 'pro',
     weakChapters: [],
     tier: 'paid',
     createdAt: crew.createdAt,

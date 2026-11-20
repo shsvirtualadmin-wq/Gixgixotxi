@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
-  CalendarClock,
   Check,
+  CheckCircle2,
   Clock,
   Crown,
   Palette,
@@ -16,14 +16,15 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useWallet } from '@/hooks/useWallet';
 import { useAiCredits } from '@/hooks/useAiCredits';
 import {
-  PLANS,
   REFUND_POLICY_TEXT,
-  ANNUAL_SAVINGS_PERCENT,
-  PLAN_COMPARISON_ROWS,
+  buildPlansCatalog,
+  buildPlanComparisonRows,
   computeExtendedProExpiry,
+  evaluatePlanPurchaseEligibility,
   type ProPlanId,
 } from '@/config/plans';
 import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
@@ -47,6 +48,7 @@ export function PlansBillingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile } = useUserProfile();
+  const { config: plansConfig } = usePlansConfig();
   const {
     plan: currentPlan,
     source,
@@ -58,12 +60,15 @@ export function PlansBillingPage() {
   const { kobanBalance, balanceLoaded, refreshWallet } = useWallet();
   const aiCredits = useAiCredits();
 
+  const catalog = useMemo(() => buildPlansCatalog(plansConfig), [plansConfig]);
+  const comparisonRows = useMemo(() => buildPlanComparisonRows(plansConfig), [plansConfig]);
+  const discountPercent = plansConfig.annualDiscountPercent;
+
   useEffect(() => {
-    if (location.hash === '#boardly-pro-card') {
+    if (location.hash === '#boardly-pro-card' || location.hash === '#boardly-plus-card') {
+      const targetId = location.hash.slice(1);
       const timer = window.setTimeout(() => {
-        document
-          .getElementById('boardly-pro-card')
-          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 120);
       return () => window.clearTimeout(timer);
     }
@@ -71,15 +76,13 @@ export function PlansBillingPage() {
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<ProPlanId>('pro_monthly');
-  const [proCardCycle, setProCardCycle] = useState<ProPlanId>('pro_monthly');
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
-  // Get Kobans modal (triggered from ProCheckoutSheet when balance is short)
   const [getKobansOpen, setGetKobansOpen] = useState(false);
   const [getKobansInitialAmount, setGetKobansInitialAmount] = useState<number | undefined>(
     undefined
   );
 
-  // SWR-cached payment requests so rows render immediately without long spinners
   const cacheKey = user?.uid ? `plans:requests:${user.uid}` : '';
   const [studentProRequests, setStudentProRequests] = useState<PaymentRequest[]>(
     () => (cacheKey ? readSwrCache<PaymentRequest[]>(cacheKey) : null) || []
@@ -109,7 +112,6 @@ export function PlansBillingPage() {
     }
   }, [user?.uid, isGuest, refreshPlanStatus]);
 
-  // Initial background SWR refresh + focus/event listeners
   useEffect(() => {
     if (!user?.uid || isGuest) return;
     void loadProRequests();
@@ -124,31 +126,62 @@ export function PlansBillingPage() {
     };
   }, [user?.uid, isGuest, loadProRequests]);
 
-  const rawExpiresAt = profile?.planExpiresAt ?? (profile as any)?.premiumExpiresAt ?? null;
-  const effectiveIsPro = planStatus.state === 'active';
+  const rawExpiresAt =
+    (profile as any)?.plusUntil ??
+    profile?.planExpiresAt ??
+    (profile as any)?.premiumExpiresAt ??
+    null;
+
   const isPendingVerification = planStatus.state === 'pending';
-  const isPurchaseLocked = effectiveIsPro || isPendingVerification;
+  const isPersonalPlus = planStatus.isPersonalPlus || planStatus.isSuperAdmin;
+  const isPersonalProOnly = planStatus.isPersonalPro && !isPersonalPlus;
 
   const pendingProRequest = useMemo(
     () =>
-      studentProRequests.find(
-        (r) => r.status === 'pending' && r.plan !== 'large_crew'
-      ) || null,
+      studentProRequests.find((r) => r.status === 'pending' && r.plan !== 'large_crew') || null,
     [studentProRequests]
   );
 
   const latestRejectedProRequest = useMemo(
     () =>
-      studentProRequests.find(
-        (r) => r.status === 'rejected' && r.plan !== 'large_crew'
-      ) || null,
+      studentProRequests.find((r) => r.status === 'rejected' && r.plan !== 'large_crew') || null,
     [studentProRequests]
   );
 
-  const activeProOption = PLANS[proCardCycle];
+  const activeProPlanId: ProPlanId = billingCycle === 'annual' ? 'pro_annual' : 'pro_monthly';
+  const activePlusPlanId: ProPlanId = billingCycle === 'annual' ? 'plus_annual' : 'plus_monthly';
+  const activeProOption = catalog[activeProPlanId];
+  const activePlusOption = catalog[activePlusPlanId];
+
+  const proEligibility = useMemo(
+    () => evaluatePlanPurchaseEligibility(planStatus, activeProPlanId, plansConfig),
+    [planStatus, activeProPlanId, plansConfig]
+  );
+  const plusEligibility = useMemo(
+    () => evaluatePlanPurchaseEligibility(planStatus, activePlusPlanId, plansConfig),
+    [planStatus, activePlusPlanId, plansConfig]
+  );
+
   const activeProExpiryPreview = useMemo(
     () => computeExtendedProExpiry(rawExpiresAt, activeProOption.duration_days),
     [rawExpiresAt, activeProOption.duration_days]
+  );
+
+  const activePlusExpiryPreview = useMemo(
+    () =>
+      computeExtendedProExpiry(
+        rawExpiresAt,
+        activePlusOption.duration_days,
+        Date.now(),
+        plusEligibility.extraPlusDays,
+        plusEligibility.isUpgradeFromProToPlus
+      ),
+    [
+      rawExpiresAt,
+      activePlusOption.duration_days,
+      plusEligibility.extraPlusDays,
+      plusEligibility.isUpgradeFromProToPlus,
+    ]
   );
 
   const handleBack = () => {
@@ -168,10 +201,18 @@ export function PlansBillingPage() {
     );
   }
 
-  const openProCheckout = (plan: ProPlanId) => {
-    if (isPurchaseLocked) return;
-    setSelectedCheckoutPlan(plan);
+  const openCheckout = (planId: ProPlanId) => {
+    const check = evaluatePlanPurchaseEligibility(planStatus, planId, plansConfig);
+    if (!check.allowed) return;
+    setSelectedCheckoutPlan(planId);
     setCheckoutOpen(true);
+  };
+
+  const scrollToPlusCard = () => {
+    document.getElementById('boardly-plus-card')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
   };
 
   const displayName = getDisplayName(
@@ -183,18 +224,22 @@ export function PlansBillingPage() {
     'Student'
   );
 
-  const proLockHelperText = planStatus.expiryFormatted
-    ? `New purchases are locked while your membership is active. You can renew after ${planStatus.expiryFormatted}.`
-    : 'New purchases are locked while your membership is active.';
+  const aiPlanLabel = aiCredits.unlimited
+    ? 'Superadmin'
+    : aiCredits.plan === 'plus'
+    ? 'Boardly Plus'
+    : aiCredits.plan === 'pro'
+    ? 'Boardly Pro'
+    : 'Free';
 
   return (
     <SettingsPage title="Plans and billing" onBack={handleBack}>
       <PageMeta
         title="Plans and billing — Boardly"
-        description="Manage your Boardly Pro subscription, Kobans balance, and study plans."
+        description="Manage your Boardly Pro and Boardly Plus subscription, Kobans balance, and study plans."
       />
 
-      {/* Inline Retry Error Banner (8s timeout / network error) */}
+      {/* Inline Retry Error Banner */}
       {requestsError && (
         <div
           role="alert"
@@ -227,28 +272,7 @@ export function PlansBillingPage() {
       )}
 
       {/* 1. YOUR PLAN */}
-      {effectiveIsPro ? (
-        <SettingsGroup label="Your plan" helperText={proLockHelperText}>
-          <SettingsRow
-            icon={<Crown />}
-            label="Active plan"
-            value={planStatus.planName}
-            chevron="none"
-          />
-          <SettingsRow
-            icon={<CalendarClock />}
-            label="Expires"
-            value={planStatus.expiryDateTimeFormatted || planStatus.expiryFormatted || 'Active'}
-            chevron="none"
-          />
-          <SettingsRow
-            icon={<Clock />}
-            label="Time remaining"
-            value={planStatus.timeLeftLabel || 'Active'}
-            chevron="none"
-          />
-        </SettingsGroup>
-      ) : isPendingVerification ? (
+      {isPendingVerification ? (
         <SettingsGroup
           label="Your plan"
           helperText="Payments are verified manually and plans are activated within 24 hours. New purchases are locked while verification is pending."
@@ -282,7 +306,7 @@ export function PlansBillingPage() {
           )}
         </SettingsGroup>
       ) : (
-        <section className="mb-6">
+        <section className="mb-6" data-testid="your-plan-card">
           <h2
             className="mb-2 pl-4 text-[14px] font-medium leading-snug"
             style={{ color: 'var(--text-muted)' }}
@@ -293,32 +317,90 @@ export function PlansBillingPage() {
             className="rounded-[32px] p-5"
             style={{
               backgroundColor: 'var(--card)',
-              border: '1px solid var(--border)',
+              border: isPersonalPlus
+                ? '1.5px solid rgba(245, 158, 11, 0.55)'
+                : isPersonalProOnly
+                ? '1.5px solid color-mix(in srgb, var(--accent) 45%, transparent)'
+                : '1px solid var(--border)',
               boxShadow: 'var(--settings-card-shadow)',
             }}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
-                  {isCrew ? planStatus.planName : 'Free tier'}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isPersonalPlus ? (
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-sm">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </span>
+                  ) : isPersonalProOnly ? (
+                    <Crown className="h-5 w-5 shrink-0" style={{ color: 'var(--accent)' }} />
+                  ) : null}
+                  <div className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                    {isPersonalPlus
+                      ? planStatus.isSuperAdmin
+                        ? 'Boardly Plus (Superadmin)'
+                        : 'Boardly Plus'
+                      : isPersonalProOnly
+                      ? 'Boardly Pro'
+                      : isCrew
+                      ? planStatus.planName
+                      : 'Free tier'}
+                  </div>
                 </div>
                 <p className="mt-1 text-[14px] leading-snug" style={{ color: 'var(--text-muted)' }}>
-                  2 practice tests/day, 10 questions/test
+                  {isPersonalPlus
+                    ? planStatus.isSuperAdmin
+                      ? 'Unlimited Superadmin access · All Pro & Plus features unlocked'
+                      : `Active until ${planStatus.expiryFormatted || 'Active'}${
+                          planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : ''
+                        }`
+                    : isPersonalProOnly
+                    ? `Active until ${planStatus.expiryFormatted || 'Active'}${
+                        planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : ''
+                      }`
+                    : isCrew
+                    ? `${
+                        currentPlan === 'plus'
+                          ? `${plansConfig.plus.aiCreditsPerDay} AI credits/day via crew`
+                          : `${plansConfig.pro.aiCreditsPerDay} AI credits/day via crew`
+                      }`
+                    : `2 practice tests/day · ${plansConfig.free.aiCreditsPerDay} AI Mentor credits/day`}
                 </p>
               </div>
               <span
                 className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
-                style={{
-                  backgroundColor: 'var(--bg)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text-muted)',
-                }}
+                style={
+                  isPersonalPlus
+                    ? {
+                        background:
+                          'linear-gradient(135deg, rgba(217, 119, 6, 0.16), rgba(245, 158, 11, 0.22))',
+                        border: '1px solid rgba(245, 158, 11, 0.45)',
+                        color: 'var(--koban)',
+                      }
+                    : isPersonalProOnly
+                    ? {
+                        backgroundColor: 'var(--accent-soft)',
+                        border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
+                        color: 'var(--accent)',
+                      }
+                    : {
+                        backgroundColor: 'var(--bg)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text-muted)',
+                      }
+                }
               >
-                Current
+                {isPersonalPlus
+                  ? 'Plus'
+                  : isPersonalProOnly
+                  ? 'Pro'
+                  : isCrew
+                  ? 'Crew'
+                  : 'Current'}
               </span>
             </div>
 
-            {latestRejectedProRequest && (
+            {latestRejectedProRequest && !isPersonalPlus && !isPersonalProOnly && (
               <div
                 className="mt-3 rounded-2xl px-3.5 py-2.5 text-[13px]"
                 style={{
@@ -332,15 +414,71 @@ export function PlansBillingPage() {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => openProCheckout(proCardCycle)}
-              className="mt-4 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>Upgrade to Pro</span>
-            </button>
+            {/* Action row per plan tier */}
+            {isPersonalPlus ? (
+              <div
+                className="mt-4 flex items-center justify-between gap-2 rounded-2xl px-4 py-3 text-[13px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: 'var(--text)',
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-amber-500 shrink-0" />
+                  <span>
+                    {planStatus.isSuperAdmin
+                      ? 'Active · Unlimited'
+                      : `Active until ${planStatus.expiryFormatted || 'Active'}`}
+                  </span>
+                </span>
+                <span className="text-[12px] font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Highest tier
+                </span>
+              </div>
+            ) : isPersonalProOnly ? (
+              <div className="mt-4 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => openCheckout(activePlusPlanId)}
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Upgrade to Plus</span>
+                </button>
+                <p className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                  Your unused Pro days are credited to Plus
+                  {plusEligibility.extraPlusDays > 0
+                    ? ` (+${plusEligibility.extraPlusDays} bonus Plus ${
+                        plusEligibility.extraPlusDays === 1 ? 'day' : 'days'
+                      })`
+                    : ''}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => openCheckout(activeProPlanId)}
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  <Zap className="h-4 w-4" />
+                  <span>Upgrade to Pro</span>
+                </button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={scrollToPlusCard}
+                    className="text-[13px] font-semibold underline underline-offset-4 cursor-pointer"
+                    style={{ color: 'var(--koban)' }}
+                  >
+                    See Plus ({plansConfig.plus.aiCreditsPerDay} AI credits/day)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -363,19 +501,32 @@ export function PlansBillingPage() {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 shrink-0" style={{ color: 'var(--accent)' }} />
+              <div className="flex items-center gap-2 flex-wrap">
+                <Sparkles
+                  className="h-4 w-4 shrink-0"
+                  style={{ color: aiCredits.plan === 'plus' ? 'var(--koban)' : 'var(--accent)' }}
+                />
                 <span className="text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
                   {aiCredits.unlimited
                     ? 'Unlimited credits'
                     : `${aiCredits.remaining} of ${aiCredits.limit} credits left`}
+                </span>
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    color: aiCredits.plan === 'plus' ? 'var(--koban)' : 'var(--text-muted)',
+                  }}
+                >
+                  {aiPlanLabel}
                 </span>
               </div>
               <p className="mt-1 text-[13px] leading-snug" style={{ color: 'var(--text-muted)' }}>
                 {aiCredits.unlimited
                   ? 'Superadmin access · Quick, Balanced, Deep & Max unlocked'
                   : `Resets in ${aiCredits.resetCountdown} (PKT) · ${
-                      aiCredits.plan === 'pro'
+                      aiCredits.plan === 'plus' || aiCredits.plan === 'pro'
                         ? 'Quick, Balanced, Deep & Max unlocked'
                         : 'Quick & Balanced unlocked'
                     }`}
@@ -406,10 +557,16 @@ export function PlansBillingPage() {
                     ? 100
                     : Math.max(
                         0,
-                        Math.min(100, Math.round((aiCredits.remaining / Math.max(1, aiCredits.limit)) * 100))
+                        Math.min(
+                          100,
+                          Math.round((aiCredits.remaining / Math.max(1, aiCredits.limit)) * 100)
+                        )
                       )
                 }%`,
-                backgroundColor: 'var(--accent)',
+                background:
+                  aiCredits.plan === 'plus'
+                    ? 'linear-gradient(90deg, #D97706, #F59E0B)'
+                    : 'var(--accent)',
               }}
             />
           </div>
@@ -421,7 +578,7 @@ export function PlansBillingPage() {
         <SettingsRow
           leadingElement={<KobanIcon size={24} decorative />}
           label="Kobans balance"
-          subtitle="Use Kobans for instant Boardly Pro activation"
+          subtitle="Use Kobans for instant Boardly Pro or Plus activation"
           chevron="none"
           rightElement={
             <span
@@ -452,8 +609,8 @@ export function PlansBillingPage() {
         />
       </SettingsGroup>
 
-      {/* 3. CHOOSE A PLAN (Hidden for active Pro & pending users so purchase actions stay locked) */}
-      {!isPurchaseLocked && (
+      {/* 3. CHOOSE A PLAN */}
+      {!isPendingVerification && (
         <section className="mb-6 space-y-4">
           <h2
             className="mb-2 pl-4 text-[14px] font-medium leading-snug"
@@ -462,7 +619,7 @@ export function PlansBillingPage() {
             Choose a plan
           </h2>
 
-          {/* Monthly | Annual (-25%) segmented pill */}
+          {/* Monthly | Annual (-25%) segmented pill controlling BOTH Pro and Plus cards */}
           <div
             role="tablist"
             aria-label="Billing cycle"
@@ -476,11 +633,11 @@ export function PlansBillingPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={proCardCycle === 'pro_monthly'}
-              onClick={() => setProCardCycle('pro_monthly')}
+              aria-selected={billingCycle === 'monthly'}
+              onClick={() => setBillingCycle('monthly')}
               className="min-h-[44px] rounded-full px-4 text-[14px] font-semibold transition-colors cursor-pointer"
               style={
-                proCardCycle === 'pro_monthly'
+                billingCycle === 'monthly'
                   ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
                   : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
               }
@@ -490,22 +647,23 @@ export function PlansBillingPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={proCardCycle === 'pro_annual'}
-              onClick={() => setProCardCycle('pro_annual')}
+              aria-selected={billingCycle === 'annual'}
+              onClick={() => setBillingCycle('annual')}
               className="min-h-[44px] rounded-full px-4 text-[14px] font-semibold transition-colors cursor-pointer"
               style={
-                proCardCycle === 'pro_annual'
+                billingCycle === 'annual'
                   ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
                   : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
               }
             >
-              Annual (−{ANNUAL_SAVINGS_PERCENT}%)
+              Annual (−{discountPercent}%)
             </button>
           </div>
 
           {/* Boardly Pro Card */}
           <div
             id="boardly-pro-card"
+            data-testid="boardly-pro-card"
             className="rounded-[32px] p-5"
             style={{
               backgroundColor: 'var(--card)',
@@ -522,8 +680,8 @@ export function PlansBillingPage() {
                   </h3>
                 </div>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  {proCardCycle === 'pro_annual'
-                    ? `Annual pass · ${activeProOption.duration_days} days · Save ${ANNUAL_SAVINGS_PERCENT}%`
+                  {billingCycle === 'annual'
+                    ? `Annual pass · ${activeProOption.duration_days} days · Save ${discountPercent}%`
                     : `Monthly pass · ${activeProOption.duration_days} days`}
                 </p>
               </div>
@@ -534,7 +692,7 @@ export function PlansBillingPage() {
                   color: 'var(--accent)',
                 }}
               >
-                {proCardCycle === 'pro_annual' ? `Save ${ANNUAL_SAVINGS_PERCENT}%` : 'Popular'}
+                {billingCycle === 'annual' ? `Popular · Save ${discountPercent}%` : 'Popular'}
               </span>
             </div>
 
@@ -547,7 +705,10 @@ export function PlansBillingPage() {
               }}
             >
               <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="text-[26px] font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+                <span
+                  className="text-[26px] font-bold tabular-nums"
+                  style={{ color: 'var(--text)' }}
+                >
                   PKR {activeProOption.price_pkr.toLocaleString()}
                 </span>
                 <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
@@ -564,7 +725,10 @@ export function PlansBillingPage() {
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
-                <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'var(--koban)' }}>
+                <span
+                  className="inline-flex items-center gap-1.5 font-semibold"
+                  style={{ color: 'var(--koban)' }}
+                >
                   <KobanIcon size={15} decorative />
                   <span>{activeProOption.price_kobans.toLocaleString()} Kobans</span>
                 </span>
@@ -595,19 +759,228 @@ export function PlansBillingPage() {
               ))}
             </ul>
 
-            <button
-              type="button"
-              onClick={() => openProCheckout(proCardCycle)}
-              className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              <Zap className="h-4 w-4" />
-              <span>
-                {proCardCycle === 'pro_annual'
-                  ? `Get Annual Pass · PKR ${PLANS.pro_annual.price_pkr.toLocaleString()}`
-                  : `Upgrade to Pro · PKR ${PLANS.pro_monthly.price_pkr}/mo`}
+            {isPersonalPlus ? (
+              <div
+                className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 text-amber-500" />
+                <span>Included in Plus</span>
+              </div>
+            ) : isPersonalProOnly ? (
+              <div
+                className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <span>Current plan</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={!proEligibility.allowed}
+                onClick={() => openCheckout(activeProPlanId)}
+                className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                <Zap className="h-4 w-4" />
+                <span>
+                  {billingCycle === 'annual'
+                    ? `Upgrade to Pro · PKR ${activeProOption.price_pkr.toLocaleString()}/yr`
+                    : `Upgrade to Pro · PKR ${activeProOption.price_pkr}/mo`}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Boardly Plus Card — directly after Boardly Pro */}
+          <div
+            id="boardly-plus-card"
+            data-testid="boardly-plus-card"
+            className="rounded-[32px] p-5 relative overflow-hidden"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1.5px solid rgba(245, 158, 11, 0.72)',
+              boxShadow: 'var(--settings-card-shadow)',
+            }}
+          >
+            {/* Subtle amber/gold top accent glow readable in light and dark */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 top-0 h-1.5"
+              style={{
+                background: 'linear-gradient(90deg, #D97706 0%, #F59E0B 50%, #FBBF24 100%)',
+              }}
+            />
+
+            <div className="flex items-start justify-between gap-3 pt-1">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #D97706 0%, #F59E0B 60%, #FBBF24 100%)',
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
+                    Boardly Plus
+                  </h3>
+                </div>
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  {billingCycle === 'annual'
+                    ? `Annual pass · ${activePlusOption.duration_days} days · Save ${discountPercent}%`
+                    : `Monthly pass · ${activePlusOption.duration_days} days`}
+                </p>
+              </div>
+              <span
+                className="shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(217, 119, 6, 0.16), rgba(245, 158, 11, 0.24))',
+                  border: '1px solid rgba(245, 158, 11, 0.45)',
+                  color: 'var(--koban)',
+                }}
+              >
+                {billingCycle === 'annual' ? `Best value · Save ${discountPercent}%` : 'Best value'}
               </span>
-            </button>
+            </div>
+
+            {/* Pricing & Koban Equivalent */}
+            <div
+              className="mt-4 rounded-2xl p-4 space-y-2"
+              style={{
+                backgroundColor: 'var(--bg)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+              }}
+            >
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span
+                  className="text-[26px] font-bold tabular-nums"
+                  style={{ color: 'var(--text)' }}
+                >
+                  PKR {activePlusOption.price_pkr.toLocaleString()}
+                </span>
+                <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                  {activePlusOption.cadenceLabel}
+                </span>
+                {activePlusOption.regular_price_pkr && (
+                  <span
+                    className="text-[13px] line-through tabular-nums"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    PKR {activePlusOption.regular_price_pkr.toLocaleString()}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                <span
+                  className="inline-flex items-center gap-1.5 font-semibold"
+                  style={{ color: 'var(--koban)' }}
+                >
+                  <KobanIcon size={15} decorative />
+                  <span>{activePlusOption.price_kobans.toLocaleString()} Kobans</span>
+                </span>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {activePlusOption.duration_days}
+                  {plusEligibility.extraPlusDays > 0 ? `+${plusEligibility.extraPlusDays}` : ''} days · Active until{' '}
+                  <strong style={{ color: 'var(--text)' }}>
+                    {activePlusExpiryPreview.newExpiryLabel}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Plus Feature List */}
+            <ul className="mt-4 space-y-2.5">
+              {activePlusOption.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2.5 text-[14px] leading-snug"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <Check
+                    className="mt-0.5 h-4 w-4 shrink-0 text-amber-500"
+                    strokeWidth={2.4}
+                  />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            {planStatus.isSuperAdmin ? (
+              <div
+                className="mt-5 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                <CheckCircle2 className="h-4 w-4 text-amber-500" />
+                <span>Active · Superadmin</span>
+              </div>
+            ) : isPersonalPlus ? (
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => openCheckout(activePlusPlanId)}
+                  className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>
+                    {billingCycle === 'annual'
+                      ? `Extend Plus · PKR ${activePlusOption.price_pkr.toLocaleString()}/yr`
+                      : `Extend Plus · PKR ${activePlusOption.price_pkr}/mo`}
+                  </span>
+                </button>
+                <p className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                  Active until {planStatus.expiryFormatted || 'Active'} · Extending adds days onto
+                  your current Plus pass
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  disabled={!plusEligibility.allowed}
+                  onClick={() => openCheckout(activePlusPlanId)}
+                  className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>
+                    {billingCycle === 'annual'
+                      ? `Upgrade to Plus · PKR ${activePlusOption.price_pkr.toLocaleString()}/yr`
+                      : `Upgrade to Plus · PKR ${activePlusOption.price_pkr}/mo`}
+                  </span>
+                </button>
+                {isPersonalProOnly && (
+                  <p
+                    className="text-center text-[12px] font-medium"
+                    style={{ color: 'var(--koban)' }}
+                  >
+                    Your unused Pro days are credited to Plus
+                    {plusEligibility.extraPlusDays > 0
+                      ? ` (+${plusEligibility.extraPlusDays} extra ${
+                          plusEligibility.extraPlusDays === 1 ? 'day' : 'days'
+                        })`
+                      : ''}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Nakama Crew Card */}
@@ -624,11 +997,11 @@ export function PlansBillingPage() {
                 <div className="flex items-center gap-2">
                   <Users className="h-5 w-5" style={{ color: 'var(--text)' }} />
                   <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
-                    {PLANS.crew.name}
+                    {catalog.crew.name}
                   </h3>
                 </div>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  {PLANS.crew.description}
+                  {catalog.crew.description}
                 </p>
               </div>
               <span
@@ -644,7 +1017,7 @@ export function PlansBillingPage() {
             </div>
 
             <ul className="mt-4 space-y-2">
-              {PLANS.crew.features.map((feature) => (
+              {catalog.crew.features.map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -687,10 +1060,10 @@ export function PlansBillingPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
-                  {PLANS.free.name}
+                  {catalog.free.name}
                 </h3>
                 <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  PKR 0 / forever · {PLANS.free.description}
+                  PKR 0 / forever · {catalog.free.description}
                 </p>
               </div>
               <span
@@ -706,7 +1079,7 @@ export function PlansBillingPage() {
             </div>
 
             <ul className="mt-4 space-y-2">
-              {PLANS.free.features.map((feature) => (
+              {catalog.free.features.map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -721,8 +1094,8 @@ export function PlansBillingPage() {
         </section>
       )}
 
-      {/* 4. COMPARE PLANS (Stacked readable feature rows — no cramped 4-column table) */}
-      <section className="mb-6">
+      {/* 4. COMPARE PLANS — 4 tiles per block (Free, Pro red accent, Plus amber/gold accent, Crew) */}
+      <section className="mb-6" data-testid="compare-plans-section">
         <h2
           className="mb-2 pl-4 text-[14px] font-medium leading-snug"
           style={{ color: 'var(--text-muted)' }}
@@ -737,12 +1110,12 @@ export function PlansBillingPage() {
             boxShadow: 'var(--settings-card-shadow)',
           }}
         >
-          {PLAN_COMPARISON_ROWS.map((row, idx) => (
+          {comparisonRows.map((row, idx) => (
             <div
               key={row.feature}
               className="px-5 py-4"
               style={
-                idx < PLAN_COMPARISON_ROWS.length - 1
+                idx < comparisonRows.length - 1
                   ? { borderBottom: '1px solid var(--border)' }
                   : undefined
               }
@@ -750,7 +1123,7 @@ export function PlansBillingPage() {
               <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
                 {row.feature}
               </div>
-              <div className="mt-2.5 grid grid-cols-3 gap-2">
+              <div className="mt-2.5 grid grid-cols-2 md:grid-cols-4 gap-2">
                 <div
                   className="rounded-2xl px-3 py-2"
                   style={{
@@ -765,6 +1138,7 @@ export function PlansBillingPage() {
                     {row.free}
                   </div>
                 </div>
+
                 <div
                   className="rounded-2xl px-3 py-2"
                   style={{
@@ -779,6 +1153,27 @@ export function PlansBillingPage() {
                     {row.pro}
                   </div>
                 </div>
+
+                <div
+                  className="rounded-2xl px-3 py-2"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(245, 158, 11, 0.16))',
+                    border: '1px solid rgba(245, 158, 11, 0.42)',
+                  }}
+                >
+                  <div
+                    className="text-[11px] font-semibold inline-flex items-center gap-1"
+                    style={{ color: 'var(--koban)' }}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    <span>Plus</span>
+                  </div>
+                  <div className="mt-0.5 text-[13px] font-semibold" style={{ color: 'var(--text)' }}>
+                    {row.plus}
+                  </div>
+                </div>
+
                 <div
                   className="rounded-2xl px-3 py-2"
                   style={{
@@ -813,7 +1208,7 @@ export function PlansBillingPage() {
         </p>
       </section>
 
-      {/* Dedicated Pro Checkout Sheet (uses SettingsSheet) */}
+      {/* Dedicated Pro / Plus Checkout Sheet */}
       <ProCheckoutSheet
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
@@ -837,7 +1232,7 @@ export function PlansBillingPage() {
         onStartPracticing={() => navigate('/practice')}
       />
 
-      {/* Get Kobans Modal (triggered when user clicks "Get Kobans" on low balance) */}
+      {/* Get Kobans Modal */}
       <GetKobansModal
         isOpen={getKobansOpen}
         onClose={() => {

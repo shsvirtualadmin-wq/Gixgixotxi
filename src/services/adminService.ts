@@ -51,7 +51,20 @@ import {
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 import { formatPaymentMethodLabel } from '@/constants/branding';
-import { computeExtendedProExpiry, getProPlanById } from '@/config/plans';
+import { computeExtendedProExpiry, getProPlanById, buildPlansCatalog } from '@/config/plans';
+import {
+  getPlan,
+  planRank,
+  normalizePlanTier,
+  computeProToPlusCreditDays,
+  getPlanTierFromPlanId,
+  getBillingFromPlanId,
+  getPlanDisplayName,
+  parsePlanExpiryMs,
+  type PlanTier,
+  type PaidPlanId,
+} from '@/lib/planTier';
+import { fetchPlansConfigOnce } from '@/hooks/usePlansConfig';
 import {
   notifyApplicationDecision,
   notifyKobanPurchaseApproved,
@@ -159,7 +172,10 @@ export interface AdminStats {
   totalUsers: number;
   studentCount?: number | null;
   captainCount?: number | null;
+  freeCount?: number | null;
   proCount?: number | null;
+  plusCount?: number | null;
+  expiringSoonCount?: number | null;
   guestCount?: number | null;
   adminCount?: number;
   twoFactorEnabledCount?: number;
@@ -250,7 +266,10 @@ export interface CachedAdminUsersDirectory {
   totalCount: number;
   studentCount: number;
   captainCount: number;
+  freeCount?: number;
   proCount: number;
+  plusCount?: number;
+  expiringSoonCount?: number;
   guestCount: number;
   adminCount: number;
   twoFactorEnabledCount: number;
@@ -280,10 +299,15 @@ function computeUserDirectoryBreakdown(
 ) {
   let studentCount = 0;
   let captainCount = 0;
+  let freeCount = 0;
   let proCount = 0;
+  let plusCount = 0;
+  let expiringSoonCount = 0;
   let guestCount = 0;
   let adminCount = 0;
   let twoFactorEnabledCount = 0;
+  const nowMs = Date.now();
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
 
   for (const u of directoryUsers) {
     const isGuest = Boolean(u.isGuest || u.accountType === 'guest');
@@ -296,9 +320,26 @@ function computeUserDirectoryBreakdown(
     } else {
       studentCount += 1;
     }
-    if (u.plan === 'pro' || u.isPremium) {
-      proCount += 1;
+
+    if (!isGuest) {
+      const resolvedTier = getPlan(u, nowMs);
+      if (resolvedTier === 'plus') {
+        plusCount += 1;
+        const expMs = parsePlanExpiryMs((u as any).plusUntil ?? u.planExpiresAt ?? u.premiumExpiresAt);
+        if (expMs !== null && expMs > nowMs && expMs - nowMs <= sevenDaysMs) {
+          expiringSoonCount += 1;
+        }
+      } else if (resolvedTier === 'pro') {
+        proCount += 1;
+        const expMs = parsePlanExpiryMs((u as any).proUntil ?? u.planExpiresAt ?? u.premiumExpiresAt);
+        if (expMs !== null && expMs > nowMs && expMs - nowMs <= sevenDaysMs) {
+          expiringSoonCount += 1;
+        }
+      } else {
+        freeCount += 1;
+      }
     }
+
     const tf = map2fa[u.uid] || u.twoFactorStatus;
     if (tf?.twoFactorEnabled || tf?.totpEnabled || tf?.email2faEnabled) {
       twoFactorEnabledCount += 1;
@@ -309,7 +350,10 @@ function computeUserDirectoryBreakdown(
     totalCount: directoryUsers.length,
     studentCount,
     captainCount,
+    freeCount,
     proCount,
+    plusCount,
+    expiringSoonCount,
     guestCount,
     adminCount,
     twoFactorEnabledCount,
@@ -323,7 +367,10 @@ function syncCachedStatsWithUsersDirectory(dir: CachedAdminUsersDirectory) {
     totalUsers: Math.max(cachedAdminStats.totalUsers, dir.totalCount),
     studentCount: dir.studentCount,
     captainCount: dir.captainCount,
+    freeCount: dir.freeCount ?? cachedAdminStats.freeCount,
     proCount: dir.proCount,
+    plusCount: dir.plusCount ?? cachedAdminStats.plusCount,
+    expiringSoonCount: dir.expiringSoonCount ?? cachedAdminStats.expiringSoonCount,
     guestCount: dir.guestCount,
     adminCount: dir.adminCount,
     twoFactorEnabledCount: dir.twoFactorEnabledCount,
@@ -719,7 +766,10 @@ let inFlightOverviewUsersCard: Promise<{
   totalUsers: number;
   studentCount: number | null;
   captainCount: number | null;
+  freeCount: number | null;
   proCount: number | null;
+  plusCount: number | null;
+  expiringSoonCount: number | null;
   guestCount: number | null;
   previewUsers: UserProfile[];
 }> | null = null;
@@ -738,7 +788,10 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
   totalUsers: number;
   studentCount: number | null;
   captainCount: number | null;
+  freeCount: number | null;
   proCount: number | null;
+  plusCount: number | null;
+  expiringSoonCount: number | null;
   guestCount: number | null;
   previewUsers: UserProfile[];
 }> {
@@ -789,7 +842,13 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
       totalUsers,
       studentCount: resolveKnownCount(directoryState?.studentCount, srv?.stats?.studentCount),
       captainCount: resolveKnownCount(directoryState?.captainCount, srv?.stats?.captainCount),
+      freeCount: resolveKnownCount(directoryState?.freeCount, srv?.stats?.freeCount),
       proCount: resolveKnownCount(directoryState?.proCount, srv?.stats?.proCount),
+      plusCount: resolveKnownCount(directoryState?.plusCount, srv?.stats?.plusCount),
+      expiringSoonCount: resolveKnownCount(
+        directoryState?.expiringSoonCount,
+        srv?.stats?.expiringSoonCount
+      ),
       guestCount: resolveKnownCount(directoryState?.guestCount, srv?.stats?.guestCount),
       previewUsers: page?.users ?? directoryState?.users ?? [],
     };
@@ -1155,7 +1214,7 @@ export async function fetchUsersPaginated(options?: {
             : map[row.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
           map[row.uid] = summary;
           const pbEntry = proBadgesByUid[row.uid];
-          const d1Plan = row.plan === 'pro' || row.isPremium ? 'pro' : 'free';
+          const d1Plan = getPlan(row);
           const d1ExpMs = Number(row.planExpiresAt || row.plan_expires_at || 0);
           const d1ExpTimestamp =
             d1ExpMs > 0
@@ -1169,7 +1228,10 @@ export async function fetchUsersPaginated(options?: {
             name: row.displayName || row.username || '',
             role: row.role || 'student',
             plan: d1Plan,
-            isPremium: d1Plan === 'pro',
+            planTier: d1Plan,
+            isPremium: d1Plan === 'pro' || d1Plan === 'plus',
+            isPro: d1Plan === 'pro',
+            isPlus: d1Plan === 'plus',
             ...(d1ExpTimestamp ? { planExpiresAt: d1ExpTimestamp } : {}),
             suspended: Boolean(row.suspended || row.isSuspended),
             isGuest: Boolean(row.isGuest || row.accountType === 'guest'),
@@ -1246,8 +1308,9 @@ export async function fetchUsersPaginated(options?: {
           byUid.set(d1u.uid, d1u);
         } else {
           const existing = byUid.get(d1u.uid)!;
-          const mergedPlan =
-            d1u.plan === 'pro' || existing.plan === 'pro' ? 'pro' : 'free';
+          const existingTier = getPlan(existing);
+          const d1Tier = getPlan(d1u);
+          const mergedPlan = planRank(d1Tier) > planRank(existingTier) ? d1Tier : existingTier;
           const mergedRole =
             d1u.role && d1u.role !== 'student'
               ? d1u.role
@@ -1260,7 +1323,10 @@ export async function fetchUsersPaginated(options?: {
             name: existing.name || d1u.name,
             role: mergedRole,
             plan: mergedPlan,
-            isPremium: mergedPlan === 'pro',
+            planTier: mergedPlan,
+            isPremium: mergedPlan === 'pro' || mergedPlan === 'plus',
+            isPro: mergedPlan === 'pro',
+            isPlus: mergedPlan === 'plus',
             planExpiresAt: existing.planExpiresAt || d1u.planExpiresAt || null,
             suspended: existing.suspended ?? d1u.suspended ?? false,
             proBadgeDesign: (existing as any).proBadgeDesign || (d1u as any).proBadgeDesign,
@@ -1287,7 +1353,8 @@ export async function fetchUsersPaginated(options?: {
         const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
         user2faMap[u.uid] = resolved2fa;
         const pbEntry = proBadgesByUid[u.uid];
-        const isProUser = !u.isGuest && u.accountType !== 'guest' && (u.plan === 'pro' || u.isPremium);
+        const tier = u.isGuest || u.accountType === 'guest' ? 'free' : getPlan(u);
+        const isPaidUser = tier === 'pro' || tier === 'plus';
         const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
         const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
         return {
@@ -1295,7 +1362,7 @@ export async function fetchUsersPaginated(options?: {
           twoFactorStatus: resolved2fa,
           proBadgeDesign: pbDesign,
           proBadgeVisible: pbVisible,
-          proBadge: isProUser && pbVisible ? pbDesign : null,
+          proBadge: isPaidUser && pbVisible ? (tier === 'plus' ? `plus:${pbDesign}` : pbDesign) : null,
         };
       });
 
@@ -1345,7 +1412,8 @@ export async function fetchUsersPaginated(options?: {
               const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
               user2faMap[u.uid] = resolved2fa;
               const pbEntry = proBadgesByUid[u.uid];
-              const isProUser = !u.isGuest && u.accountType !== 'guest' && (u.plan === 'pro' || u.isPremium);
+              const tier = u.isGuest || u.accountType === 'guest' ? 'free' : getPlan(u);
+              const isPaidUser = tier === 'pro' || tier === 'plus';
               const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
               const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
               return {
@@ -1353,7 +1421,7 @@ export async function fetchUsersPaginated(options?: {
                 twoFactorStatus: resolved2fa,
                 proBadgeDesign: pbDesign,
                 proBadgeVisible: pbVisible,
-                proBadge: isProUser && pbVisible ? pbDesign : null,
+                proBadge: isPaidUser && pbVisible ? (tier === 'plus' ? `plus:${pbDesign}` : pbDesign) : null,
               };
             });
           } catch (sharedErr) {
@@ -1457,7 +1525,7 @@ export interface KobanStudentSearchResult {
   email: string;
   avatar: string | null;
   shortId: string;
-  plan: 'free' | 'pro';
+  plan: PlanTier;
   role: string;
   status: KobanStudentStatus;
   kobans: number;
@@ -1653,7 +1721,12 @@ export async function searchStudentsForKobans(
         email: mergedEmail,
         avatar: existing.avatar || cand.avatar,
         shortId: existing.shortId || cand.shortId || targetKey.slice(0, 5).toUpperCase(),
-        plan: existing.plan === 'pro' || cand.plan === 'pro' ? 'pro' : 'free',
+        plan:
+          existing.plan === 'plus' || cand.plan === 'plus'
+            ? 'plus'
+            : existing.plan === 'pro' || cand.plan === 'pro'
+            ? 'pro'
+            : 'free',
         role: existing.role !== 'student' ? existing.role : cand.role,
         status: mergedStatus,
         kobans,
@@ -1719,7 +1792,7 @@ export async function searchStudentsForKobans(
           'avatar'
         ) || null,
       shortId: String(data.shortId || pub.shortId || uid.slice(0, 5).toUpperCase()),
-      plan: data.plan === 'pro' || data.isPremium === true ? 'pro' : 'free',
+      plan: getPlan(data),
       role: String(data.role || 'student'),
       status,
       kobans,
@@ -1755,7 +1828,7 @@ export async function searchStudentsForKobans(
             'avatar'
           ) || null,
         shortId: String(pub.shortId || uid.slice(0, 5).toUpperCase()),
-        plan: pub.plan === 'pro' ? 'pro' : 'free',
+        plan: getPlan(pub),
         role: String(pub.role || 'student'),
         status: 'orphan',
         kobans: hasWallet ? walletMap.get(uid)! : 0,
@@ -1849,7 +1922,7 @@ export async function searchStudentsForKobans(
       email,
       avatar: sUser.avatar || null,
       shortId: uid.slice(0, 5).toUpperCase(),
-      plan: sUser.plan === 'pro' ? 'pro' : 'free',
+      plan: getPlan(sUser),
       role: sUser.role || 'student',
       status: userIdsInUsersCollection.has(uid) ? sUser.status : 'orphan',
       kobans: walletMap.get(uid) ?? sUser.kobans ?? 0,
@@ -2251,8 +2324,9 @@ export async function updateUserOverride(
     targetEmail
   );
 
-  const finalPlan: 'free' | 'pro' =
-    (serverUser?.plan ?? updates.plan ?? previous.plan) === 'pro' ? 'pro' : 'free';
+  const finalPlan: PlanTier = normalizePlanTier(
+    serverUser?.plan ?? updates.plan ?? (updates as any).planTier ?? previous.plan
+  );
   const finalRole = (serverUser?.role ?? updates.role ?? previous.role ?? 'student') as UserProfile['role'];
   const finalExpTimestamp =
     serverUser?.planExpiresAtMs && Number(serverUser.planExpiresAtMs) > 0
@@ -2269,7 +2343,12 @@ export async function updateUserOverride(
     email: targetEmail || previous.email || '',
     role: finalRole,
     plan: finalPlan,
-    isPremium: finalPlan === 'pro',
+    planTier: finalPlan,
+    isPremium: finalPlan !== 'free',
+    isPro: finalPlan === 'pro',
+    isPlus: finalPlan === 'plus',
+    proUntil: finalPlan === 'pro' ? finalExpTimestamp : null,
+    plusUntil: finalPlan === 'plus' ? finalExpTimestamp : null,
     planExpiresAt: finalExpTimestamp,
     suspended: Boolean(serverUser?.suspended ?? updates.suspended ?? previous.suspended),
   };
@@ -2285,6 +2364,123 @@ export async function updateUserOverride(
   }
 
   return mergedResult;
+}
+
+export async function bulkUpdateUsersPlan(
+  adminEmail: string,
+  targets: Array<{ uid: string; email?: string; profile?: Partial<UserProfile> }>,
+  targetPlan: PlanTier,
+  durationDays = 30
+): Promise<{ updated: number; failed: number }> {
+  let updated = 0;
+  let failed = 0;
+  const nowMs = Date.now();
+  const safeDays = Math.max(1, Math.min(1825, Math.round(durationDays)));
+  const expTimestamp =
+    targetPlan === 'free'
+      ? null
+      : Timestamp.fromMillis(nowMs + safeDays * 24 * 60 * 60 * 1000);
+
+  for (const target of targets) {
+    try {
+      const updates: Partial<UserProfile> = {
+        plan: targetPlan,
+        planTier: targetPlan,
+        isPremium: targetPlan !== 'free',
+        isPro: targetPlan === 'pro',
+        isPlus: targetPlan === 'plus',
+        premiumSource: targetPlan === 'free' ? null : 'admin_bulk_override',
+        planExpiresAt: expTimestamp,
+        premiumExpiresAt: expTimestamp,
+        proUntil: targetPlan === 'pro' ? expTimestamp : null,
+        plusUntil: targetPlan === 'plus' ? expTimestamp : null,
+      };
+      await updateUserOverride(
+        adminEmail,
+        target.uid,
+        target.email || target.profile?.email || '',
+        updates,
+        target.profile || { uid: target.uid, email: target.email || '' }
+      );
+      updated += 1;
+    } catch (err) {
+      console.warn('[AdminService] bulkUpdateUsersPlan item failed:', target.uid, err);
+      failed += 1;
+    }
+  }
+  return { updated, failed };
+}
+
+export interface PlanAnalyticsStats {
+  freeCount: number;
+  proCount: number;
+  plusCount: number;
+  expiringSoonCount: number;
+  proRevenuePkr: number;
+  plusRevenuePkr: number;
+  proToPlusConversions: number;
+}
+
+export async function fetchPlanAnalyticsStats(): Promise<PlanAnalyticsStats> {
+  const dir = getCachedAdminUsersState();
+  let freeCount = dir?.freeCount ?? 0;
+  let proCount = dir?.proCount ?? 0;
+  let plusCount = dir?.plusCount ?? 0;
+  let expiringSoonCount = dir?.expiringSoonCount ?? 0;
+
+  if (!dir) {
+    try {
+      const page = await fetchUsersPaginated({ limitCount: 50 });
+      const freshDir = getCachedAdminUsersState();
+      freeCount = freshDir?.freeCount ?? 0;
+      proCount = freshDir?.proCount ?? 0;
+      plusCount = freshDir?.plusCount ?? 0;
+      expiringSoonCount = freshDir?.expiringSoonCount ?? 0;
+      void page;
+    } catch {
+      // ignore fallback
+    }
+  }
+
+  let proRevenuePkr = 0;
+  let plusRevenuePkr = 0;
+  let proToPlusConversions = 0;
+
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'paymentRequests'), where('status', '==', 'approved'), limit(500))
+    );
+    for (const d of snap.docs) {
+      const data = d.data() as Record<string, any>;
+      if (data.plan === 'large_crew' || data.crewId) continue;
+      const tier = getPlanTierFromPlanId(data.planId || data.plan || data.planTier);
+      const amt = Math.max(0, Number(data.amount_pkr ?? data.amount ?? 0) || 0);
+      if (tier === 'plus') {
+        plusRevenuePkr += amt;
+        if (
+          data.upgradedFromPro === true ||
+          Number(data.proCreditDays ?? 0) > 0 ||
+          data.previousPlan === 'pro'
+        ) {
+          proToPlusConversions += 1;
+        }
+      } else {
+        proRevenuePkr += amt;
+      }
+    }
+  } catch (err) {
+    console.warn('[AdminService] fetchPlanAnalyticsStats paymentRequests notice:', err);
+  }
+
+  return {
+    freeCount,
+    proCount,
+    plusCount,
+    expiringSoonCount,
+    proRevenuePkr,
+    plusRevenuePkr,
+    proToPlusConversions,
+  };
 }
 
 export interface DeleteUserAccountResult {
@@ -3471,19 +3667,38 @@ export async function approvePaymentRequest(
     return;
   }
 
-  // Otherwise, personal Pro account upgrade or extension:
-  // Read student's existing user doc so if they are already Pro, we EXTEND their current expiry
+  // Otherwise, personal Pro or Plus account upgrade / extension:
   const userRef = doc(db, 'users', req.userId);
-  const userSnap = await getDoc(userRef);
+  const [userSnap, plansConfig] = await Promise.all([
+    getDoc(userRef),
+    fetchPlansConfigOnce().catch(() => null),
+  ]);
   const userData = userSnap.exists() ? userSnap.data() : null;
-  const currentExpiryRaw = userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
+  const nowMs = Date.now();
+  const existingTier = getPlan(userData, nowMs);
 
+  const rawPlanId = String((req as any).planId || req.plan || 'pro_monthly');
+  const targetTier: 'pro' | 'plus' =
+    getPlanTierFromPlanId(rawPlanId) === 'plus' || (req as any).planTier === 'plus'
+      ? 'plus'
+      : 'pro';
   const isAnnual =
-    req.plan === 'pro_annual' ||
+    getBillingFromPlanId(rawPlanId) === 'annual' ||
     req.durationDays === 365 ||
     (req.durationMonths !== undefined && req.durationMonths >= 12);
-  const resolvedPlan = getProPlanById(isAnnual ? 'pro_annual' : 'pro_monthly');
-  const durationDays =
+
+  const resolvedPlanId: PaidPlanId =
+    targetTier === 'plus'
+      ? isAnnual
+        ? 'plus_annual'
+        : 'plus_monthly'
+      : isAnnual
+        ? 'pro_annual'
+        : 'pro_monthly';
+  const catalog = plansConfig ? buildPlansCatalog(plansConfig) : null;
+  const resolvedPlan = catalog ? catalog[resolvedPlanId] : getProPlanById(resolvedPlanId);
+
+  const baseDurationDays =
     typeof req.durationDays === 'number' && req.durationDays > 0
       ? req.durationDays
       : isAnnual
@@ -3492,28 +3707,74 @@ export async function approvePaymentRequest(
   const planName = req.planName || resolvedPlan.name;
   const pkrAmount = Number(req.amount_pkr ?? req.amount ?? resolvedPlan.price_pkr);
 
-  const extension = computeExtendedProExpiry(currentExpiryRaw, durationDays);
+  let proCreditDays = 0;
+  let extension: ReturnType<typeof computeExtendedProExpiry>;
+
+  if (targetTier === 'plus' && existingTier === 'pro') {
+    // Pro -> Plus upgrade: credit unused Pro days proportionally
+    const proExpMs = parsePlanExpiryMs(
+      userData?.proUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt
+    );
+    const remainingProDays =
+      proExpMs && proExpMs > nowMs ? (proExpMs - nowMs) / (24 * 60 * 60 * 1000) : 0;
+    const proMonthlyPkr = plansConfig?.pro.pricePkrMonthly ?? 199;
+    const plusMonthlyPkr = plansConfig?.plus.pricePkrMonthly ?? 399;
+    proCreditDays = computeProToPlusCreditDays(remainingProDays, proMonthlyPkr, plusMonthlyPkr);
+    extension = computeExtendedProExpiry(null, baseDurationDays + proCreditDays, nowMs);
+  } else if (targetTier === 'plus' && existingTier === 'plus') {
+    // Plus renewal: extend from current Plus expiry
+    const currentPlusRaw =
+      userData?.plusUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
+    extension = computeExtendedProExpiry(currentPlusRaw, baseDurationDays, nowMs);
+  } else {
+    // Pro new purchase or Pro renewal
+    const currentProRaw =
+      userData?.proUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
+    extension = computeExtendedProExpiry(currentProRaw, baseDurationDays, nowMs);
+  }
+
+  const totalDurationDays = baseDurationDays + proCreditDays;
   const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
 
-  // Record computed newExpiryDate on the paymentRequest doc as well
+  // Record computed newExpiryDate & upgrade credit metadata on the paymentRequest doc
   await updateDoc(doc(db, 'paymentRequests', req.id), {
     newExpiryDate: newExpiryIso,
+    planTier: targetTier,
+    proCreditDays,
+    upgradedFromPro: targetTier === 'plus' && existingTier === 'pro',
+    previousPlan: existingTier,
   });
 
-  // 2. Upgrade or extend student account
-  await setDoc(
-    userRef,
-    {
-      plan: 'pro',
-      isPremium: true,
-      proPlanId: resolvedPlan.id,
-      premiumSource: req.method || 'payment_request',
-      premiumExpiresAt: extension.newExpiryMs,
-      planExpiresAt: newExpiryIso,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  // 2. Upgrade or extend student account (keeping legacy fields intact)
+  const userPlanPayload: Record<string, unknown> = {
+    plan: targetTier,
+    planTier: targetTier,
+    isPremium: true,
+    isPro: targetTier === 'pro',
+    isPlus: targetTier === 'plus',
+    planId: resolvedPlan.id,
+    proPlanId: resolvedPlan.id,
+    premiumSource: req.method || 'payment_request',
+    premiumExpiresAt: extension.newExpiryMs,
+    planExpiresAt: newExpiryIso,
+    updatedAt: serverTimestamp(),
+  };
+  if (targetTier === 'plus') {
+    userPlanPayload.plusUntil = newExpiryIso;
+    userPlanPayload.plusPlanId = resolvedPlan.id;
+    userPlanPayload.proUntil = null;
+  } else {
+    userPlanPayload.proUntil = newExpiryIso;
+    userPlanPayload.plusUntil = null;
+  }
+
+  await setDoc(userRef, userPlanPayload, { merge: true });
+
+  const tierTitle = getPlanDisplayName(targetTier);
+  const creditNote =
+    proCreditDays > 0
+      ? ` Includes +${proCreditDays} bonus days credited from your remaining Pro pass.`
+      : '';
 
   // 3. Send in-app notification
   await setDoc(
@@ -3521,11 +3782,13 @@ export async function approvePaymentRequest(
     {
       userId: req.userId,
       type: 'system',
-      title: extension.wasAlreadyActive ? 'Boardly Pro Extended!' : 'Boardly Pro Activated!',
+      title: extension.wasAlreadyActive
+        ? `${tierTitle} Extended!`
+        : `${tierTitle} Activated!`,
       message: `Your payment of PKR ${pkrAmount.toLocaleString()} via ${methodDisplay} (TID: ${
         req.TID || req.transactionId
-      }) was verified. Your ${planName} is active until ${extension.newExpiryLabel}.`,
-      link: '/dashboard/plans',
+      }) was verified. Your ${planName} is active until ${extension.newExpiryLabel}.${creditNote}`,
+      link: '/dashboard/plan',
       read: false,
       createdAt: serverTimestamp(),
     },
@@ -3538,7 +3801,9 @@ export async function approvePaymentRequest(
     {
       reqId: req.id,
       plan: resolvedPlan.id,
-      durationDays,
+      planTier: targetTier,
+      durationDays: totalDurationDays,
+      proCreditDays,
       amount: pkrAmount,
       method: req.method,
       transactionId: req.TID || req.transactionId,
@@ -3555,7 +3820,8 @@ export async function approvePaymentRequest(
     studentName: req.userName || userData?.displayName || userData?.name || 'Student',
     studentEmail: req.userEmail || userData?.email,
     planName,
-    durationDays,
+    planTier: targetTier,
+    durationDays: totalDurationDays,
     expiresAtLabel: extension.newExpiryLabel,
     wasExtension: extension.wasAlreadyActive,
     previousExpiryLabel: extension.previousExpiryLabel,
@@ -3585,16 +3851,41 @@ export async function rejectPaymentRequest(
     reviewedBy: adminEmail,
   });
 
-  // Notify student in-app
+  const rawPlanId = String((reqData as any).planId || reqData.plan || 'pro_monthly');
+  const targetTier: 'pro' | 'plus' =
+    getPlanTierFromPlanId(rawPlanId) === 'plus' || (reqData as any).planTier === 'plus'
+      ? 'plus'
+      : 'pro';
+  const isAnnual =
+    getBillingFromPlanId(rawPlanId) === 'annual' ||
+    reqData.durationDays === 365 ||
+    (reqData.durationMonths !== undefined && reqData.durationMonths >= 12);
+  const resolvedPlanId: PaidPlanId =
+    targetTier === 'plus'
+      ? isAnnual
+        ? 'plus_annual'
+        : 'plus_monthly'
+      : isAnnual
+        ? 'pro_annual'
+        : 'pro_monthly';
+  const resolvedPlan = getProPlanById(resolvedPlanId);
+  const planName =
+    reqData.plan === 'large_crew'
+      ? 'Large Crew Pass'
+      : reqData.planName || resolvedPlan.name;
+  const pkrAmount = Number(reqData.amount_pkr ?? reqData.amount ?? resolvedPlan.price_pkr);
+  const tierDisplay = reqData.plan === 'large_crew' ? 'Large Crew' : getPlanDisplayName(targetTier);
+
+  // Notify student in-app (never touches user's existing active plan)
   try {
     await setDoc(
       doc(db, 'notifications', `pro_reject_${reqId}`),
       {
         userId: targetUid,
         type: 'system',
-        title: 'Pro Pass Request Update',
-        message: `Your Boardly Pro payment request could not be verified: ${cleanReason}`,
-        link: '/dashboard/plans',
+        title: `${tierDisplay} Request Update`,
+        message: `Your ${tierDisplay} payment request could not be verified: ${cleanReason}`,
+        link: '/dashboard/plan',
         read: false,
         createdAt: serverTimestamp(),
       },
@@ -3607,21 +3898,10 @@ export async function rejectPaymentRequest(
   await logAdminAction(
     adminEmail,
     'reject_payment_request',
-    { reqId, reason: cleanReason },
+    { reqId, planTier: targetTier, reason: cleanReason },
     targetUid,
     targetEmail
   );
-
-  const isAnnual =
-    reqData.plan === 'pro_annual' ||
-    reqData.durationDays === 365 ||
-    (reqData.durationMonths !== undefined && reqData.durationMonths >= 12);
-  const resolvedPlan = getProPlanById(isAnnual ? 'pro_annual' : 'pro_monthly');
-  const planName =
-    reqData.plan === 'large_crew'
-      ? 'Large Crew Pass'
-      : reqData.planName || resolvedPlan.name;
-  const pkrAmount = Number(reqData.amount_pkr ?? reqData.amount ?? resolvedPlan.price_pkr);
 
   notifyProRequestRejected({
     requestId: reqId,
@@ -3629,6 +3909,7 @@ export async function rejectPaymentRequest(
     studentName: reqData.userName,
     studentEmail: targetEmail || reqData.userEmail,
     planName,
+    planTier: targetTier,
     pkrAmount,
     reason: cleanReason,
     transactionId: reqData.TID || reqData.transactionId,

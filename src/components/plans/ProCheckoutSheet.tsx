@@ -16,17 +16,19 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { SettingsSheet } from '@/components/settings/SettingsSheet';
 import {
-  PLANS,
   REFUND_POLICY_TEXT,
-  ANNUAL_SAVINGS_PERCENT,
+  buildPlansCatalog,
   getProPlanById,
   computeExtendedProExpiry,
+  evaluatePlanPurchaseEligibility,
   type ProPlanId,
 } from '@/config/plans';
+import { getPlanTierFromPlanId } from '@/lib/planTier';
 import {
   PAYMENT_METHODS_LIST,
   PAYMENT_METHODS_PAIR_LABEL,
@@ -62,9 +64,9 @@ export interface ProCheckoutSheetProps {
 }
 
 /**
- * Boardly Pro Checkout Sheet built on SettingsSheet.
- * Preserves Monthly/Annual switching, Kobans instant payment, JazzCash/Opay manual TID payment,
- * coupon validation/redemption, no-refund terms, and active/pending purchase lock.
+ * Boardly Pro & Boardly Plus Checkout Sheet built on SettingsSheet.
+ * Supports Monthly/Annual switching, Kobans instant activation, JazzCash/Opay manual TID payment,
+ * Pro-to-Plus unused Pro day credit preview, Plus renewal, coupon redemption, and Plus->Pro purchase guard.
  */
 export function ProCheckoutSheet({
   open,
@@ -83,6 +85,9 @@ export function ProCheckoutSheet({
 }: ProCheckoutSheetProps) {
   const { isGuest } = useAuth();
   const { planStatus, refreshPlanStatus } = useEffectivePlan();
+  const { config: plansConfig } = usePlansConfig();
+  const catalog = useMemo(() => buildPlansCatalog(plansConfig), [plansConfig]);
+  const discountPercent = plansConfig.annualDiscountPercent;
 
   const [selectedPlanId, setSelectedPlanId] = useState<ProPlanId>(initialPlanId);
   const [paymentOption, setPaymentOption] = useState<'kobans' | 'pkr' | null>(null);
@@ -91,7 +96,7 @@ export function ProCheckoutSheet({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => `pro_chk_${Date.now()}`);
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => `plan_chk_${Date.now()}`);
 
   // Coupon state
   const [couponInput, setCouponInput] = useState('');
@@ -101,8 +106,10 @@ export function ProCheckoutSheet({
 
   const [completedState, setCompletedState] = useState<{
     mode: 'kobans' | 'pkr';
+    planTier: 'pro' | 'plus';
     planName: string;
     durationDays: number;
+    extraCreditDays?: number;
     newExpiryLabel: string;
     wasExtension: boolean;
     previousExpiryLabel: string | null;
@@ -117,15 +124,20 @@ export function ProCheckoutSheet({
   kobanBalanceRef.current = kobanBalance;
   const balanceLoadedRef = useRef(balanceLoaded);
   balanceLoadedRef.current = balanceLoaded;
+  const plansConfigRef = useRef(plansConfig);
+  plansConfigRef.current = plansConfig;
 
-  // Reset state when sheet opens or initialPlanId changes
   useEffect(() => {
     if (open) {
       refreshPlanStatus().catch(() => {});
-      const resolvedPlan = getProPlanById(initialPlanId);
+      const resolvedPlan = getProPlanById(initialPlanId, plansConfigRef.current);
       setSelectedPlanId(resolvedPlan.id);
       const currentBal = kobanBalanceRef.current;
-      if (balanceLoadedRef.current && currentBal !== null && currentBal >= resolvedPlan.price_kobans) {
+      if (
+        balanceLoadedRef.current &&
+        currentBal !== null &&
+        currentBal >= resolvedPlan.price_kobans
+      ) {
         setPaymentOption('kobans');
       } else {
         setPaymentOption('pkr');
@@ -137,7 +149,7 @@ export function ProCheckoutSheet({
       setAppliedCoupon(null);
       setCompletedState(null);
       setIdempotencyKey(
-        `pro_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        `plan_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       );
     }
   }, [open, initialPlanId, refreshPlanStatus]);
@@ -158,7 +170,7 @@ export function ProCheckoutSheet({
     setSelectedPlanId(nextPlanId);
     setErrorMsg(null);
     setIdempotencyKey(
-      `pro_chk_${nextPlanId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      `plan_chk_${nextPlanId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     );
     if (appliedCoupon?.code) {
       setCouponLoading(true);
@@ -218,7 +230,18 @@ export function ProCheckoutSheet({
     setCouponError(null);
   };
 
-  const plan = useMemo(() => getProPlanById(selectedPlanId), [selectedPlanId]);
+  const plan = useMemo(() => getProPlanById(selectedPlanId, plansConfig), [selectedPlanId, plansConfig]);
+  const selectedTier = getPlanTierFromPlanId(plan.id);
+  const isPlusCheckout = selectedTier === 'plus';
+  const tierPlanPair: [ProPlanId, ProPlanId] = isPlusCheckout
+    ? ['plus_monthly', 'plus_annual']
+    : ['pro_monthly', 'pro_annual'];
+
+  const eligibility = useMemo(
+    () => evaluatePlanPurchaseEligibility(planStatus, plan.id, plansConfig),
+    [planStatus, plan.id, plansConfig]
+  );
+
   const effectiveDurationDays = appliedCoupon?.durationDays || plan.duration_days;
   const effectivePkr = appliedCoupon ? appliedCoupon.finalPkr : plan.price_pkr;
   const effectiveKobans = appliedCoupon ? appliedCoupon.finalKobans : plan.price_kobans;
@@ -228,8 +251,20 @@ export function ProCheckoutSheet({
   );
 
   const expiryPreview = useMemo(
-    () => computeExtendedProExpiry(currentProExpiresAt, effectiveDurationDays),
-    [currentProExpiresAt, effectiveDurationDays]
+    () =>
+      computeExtendedProExpiry(
+        currentProExpiresAt,
+        effectiveDurationDays,
+        Date.now(),
+        eligibility.extraPlusDays,
+        eligibility.isUpgradeFromProToPlus
+      ),
+    [
+      currentProExpiresAt,
+      effectiveDurationDays,
+      eligibility.extraPlusDays,
+      eligibility.isUpgradeFromProToPlus,
+    ]
   );
 
   const isBalanceReady = balanceLoaded && kobanBalance !== null;
@@ -256,8 +291,7 @@ export function ProCheckoutSheet({
   };
 
   const isLocked =
-    !completedState &&
-    (planStatus.state === 'active' || planStatus.state === 'pending' || hasPendingProRequest);
+    !completedState && (hasPendingProRequest || planStatus.state === 'pending' || !eligibility.allowed);
 
   const cleanTid = tidInput.trim();
   const isSubmitDisabled =
@@ -269,19 +303,11 @@ export function ProCheckoutSheet({
 
   const handlePrimarySubmit = async () => {
     if (!uid) {
-      setErrorMsg('Please sign in to activate Boardly Pro.');
+      setErrorMsg(`Please sign in to activate ${isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro'}.`);
       return;
     }
 
-    if (planStatus.state === 'active') {
-      setErrorMsg(
-        planStatus.blockReason ||
-          `You already have Boardly Pro (${planStatus.planName}) active until ${planStatus.expiryFormatted}. You can renew after your current plan expires.`
-      );
-      return;
-    }
-
-    if (planStatus.state === 'pending' || hasPendingProRequest) {
+    if (hasPendingProRequest || planStatus.state === 'pending') {
       setErrorMsg(
         planStatus.blockReason ||
           'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
@@ -289,23 +315,31 @@ export function ProCheckoutSheet({
       return;
     }
 
+    if (!eligibility.allowed) {
+      setErrorMsg(eligibility.reason || 'You cannot purchase this plan right now.');
+      return;
+    }
+
     setErrorMsg(null);
 
-    // Case 1: 100%-Off / Free Pro Coupon Activation
+    // Case 1: 100%-Off / Free Coupon Activation
     if (isFreeCouponActivation && appliedCoupon) {
       setSubmitting(true);
       try {
         const res = await redeemProCoupon({
+          uid,
           code: appliedCoupon.code,
           planId: plan.id,
         });
 
         setCompletedState({
           mode: 'kobans',
+          planTier: selectedTier,
           planName: res.planName || plan.name,
           durationDays: res.durationDays || effectiveDurationDays,
+          extraCreditDays: eligibility.extraPlusDays,
           newExpiryLabel: res.newExpiryLabel || expiryPreview.newExpiryLabel,
-          wasExtension: expiryPreview.wasAlreadyActive,
+          wasExtension: eligibility.isPlusRenewal,
           previousExpiryLabel: expiryPreview.previousExpiryLabel,
           kobansSpent: 0,
           balanceAfter: safeBalance,
@@ -352,8 +386,10 @@ export function ProCheckoutSheet({
 
         setCompletedState({
           mode: 'kobans',
+          planTier: res.planTier,
           planName: res.planName,
           durationDays: res.durationDays,
+          extraCreditDays: res.extraCreditDays,
           newExpiryLabel: res.newExpiryLabel,
           wasExtension: res.wasExtension,
           previousExpiryLabel: res.previousExpiryLabel,
@@ -369,7 +405,10 @@ export function ProCheckoutSheet({
           newBalance: res.balanceAfter,
         });
       } catch (err: any) {
-        setErrorMsg(err?.message || 'Could not complete Pro activation. Please try again.');
+        setErrorMsg(
+          err?.message ||
+            `Could not complete ${isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro'} activation. Please try again.`
+        );
       } finally {
         setSubmitting(false);
       }
@@ -393,10 +432,12 @@ export function ProCheckoutSheet({
 
         setCompletedState({
           mode: 'pkr',
+          planTier: selectedTier,
           planName: res.planName,
           durationDays: effectiveDurationDays,
+          extraCreditDays: eligibility.extraPlusDays,
           newExpiryLabel: expiryPreview.newExpiryLabel,
-          wasExtension: expiryPreview.wasAlreadyActive,
+          wasExtension: eligibility.isPlusRenewal,
           previousExpiryLabel: expiryPreview.previousExpiryLabel,
           pkrAmount: res.amountPkr,
           tid: res.tid,
@@ -429,11 +470,17 @@ export function ProCheckoutSheet({
         ) : isFreeCouponActivation ? (
           <>
             <Sparkles className="h-4 w-4 shrink-0" />
-            <span>Activate Pro Pass Free ({appliedCoupon?.code})</span>
+            <span>
+              Activate {isPlusCheckout ? 'Plus' : 'Pro'} Pass Free ({appliedCoupon?.code})
+            </span>
           </>
         ) : paymentOption === 'kobans' ? (
           <>
-            <Zap className="h-4 w-4 shrink-0" />
+            {isPlusCheckout ? (
+              <Sparkles className="h-4 w-4 shrink-0" />
+            ) : (
+              <Zap className="h-4 w-4 shrink-0" />
+            )}
             <span>Pay with Kobans ({effectiveKobans.toLocaleString()} Kobans)</span>
           </>
         ) : (
@@ -477,10 +524,13 @@ export function ProCheckoutSheet({
                 Instant activation
               </span>
               <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
-                Pro activated until {completedState.newExpiryLabel}
+                {completedState.planTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'} activated
+                until {completedState.newExpiryLabel}
               </h3>
               <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                {completedState.wasExtension && completedState.previousExpiryLabel
+                {completedState.extraCreditDays && completedState.extraCreditDays > 0
+                  ? `Includes +${completedState.extraCreditDays} bonus Plus days credited from your unused Pro pass.`
+                  : completedState.wasExtension && completedState.previousExpiryLabel
                   ? `Extended from ${completedState.previousExpiryLabel} to ${completedState.newExpiryLabel}.`
                   : `Your ${completedState.planName} (${completedState.durationDays} days) is now active.`}
               </p>
@@ -500,7 +550,10 @@ export function ProCheckoutSheet({
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <span style={{ color: 'var(--text-muted)' }}>Remaining balance</span>
-                  <span className="inline-flex items-center gap-1 font-semibold tabular-nums" style={{ color: 'var(--text)' }}>
+                  <span
+                    className="inline-flex items-center gap-1 font-semibold tabular-nums"
+                    style={{ color: 'var(--text)' }}
+                  >
                     <KobanIcon size={14} decorative />
                     <span>{(completedState.balanceAfter ?? 0).toLocaleString()} Kobans</span>
                   </span>
@@ -555,12 +608,17 @@ export function ProCheckoutSheet({
           </div>
         </div>
       ) : isLocked ? (
-        <div className="py-1">
+        <div className="py-1 space-y-3">
           <ProLockedStateCard planStatus={planStatus} compact />
+          {eligibility.reason && (
+            <p className="px-2 text-center text-[13px] font-medium" style={{ color: 'var(--text-muted)' }}>
+              {eligibility.reason}
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
-          {/* 1. Pass Switch (Monthly | Annual) */}
+          {/* 1. Pass Switch (Monthly | Annual for selected tier) */}
           <div
             role="tablist"
             aria-label="Choose pass duration"
@@ -570,9 +628,10 @@ export function ProCheckoutSheet({
               border: '1px solid var(--border)',
             }}
           >
-            {(['pro_monthly', 'pro_annual'] as ProPlanId[]).map((pid) => {
-              const p = PLANS[pid];
+            {tierPlanPair.map((pid) => {
+              const p = catalog[pid];
               const active = selectedPlanId === pid;
+              const isAnn = p.slug === 'annual';
               return (
                 <button
                   key={pid}
@@ -587,22 +646,40 @@ export function ProCheckoutSheet({
                       : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
                   }
                 >
-                  {pid === 'pro_annual'
-                    ? `Annual (−${ANNUAL_SAVINGS_PERCENT}%) · PKR ${p.price_pkr.toLocaleString()}`
-                    : `Monthly · PKR ${p.price_pkr}`}
+                  {isAnn
+                    ? `Annual (−${discountPercent}%) · PKR ${p.price_pkr.toLocaleString()}`
+                    : `Monthly · PKR ${p.price_pkr.toLocaleString()}`}
                 </button>
               );
             })}
           </div>
 
-          {/* 2. Summary Card */}
+          {/* 2. Summary Card (including Pro->Plus credit preview) */}
           <div
             className="overflow-hidden rounded-[24px]"
             style={{
               backgroundColor: 'var(--bg)',
-              border: '1px solid var(--border)',
+              border: isPlusCheckout
+                ? '1px solid rgba(245, 158, 11, 0.45)'
+                : '1px solid var(--border)',
             }}
           >
+            <div
+              className="flex items-center justify-between gap-3 px-4 py-3.5"
+              style={{ borderBottom: '1px solid var(--border)' }}
+            >
+              <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                Plan
+              </span>
+              <span
+                className="inline-flex items-center gap-1.5 text-right text-[14px] font-semibold"
+                style={{ color: isPlusCheckout ? 'var(--koban)' : 'var(--text)' }}
+              >
+                {isPlusCheckout && <Sparkles className="h-3.5 w-3.5" />}
+                <span>{plan.name}</span>
+              </span>
+            </div>
+
             <div
               className="flex items-center justify-between gap-3 px-4 py-3.5"
               style={{ borderBottom: '1px solid var(--border)' }}
@@ -629,6 +706,30 @@ export function ProCheckoutSheet({
               </span>
             </div>
 
+            {eligibility.isUpgradeFromProToPlus && (
+              <div
+                className="flex items-center justify-between gap-3 px-4 py-3"
+                style={{
+                  borderBottom: '1px solid var(--border)',
+                  background:
+                    'linear-gradient(135deg, rgba(217, 119, 6, 0.08), rgba(245, 158, 11, 0.12))',
+                }}
+              >
+                <span
+                  className="text-[13px] font-semibold"
+                  style={{ color: 'var(--koban)' }}
+                >
+                  Unused Pro days credit ({planStatus.daysLeft} Pro days)
+                </span>
+                <span
+                  className="text-right text-[13px] font-bold tabular-nums"
+                  style={{ color: 'var(--koban)' }}
+                >
+                  +{eligibility.extraPlusDays} Plus {eligibility.extraPlusDays === 1 ? 'day' : 'days'}
+                </span>
+              </div>
+            )}
+
             {appliedCoupon && (
               <div
                 className="flex items-center justify-between gap-3 px-4 py-3"
@@ -649,7 +750,7 @@ export function ProCheckoutSheet({
                 New expiry date
               </span>
               <span className="text-right text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                {expiryPreview.newExpiryLabel} ({effectiveDurationDays} days)
+                {expiryPreview.newExpiryLabel} ({effectiveDurationDays + eligibility.extraPlusDays} days)
               </span>
             </div>
           </div>
@@ -924,7 +1025,6 @@ export function ProCheckoutSheet({
                     className="space-y-3 border-t pt-3.5 cursor-default"
                     style={{ borderColor: 'var(--border)' }}
                   >
-                    {/* Method switch */}
                     <div className="grid grid-cols-2 gap-2">
                       {PAYMENT_METHODS_LIST.map((m) => {
                         const active = selectedPkrMethod === m.id;
@@ -955,7 +1055,6 @@ export function ProCheckoutSheet({
                       })}
                     </div>
 
-                    {/* Account Details with Copy buttons */}
                     <div
                       className="space-y-2.5 rounded-2xl p-3.5 text-[13px]"
                       style={{
@@ -975,7 +1074,10 @@ export function ProCheckoutSheet({
                           {activePkrConfig.displayName} account
                         </span>
                         <div className="flex items-center gap-1.5">
-                          <span className="font-semibold select-all tabular-nums" style={{ color: 'var(--text)' }}>
+                          <span
+                            className="font-semibold select-all tabular-nums"
+                            style={{ color: 'var(--text)' }}
+                          >
                             {activePkrConfig.accountNumber}
                           </span>
                           <button
@@ -1039,7 +1141,6 @@ export function ProCheckoutSheet({
                       </div>
                     </div>
 
-                    {/* Transaction ID pill input */}
                     <div className="space-y-1.5">
                       <label
                         htmlFor="pro-tid-input"
@@ -1086,7 +1187,6 @@ export function ProCheckoutSheet({
             </div>
           )}
 
-          {/* No-refund terms + underlined --accent links */}
           <p className="px-1 text-[12px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
             {REFUND_POLICY_TEXT} By continuing you agree to our{' '}
             <Link

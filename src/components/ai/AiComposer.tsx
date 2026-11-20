@@ -20,6 +20,7 @@ import {
   getMentorConfig,
   type AiDepthId,
   type AiMentorId,
+  type AiPlan,
 } from '@/utils/aiMentorsLogic';
 import {
   prepareImageAttachment,
@@ -37,6 +38,10 @@ interface AiComposerProps {
   dailyLimit: number;
   isUnlimited: boolean;
   isPro: boolean;
+  plan?: AiPlan;
+  resetCountdown?: string;
+  proDailyLimit?: number;
+  plusDailyLimit?: number;
   onSend: (text: string, attachments: PreparedAttachment[]) => void;
   onOpenMentorPicker: () => void;
   onOpenDepthGauge: () => void;
@@ -54,6 +59,10 @@ export const AiComposer: React.FC<AiComposerProps> = ({
   dailyLimit,
   isUnlimited,
   isPro,
+  plan = 'free',
+  resetCountdown,
+  proDailyLimit = 50,
+  plusDailyLimit = 100,
   onSend,
   onOpenMentorPicker,
   onOpenDepthGauge,
@@ -134,9 +143,25 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     const trimmed = text.trim();
     if (sending || (!trimmed && attachments.length === 0)) return;
     if (!isUnlimited && creditsLeft < costEstimate.total) {
+      if (plan === 'plus') {
+        showTempNote(
+          creditsLeft === 0
+            ? `You've used all ${dailyLimit} daily AI Mentor credits. Resets in ${resetCountdown || 'at midnight PKT'}.`
+            : `This message needs ${costEstimate.total} credits, and you have ${creditsLeft} left today. Resets in ${resetCountdown || 'at midnight PKT'}.`
+        );
+        return;
+      }
+      if (plan === 'pro') {
+        onOpenUpgrade(
+          creditsLeft === 0
+            ? `You have used all ${dailyLimit} Pro credits today. Upgrade to Plus for ${plusDailyLimit} credits/day.`
+            : `This message needs ${costEstimate.total} credits, and you have ${creditsLeft} left today. Upgrade to Plus for ${plusDailyLimit} credits/day.`
+        );
+        return;
+      }
       onOpenUpgrade(
         creditsLeft === 0
-          ? 'You have used all your AI Mentor credits for today.'
+          ? `You have used all ${dailyLimit} Free credits today. Upgrade to Pro (${proDailyLimit}/day) or Plus (${plusDailyLimit}/day).`
           : `This message needs ${costEstimate.total} credits, and you have ${creditsLeft} left today.`
       );
       return;
@@ -469,21 +494,36 @@ export const AiComposer: React.FC<AiComposerProps> = ({
               style={{ color: 'var(--text-muted)' }}
             >
               <span className="truncate tabular-nums">
-                {creditsLeft}/{dailyLimit} credits left · This message ≈ {costEstimate.total} credit
-                {costEstimate.total === 1 ? '' : 's'}
+                {creditsLeft === 0 && plan === 'plus'
+                  ? `0/${dailyLimit} credits left · Resets in ${resetCountdown || 'midnight PKT'}`
+                  : `${creditsLeft}/${dailyLimit} credits left · This message ≈ ${costEstimate.total} credit${costEstimate.total === 1 ? '' : 's'}`}
               </span>
               {!isPro && (
                 <button
                   type="button"
                   onClick={() =>
                     onOpenUpgrade(
-                      'Upgrade to Boardly Pro for 100 AI Mentor credits/day and Deep & Max thinking.'
+                      `Upgrade to Boardly Pro for ${proDailyLimit} AI Mentor credits/day and Deep & Max thinking.`
                     )
                   }
                   className="shrink-0 font-semibold cursor-pointer hover:underline"
                   style={{ color: 'var(--accent)' }}
                 >
                   Upgrade
+                </button>
+              )}
+              {plan === 'pro' && creditsLeft <= 10 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenUpgrade(
+                      `Upgrade to Boardly Plus for ${plusDailyLimit} AI Mentor credits/day (2× Pro).`
+                    )
+                  }
+                  className="shrink-0 font-semibold cursor-pointer hover:underline"
+                  style={{ color: '#d97706' }}
+                >
+                  Get {plusDailyLimit}/day
                 </button>
               )}
             </div>

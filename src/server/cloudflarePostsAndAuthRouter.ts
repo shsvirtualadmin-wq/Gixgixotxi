@@ -11031,24 +11031,49 @@ ${postSitemaps}
     const existingLock = lockIdx >= 0 ? locks[lockIdx] : null;
 
     let effectivePlan = userDoc?.plan ?? null;
+    let effectivePlanTier = userDoc?.planTier ?? null;
     let effectiveIsPremium = userDoc?.isPremium ?? null;
+    let effectiveIsPro = userDoc?.isPro ?? null;
+    let effectiveIsPlus = userDoc?.isPlus ?? null;
     let effectiveProPlanId = userDoc?.proPlanId ?? null;
+    let effectivePlusPlanId = userDoc?.plusPlanId ?? null;
     let effectivePlanExpiresAt = userDoc?.planExpiresAt ?? null;
     let effectivePremiumExpiresAt = userDoc?.premiumExpiresAt ?? null;
+    let effectiveProUntil = userDoc?.proUntil ?? null;
+    let effectivePlusUntil = userDoc?.plusUntil ?? null;
     const mergedPendingReqs = [...userReqs];
 
     if (existingLock) {
       const lockExpiry = Number(existingLock.expires_at || 0);
+      const lockPlanId = String(existingLock.plan_id || '').toLowerCase();
+      const lockIsPlus = lockPlanId.includes('plus');
       if (existingLock.state === 'active' && lockExpiry > serverNowMs) {
-        const fsExp = parseExpiryMillis(effectivePlanExpiresAt ?? effectivePremiumExpiresAt);
+        const fsExp = parseExpiryMillis(
+          effectivePlusUntil ?? effectivePlanExpiresAt ?? effectivePremiumExpiresAt ?? effectiveProUntil
+        );
         // Only apply the D1 active lock if Firestore hasn't been explicitly cleared by an admin
-        if (userDoc === null || (fsExp !== null && fsExp > serverNowMs) || userDoc?.isPremium === true || userDoc?.plan === 'pro') {
-          effectivePlan = 'pro';
+        if (
+          userDoc === null ||
+          (fsExp !== null && fsExp > serverNowMs) ||
+          userDoc?.isPremium === true ||
+          userDoc?.plan === 'pro' ||
+          userDoc?.plan === 'plus'
+        ) {
+          effectivePlan = lockIsPlus || userDoc?.plan === 'plus' ? 'plus' : 'pro';
+          effectivePlanTier = effectivePlan;
           effectiveIsPremium = true;
-          effectiveProPlanId = existingLock.plan_id || effectiveProPlanId;
+          effectiveIsPlus = effectivePlan === 'plus';
+          effectiveIsPro = effectivePlan === 'pro';
+          if (effectivePlan === 'plus') {
+            effectivePlusPlanId = existingLock.plan_id || effectivePlusPlanId;
+          } else {
+            effectiveProPlanId = existingLock.plan_id || effectiveProPlanId;
+          }
           if (!fsExp || lockExpiry > fsExp) {
             effectivePremiumExpiresAt = lockExpiry;
             effectivePlanExpiresAt = new Date(lockExpiry).toISOString();
+            if (effectivePlan === 'plus') effectivePlusUntil = effectivePlanExpiresAt;
+            else effectiveProUntil = effectivePlanExpiresAt;
           }
         } else {
           locks.splice(lockIdx, 1);
@@ -11094,18 +11119,24 @@ ${postSitemaps}
       role: userDoc?.role || roleInfo.role || 'student',
       isGuest: uid.startsWith('guest_') || Boolean(userDoc?.isGuest),
       plan: effectivePlan,
+      planTier: effectivePlanTier,
       isPremium: effectiveIsPremium,
+      isPro: effectiveIsPro,
+      isPlus: effectiveIsPlus,
       proPlanId: effectiveProPlanId,
+      plusPlanId: effectivePlusPlanId,
       planStartedAt: userDoc?.planStartedAt,
       updatedAt: userDoc?.updatedAt,
       planExpiresAt: effectivePlanExpiresAt,
       premiumExpiresAt: effectivePremiumExpiresAt,
+      proUntil: effectiveProUntil,
+      plusUntil: effectivePlusUntil,
       pendingRequests: mergedPendingReqs,
       nowMs: serverNowMs,
     });
 
     setCachedUserProStatusAndBadge(uid, {
-      activePro: unified.state === 'active' || Boolean(unified.isPro),
+      activePro: unified.state === 'active' || Boolean(unified.isPaid || unified.isPro),
       nowMs: serverNowMs,
     });
 
@@ -11184,17 +11215,36 @@ ${postSitemaps}
         authHeader
       );
 
+      const requestedPlanId = String(body.planId || body.plan || '').toLowerCase();
+      const requestedIsPlus =
+        requestedPlanId.includes('plus') ||
+        String(body.planTier || body.tier || '').toLowerCase() === 'plus';
+
       if (status.state === 'active') {
-        return res.status(409).json({
-          ok: false,
-          code: 'PRO_ALREADY_ACTIVE',
-          state: 'active',
-          serverNowMs,
-          status,
-          error:
-            status.blockReason ||
-            `You already have Boardly Pro (${status.planName}) active until ${status.expiryFormatted}. You can purchase again after your current plan expires.`,
-        });
+        // Block buying Pro when Plus is active
+        if (status.isPlus && !requestedIsPlus) {
+          return res.status(409).json({
+            ok: false,
+            code: 'PLUS_ALREADY_INCLUDES_PRO',
+            state: 'active',
+            serverNowMs,
+            status,
+            error: 'You already have Plus, which includes Pro',
+          });
+        }
+        // Allow Pro -> Plus upgrade and Plus -> Plus renewal; block Pro -> Pro duplicate active purchase unless renewing/upgrading
+        if (!requestedIsPlus) {
+          return res.status(409).json({
+            ok: false,
+            code: 'PRO_ALREADY_ACTIVE',
+            state: 'active',
+            serverNowMs,
+            status,
+            error:
+              status.blockReason ||
+              `You already have Boardly Pro (${status.planName}) active until ${status.expiryFormatted}. You can upgrade to Plus or purchase again after your current plan expires.`,
+          });
+        }
       }
 
       if (status.state === 'pending') {
@@ -11501,8 +11551,16 @@ ${postSitemaps}
           ? 'super_admin'
           : String(body.role).trim()
         : undefined;
-    const requestedPlan =
-      body.plan !== undefined ? (body.plan === 'pro' ? 'pro' : 'free') : undefined;
+    const requestedPlanRaw =
+      body.plan !== undefined ? String(body.plan).trim().toLowerCase() : undefined;
+    const requestedPlan: 'free' | 'pro' | 'plus' | undefined =
+      requestedPlanRaw !== undefined
+        ? requestedPlanRaw === 'plus'
+          ? 'plus'
+          : requestedPlanRaw === 'pro'
+          ? 'pro'
+          : 'free'
+        : undefined;
     const requestedSuspended =
       body.suspended !== undefined ? Boolean(body.suspended) : undefined;
 
@@ -11596,11 +11654,14 @@ ${postSitemaps}
     }
 
     const finalRole = requestedRole ?? currentRole;
-    const finalPlan: 'free' | 'pro' = requestedPlan ?? (currentPlan === 'pro' ? 'pro' : 'free');
+    const finalPlan: 'free' | 'pro' | 'plus' =
+      requestedPlan ??
+      (currentPlan === 'plus' ? 'plus' : currentPlan === 'pro' ? 'pro' : 'free');
+    const finalIsPaid = finalPlan === 'pro' || finalPlan === 'plus';
     const finalSuspended = requestedSuspended ?? currentSuspended;
 
     let finalExpiresIso: string | null = null;
-    if (finalPlan === 'pro') {
+    if (finalIsPaid) {
       if (typeof body.planExpiresAt === 'string' && body.planExpiresAt.trim()) {
         finalExpiresIso = body.planExpiresAt.trim();
       } else {
@@ -11640,7 +11701,9 @@ ${postSitemaps}
       }
     }
     (roleRow as any).plan = finalPlan;
-    (roleRow as any).is_premium = finalPlan === 'pro';
+    (roleRow as any).plan_tier = finalPlan;
+    (roleRow as any).is_premium = finalIsPaid;
+    (roleRow as any).is_plus = finalPlan === 'plus';
     (roleRow as any).plan_expires_at = finalExpiresIso;
     (roleRow as any).suspended = finalSuspended;
 
@@ -11648,16 +11711,19 @@ ${postSitemaps}
     store.pro_purchase_locks = (store.pro_purchase_locks || []).filter(
       (l: any) => l.uid !== targetUid
     );
-    if (finalPlan === 'pro' && finalExpiresIso) {
+    if (finalIsPaid && finalExpiresIso) {
       const expiresMs = new Date(finalExpiresIso).getTime();
       if (Number.isFinite(expiresMs) && expiresMs > nowMs) {
         store.pro_purchase_locks.push({
           uid: targetUid,
           email: roleRow.email || '',
+          plan_id: finalPlan === 'plus' ? 'plus_monthly' : 'pro_monthly',
           order_id: `admin_override_${nowMs}`,
           purchased_at: nowMs,
           expires_at: expiresMs,
+          state: 'active',
           status: 'active',
+          updated_at: nowMs,
         });
       }
     }
@@ -11669,7 +11735,7 @@ ${postSitemaps}
         if (u.uid === targetUid) {
           u.role = finalRole;
           u.plan = finalPlan;
-          u.is_premium = finalPlan === 'pro' ? 1 : 0;
+          u.is_premium = finalIsPaid ? 1 : 0;
           u.plan_expires_at = finalExpiresIso;
           u.suspended = finalSuspended ? 1 : 0;
           u.updated_at = nowMs;
@@ -11689,7 +11755,10 @@ ${postSitemaps}
         displayName: d1UserRow?.username_display || d1UserRow?.display_name || body.displayName || 'Student',
         role: finalRole,
         plan: finalPlan,
-        isPremium: finalPlan === 'pro',
+        planTier: finalPlan,
+        isPremium: finalIsPaid,
+        isPro: finalPlan === 'pro',
+        isPlus: finalPlan === 'plus',
         planExpiresAt: finalExpiresIso,
         suspended: finalSuspended,
         updatedAt: nowMs,

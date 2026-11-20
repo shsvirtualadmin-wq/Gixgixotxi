@@ -91,9 +91,12 @@ export interface ProBadgeContextValue {
   settings: ProBadgeSettings;
   /**
    * The active badge design ID shown next to the signed-in user's name (`null` if free/expired/guest or if `visible` is false).
+   * For Boardly Plus users, returns `'plus'` so ProBadge renders the amber/gold Plus badge.
    */
-  effectiveProBadge: ProBadgeDesignId | null;
+  effectiveProBadge: string | null;
   isActivePro: boolean;
+  isActivePlus: boolean;
+  planTier: 'free' | 'pro' | 'plus';
   isPendingVerification: boolean;
   loading: boolean;
   known: boolean;
@@ -105,6 +108,8 @@ const ProBadgeContext = createContext<ProBadgeContextValue>({
   settings: DEFAULT_PRO_BADGE_SETTINGS,
   effectiveProBadge: null,
   isActivePro: false,
+  isActivePlus: false,
+  planTier: 'free',
   isPendingVerification: false,
   loading: false,
   known: false,
@@ -132,19 +137,27 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
 
   const isActivePro = useMemo(() => {
     if (!user?.uid || isGuest || user.uid.startsWith('guest_')) return false;
-    if (effectivePlan.isPro) return true;
+    if (effectivePlan.isPaid || effectivePlan.isPro) return true;
     if (serverActivePro === true && effectivePlan.planStatus.state === 'active') return true;
     return false;
-  }, [user?.uid, isGuest, effectivePlan.isPro, effectivePlan.planStatus.state, serverActivePro]);
+  }, [user?.uid, isGuest, effectivePlan.isPaid, effectivePlan.isPro, effectivePlan.planStatus.state, serverActivePro]);
+
+  const isActivePlus = useMemo(() => {
+    if (!user?.uid || isGuest || user.uid.startsWith('guest_')) return false;
+    return Boolean(effectivePlan.isPlus);
+  }, [user?.uid, isGuest, effectivePlan.isPlus]);
+
+  const planTier = effectivePlan.planTier;
 
   const isPendingVerification = useMemo(() => {
     return effectivePlan.planStatus.state === 'pending';
   }, [effectivePlan.planStatus.state]);
 
-  const effectiveProBadge: ProBadgeDesignId | null = useMemo(() => {
+  const effectiveProBadge: string | null = useMemo(() => {
     if (!isActivePro || !settings.visible) return null;
+    if (isActivePlus) return `plus:${normalizeProBadgeDesign(settings.design)}`;
     return normalizeProBadgeDesign(settings.design);
-  }, [isActivePro, settings.visible, settings.design]);
+  }, [isActivePro, isActivePlus, settings.visible, settings.design]);
 
   useEffect(() => {
     const uid = user?.uid || null;
@@ -254,7 +267,7 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
       if (!isActivePro) {
         return {
           ok: false,
-          error: 'An active Boardly Pro plan is required to save a Pro badge.',
+          error: 'An active Boardly Pro or Plus plan is required to save a badge.',
         };
       }
 
@@ -284,8 +297,10 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
         setKnown(true);
         writeSettingsToLocalStorage(savedSettings, uid);
 
-        const nextEffective: ProBadgeDesignId | null = savedSettings.visible
-          ? savedSettings.design
+        const nextEffective: string | null = savedSettings.visible
+          ? isActivePlus
+            ? `plus:${savedSettings.design}`
+            : savedSettings.design
           : null;
 
         // Broadcast immediately to all rendered components via publicProfileService
@@ -293,6 +308,7 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
           proBadge: nextEffective,
           proBadgeDesign: savedSettings.design,
           proBadgeVisible: savedSettings.visible,
+          planTier,
         });
 
         // Also sync to Firestore publicProfiles/{uid} and users/{uid} in background so Firestore readers stay consistent
@@ -326,7 +342,7 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
         };
       }
     },
-    [user?.uid, isGuest, isActivePro]
+    [user?.uid, isGuest, isActivePro, isActivePlus, planTier]
   );
 
   const contextValue = useMemo<ProBadgeContextValue>(
@@ -334,13 +350,26 @@ export function ProBadgeProvider({ children }: { children: React.ReactNode }) {
       settings,
       effectiveProBadge,
       isActivePro,
+      isActivePlus,
+      planTier,
       isPendingVerification,
       loading,
       known,
       saving,
       saveProBadge,
     }),
-    [settings, effectiveProBadge, isActivePro, isPendingVerification, loading, known, saving, saveProBadge]
+    [
+      settings,
+      effectiveProBadge,
+      isActivePro,
+      isActivePlus,
+      planTier,
+      isPendingVerification,
+      loading,
+      known,
+      saving,
+      saveProBadge,
+    ]
   );
 
   return <ProBadgeContext.Provider value={contextValue}>{children}</ProBadgeContext.Provider>;

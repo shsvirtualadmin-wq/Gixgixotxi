@@ -5,13 +5,17 @@ import {
   getMentorConfig,
   type AiMentorId,
 } from '@/utils/aiMentorsLogic';
+import type { AiPlan } from '@/utils/aiMentorsLogic';
 import type { SavedAiChat } from '@/services/aiMentorsService';
 
 interface AiHistorySidebarProps {
   chats: SavedAiChat[];
   activeChatId: string | null;
   activeMentor: AiMentorId;
+  plan?: AiPlan;
   isPro: boolean;
+  isPlus?: boolean;
+  dailyLimit?: number;
   isSuperAdmin: boolean;
   planSource: 'superadmin' | 'personal' | 'crew' | 'none';
   onSelectMentor: (mentorId: AiMentorId) => void;
@@ -26,7 +30,10 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
   chats,
   activeChatId,
   activeMentor,
+  plan,
   isPro,
+  isPlus = false,
+  dailyLimit,
   isSuperAdmin,
   planSource,
   onSelectMentor,
@@ -52,13 +59,28 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
     });
   }, [chats, search]);
 
+  const resolvedPlan: AiPlan = isSuperAdmin
+    ? 'plus'
+    : plan === 'plus' || isPlus
+    ? 'plus'
+    : plan === 'pro' || isPro
+    ? 'pro'
+    : 'free';
+
+  const effectiveLimit =
+    dailyLimit ?? (resolvedPlan === 'plus' ? 100 : resolvedPlan === 'pro' ? 50 : 5);
+
   const planBadgeLabel = isSuperAdmin
     ? 'Superadmin · Unlimited'
     : planSource === 'crew'
-    ? 'Crew Pro · 100/day'
-    : isPro
-    ? 'Boardly Pro · 100/day'
-    : 'Free Plan · 5/day';
+    ? resolvedPlan === 'plus'
+      ? `Crew Plus · ${effectiveLimit}/day`
+      : `Crew Pro · ${effectiveLimit}/day`
+    : resolvedPlan === 'plus'
+    ? `Boardly Plus · ${effectiveLimit}/day`
+    : resolvedPlan === 'pro'
+    ? `Boardly Pro · ${effectiveLimit}/day`
+    : `Free Plan · ${effectiveLimit}/day`;
 
   return (
     <div
@@ -286,13 +308,20 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <Crown
               className="h-4 w-4 shrink-0"
-              style={{ color: isPro ? 'var(--accent)' : 'var(--text-muted)' }}
+              style={{
+                color:
+                  resolvedPlan === 'plus'
+                    ? '#d97706'
+                    : resolvedPlan === 'pro'
+                    ? 'var(--accent)'
+                    : 'var(--text-muted)',
+              }}
             />
             <span className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--text)' }}>
               {planBadgeLabel}
             </span>
           </div>
-          {!isPro && (
+          {!isSuperAdmin && resolvedPlan === 'free' && (
             <button
               type="button"
               onClick={onUpgradeClick}
@@ -300,6 +329,16 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
               style={{ backgroundColor: 'var(--accent)' }}
             >
               Upgrade
+            </button>
+          )}
+          {!isSuperAdmin && resolvedPlan === 'pro' && (
+            <button
+              type="button"
+              onClick={onUpgradeClick}
+              className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white cursor-pointer"
+              style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}
+            >
+              Plus
             </button>
           )}
         </div>

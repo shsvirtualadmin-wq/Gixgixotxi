@@ -15,6 +15,7 @@ import {
   Gift,
   ShieldCheck,
   BellRing,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
@@ -33,6 +34,8 @@ import {
   fetchOverviewPaymentsCard,
   fetchOverviewReviewsCard,
   fetchOverviewSubjectsCard,
+  fetchPlanAnalyticsStats,
+  type PlanAnalyticsStats,
   AdminStatCardError,
   CORE_SUBJECTS,
 } from '@/services/adminService';
@@ -112,7 +115,10 @@ export function AdminOverviewPage() {
       totalUsers: number;
       studentCount: number | null;
       captainCount: number | null;
+      freeCount: number | null;
       proCount: number | null;
+      plusCount: number | null;
+      expiringSoonCount: number | null;
       guestCount: number | null;
       previewUsers: UserProfile[];
     }>
@@ -123,13 +129,17 @@ export function AdminOverviewPage() {
           totalUsers: initialStats.totalUsers,
           studentCount: initialStats.studentCount ?? null,
           captainCount: initialStats.captainCount ?? null,
+          freeCount: initialStats.freeCount ?? null,
           proCount: initialStats.proCount ?? null,
+          plusCount: initialStats.plusCount ?? null,
+          expiringSoonCount: initialStats.expiringSoonCount ?? null,
           guestCount: initialStats.guestCount ?? null,
           previewUsers: getCachedAdminUsersState()?.users ?? [],
         }
       : null,
     error: null,
   }));
+  const [planAnalytics, setPlanAnalytics] = useState<PlanAnalyticsStats | null>(null);
 
   const [questionsCard, setQuestionsCard] = useState<CardState<{ totalQuestions: number }>>(() => ({
     loading: !initialStats,
@@ -250,6 +260,11 @@ export function AdminOverviewPage() {
         const data = await fetchOverviewUsersCard({ force });
         if (!isMountedRef.current) return;
         setUsersCard({ loading: false, data, error: null });
+        fetchPlanAnalyticsStats()
+          .then((analytics) => {
+            if (isMountedRef.current) setPlanAnalytics(analytics);
+          })
+          .catch(() => {});
       } catch (err) {
         if (!isMountedRef.current) return;
         const parsed = reportCardFailure(err, 'firestore:users | GET /api/admin/stats');
@@ -692,13 +707,13 @@ export function AdminOverviewPage() {
           {usersCard.data && !usersCard.error ? (
             <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Students: {usersCard.data.studentCount ?? '—'}
+                Free: {usersCard.data.freeCount ?? '—'}
               </span>
-              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Captains: {usersCard.data.captainCount ?? '—'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+              <span className="px-1.5 py-0.5 rounded bg-[#D71921]/10 border border-[#D71921]/30 text-[#D71921]">
                 Pro: {usersCard.data.proCount ?? '—'}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-bold">
+                Plus: {usersCard.data.plusCount ?? '—'}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
                 Guests: {usersCard.data.guestCount ?? '—'}
@@ -833,6 +848,74 @@ export function AdminOverviewPage() {
           </Link>
         </div>
       </div>
+
+      {/* ─── SUBSCRIPTION ANALYTICS (FREE / PRO / PLUS) ──────────────────────── */}
+      <section className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-amber-500" />
+            <h2 className="font-dot text-[16px] font-extrabold text-[var(--text)]">
+              Boardly Plans Snapshot
+            </h2>
+          </div>
+          {isSuperAdmin && (
+            <Link
+              to="/admin/plans"
+              className="font-heading text-[12px] text-[var(--accent)] hover:underline inline-flex items-center gap-1"
+            >
+              <span>Edit config/plans</span>
+              <ArrowRight size={12} />
+            </Link>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Active Free</div>
+            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
+              {(usersCard.data?.freeCount ?? planAnalytics?.freeCount ?? '—').toLocaleString()}
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[#D71921]/30">
+            <div className="font-mono text-[10px] uppercase text-[#D71921]">Active Pro</div>
+            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
+              {(usersCard.data?.proCount ?? planAnalytics?.proCount ?? '—').toLocaleString()}
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-amber-500/40">
+            <div className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
+              Active Plus
+            </div>
+            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
+              {(usersCard.data?.plusCount ?? planAnalytics?.plusCount ?? '—').toLocaleString()}
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Expiring ≤7d</div>
+            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
+              {(
+                usersCard.data?.expiringSoonCount ??
+                planAnalytics?.expiringSoonCount ??
+                '—'
+              ).toLocaleString()}
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro / Plus PKR</div>
+            <div className="font-mono text-[12px] font-bold text-[var(--text)] mt-1.5">
+              {planAnalytics
+                ? `${planAnalytics.proRevenuePkr.toLocaleString()} / ${planAnalytics.plusRevenuePkr.toLocaleString()}`
+                : '—'}
+            </div>
+          </div>
+          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro → Plus</div>
+            <div className="font-dot text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">
+              {planAnalytics ? planAnalytics.proToPlusConversions.toLocaleString() : '—'}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ─── WINGMATES RADAR (ALL USERS LIVE FEED + FILTERS + SEND REMINDER) ─── */}
       <section

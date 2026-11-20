@@ -42,6 +42,7 @@ import {
 } from '@/constants/permissions';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { RequestAccessSheet } from './RequestAccessSheet';
+import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
 
 export type UserOverrideSection = 'top' | 'plan' | 'role' | 'attempts' | 'security';
 
@@ -84,12 +85,13 @@ function parseExpiryDate(val: any): Date | null {
 }
 
 function formatPlanExpiry(plan?: string, planExpiresAt?: unknown): string {
-  if (plan !== 'pro') {
+  if (plan !== 'pro' && plan !== 'plus') {
     return 'Free';
   }
+  const label = plan === 'plus' ? 'Plus' : 'Pro';
   const date = parseExpiryDate(planExpiresAt);
   if (!date) {
-    return 'Pro (Monthly)';
+    return `${label} (Monthly)`;
   }
   const dateStr = date.toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -97,9 +99,9 @@ function formatPlanExpiry(plan?: string, planExpiresAt?: unknown): string {
     year: 'numeric',
   });
   if (date.getTime() < Date.now()) {
-    return `Pro (Expired ${dateStr})`;
+    return `${label} (Expired ${dateStr})`;
   }
-  return `Pro, expires ${dateStr}`;
+  return `${label}, expires ${dateStr}`;
 }
 
 export function UserOverrideDrawer({
@@ -154,7 +156,14 @@ export function UserOverrideDrawer({
   const canDeleteUser = hasPermission('users.delete', user?.uid);
   const canResetSecurity = hasPermission('security.reset', user?.uid);
 
-  type SelectedPlanPreset = 'monthly' | 'annual' | 'custom' | 'free';
+  type SelectedPlanPreset =
+    | 'pro_monthly'
+    | 'pro_annual'
+    | 'pro_custom'
+    | 'plus_monthly'
+    | 'plus_annual'
+    | 'plus_custom'
+    | 'free';
 
   const [role, setRole] = useState<CanonicalUserRole>('student');
   const [plan, setPlan] = useState<UserPlan>('free');
@@ -163,6 +172,7 @@ export function UserOverrideDrawer({
   const [planTouched, setPlanTouched] = useState<boolean>(false);
   const [extendMonths, setExtendMonths] = useState<number>(0);
   const [customDays, setCustomDays] = useState<number>(30);
+  const [explicitExpiryDate, setExplicitExpiryDate] = useState<string>('');
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
 
   // Baseline values for dirty-state detection so "Save changes" is disabled until something changed
@@ -300,12 +310,24 @@ export function UserOverrideDrawer({
     initializedUidRef.current = user.uid;
 
     const initialCanonicalRole = normalizeCanonicalRole(user.role);
-    const initialPlan: UserPlan = user.plan === 'pro' || user.isPremium ? 'pro' : 'free';
+    const initialPlan: UserPlan = getPlan(user);
     const initialSusp = Boolean(user.suspended || user.isSuspended);
-    const expDate = parseExpiryDate(user.planExpiresAt || user.premiumExpiresAt);
+    const rawExp =
+      initialPlan === 'plus'
+        ? (user as any).plusUntil || user.planExpiresAt || user.premiumExpiresAt
+        : (user as any).proUntil || user.planExpiresAt || user.premiumExpiresAt;
+    const expDate = parseExpiryDate(rawExp);
     const daysRemaining = expDate ? Math.round((expDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000)) : 0;
     const initialPreset: SelectedPlanPreset =
-      initialPlan === 'pro' ? (daysRemaining > 60 ? 'annual' : 'monthly') : 'free';
+      initialPlan === 'plus'
+        ? daysRemaining > 60
+          ? 'plus_annual'
+          : 'plus_monthly'
+        : initialPlan === 'pro'
+          ? daysRemaining > 60
+            ? 'pro_annual'
+            : 'pro_monthly'
+          : 'free';
 
     setRole(initialCanonicalRole);
     setPlan(initialPlan);
@@ -314,6 +336,7 @@ export function UserOverrideDrawer({
     setPlanTouched(false);
     setExtendMonths(0);
     setCustomDays(30);
+    setExplicitExpiryDate(expDate ? expDate.toISOString().slice(0, 10) : '');
     setIsSuspended(initialSusp);
 
     setBaselineRole(initialCanonicalRole);
@@ -398,7 +421,7 @@ export function UserOverrideDrawer({
     if (plan !== baselinePlan) return true;
     if (selectedPlan !== baselineSelectedPlan) return true;
     if (planTouched) return true;
-    if (plan === 'pro' && extendMonths > 0) return true;
+    if ((plan === 'pro' || plan === 'plus') && extendMonths > 0) return true;
     if (isSuspended !== baselineSuspended) return true;
     return false;
   }, [
@@ -526,66 +549,90 @@ export function UserOverrideDrawer({
         extendMonths,
       };
 
-      if (plan === 'pro') {
+      if (plan === 'pro' || plan === 'plus') {
         updates.isPremium = true;
+        updates.planTier = plan;
+        updates.isPro = plan === 'pro';
+        updates.isPlus = plan === 'plus';
         updates.premiumSource = 'admin_override';
 
-        const currentExpDate = parseExpiryDate(user.planExpiresAt || user.premiumExpiresAt);
-        const isCurrentActive = currentExpDate && currentExpDate.getTime() > Date.now();
+        const currentExpMs = parsePlanExpiryMs(
+          plan === 'plus'
+            ? (user as any).plusUntil || user.planExpiresAt || user.premiumExpiresAt
+            : (user as any).proUntil || user.planExpiresAt || user.premiumExpiresAt
+        );
+        const isCurrentActive = Boolean(currentExpMs && currentExpMs > Date.now());
+        const sameTierActive = isCurrentActive && baselinePlan === plan;
+        const isAnnualPreset = selectedPlan === 'pro_annual' || selectedPlan === 'plus_annual';
+        const isCustomPreset = selectedPlan === 'pro_custom' || selectedPlan === 'plus_custom';
 
         let targetMillis: number;
-        if (selectedPlan === 'annual') {
-          const baseTime =
-            isCurrentActive && baselinePlan === 'pro'
-              ? currentExpDate.getTime()
-              : Date.now();
+        if (explicitExpiryDate && planTouched && isCustomPreset) {
+          const parsedExplicit = Date.parse(`${explicitExpiryDate}T23:59:59.000Z`);
+          targetMillis =
+            Number.isFinite(parsedExplicit) && parsedExplicit > Date.now()
+              ? parsedExplicit
+              : Date.now() + Math.max(1, customDays) * 24 * 60 * 60 * 1000;
+        } else if (isAnnualPreset) {
+          const baseTime = sameTierActive && currentExpMs ? currentExpMs : Date.now();
           targetMillis = baseTime + 365 * 24 * 60 * 60 * 1000;
           updates.extendMonths = 12;
-        } else if (selectedPlan === 'custom') {
+        } else if (isCustomPreset) {
           const safeDays = Math.max(1, Math.min(1825, Math.round(Number(customDays) || 30)));
-          const baseTime =
-            isCurrentActive && baselinePlan === 'pro'
-              ? currentExpDate.getTime()
-              : Date.now();
+          const baseTime = sameTierActive && currentExpMs ? currentExpMs : Date.now();
           targetMillis = baseTime + safeDays * 24 * 60 * 60 * 1000;
           updates.extendMonths = Math.max(1, Math.round(safeDays / 30));
         } else if (extendMonths > 0) {
-          const baseTime =
-            isCurrentActive && baselinePlan === 'pro'
-              ? currentExpDate.getTime()
-              : Date.now() + 30 * 24 * 60 * 60 * 1000;
+          const baseTime = sameTierActive && currentExpMs ? currentExpMs : Date.now();
           targetMillis =
-            isCurrentActive && baselinePlan === 'pro'
+            sameTierActive
               ? baseTime + extendMonths * 30 * 24 * 60 * 60 * 1000
               : Date.now() + (1 + extendMonths) * 30 * 24 * 60 * 60 * 1000;
         } else {
-          if (!isCurrentActive || baselinePlan !== 'pro' || planTouched) {
+          if (!sameTierActive || planTouched) {
             targetMillis = Date.now() + 30 * 24 * 60 * 60 * 1000;
           } else {
-            targetMillis = currentExpDate.getTime();
+            targetMillis = currentExpMs!;
           }
         }
 
         const exp = Timestamp.fromMillis(targetMillis);
         updates.premiumExpiresAt = exp;
         updates.planExpiresAt = exp;
+        if (plan === 'plus') {
+          updates.plusUntil = exp;
+          updates.proUntil = null;
+        } else {
+          updates.proUntil = exp;
+          updates.plusUntil = null;
+        }
       } else {
+        updates.planTier = 'free';
         updates.isPremium = false;
+        updates.isPro = false;
+        updates.isPlus = false;
         updates.premiumSource = null;
         updates.premiumExpiresAt = null;
         updates.planExpiresAt = null;
+        updates.proUntil = null;
+        updates.plusUntil = null;
       }
 
       const previous: Partial<UserProfile> = {
         role: user.role,
         plan: user.plan,
+        planTier: user.planTier,
         isPremium: user.isPremium,
+        isPro: user.isPro,
+        isPlus: user.isPlus,
         suspended: user.suspended,
         isSuspended: user.isSuspended,
         targetUniversity: user.targetUniversity,
         targetTestDate: user.targetTestDate,
         planExpiresAt: user.planExpiresAt,
         premiumExpiresAt: user.premiumExpiresAt,
+        proUntil: user.proUntil,
+        plusUntil: user.plusUntil,
       };
 
       const updatedProfile = await updateUserOverride(
@@ -597,16 +644,19 @@ export function UserOverrideDrawer({
       );
       refreshActiveGrants().catch(() => {});
 
-      const resolvedPlan: UserPlan =
-        updatedProfile.plan === 'pro' || updatedProfile.isPremium ? 'pro' : 'free';
+      const resolvedPlan: UserPlan = getPlan(updatedProfile);
       const resolvedRole = normalizeCanonicalRole(updatedProfile.role);
       const resolvedSusp = Boolean(updatedProfile.suspended || updatedProfile.isSuspended);
       const resolvedPreset: SelectedPlanPreset =
-        resolvedPlan === 'pro'
-          ? selectedPlan === 'free'
-            ? 'monthly'
-            : selectedPlan
-          : 'free';
+        resolvedPlan === 'plus'
+          ? selectedPlan.startsWith('plus_')
+            ? selectedPlan
+            : 'plus_monthly'
+          : resolvedPlan === 'pro'
+            ? selectedPlan.startsWith('pro_')
+              ? selectedPlan
+              : 'pro_monthly'
+            : 'free';
 
       setPlan(resolvedPlan);
       setSelectedPlan(resolvedPreset);
@@ -623,13 +673,21 @@ export function UserOverrideDrawer({
       onUserUpdated?.(updatedProfile);
 
       const newExpDate =
-        resolvedPlan === 'pro'
+        resolvedPlan !== 'free'
           ? parseExpiryDate(
-              updatedProfile.planExpiresAt ||
+              (resolvedPlan === 'plus'
+                ? updatedProfile.plusUntil
+                : updatedProfile.proUntil) ||
+                updatedProfile.planExpiresAt ||
                 updatedProfile.premiumExpiresAt ||
                 updates.planExpiresAt
             )
           : null;
+      if (newExpDate) {
+        setExplicitExpiryDate(newExpDate.toISOString().slice(0, 10));
+      } else {
+        setExplicitExpiryDate('');
+      }
       const formattedExp = newExpDate
         ? newExpDate.toLocaleDateString('en-GB', {
             day: 'numeric',
@@ -638,16 +696,19 @@ export function UserOverrideDrawer({
           })
         : null;
 
-      const planLabelForNotice =
-        resolvedPreset === 'annual'
-          ? 'Annual Pro'
-          : resolvedPreset === 'custom'
-            ? `Custom Pro (+${customDays}d)`
-            : 'Monthly Pro';
+      const planLabelMap: Record<SelectedPlanPreset, string> = {
+        pro_monthly: 'Monthly Pro',
+        pro_annual: 'Annual Pro',
+        pro_custom: `Custom Pro (+${customDays}d)`,
+        plus_monthly: 'Monthly Plus',
+        plus_annual: 'Annual Plus',
+        plus_custom: `Custom Plus (+${customDays}d)`,
+        free: 'Free',
+      };
 
       const successText =
-        resolvedPlan === 'pro'
-          ? `Saved changes: ${planLabelForNotice} active until ${formattedExp || '30 days'}`
+        resolvedPlan !== 'free'
+          ? `Saved changes: ${planLabelMap[resolvedPreset]} active until ${formattedExp || '30 days'}`
           : 'Saved changes: Plan set to Free';
 
       setVerifiedNotice(successText);
@@ -663,11 +724,15 @@ export function UserOverrideDrawer({
   };
 
   const handleSelectPlanPreset = (preset: SelectedPlanPreset) => {
-    const nextPlan: UserPlan = preset === 'free' ? 'free' : 'pro';
+    const nextPlan: UserPlan =
+      preset === 'free' ? 'free' : preset.startsWith('plus_') ? 'plus' : 'pro';
     const actionNames: Record<SelectedPlanPreset, string> = {
-      monthly: 'Monthly Pro (30d)',
-      annual: 'Annual Pro (365d)',
-      custom: 'Custom Pro',
+      pro_monthly: 'Monthly Pro (30d)',
+      pro_annual: 'Annual Pro (365d)',
+      pro_custom: 'Custom Pro',
+      plus_monthly: 'Monthly Plus (30d)',
+      plus_annual: 'Annual Plus (365d)',
+      plus_custom: 'Custom Plus',
       free: 'Revoke / Free',
     };
     if (!canChangePlan) {
@@ -682,11 +747,11 @@ export function UserOverrideDrawer({
     setPlanTouched(true);
     if (preset === 'free') {
       setExtendMonths(0);
-    } else if (preset === 'monthly') {
+    } else if (preset === 'pro_monthly' || preset === 'plus_monthly') {
       setExtendMonths(0);
-    } else if (preset === 'annual') {
+    } else if (preset === 'pro_annual' || preset === 'plus_annual') {
       setExtendMonths(12);
-    } else if (preset === 'custom') {
+    } else {
       setExtendMonths(1);
     }
   };
@@ -903,9 +968,11 @@ export function UserOverrideDrawer({
                 >
                   {formatPlanExpiry(
                     plan,
-                    plan === 'pro'
-                      ? user.planExpiresAt || user.premiumExpiresAt
-                      : null
+                    plan === 'plus'
+                      ? (user as any).plusUntil || user.planExpiresAt || user.premiumExpiresAt
+                      : plan === 'pro'
+                        ? (user as any).proUntil || user.planExpiresAt || user.premiumExpiresAt
+                        : null
                   )}
                 </span>
               </div>
@@ -1040,30 +1107,30 @@ export function UserOverrideDrawer({
           </section>
 
           {/* SECTION 2: SUBSCRIPTION PLAN */}
-          <section ref={planSectionRef} className="space-y-2 pt-1 border-t border-[var(--border)] scroll-mt-3">
+          <section ref={planSectionRef} className="space-y-2.5 pt-1 border-t border-[var(--border)] scroll-mt-3">
             <div className="flex items-center justify-between">
               <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--text-muted)] font-semibold">
                 Subscription plan
               </h3>
               <span className="text-[11px] font-heading text-[var(--text-muted)]">
-                {selectedPlan === 'annual'
+                {selectedPlan === 'pro_annual' || selectedPlan === 'plus_annual'
                   ? '365 days access'
-                  : selectedPlan === 'custom'
-                    ? `+${customDays} days access`
-                    : selectedPlan === 'monthly'
+                  : selectedPlan === 'pro_custom' || selectedPlan === 'plus_custom'
+                    ? `+${customDays} days / custom expiry`
+                    : selectedPlan === 'pro_monthly' || selectedPlan === 'plus_monthly'
                       ? '30 days / month'
                       : 'No recurring fee'}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 data-testid="plan-option-pro"
-                aria-pressed={selectedPlan === 'monthly'}
-                onClick={() => handleSelectPlanPreset('monthly')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedPlan === 'monthly'
+                aria-pressed={selectedPlan === 'pro_monthly'}
+                onClick={() => handleSelectPlanPreset('pro_monthly')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'pro_monthly'
                     ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
                     : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
@@ -1074,10 +1141,10 @@ export function UserOverrideDrawer({
               <button
                 type="button"
                 data-testid="plan-option-annual"
-                aria-pressed={selectedPlan === 'annual'}
-                onClick={() => handleSelectPlanPreset('annual')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedPlan === 'annual'
+                aria-pressed={selectedPlan === 'pro_annual'}
+                onClick={() => handleSelectPlanPreset('pro_annual')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'pro_annual'
                     ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
                     : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
@@ -1088,51 +1155,103 @@ export function UserOverrideDrawer({
               <button
                 type="button"
                 data-testid="plan-option-custom"
-                aria-pressed={selectedPlan === 'custom'}
-                onClick={() => handleSelectPlanPreset('custom')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedPlan === 'custom'
+                aria-pressed={selectedPlan === 'pro_custom'}
+                onClick={() => handleSelectPlanPreset('pro_custom')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'pro_custom'
                     ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
                     : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
                 {!canChangePlan && <Lock size={12} className="text-amber-500" />}
-                <span>Custom</span>
+                <span>Custom Pro</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="plan-option-plus-monthly"
+                aria-pressed={selectedPlan === 'plus_monthly'}
+                onClick={() => handleSelectPlanPreset('plus_monthly')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'plus_monthly'
+                    ? 'border-amber-500 bg-amber-500 text-black shadow-sm'
+                    : 'border-amber-500/35 bg-amber-500/5 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
+                }`}
+              >
+                {!canChangePlan && <Lock size={12} />}
+                <Sparkles size={12} />
+                <span>Monthly Plus</span>
               </button>
               <button
                 type="button"
-                data-testid="plan-option-free"
-                aria-pressed={selectedPlan === 'free'}
-                onClick={() => handleSelectPlanPreset('free')}
-                className={`py-2.5 px-3 rounded-[12px] border text-[13px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
-                  selectedPlan === 'free'
-                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
-                    : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+                data-testid="plan-option-plus-annual"
+                aria-pressed={selectedPlan === 'plus_annual'}
+                onClick={() => handleSelectPlanPreset('plus_annual')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'plus_annual'
+                    ? 'border-amber-500 bg-amber-500 text-black shadow-sm'
+                    : 'border-amber-500/35 bg-amber-500/5 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
                 }`}
               >
-                {!canChangePlan && <Lock size={12} className="text-amber-500" />}
-                <span>Revoke / Free</span>
+                {!canChangePlan && <Lock size={12} />}
+                <Sparkles size={12} />
+                <span>Annual Plus</span>
+              </button>
+              <button
+                type="button"
+                data-testid="plan-option-plus-custom"
+                aria-pressed={selectedPlan === 'plus_custom'}
+                onClick={() => handleSelectPlanPreset('plus_custom')}
+                className={`py-2.5 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                  selectedPlan === 'plus_custom'
+                    ? 'border-amber-500 bg-amber-500 text-black shadow-sm'
+                    : 'border-amber-500/35 bg-amber-500/5 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
+                }`}
+              >
+                {!canChangePlan && <Lock size={12} />}
+                <span>Custom Plus</span>
               </button>
             </div>
 
-            {plan === 'pro' && (
+            <button
+              type="button"
+              data-testid="plan-option-free"
+              aria-pressed={selectedPlan === 'free'}
+              onClick={() => handleSelectPlanPreset('free')}
+              className={`w-full py-2 px-3 rounded-[12px] border text-[12px] font-heading font-semibold transition-all inline-flex items-center justify-center gap-1.5 cursor-pointer ${
+                selectedPlan === 'free'
+                  ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] shadow-sm'
+                  : 'border-[var(--border)] bg-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {!canChangePlan && <Lock size={12} className="text-amber-500" />}
+              <span>Revoke / Set to Free</span>
+            </button>
+
+            {(plan === 'pro' || plan === 'plus') && (
               <div className="mt-2 p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-heading text-[var(--muted)]">
-                    {selectedPlan === 'custom' ? 'Custom duration (days)' : 'Extend by'}
+                    {selectedPlan.endsWith('_custom') ? 'Custom duration / Expiry date' : 'Extend by'}
                   </span>
-                  <span className="text-[11px] font-heading text-[var(--red)] font-semibold">
-                    {selectedPlan === 'annual'
+                  <span
+                    className={`text-[11px] font-heading font-semibold ${
+                      plan === 'plus' ? 'text-amber-600 dark:text-amber-400' : 'text-[var(--red)]'
+                    }`}
+                  >
+                    {selectedPlan.endsWith('_annual')
                       ? '365 days (1 Year)'
-                      : selectedPlan === 'custom'
-                        ? `+${customDays} days`
+                      : selectedPlan.endsWith('_custom')
+                        ? explicitExpiryDate
+                          ? `Until ${explicitExpiryDate}`
+                          : `+${customDays} days`
                         : extendMonths === 0
                           ? 'Standard (30 days)'
                           : `+${extendMonths * 30} days`}
                   </span>
                 </div>
-                {selectedPlan === 'custom' && (
-                  <div className="flex items-center gap-2">
+                {selectedPlan.endsWith('_custom') && (
+                  <div className="grid grid-cols-2 gap-2">
                     <input
                       type="number"
                       min={1}
@@ -1140,9 +1259,21 @@ export function UserOverrideDrawer({
                       value={customDays}
                       onChange={(e) => {
                         setCustomDays(Math.max(1, Number(e.target.value) || 30));
+                        setExplicitExpiryDate('');
                         setPlanTouched(true);
                       }}
+                      placeholder="Days"
                       className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    />
+                    <input
+                      type="date"
+                      value={explicitExpiryDate}
+                      onChange={(e) => {
+                        setExplicitExpiryDate(e.target.value);
+                        setPlanTouched(true);
+                      }}
+                      aria-label="Explicit expiry date"
+                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[12px] font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                     />
                   </div>
                 )}
@@ -1154,14 +1285,17 @@ export function UserOverrideDrawer({
                       data-testid={`plan-extend-${months}`}
                       onClick={() => {
                         setExtendMonths(months);
-                        if (selectedPlan === 'custom' && months > 0) {
+                        if (selectedPlan.endsWith('_custom') && months > 0) {
                           setCustomDays(months * 30);
+                          setExplicitExpiryDate('');
                         }
                         setPlanTouched(true);
                       }}
                       className={`py-1.5 px-2 rounded-[8px] border text-[11px] font-heading font-medium transition-colors cursor-pointer ${
-                        extendMonths === months && selectedPlan !== 'annual'
-                          ? 'border-[var(--red)] bg-[var(--red)] text-white font-semibold'
+                        extendMonths === months && !selectedPlan.endsWith('_annual')
+                          ? plan === 'plus'
+                            ? 'border-amber-500 bg-amber-500 text-black font-semibold'
+                            : 'border-[var(--red)] bg-[var(--red)] text-white font-semibold'
                           : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                       }`}
                     >
@@ -1170,15 +1304,25 @@ export function UserOverrideDrawer({
                   ))}
                 </div>
                 <p className="text-[10px] text-[var(--muted)] font-heading">
-                  {selectedPlan === 'annual'
-                    ? 'Grants 365 days (1 full year) of Pro access.'
-                    : selectedPlan === 'custom'
-                      ? `Grants +${customDays} days of custom Pro access.`
-                      : extendMonths === 0
-                        ? 'Sets plan to Pro with 30 days of active access.'
-                        : `Extends Pro expiry by +${extendMonths * 30} days (${extendMonths} month${
-                            extendMonths > 1 ? 's' : ''
-                          }).`}
+                  {plan === 'plus'
+                    ? selectedPlan === 'plus_annual'
+                      ? 'Grants 365 days (1 full year) of Boardly Plus (100 AI credits/day).'
+                      : selectedPlan === 'plus_custom'
+                        ? explicitExpiryDate
+                          ? `Sets Boardly Plus active until ${explicitExpiryDate}.`
+                          : `Grants +${customDays} days of Boardly Plus access.`
+                        : extendMonths === 0
+                          ? 'Sets plan to Boardly Plus with 30 days of active access.'
+                          : `Extends Boardly Plus expiry by +${extendMonths * 30} days.`
+                    : selectedPlan === 'pro_annual'
+                      ? 'Grants 365 days (1 full year) of Boardly Pro access.'
+                      : selectedPlan === 'pro_custom'
+                        ? explicitExpiryDate
+                          ? `Sets Boardly Pro active until ${explicitExpiryDate}.`
+                          : `Grants +${customDays} days of custom Pro access.`
+                        : extendMonths === 0
+                          ? 'Sets plan to Pro with 30 days of active access.'
+                          : `Extends Pro expiry by +${extendMonths * 30} days.`}
                 </p>
               </div>
             )}

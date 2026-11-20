@@ -14,14 +14,16 @@ import { auth, db } from '@/lib/firebase';
 import {
   AI_COST_RULES,
   FREE_AI_CREDITS_PER_DAY,
-  PRO_AI_CREDITS_PER_DAY,
   buildChatTitle,
+  getDailyCreditsLimit,
   getPktDateKey,
   getPktResetInfo,
   type AiDepthId,
   type AiMentorId,
+  type AiPlan,
   type ApiContentMessage,
 } from '@/utils/aiMentorsLogic';
+import type { PlansConfigDoc } from '@/lib/planTier';
 import { readSwrCache, writeSwrCache } from '@/utils/userStateSource';
 
 export interface AiCreditsStatus {
@@ -30,9 +32,11 @@ export interface AiCreditsStatus {
   dailyLimit: number;
   isUnlimited: boolean;
   isPro: boolean;
+  isPlus: boolean;
+  isPaid: boolean;
   isSuperAdmin: boolean;
   deepMaxUnlocked: boolean;
-  plan: 'free' | 'pro';
+  plan: AiPlan;
   source: 'superadmin' | 'personal' | 'crew' | 'none';
   dateKey: string;
   resetAt: string;
@@ -93,22 +97,36 @@ export function setSaveChatHistoryPref(uid: string | null | undefined, enabled: 
 }
 
 export function buildFallbackCreditsStatus(opts: {
+  plan?: AiPlan;
   isPro: boolean;
+  isPlus?: boolean;
   isSuperAdmin: boolean;
   source?: 'superadmin' | 'personal' | 'crew' | 'none';
+  plansConfig?: PlansConfigDoc | null;
 }): AiCreditsStatus {
   const reset = getPktResetInfo();
-  const dailyLimit = opts.isPro || opts.isSuperAdmin ? PRO_AI_CREDITS_PER_DAY : FREE_AI_CREDITS_PER_DAY;
+  const resolvedPlan: AiPlan = opts.isSuperAdmin
+    ? 'plus'
+    : opts.plan === 'plus' || opts.isPlus
+    ? 'plus'
+    : opts.plan === 'pro' || opts.isPro
+    ? 'pro'
+    : 'free';
+  const dailyLimit = getDailyCreditsLimit(resolvedPlan, opts.plansConfig);
+  const isPaid = resolvedPlan !== 'free' || opts.isSuperAdmin;
+  const isPlus = resolvedPlan === 'plus' || opts.isSuperAdmin;
   return {
     creditsUsed: 0,
     creditsLeft: dailyLimit,
     dailyLimit,
     isUnlimited: opts.isSuperAdmin,
-    isPro: opts.isPro || opts.isSuperAdmin,
+    isPro: isPaid,
+    isPlus,
+    isPaid,
     isSuperAdmin: opts.isSuperAdmin,
-    deepMaxUnlocked: opts.isPro || opts.isSuperAdmin,
-    plan: opts.isPro || opts.isSuperAdmin ? 'pro' : 'free',
-    source: opts.isSuperAdmin ? 'superadmin' : opts.source || (opts.isPro ? 'personal' : 'none'),
+    deepMaxUnlocked: isPaid,
+    plan: resolvedPlan,
+    source: opts.isSuperAdmin ? 'superadmin' : opts.source || (isPaid ? 'personal' : 'none'),
     dateKey: reset.dateKey,
     resetAt: reset.resetAtIso,
     syncedFromServer: false,
@@ -121,7 +139,18 @@ export function getCachedAiCreditsStatus(uid?: string | null): AiCreditsStatus |
   if (!cached) return null;
   // Invalidate if PKT date rolled over
   if (cached.dateKey !== getPktDateKey()) return null;
-  return cached;
+  const plan: AiPlan =
+    cached.plan === 'plus' || cached.isPlus
+      ? 'plus'
+      : cached.plan === 'pro' || cached.isPro
+      ? 'pro'
+      : 'free';
+  return {
+    ...cached,
+    plan,
+    isPlus: Boolean(cached.isPlus || plan === 'plus'),
+    isPaid: Boolean(cached.isPaid || cached.isPro || plan !== 'free' || cached.isSuperAdmin),
+  };
 }
 
 export function cacheAiCreditsStatus(uid: string | null | undefined, status: AiCreditsStatus): void {
@@ -136,12 +165,19 @@ export function cacheAiCreditsStatus(uid: string | null | undefined, status: AiC
 
 export async function fetchAiCreditsStatus(
   uid?: string | null,
-  fallbackOpts?: { isPro: boolean; isSuperAdmin: boolean; source?: 'superadmin' | 'personal' | 'crew' | 'none' }
+  fallbackOpts?: {
+    plan?: AiPlan;
+    isPro: boolean;
+    isPlus?: boolean;
+    isSuperAdmin: boolean;
+    source?: 'superadmin' | 'personal' | 'crew' | 'none';
+    plansConfig?: PlansConfigDoc | null;
+  }
 ): Promise<AiCreditsStatus> {
   const token = await auth.currentUser?.getIdToken().catch(() => null);
   if (!token) {
     return buildFallbackCreditsStatus(
-      fallbackOpts || { isPro: false, isSuperAdmin: false, source: 'none' }
+      fallbackOpts || { plan: 'free', isPro: false, isPlus: false, isSuperAdmin: false, source: 'none' }
     );
   }
 
@@ -157,15 +193,25 @@ export async function fetchAiCreditsStatus(
       throw new Error(`HTTP ${res.status}`);
     }
     const data = await res.json();
+    const resolvedPlan: AiPlan =
+      data.plan === 'plus' || data.isPlus === true || data.isSuperAdmin === true
+        ? 'plus'
+        : data.plan === 'pro' || data.isPro === true
+        ? 'pro'
+        : 'free';
+    const isPaid = resolvedPlan !== 'free' || Boolean(data.isSuperAdmin);
+    const isPlus = resolvedPlan === 'plus' || Boolean(data.isSuperAdmin);
     const status: AiCreditsStatus = {
       creditsUsed: Number(data.creditsUsed || 0),
       creditsLeft: Number(data.creditsLeft ?? data.dailyLimit ?? FREE_AI_CREDITS_PER_DAY),
-      dailyLimit: Number(data.dailyLimit || FREE_AI_CREDITS_PER_DAY),
+      dailyLimit: Number(data.dailyLimit || getDailyCreditsLimit(resolvedPlan, fallbackOpts?.plansConfig)),
       isUnlimited: Boolean(data.isUnlimited),
-      isPro: Boolean(data.isPro),
+      isPro: isPaid,
+      isPlus,
+      isPaid,
       isSuperAdmin: Boolean(data.isSuperAdmin),
-      deepMaxUnlocked: Boolean(data.deepMaxUnlocked),
-      plan: data.plan === 'pro' ? 'pro' : 'free',
+      deepMaxUnlocked: Boolean(data.deepMaxUnlocked ?? isPaid),
+      plan: resolvedPlan,
       source: data.source || 'none',
       dateKey: String(data.dateKey || getPktDateKey()),
       resetAt: String(data.resetAt || getPktResetInfo().resetAtIso),
