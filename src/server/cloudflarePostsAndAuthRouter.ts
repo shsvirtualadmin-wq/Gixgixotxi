@@ -39,6 +39,16 @@ import { buildCertificateIssuedStudentEmail } from '../lib/emailTemplates';
 import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
 import { resolveUnifiedPlanStatus } from '../config/plans';
 import {
+  buildDailyPostQuotaStatus,
+  formatPostLimitReachedMessage,
+  getDailyPostWindow,
+} from '../config/postLimits';
+import {
+  getEffectiveUserPlan,
+  normalizePlanTier,
+  type PlanTier,
+} from '../lib/planTier';
+import {
   DEFAULT_PRO_BADGE_DESIGN,
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
@@ -2522,6 +2532,119 @@ ${postSitemaps}
     }
   });
 
+  // ── Tiered Daily Post Quota Helpers (PKT midnight reset, plan-aware) ────────
+  const dailyPostCreationCounts = new Map<string, number>();
+
+  const countLocalPostsUsedToday = (uid: string, nowMs: number = Date.now()): number => {
+    const windowInfo = getDailyPostWindow(nowMs);
+    const store = loadD1Store();
+    let dbCount = 0;
+    for (const p of store.posts) {
+      const ownerUid = p.real_author_uid || p.author_uid;
+      if (ownerUid !== uid) continue;
+      const createdAt = Number(p.created_at || 0);
+      if (createdAt >= windowInfo.windowStartMs && createdAt < windowInfo.resetAtMs) {
+        dbCount += 1;
+      }
+    }
+    const counterKey = `${uid}:${windowInfo.dateKey}`;
+    const trackedCount = dailyPostCreationCounts.get(counterKey) || 0;
+    return Math.max(dbCount, trackedCount);
+  };
+
+  const recordLocalPostCreatedToday = (uid: string, nowMs: number = Date.now()): number => {
+    const windowInfo = getDailyPostWindow(nowMs);
+    const counterKey = `${uid}:${windowInfo.dateKey}`;
+    const nextCount = countLocalPostsUsedToday(uid, nowMs);
+    if (dailyPostCreationCounts.size > 2000) {
+      for (const key of dailyPostCreationCounts.keys()) {
+        if (!key.endsWith(`:${windowInfo.dateKey}`)) {
+          dailyPostCreationCounts.delete(key);
+        }
+      }
+    }
+    dailyPostCreationCounts.set(counterKey, nextCount);
+    return nextCount;
+  };
+
+  const resolveEffectivePostPlanForUser = async (
+    user: { uid: string; email?: string; role?: string },
+    bearerHeader: string
+  ): Promise<PlanTier> => {
+    if (user.role === 'superadmin') return 'plus';
+    if (!user.uid || user.uid.startsWith('guest_')) return 'free';
+    try {
+      const resolved = await resolveServerProStatus(user.uid, user.email, bearerHeader);
+      const personalPlan = normalizePlanTier(
+        resolved?.status?.planTier ||
+          (resolved?.status?.isPlus ? 'plus' : resolved?.status?.isPro ? 'pro' : 'free')
+      );
+      if (personalPlan === 'plus') return 'plus';
+
+      // Check Nakama Crew plan sharing if user belongs to a crew
+      if (bearerHeader) {
+        const userDoc = await fetchFirestoreUserDocRest(user.uid, bearerHeader).catch(() => null);
+        const crewId = userDoc?.crewId ? String(userDoc.crewId).trim() : '';
+        if (crewId) {
+          const dbIds = Array.from(new Set([FIRESTORE_DATABASE_ID, '(default)'].filter(Boolean)));
+          for (const dbId of dbIds) {
+            try {
+              const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/${encodeURIComponent(
+                dbId
+              )}/documents/crews/${encodeURIComponent(crewId)}`;
+              const resp = await fetch(url, {
+                method: 'GET',
+                headers: { Authorization: bearerHeader, Accept: 'application/json' },
+              });
+              if (resp.ok) {
+                const parsed = parseFirestoreRestDoc(await resp.json().catch(() => null));
+                if (parsed?.data) {
+                  return getEffectiveUserPlan(
+                    { uid: user.uid, effectivePlan: personalPlan },
+                    parsed.data
+                  );
+                }
+              }
+            } catch {
+              // Ignore crew read failure
+            }
+          }
+        }
+      }
+      return personalPlan;
+    } catch {
+      return 'free';
+    }
+  };
+
+  // 6b. GET /api/posts/limit — Returns live daily post quota for the signed-in user
+  app.get('/api/posts/limit', async (req, res) => {
+    try {
+      const user = await verifyFirebaseJwtZeroFirestore(req);
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Please sign in to view your daily posting limit.',
+        });
+      }
+      const bearerHeader = String(req.headers.authorization || '').trim();
+      const nowMs = Date.now();
+      const plan = await resolveEffectivePostPlanForUser(user, bearerHeader);
+      const usedToday = countLocalPostsUsedToday(user.uid, nowMs);
+      const quota = buildDailyPostQuotaStatus({ plan, usedToday, nowMs });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({
+        success: true,
+        ...quota,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: err?.message || 'Failed to check daily post limit.',
+      });
+    }
+  });
+
   // 7. POST /api/posts — Create Post in D1
   app.post('/api/posts', async (req, res) => {
     try {
@@ -2533,13 +2656,22 @@ ${postSitemaps}
         });
       }
 
-      if (
-        user.role !== 'superadmin' &&
-        !checkWriteRateLimit(`post:${user.uid}`, 10, 24 * 60 * 60 * 1000)
-      ) {
+      const bearerHeader = String(req.headers.authorization || '').trim();
+      const checkNowMs = Date.now();
+      const userPlan = await resolveEffectivePostPlanForUser(user, bearerHeader);
+      const usedTodayBefore = countLocalPostsUsedToday(user.uid, checkNowMs);
+      const preQuota = buildDailyPostQuotaStatus({
+        plan: userPlan,
+        usedToday: usedTodayBefore,
+        nowMs: checkNowMs,
+      });
+
+      if (preQuota.limitReached) {
         return res.status(429).json({
           success: false,
-          error: 'You have reached the daily limit of 10 posts in 24 hours.',
+          code: 'DAILY_POST_LIMIT_REACHED',
+          error: formatPostLimitReachedMessage(preQuota),
+          quota: preQuota,
         });
       }
 
@@ -2659,10 +2791,18 @@ ${postSitemaps}
 
       saveD1Store(store);
 
+      const usedTodayAfter = recordLocalPostCreatedToday(user.uid, safeCreatedAt);
+      const postQuota = buildDailyPostQuotaStatus({
+        plan: userPlan,
+        usedToday: Math.max(usedTodayAfter, usedTodayBefore + 1),
+        nowMs: safeCreatedAt,
+      });
+
       return res.status(201).json({
         success: true,
         postId: id,
         post: rowToCommonsPost(newRow, user.uid),
+        quota: postQuota,
       });
     } catch (err: any) {
       if (err?.message === 'POSTING_BANNED') {

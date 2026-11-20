@@ -34,6 +34,13 @@ import {
 } from '@/lib/swrCache';
 import seedPostsDataset from '../../data/cloudflare_d1_posts.json';
 
+import {
+  POST_LIMITS,
+  buildDailyPostQuotaStatus,
+  type DailyPostQuotaStatus,
+} from '@/config/postLimits';
+import type { PlanTier } from '@/lib/planTier';
+
 /**
  * ============================================================================
  * BOARDLY COMMONS SERVICE — CLOUDFLARE WORKER + D1 + R2
@@ -46,7 +53,84 @@ import seedPostsDataset from '../../data/cloudflare_d1_posts.json';
  * Firebase Auth is used strictly for JWT verification on authenticated writes.
  */
 
-export const DAILY_POST_LIMIT = 10;
+export const DAILY_POST_LIMIT = POST_LIMITS.free;
+
+export class PostQuotaError extends Error {
+  status: number;
+  code: string;
+  quota?: DailyPostQuotaStatus;
+
+  constructor(
+    message: string,
+    status: number = 429,
+    code: string = 'DAILY_POST_LIMIT_REACHED',
+    quota?: DailyPostQuotaStatus
+  ) {
+    super(message);
+    this.name = 'PostQuotaError';
+    this.status = status;
+    this.code = code;
+    this.quota = quota;
+  }
+}
+
+function broadcastDailyPostQuota(quota: Partial<DailyPostQuotaStatus> | null | undefined): void {
+  if (!quota || typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent('boardly:post-quota-updated', { detail: quota }));
+  } catch {
+    // ignore dispatch errors in non-browser environments
+  }
+}
+
+export async function fetchDailyPostQuota(
+  fallbackPlan: PlanTier = 'free'
+): Promise<DailyPostQuotaStatus> {
+  const fallback = buildDailyPostQuotaStatus({ plan: fallbackPlan, usedToday: 0 });
+  if (!auth.currentUser) {
+    return fallback;
+  }
+  try {
+    const headers = await getOptionalAuthHeader();
+    if (!headers.Authorization) {
+      return fallback;
+    }
+    const resp = await fetch('/api/posts/limit', {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (!resp.ok) {
+      return fallback;
+    }
+    const data = await resp.json().catch(() => null);
+    if (!data || typeof data.usedToday !== 'number') {
+      return fallback;
+    }
+    const plan: PlanTier =
+      data.plan === 'plus' || data.plan === 'pro' || data.plan === 'free'
+        ? data.plan
+        : fallbackPlan;
+    const normalized = buildDailyPostQuotaStatus({
+      plan,
+      usedToday: data.usedToday,
+    });
+    const merged: DailyPostQuotaStatus = {
+      ...normalized,
+      ...(typeof data.dateKey === 'string' ? { dateKey: data.dateKey } : {}),
+      ...(typeof data.resetAtMs === 'number' ? { resetAtMs: data.resetAtMs } : {}),
+      ...(typeof data.resetAtIso === 'string' ? { resetAtIso: data.resetAtIso } : {}),
+      ...(typeof data.resetCountdown === 'string' ? { resetCountdown: data.resetCountdown } : {}),
+      ...(typeof data.resetTimeLabel === 'string' ? { resetTimeLabel: data.resetTimeLabel } : {}),
+      ...(typeof data.timezone === 'string' ? { timezone: data.timezone } : {}),
+    };
+    broadcastDailyPostQuota(merged);
+    return merged;
+  } catch {
+    return fallback;
+  }
+}
 
 const BLOCKED_EXTENSIONS = [
   '.exe',
@@ -467,13 +551,15 @@ export async function checkPostingRateLimit(_uid: string): Promise<{
   remaining: number;
   count: number;
   isBanned: boolean;
+  quota?: DailyPostQuotaStatus;
 }> {
-  // Enforced directly by Cloudflare Worker / D1 rate_limits table on POST /api/posts
+  const quota = await fetchDailyPostQuota('free');
   return {
-    allowed: true,
-    remaining: DAILY_POST_LIMIT,
-    count: 0,
+    allowed: !quota.limitReached,
+    remaining: quota.isUnlimited ? Infinity : quota.remaining ?? 0,
+    count: quota.usedToday,
     isBanned: false,
+    quota,
   };
 }
 
@@ -510,7 +596,7 @@ export async function createCommonsPost(params: {
   tags: string[];
   files: CommonsFileAttachment[];
   isAnonymous: boolean;
-}): Promise<{ postId: string; post: CommonsPost }> {
+}): Promise<{ postId: string; post: CommonsPost; quota?: DailyPostQuotaStatus }> {
   const author = params.author || params.currentUser || {
     uid: auth.currentUser?.uid || '',
     email: auth.currentUser?.email || null,
@@ -570,10 +656,27 @@ export async function createCommonsPost(params: {
       postId: params.postId,
       response: data,
     });
+    if (resp.status === 429 && data?.code === 'DAILY_POST_LIMIT_REACHED') {
+      const serverQuota = data?.quota as DailyPostQuotaStatus | undefined;
+      if (serverQuota) {
+        broadcastDailyPostQuota(serverQuota);
+      }
+      throw new PostQuotaError(
+        data?.error || 'Daily post limit reached.',
+        429,
+        data.code,
+        serverQuota
+      );
+    }
     if (resp.status === 401) {
       throw new Error('Please sign in again');
     }
     throw new Error(data?.error || 'Upload failed, try again');
+  }
+
+  const serverQuota = data?.quota as DailyPostQuotaStatus | undefined;
+  if (serverQuota) {
+    broadcastDailyPostQuota(serverQuota);
   }
 
   const normalized = normalizeCloudflarePost(data.post || { id: data.postId, ...params });
@@ -611,6 +714,7 @@ export async function createCommonsPost(params: {
   return {
     postId: normalized.id,
     post: normalized,
+    ...(serverQuota ? { quota: serverQuota } : {}),
   };
 }
 

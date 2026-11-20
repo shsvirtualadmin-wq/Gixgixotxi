@@ -19,6 +19,9 @@ import { normalizeProBadgeDesign } from '@/lib/proBadgeDesigns';
 import { auth } from '@/lib/firebase';
 import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
 import { getDisplayName, getUsernameHandle } from '@/utils/displayName';
+import { useDailyPostQuota } from '@/hooks/useDailyPostQuota';
+import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
+import { formatPostLimitReachedMessage } from '@/config/postLimits';
 
 export interface CommonsCommentItem {
   id: string;
@@ -300,6 +303,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const [publishing, setPublishing] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { quota, applyServerQuota, incrementLocalUsed } = useDailyPostQuota(
+    Boolean(isOwnProfile && !isGuest)
+  );
 
   // Expanded long posts (>6 lines)
   const [expandedPostIds, setExpandedPostIds] = useState<Record<string, boolean>>({});
@@ -400,6 +406,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       setComposerError('Please sign in with a registered account to post.');
       return;
     }
+    if (quota.limitReached) {
+      setComposerError(formatPostLimitReachedMessage(quota));
+      return;
+    }
 
     setPublishing(true);
     setComposerError(null);
@@ -468,7 +478,22 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
       const createJson = await createRes.json().catch(() => ({}));
       if (!createRes.ok || createJson?.ok === false) {
+        if (createRes.status === 429 && createJson?.quota) {
+          applyServerQuota(createJson.quota);
+          window.dispatchEvent(
+            new CustomEvent('boardly:post-quota-updated', { detail: createJson.quota })
+          );
+        }
         throw new Error(createJson?.error || 'Could not publish post.');
+      }
+
+      if (createJson?.quota) {
+        applyServerQuota(createJson.quota);
+        window.dispatchEvent(
+          new CustomEvent('boardly:post-quota-updated', { detail: createJson.quota })
+        );
+      } else {
+        incrementLocalUsed();
       }
 
       const createdPost = createJson?.post
@@ -777,12 +802,16 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 </div>
               )}
 
-              {composerError && (
+              {quota.limitReached && (
+                <PostLimitBanner quota={quota} variant="modal" className="mt-2.5" />
+              )}
+
+              {composerError && !quota.limitReached && (
                 <p className="mt-1.5 text-[12px] font-medium text-[var(--danger)]">{composerError}</p>
               )}
 
-              <div className="mt-3 pt-3 border-t border-[var(--border)] flex items-center justify-between gap-2">
-                <div>
+              <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -792,17 +821,25 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   />
                   <button
                     type="button"
+                    disabled={quota.limitReached}
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 min-h-[42px] px-3.5 rounded-full text-[13px] font-semibold text-[var(--text)] bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-2 min-h-[42px] px-3.5 rounded-full text-[13px] font-semibold text-[var(--text)] bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] disabled:opacity-45 transition-colors cursor-pointer"
                   >
                     <ImageIcon className="w-4 h-4 text-[var(--accent)]" />
                     <span>Attach image</span>
                   </button>
+                  {!quota.limitReached && (
+                    <PostLimitBanner quota={quota} variant="inline" />
+                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={publishing || (!composerText.trim() && !composerImageFile)}
+                  disabled={
+                    publishing ||
+                    quota.limitReached ||
+                    (!composerText.trim() && !composerImageFile)
+                  }
                   className="inline-flex items-center justify-center gap-2 min-h-[42px] px-5 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold hover:opacity-95 disabled:opacity-45 transition cursor-pointer"
                 >
                   {publishing ? (
@@ -810,6 +847,8 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>Posting...</span>
                     </>
+                  ) : quota.limitReached ? (
+                    <span>Limit reached</span>
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />

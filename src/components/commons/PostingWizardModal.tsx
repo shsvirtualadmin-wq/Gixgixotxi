@@ -17,9 +17,12 @@ import {
   Globe,
   EyeOff,
 } from 'lucide-react';
-import { createCommonsPost } from '@/services/commonsService';
+import { createCommonsPost, PostQuotaError } from '@/services/commonsService';
 import { uploadCommonsAttachment } from '@/services/commonsUploadService';
 import { useBodyScrollLock } from '@/utils/scrollLock';
+import { useDailyPostQuota } from '@/hooks/useDailyPostQuota';
+import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
+import { formatPostLimitReachedMessage } from '@/config/postLimits';
 import type { CommonsPost, CommonsPostType, CommonsFileAttachment } from '@/types/commons';
 
 export type WizardPostType =
@@ -224,6 +227,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { quota, applyServerQuota, incrementLocalUsed } = useDailyPostQuota(isOpen);
 
   // Lock body scroll safely via ref-counted lock & set data-modal-open while open
   useBodyScrollLock(isOpen, 'posting-wizard-modal');
@@ -335,9 +339,14 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
     title.trim().length >= 3 &&
     description.trim().length >= 3 &&
     agreedToRules &&
-    !isSubmitting;
+    !isSubmitting &&
+    !quota.limitReached;
 
   const handlePublish = async () => {
+    if (quota.limitReached) {
+      setError(formatPostLimitReachedMessage(quota));
+      return;
+    }
     if (!canPublish) {
       if (!title.trim() || !description.trim()) {
         setError('Please enter both a title and a description.');
@@ -397,6 +406,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
           files: uploadedAttachments,
           isAnonymous,
         });
+        if (created.quota) {
+          applyServerQuota(created.quota);
+        } else {
+          incrementLocalUsed();
+        }
         onPostCreated?.(created.post);
       }
 
@@ -418,6 +432,9 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         onClose();
       }, 1100);
     } catch (err: any) {
+      if (err instanceof PostQuotaError && err.quota) {
+        applyServerQuota(err.quota);
+      }
       setError(err?.message || 'Failed to publish resource. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -495,7 +512,9 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
         {/* SCROLLING BODY */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 overscroll-contain">
-          {error && (
+          <PostLimitBanner quota={quota} variant="modal" onBeforeNavigate={onClose} />
+
+          {error && !quota.limitReached && (
             <div className="p-3.5 rounded-2xl bg-[#D71921]/15 border border-[#D71921]/40 text-[#D71921] dark:text-red-200 text-xs font-semibold flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 text-[#D71921] shrink-0 mt-0.5" />
               <span>{error}</span>
@@ -906,6 +925,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>Publishing...</span>
+                  </>
+                ) : quota.limitReached ? (
+                  <>
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Daily Limit Reached</span>
                   </>
                 ) : (
                   <>

@@ -14,6 +14,12 @@ import {
   buildR2PostFileKey,
   sanitizeUploadFileName,
 } from '../../../src/config/cloudflareConfig';
+import {
+  buildDailyPostQuotaStatus,
+  formatPostLimitReachedMessage,
+  getDailyPostWindow,
+} from '../../../src/config/postLimits';
+import { getPlan, type PlanTier } from '../../../src/lib/planTier';
 import seedDataset from '../../../data/cloudflare_d1_posts.json';
 
 interface MemoryStore {
@@ -33,6 +39,72 @@ const memoryStore: MemoryStore = {
   reports: Array.isArray((seedDataset as any)?.reports) ? [...(seedDataset as any).reports] : [],
   files: new Map(),
 };
+
+const memoryDailyPostCounts = new Map<string, number>();
+
+function countMemoryPostsUsedToday(uid: string, nowMs: number = Date.now()): number {
+  const windowInfo = getDailyPostWindow(nowMs);
+  let postsToday = 0;
+  for (const p of memoryStore.posts) {
+    const ownerUid = p.real_author_uid || p.author_uid;
+    if (ownerUid !== uid) continue;
+    const ts = Number(p.created_at || 0);
+    if (ts >= windowInfo.windowStartMs && ts < windowInfo.resetAtMs) {
+      postsToday += 1;
+    }
+  }
+  const tracked = memoryDailyPostCounts.get(`${uid}:${windowInfo.dateKey}`) || 0;
+  return Math.max(postsToday, tracked);
+}
+
+async function resolveFallbackUserPlanTier(
+  request: Request,
+  env: Env,
+  user: { uid: string; role?: string; email?: string }
+): Promise<PlanTier> {
+  if (user.role === 'superadmin') return 'plus';
+  if (!user.uid || user.uid.startsWith('guest_')) return 'free';
+  const authHeader = String(request.headers.get('Authorization') || '').trim();
+  if (!authHeader) return 'free';
+  const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
+  const defaultDbId =
+    (env as any).FIREBASE_DATABASE_ID ||
+    'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+
+  const decodeVal = (v: any): any => {
+    if (!v || typeof v !== 'object') return null;
+    if ('stringValue' in v) return v.stringValue;
+    if ('booleanValue' in v) return Boolean(v.booleanValue);
+    if ('integerValue' in v) return Number(v.integerValue);
+    if ('doubleValue' in v) return Number(v.doubleValue);
+    if ('timestampValue' in v) return v.timestampValue;
+    return null;
+  };
+
+  for (const dbId of [defaultDbId, '(default)']) {
+    try {
+      const resp = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+          projectId
+        )}/databases/${encodeURIComponent(dbId)}/documents/users/${encodeURIComponent(user.uid)}`,
+        { headers: { Authorization: authHeader, Accept: 'application/json' } }
+      );
+      if (resp.ok) {
+        const json = (await resp.json().catch(() => null)) as { fields?: Record<string, any> } | null;
+        if (json?.fields) {
+          const userDoc: Record<string, any> = { uid: user.uid, role: user.role };
+          for (const [k, v] of Object.entries(json.fields)) {
+            userDoc[k] = decodeVal(v);
+          }
+          return getPlan(userDoc);
+        }
+      }
+    } catch {
+      // Fallback to free
+    }
+  }
+  return 'free';
+}
 
 function base64ToUint8Array(base64Str: string): Uint8Array {
   const cleaned = base64Str.includes(',')
@@ -402,6 +474,32 @@ export async function onRequest(context: {
     );
   }
 
+  // GET /api/posts/limit
+  if (subPath === '/limit' && request.method === 'GET') {
+    const user = await verifyFirebaseIdToken(request, env || {});
+    if (!user) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'NOT_AUTHENTICATED',
+          error: 'Please sign in again',
+        }),
+        { status: 401, headers: jsonHeaders }
+      );
+    }
+    const nowMs = Date.now();
+    const plan = await resolveFallbackUserPlanTier(request, env || {}, user);
+    const usedToday = countMemoryPostsUsedToday(user.uid, nowMs);
+    const quota = buildDailyPostQuotaStatus({ plan, usedToday, nowMs });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        ...quota,
+      }),
+      { status: 200, headers: { ...jsonHeaders, 'Cache-Control': 'no-store' } }
+    );
+  }
+
   // POST /api/posts
   if (subPath === '/' && request.method === 'POST') {
     const user = await verifyFirebaseIdToken(request, env || {});
@@ -413,6 +511,26 @@ export async function onRequest(context: {
           error: 'Please sign in again',
         }),
         { status: 401, headers: jsonHeaders }
+      );
+    }
+
+    const checkNowMs = Date.now();
+    const userPlan = await resolveFallbackUserPlanTier(request, env || {}, user);
+    const usedTodayBefore = countMemoryPostsUsedToday(user.uid, checkNowMs);
+    const preQuota = buildDailyPostQuotaStatus({
+      plan: userPlan,
+      usedToday: usedTodayBefore,
+      nowMs: checkNowMs,
+    });
+    if (preQuota.limitReached) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'DAILY_POST_LIMIT_REACHED',
+          error: formatPostLimitReachedMessage(preQuota),
+          quota: preQuota,
+        }),
+        { status: 429, headers: jsonHeaders }
       );
     }
 
@@ -485,12 +603,21 @@ export async function onRequest(context: {
     };
 
     memoryStore.posts.unshift(newRow);
+    const windowInfo = getDailyPostWindow(now);
+    const nextUsed = usedTodayBefore + 1;
+    memoryDailyPostCounts.set(`${user.uid}:${windowInfo.dateKey}`, nextUsed);
+    const postQuota = buildDailyPostQuotaStatus({
+      plan: userPlan,
+      usedToday: nextUsed,
+      nowMs: now,
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
         backendMode: 'preview-demo',
         postId: id,
+        quota: postQuota,
         post: rowToCommonsPost(newRow),
       }),
       { status: 201, headers: jsonHeaders }

@@ -7,6 +7,8 @@
  * are defined in this single file.
  */
 
+import { POST_LIMITS } from './postLimits';
+
 export const BOARDLY_CLOUDFLARE_CONFIG = {
   // Firebase project used strictly for Auth (ID token verification) and MCQ bank
   firebaseProjectId: 'gen-lang-client-0365509316',
@@ -32,7 +34,7 @@ export const BOARDLY_CLOUDFLARE_CONFIG = {
   // Upload constraints
   maxFileSizeBytes: 25 * 1024 * 1024, // 25 MB
   maxFilesPerPost: 5,
-  dailyPostLimit: 10,
+  dailyPostLimit: POST_LIMITS.free,
 
   // Allowed MIME types (PNG, JPG, WEBP, GIF, PDF, DOCX + DOC/PPT/TXT)
   allowedMimeTypes: [

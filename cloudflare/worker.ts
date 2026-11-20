@@ -15,6 +15,13 @@ import {
   isAllowedOrigin,
   sanitizeUploadFileName,
 } from '../src/config/cloudflareConfig';
+import {
+  buildDailyPostQuotaStatus,
+  formatPostLimitReachedMessage,
+  getDailyPostWindow,
+  type DailyPostWindow,
+} from '../src/config/postLimits';
+import { getEffectiveUserPlan, getPlan, type PlanTier } from '../src/lib/planTier';
 import { BOARDLY_BOT_ACCOUNTS } from '../src/config/botsConfig';
 import {
   BotKeyPoolState,
@@ -1272,6 +1279,187 @@ async function checkRateLimit(
     return true;
   } catch {
     return true;
+  }
+}
+
+function decodeFirestoreRestValue(val: any): any {
+  if (!val || typeof val !== 'object') return null;
+  if ('stringValue' in val) return val.stringValue;
+  if ('booleanValue' in val) return Boolean(val.booleanValue);
+  if ('integerValue' in val) return Number(val.integerValue);
+  if ('doubleValue' in val) return Number(val.doubleValue);
+  if ('timestampValue' in val) return val.timestampValue;
+  if ('nullValue' in val) return null;
+  if ('arrayValue' in val) {
+    const arr = Array.isArray(val.arrayValue?.values) ? val.arrayValue.values : [];
+    return arr.map(decodeFirestoreRestValue);
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields || {};
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      out[k] = decodeFirestoreRestValue(v);
+    }
+    return out;
+  }
+  return null;
+}
+
+function decodeFirestoreRestDoc(docJson: any): Record<string, any> | null {
+  if (!docJson || typeof docJson !== 'object' || !docJson.fields) return null;
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(docJson.fields)) {
+    out[k] = decodeFirestoreRestValue(v);
+  }
+  return out;
+}
+
+async function fetchWorkerFirestoreDoc(
+  collectionName: string,
+  docId: string,
+  authHeader: string,
+  env: Env
+): Promise<Record<string, any> | null> {
+  if (!authHeader || !docId) return null;
+  const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
+  const defaultDbId =
+    (env as any).FIREBASE_DATABASE_ID ||
+    'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+  for (const dbId of [defaultDbId, '(default)']) {
+    try {
+      const resp = await fetch(
+        `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+          projectId
+        )}/databases/${encodeURIComponent(dbId)}/documents/${encodeURIComponent(
+          collectionName
+        )}/${encodeURIComponent(docId)}`,
+        { headers: { Authorization: authHeader, Accept: 'application/json' } }
+      );
+      if (resp.ok) {
+        const parsed = decodeFirestoreRestDoc(await resp.json().catch(() => null));
+        if (parsed) return parsed;
+      }
+    } catch {
+      // Try fallback DB id
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves the user's authoritative subscription plan tier ('free' | 'pro' | 'plus')
+ * from Superadmin role, Firestore users/{uid}, D1 pro_purchase_locks, and Nakama Crew sharing.
+ * Missing or expired plan safely defaults to 'free'.
+ */
+async function resolveWorkerUserPlanTier(
+  req: Request,
+  env: Env,
+  user: { uid: string; role?: string; email?: string }
+): Promise<PlanTier> {
+  if (user.role === 'superadmin') return 'plus';
+  if (!user.uid || user.uid.startsWith('guest_')) return 'free';
+
+  const authHeader = String(req.headers.get('Authorization') || '').trim();
+  const nowMs = Date.now();
+
+  const [userDoc, d1Lock] = await Promise.all([
+    authHeader ? fetchWorkerFirestoreDoc('users', user.uid, authHeader, env) : Promise.resolve(null),
+    env.DB
+      ? env.DB.prepare('SELECT * FROM pro_purchase_locks WHERE uid = ?1 LIMIT 1')
+          .bind(user.uid)
+          .first<Record<string, any>>()
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  const userLike: Record<string, any> = {
+    uid: user.uid,
+    email: user.email || userDoc?.email || null,
+    role: userDoc?.role || user.role || 'student',
+    isGuest: user.uid.startsWith('guest_') || Boolean(userDoc?.isGuest),
+    ...(userDoc || {}),
+  };
+
+  // Honor active D1 purchase lock if Firestore hasn't explicitly downgraded the user
+  if (d1Lock && d1Lock.state === 'active' && Number(d1Lock.expires_at || 0) > nowMs) {
+    const lockPlanId = String(d1Lock.plan_id || '').toLowerCase();
+    const lockIsPlus = lockPlanId.includes('plus');
+    if (
+      userDoc === null ||
+      userDoc?.isPlus === true ||
+      userDoc?.isPro === true ||
+      userDoc?.isPremium === true ||
+      userDoc?.plan === 'pro' ||
+      userDoc?.plan === 'plus'
+    ) {
+      if (lockIsPlus) {
+        userLike.isPlus = true;
+        userLike.plusUntil = Number(d1Lock.expires_at);
+      } else {
+        userLike.isPro = true;
+        userLike.proUntil = Number(d1Lock.expires_at);
+      }
+    }
+  }
+
+  const personalPlan = getPlan(userLike, nowMs);
+  if (personalPlan === 'plus') return 'plus';
+
+  const crewId = userDoc?.crewId ? String(userDoc.crewId).trim() : '';
+  if (crewId && authHeader) {
+    const crewDoc = await fetchWorkerFirestoreDoc('crews', crewId, authHeader, env).catch(
+      () => null
+    );
+    if (crewDoc) {
+      return getEffectiveUserPlan(userLike, crewDoc, nowMs);
+    }
+  }
+
+  return personalPlan;
+}
+
+async function getWorkerDailyPostsUsedToday(
+  env: Env,
+  uid: string,
+  windowInfo: DailyPostWindow
+): Promise<number> {
+  if (!env.DB) return 0;
+  const rateKey = `post_daily:${uid}:${windowInfo.dateKey}`;
+  try {
+    const [postsRow, rateRow] = await Promise.all([
+      env.DB.prepare(
+        'SELECT COUNT(*) AS cnt FROM posts WHERE (real_author_uid = ?1 OR author_uid = ?1) AND created_at >= ?2 AND created_at < ?3'
+      )
+        .bind(uid, windowInfo.windowStartMs, windowInfo.resetAtMs)
+        .first<{ cnt: number }>()
+        .catch(() => ({ cnt: 0 })),
+      env.DB.prepare('SELECT count FROM rate_limits WHERE rate_key = ?1')
+        .bind(rateKey)
+        .first<{ count: number }>()
+        .catch(() => null),
+    ]);
+    return Math.max(Number(postsRow?.cnt || 0), Number(rateRow?.count || 0));
+  } catch {
+    return 0;
+  }
+}
+
+async function incrementWorkerDailyPostCounter(
+  env: Env,
+  uid: string,
+  windowInfo: DailyPostWindow,
+  floorCount: number
+): Promise<void> {
+  if (!env.DB) return;
+  const rateKey = `post_daily:${uid}:${windowInfo.dateKey}`;
+  try {
+    await env.DB.prepare(
+      'INSERT INTO rate_limits (rate_key, count, window_start) VALUES (?1, ?2, ?3) ON CONFLICT(rate_key) DO UPDATE SET count = MAX(count + 1, ?2), window_start = ?3'
+    )
+      .bind(rateKey, Math.max(1, floorCount), windowInfo.windowStartMs)
+      .run();
+  } catch {
+    // Non-blocking: posts table still enforces the authoritative count
   }
 }
 
@@ -7342,6 +7530,39 @@ ${urls
         );
       }
 
+      // ── GET /api/posts/limit — Live tiered daily post quota (PKT midnight reset) ──
+      if (subPath === '/limit' && req.method === 'GET') {
+        const user = await verifyFirebaseIdToken(req, env);
+        if (!user) {
+          return jsonResponse(
+            {
+              success: false,
+              code: 'NOT_AUTHENTICATED',
+              error: 'Please sign in again',
+            },
+            401,
+            cors
+          );
+        }
+
+        const nowMs = Date.now();
+        const windowInfo = getDailyPostWindow(nowMs);
+        const [plan, usedToday] = await Promise.all([
+          resolveWorkerUserPlanTier(req, env, user),
+          getWorkerDailyPostsUsedToday(env, user.uid, windowInfo),
+        ]);
+        const quota = buildDailyPostQuotaStatus({ plan, usedToday, nowMs });
+
+        return jsonResponse(
+          {
+            success: true,
+            ...quota,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
       // ── POST /api/posts — Create Post in D1 (with R2 rollback on failure) ──
       if (subPath === '/' && req.method === 'POST') {
         const user = await verifyFirebaseIdToken(req, env);
@@ -7357,17 +7578,25 @@ ${urls
           );
         }
 
-        const allowed = await checkRateLimit(
-          env,
-          `create:${user.uid}`,
-          BOARDLY_CLOUDFLARE_CONFIG.dailyPostLimit,
-          24 * 60 * 60 * 1000
-        );
-        if (!allowed && user.role !== 'superadmin') {
+        const checkNowMs = Date.now();
+        const windowInfo = getDailyPostWindow(checkNowMs);
+        const [userPlan, usedTodayBefore] = await Promise.all([
+          resolveWorkerUserPlanTier(req, env, user),
+          getWorkerDailyPostsUsedToday(env, user.uid, windowInfo),
+        ]);
+        const preQuota = buildDailyPostQuotaStatus({
+          plan: userPlan,
+          usedToday: usedTodayBefore,
+          nowMs: checkNowMs,
+        });
+
+        if (preQuota.limitReached) {
           return jsonResponse(
             {
               success: false,
-              error: `Daily post limit (${BOARDLY_CLOUDFLARE_CONFIG.dailyPostLimit} posts/day) reached. Try again tomorrow.`,
+              code: 'DAILY_POST_LIMIT_REACHED',
+              error: formatPostLimitReachedMessage(preQuota),
+              quota: preQuota,
             },
             429,
             cors
@@ -7509,6 +7738,13 @@ ${urls
           }
         }
 
+        await incrementWorkerDailyPostCounter(env, user.uid, windowInfo, usedTodayBefore + 1);
+        const postQuota = buildDailyPostQuotaStatus({
+          plan: userPlan,
+          usedToday: usedTodayBefore + 1,
+          nowMs: now,
+        });
+
         const createdRow = await env.DB.prepare('SELECT * FROM posts WHERE id = ?')
           .bind(id)
           .first<Record<string, any>>();
@@ -7517,6 +7753,7 @@ ${urls
           {
             success: true,
             postId: id,
+            quota: postQuota,
             post: createdRow
               ? rowToCommonsPost(createdRow)
               : rowToCommonsPost({

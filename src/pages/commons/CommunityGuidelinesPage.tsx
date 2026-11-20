@@ -3,6 +3,7 @@ import { Shield, CheckCircle2, AlertTriangle, ArrowLeft, Lock } from 'lucide-rea
 import { Link, useNavigate } from 'react-router-dom';
 import { useHomeUrl } from '@/utils/homeUrl';
 import { DashboardBottomNav } from '@/components/dashboard/DashboardBottomNav';
+import { POST_LIMITS, POST_LIMIT_RESET_TIME_LABEL } from '@/config/postLimits';
 
 export function CommunityGuidelinesPage() {
   const homeUrl = useHomeUrl();
@@ -243,10 +244,10 @@ export function CommunityGuidelinesPage() {
               className="text-sm sm:text-base block text-[#FF5A65]"
               style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
             >
-              Daily limit: 10 posts per day.
+              Free: {POST_LIMITS.free} posts/day · Pro: {POST_LIMITS.pro} posts/day · Plus: Unlimited
             </span>
             <p className="text-xs sm:text-sm leading-relaxed text-[var(--muted)]">
-              To prevent spam, each student can publish up to 10 posts per calendar day (Pakistan Standard Time).
+              To keep Commons spam-free, daily post quotas depend on your plan and reset every night at midnight ({POST_LIMIT_RESET_TIME_LABEL}, Pakistan Standard Time).
             </p>
           </div>
         </section>
