@@ -313,12 +313,35 @@ export async function sendAiMentorMessage(params: {
     throw new AiMentorApiError('Please sign in with a registered Boardly account to chat.', 401);
   }
 
+  const TOTAL_TIMEOUT_MS = 45_000;
+  const STREAM_INACTIVITY_TIMEOUT_MS = 25_000;
+
   const controller = new AbortController();
   let timedOut = false;
+  let timeoutReason: 'total' | 'inactivity' = 'total';
   const timeoutId = window.setTimeout(() => {
     timedOut = true;
+    timeoutReason = 'total';
     controller.abort();
-  }, 60_000);
+  }, TOTAL_TIMEOUT_MS);
+
+  let inactivityTimerId: number | null = null;
+  const resetInactivityWatchdog = () => {
+    if (inactivityTimerId !== null) {
+      window.clearTimeout(inactivityTimerId);
+    }
+    inactivityTimerId = window.setTimeout(() => {
+      timedOut = true;
+      timeoutReason = 'inactivity';
+      controller.abort();
+    }, STREAM_INACTIVITY_TIMEOUT_MS);
+  };
+  const clearInactivityWatchdog = () => {
+    if (inactivityTimerId !== null) {
+      window.clearTimeout(inactivityTimerId);
+      inactivityTimerId = null;
+    }
+  };
 
   const onExternalAbort = () => controller.abort();
   if (params.signal) {
@@ -331,6 +354,10 @@ export async function sendAiMentorMessage(params: {
 
   const requestId = params.requestId || createIdempotentRequestId();
   const wantStream = params.stream !== false;
+
+  console.info(
+    `[AI Mentor Client] start requestId=${requestId} mentor=${params.mentor} depth=${params.depth} stream=${wantStream} turns=${params.contents.length}`
+  );
 
   try {
     const res = await fetch('/api/ai', {
@@ -354,8 +381,15 @@ export async function sendAiMentorMessage(params: {
     const ttfbMs = Math.round(tHeaders - tStart);
     const contentType = (res.headers.get('content-type') || '').toLowerCase();
 
+    console.info(
+      `[AI Mentor Client] headers requestId=${requestId} status=${res.status} contentType=${contentType || 'none'} TTFB=${ttfbMs}ms`
+    );
+
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
+      console.error(
+        `[AI Mentor Client] HTTP error requestId=${requestId} status=${res.status} code=${data?.code || 'NONE'} error=${data?.error || 'unknown'}`
+      );
       throw new AiMentorApiError(
         data?.error || `Could not get a response from your AI Mentor (HTTP ${res.status}).`,
         res.status,
@@ -380,7 +414,7 @@ export async function sendAiMentorMessage(params: {
       let metaDepth: number = params.depth;
 
       const processEventBlock = (block: string) => {
-        const lines = block.split('\n');
+        const lines = block.split(/\r?\n/);
         let eventName = 'message';
         const dataLines: string[] = [];
 
@@ -407,6 +441,9 @@ export async function sendAiMentorMessage(params: {
         if (eventName === 'meta') {
           metaModel = typeof parsed.model === 'string' ? parsed.model : metaModel;
           if (typeof parsed.depth === 'number') metaDepth = parsed.depth;
+          console.info(
+            `[AI Mentor Client] meta requestId=${requestId} model=${metaModel || 'unknown'} depth=${metaDepth}`
+          );
           params.onMeta?.({
             model: metaModel,
             depth: metaDepth,
@@ -418,6 +455,9 @@ export async function sendAiMentorMessage(params: {
             if (ttftMs === null) {
               const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
               ttftMs = Math.round(now - tStart);
+              console.info(
+                `[AI Mentor Client] first-token requestId=${requestId} model=${metaModel || 'unknown'} TTFT=${ttftMs}ms`
+              );
             }
             fullText += delta;
             params.onDelta?.(delta, fullText);
@@ -425,6 +465,9 @@ export async function sendAiMentorMessage(params: {
         } else if (eventName === 'done') {
           donePayload = parsed;
         } else if (eventName === 'error') {
+          console.error(
+            `[AI Mentor Client] SSE error event requestId=${requestId} code=${parsed.code || 'STREAM_ERROR'} error=${parsed.error || 'unknown'}`
+          );
           throw new AiMentorApiError(
             parsed.error || 'Could not get a response from your AI Mentor.',
             Number(parsed.status) || 502,
@@ -438,31 +481,44 @@ export async function sendAiMentorMessage(params: {
         }
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+      resetInactivityWatchdog();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          resetInactivityWatchdog();
+          buffer += decoder.decode(value, { stream: true });
 
-        let boundaryIdx = buffer.indexOf('\n\n');
-        while (boundaryIdx !== -1) {
-          const block = buffer.slice(0, boundaryIdx);
-          buffer = buffer.slice(boundaryIdx + 2);
-          if (block.trim()) {
-            processEventBlock(block);
+          const sepRegex = /\r?\n\r?\n/;
+          let match = sepRegex.exec(buffer);
+          while (match) {
+            const block = buffer.slice(0, match.index);
+            buffer = buffer.slice(match.index + match[0].length);
+            if (block.trim()) {
+              processEventBlock(block);
+            }
+            match = sepRegex.exec(buffer);
           }
-          boundaryIdx = buffer.indexOf('\n\n');
         }
-      }
 
-      buffer += decoder.decode();
-      if (buffer.trim()) {
-        processEventBlock(buffer);
+        buffer += decoder.decode();
+        if (buffer.trim()) {
+          processEventBlock(buffer);
+        }
+      } finally {
+        clearInactivityWatchdog();
+        try {
+          reader.releaseLock();
+        } catch {
+          // ignore
+        }
       }
 
       const finalText = (fullText || String(donePayload?.text || '')).trim();
       if (!finalText) {
+        console.error(`[AI Mentor Client] empty SSE answer requestId=${requestId}`);
         throw new AiMentorApiError(
-          'The mentor returned an empty reply. Please try again.',
+          'The mentor returned an empty reply. Please tap Retry.',
           502,
           { code: 'EMPTY_ANSWER' }
         );
@@ -474,8 +530,8 @@ export async function sendAiMentorMessage(params: {
       const wordCount = countWordsSimple(finalText);
       const cost = Number(donePayload?.cost ?? 0);
 
-      console.log(
-        `[AI Mentor] mentor=${params.mentor} depth=${metaDepth} model=${metaModel || 'gemini-4-hydrogen'} ` +
+      console.info(
+        `[AI Mentor Client] done requestId=${requestId} mentor=${params.mentor} depth=${metaDepth} model=${metaModel || 'unknown'} ` +
           `TTFB=${ttfbMs}ms TTFT=${resolvedTtft}ms Total=${totalMs}ms words=${wordCount} cost=${cost}`
       );
 
@@ -503,8 +559,9 @@ export async function sendAiMentorMessage(params: {
     const data = await res.json().catch(() => ({}));
     const answerText = String(data.text || '').trim();
     if (!answerText) {
+      console.error(`[AI Mentor Client] empty JSON answer requestId=${requestId}`);
       throw new AiMentorApiError(
-        'The mentor returned an empty reply. Please try again.',
+        'The mentor returned an empty reply. Please tap Retry.',
         502,
         { code: 'EMPTY_ANSWER' }
       );
@@ -517,8 +574,8 @@ export async function sendAiMentorMessage(params: {
 
     params.onDelta?.(answerText, answerText);
 
-    console.log(
-      `[AI Mentor] mentor=${params.mentor} depth=${params.depth} (json) ` +
+    console.info(
+      `[AI Mentor Client] done (json) requestId=${requestId} mentor=${params.mentor} depth=${params.depth} ` +
         `TTFB=${ttfbMs}ms TTFT=${totalMs}ms Total=${totalMs}ms words=${wordCount} cost=${cost}`
     );
 
@@ -541,21 +598,42 @@ export async function sendAiMentorMessage(params: {
       },
     };
   } catch (err: any) {
-    if (err instanceof AiMentorApiError) throw err;
+    const elapsedMs = Math.round(
+      (typeof performance !== 'undefined' ? performance.now() : Date.now()) - tStart
+    );
+    if (err instanceof AiMentorApiError) {
+      console.error(
+        `[AI Mentor Client] failed requestId=${requestId} elapsed=${elapsedMs}ms status=${err.status} code=${err.code || 'NONE'} msg=${err.message}`
+      );
+      throw err;
+    }
     if (err?.name === 'AbortError') {
       if (timedOut) {
-        throw new AiMentorApiError('Request timed out after 60 seconds. Please tap Retry.', 408, {
+        const msg =
+          timeoutReason === 'inactivity'
+            ? 'The AI Mentor stopped responding mid-reply. Your credits were not used — please tap Retry.'
+            : 'Request timed out after 45 seconds. Please tap Retry.';
+        console.error(
+          `[AI Mentor Client] timeout (${timeoutReason}) requestId=${requestId} elapsed=${elapsedMs}ms`
+        );
+        throw new AiMentorApiError(msg, 408, {
           code: 'CLIENT_TIMEOUT',
         });
       }
+      console.info(`[AI Mentor Client] aborted requestId=${requestId} elapsed=${elapsedMs}ms`);
       throw new AiMentorApiError('Request was cancelled.', 499, { code: 'ABORTED' });
     }
+    console.error(
+      `[AI Mentor Client] network/unexpected error requestId=${requestId} elapsed=${elapsedMs}ms`,
+      err
+    );
     throw new AiMentorApiError(
-      err?.message || 'Network error while reaching AI Mentor. Please try again.',
+      err?.message || 'Network error while reaching AI Mentor. Please tap Retry.',
       0
     );
   } finally {
     window.clearTimeout(timeoutId);
+    clearInactivityWatchdog();
     if (params.signal) {
       params.signal.removeEventListener('abort', onExternalAbort);
     }

@@ -454,49 +454,53 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         messages: withUser,
       },
     }));
-    setSending(true);
-    setStreamingMsgId(null);
 
-    // Character behavior: small nod on send, then transition into "thinking" pose while waiting
-    setNodSeq((n) => n + 1);
-    setCharacterPose('nod');
-    nodTimerRef.current = window.setTimeout(() => {
-      setCharacterPose((cur) => (cur === 'nod' ? 'thinking' : cur));
-      nodTimerRef.current = null;
-    }, 360);
-
-    // Belt-and-suspenders safety timer: guarantee thinking state never exceeds 62s
     let safetyTriggered = false;
-    safetyTimerRef.current = window.setTimeout(() => {
-      safetyTriggered = true;
-      try {
-        controller.abort();
-      } catch {
-        // Ignore
-      }
-    }, 62_000);
-
-    // Send only the last ~10 messages plus a short summary of earlier turns
-    const apiContents = prepareApiContentsWithSummary(
-      [
-        ...existingList.map((m) => ({
-          role: m.role,
-          text: m.text,
-          isError: m.isError,
-          isGreeting: m.isGreeting,
-        })),
-        {
-          role: 'user',
-          text: userText.trim(),
-          parts: userMsgParts,
-        },
-      ],
-      10
-    );
-
     let firstTokenReceived = false;
 
     try {
+      setSending(true);
+      setStreamingMsgId(null);
+
+      // Character behavior: small nod on send, then transition into "thinking" pose while waiting
+      setNodSeq((n) => n + 1);
+      setCharacterPose('nod');
+      nodTimerRef.current = window.setTimeout(() => {
+        setCharacterPose((cur) => (cur === 'nod' ? 'thinking' : cur));
+        nodTimerRef.current = null;
+      }, 360);
+
+      // Belt-and-suspenders safety timer: guarantee thinking state never exceeds 48s
+      safetyTimerRef.current = window.setTimeout(() => {
+        safetyTriggered = true;
+        console.error(
+          `[AI Mentor UI] safety timeout fired after 48s mentor=${targetMentor} depth=${depthId}`
+        );
+        try {
+          controller.abort();
+        } catch {
+          // Ignore
+        }
+      }, 48_000);
+
+      // Send only the last ~10 messages plus a short summary of earlier turns
+      const apiContents = prepareApiContentsWithSummary(
+        [
+          ...existingList.map((m) => ({
+            role: m.role,
+            text: m.text,
+            isError: m.isError,
+            isGreeting: m.isGreeting,
+          })),
+          {
+            role: 'user',
+            text: userText.trim(),
+            parts: userMsgParts,
+          },
+        ],
+        10
+      );
+
       const result = await sendAiMentorMessage({
         mentor: targetMentor,
         depth: depthId,
@@ -623,6 +627,11 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         return;
       }
 
+      console.error(
+        `[AI Mentor UI] sendPayload failed mentor=${targetMentor} depth=${depthId} safetyTriggered=${safetyTriggered}:`,
+        err
+      );
+
       if (err instanceof AiMentorApiError) {
         if (typeof err.creditsLeft === 'number') {
           applyServerUpdate({
@@ -640,7 +649,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       }
 
       const errorText = safetyTriggered
-        ? 'Request timed out after 60 seconds. Please tap Retry.'
+        ? 'Request timed out while waiting for your AI Mentor. Please tap Retry.'
         : err?.message || 'Could not get a response right now. Please tap Retry.';
 
       const errorBubble: StoredAiMessage = {
@@ -662,8 +671,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
           messages: [...withUser, errorBubble],
         },
       }));
-      setStreamingMsgId(null);
-      setCharacterPose('idle');
     } finally {
       if (safetyTimerRef.current !== null) {
         window.clearTimeout(safetyTimerRef.current);
@@ -678,6 +685,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       }
       if (activeSessionTokenRef.current === requestToken) {
         setSending(false);
+        setStreamingMsgId(null);
+        setCharacterPose('idle');
       }
     }
   };

@@ -883,6 +883,60 @@ function resolveThinkingLevelForModel(modelName, rawLevel) {
   return upper;
 }
 
+function modelSupportsThinkingConfig(modelName) {
+  const lower = String(modelName || '').toLowerCase();
+  if (lower.includes('flash-lite')) return false;
+  return /^gemini-(3|4)/i.test(lower);
+}
+
+// Short in-memory circuit breaker so a hanging/503 upstream model doesn't stall every request.
+// Auto-recovers after 2 minutes.
+const MODEL_COOLDOWN_MS = 120_000;
+const unhealthyModelCooldowns = new Map();
+
+function markModelUnhealthy(modelName, reason) {
+  const until = Date.now() + MODEL_COOLDOWN_MS;
+  unhealthyModelCooldowns.set(modelName, { until, reason });
+}
+
+function isModelInCooldown(modelName, nowMs = Date.now()) {
+  const entry = unhealthyModelCooldowns.get(modelName);
+  if (!entry) return false;
+  if (entry.until <= nowMs) {
+    unhealthyModelCooldowns.delete(modelName);
+    return false;
+  }
+  return true;
+}
+
+function buildOrderedModelCandidates(env) {
+  const primaryModel = String(env?.GEMINI_MODEL || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen').trim();
+  const fallbackModel = String(
+    env?.GEMINI_FALLBACK_MODEL || aiConfig.FALLBACK_MODEL || 'gemini-3-flash-preview'
+  ).trim();
+  const configFallbacks = Array.isArray(aiConfig.FALLBACK_MODELS) ? aiConfig.FALLBACK_MODELS : [];
+
+  const rawList = [
+    primaryModel,
+    fallbackModel,
+    ...configFallbacks,
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
+  ]
+    .map((m) => String(m || '').trim())
+    .filter(Boolean);
+
+  const deduped = [];
+  for (const m of rawList) {
+    if (!deduped.includes(m)) deduped.push(m);
+  }
+
+  const nowMs = Date.now();
+  const healthy = deduped.filter((m) => !isModelInCooldown(m, nowMs));
+  const cooledDown = deduped.filter((m) => isModelInCooldown(m, nowMs));
+  return [...healthy, ...cooledDown];
+}
+
 function countWords(text) {
   const clean = String(text || '').trim();
   return clean ? clean.split(/\s+/).length : 0;
@@ -923,6 +977,9 @@ export async function handleAiMentorsRequest(request, env) {
   ]);
 
   if (authResult.error || !authResult.user) {
+    console.warn(
+      `[AI Mentor Server] auth rejected method=${request.method} status=${authResult.status || 401} reason=${authResult.error || 'Unauthorized'}`
+    );
     return jsonResponse({ error: authResult.error || 'Unauthorized.' }, authResult.status || 401);
   }
   const authUser = authResult.user;
@@ -1174,23 +1231,26 @@ export async function handleAiMentorsRequest(request, env) {
     return deductionPromise;
   };
 
-  // 4. Invoke Gemini 4 Hydrogen with streaming (:streamGenerateContent?alt=sse)
+  // 4. Invoke Gemini with streaming (:streamGenerateContent?alt=sse) + automatic failover
   const apiKey = resolveGeminiApiKey(env);
-  const primaryModel = String(env?.GEMINI_MODEL || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen').trim();
-  const fallbackModel = String(
-    env?.GEMINI_FALLBACK_MODEL || aiConfig.FALLBACK_MODEL || 'gemini-3.1-flash-lite'
-  ).trim();
+  const modelCandidates = buildOrderedModelCandidates(env);
   const systemInstructionText = `${BASE_SYSTEM_PROMPT}\n${MENTOR_BLOCKS[mentorId]}\n\n${DEPTH_LAWS[depthId]}`;
 
-  const invokeGeminiStream = async (modelName, includeThinkingConfig) => {
+  console.log(
+    `[AI Mentor Server] request start requestId=${requestId} uid=${authUser.uid} plan=${planInfo.plan} ` +
+      `mentor=${mentorId} depth=${depthCfg.key} stream=${wantStream} turns=${validatedContents.length} ` +
+      `candidates=${modelCandidates.join(',')}`
+  );
+
+  const invokeGeminiStream = async (modelName, includeThinkingConfig, timeoutMs) => {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       modelName
-    )}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`;
+    )}:streamGenerateContent?alt=sse`;
 
     const generationConfig = {
-      maxOutputTokens: Number(depthCfg.maxOutputTokens || 1400),
+      maxOutputTokens: Number(depthCfg.maxOutputTokens || 2048),
     };
-    if (includeThinkingConfig && depthCfg.thinkingLevel) {
+    if (includeThinkingConfig && depthCfg.thinkingLevel && modelSupportsThinkingConfig(modelName)) {
       generationConfig.thinkingConfig = {
         thinkingLevel: resolveThinkingLevelForModel(modelName, depthCfg.thinkingLevel),
       };
@@ -1202,6 +1262,7 @@ export async function handleAiMentorsRequest(request, env) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
           'User-Agent': 'aistudio-build',
         },
         body: JSON.stringify({
@@ -1212,51 +1273,127 @@ export async function handleAiMentorsRequest(request, env) {
           generationConfig,
         }),
       },
-      55_000
+      timeoutMs
     );
   };
 
   const tGeminiStart = Date.now();
-  let usedModel = primaryModel;
-  let geminiRes;
+  const MAX_UPSTREAM_SELECT_BUDGET_MS = 32_000;
+  let usedModel = modelCandidates[0] || 'gemini-4-hydrogen';
+  let geminiRes = null;
   let lastErrorBody = '';
+  let lastErrorStatus = 0;
+  let lastErrorWasTimeout = false;
 
-  try {
-    geminiRes = await invokeGeminiStream(primaryModel, true);
-
-    if (geminiRes.status === 400) {
-      lastErrorBody = await geminiRes.text().catch(() => '');
-      geminiRes = await invokeGeminiStream(primaryModel, false);
+  for (let idx = 0; idx < modelCandidates.length; idx++) {
+    const candidateModel = modelCandidates[idx];
+    const elapsedSelectMs = Date.now() - tGeminiStart;
+    const remainingBudgetMs = MAX_UPSTREAM_SELECT_BUDGET_MS - elapsedSelectMs;
+    if (idx > 0 && remainingBudgetMs < 4_000) {
+      console.warn(
+        `[AI Mentor Server] failover budget exhausted requestId=${requestId} elapsed=${elapsedSelectMs}ms`
+      );
+      break;
     }
 
-    if (
-      (geminiRes.status === 404 || geminiRes.status === 503) &&
-      fallbackModel &&
-      fallbackModel !== primaryModel
-    ) {
-      lastErrorBody = await geminiRes.text().catch(() => '');
-      usedModel = fallbackModel;
-      geminiRes = await invokeGeminiStream(fallbackModel, false);
-    }
-  } catch (err) {
-    releaseReservation();
-    const isTimeout = err?.name === 'AbortError';
-    return jsonResponse(
-      {
-        error: isTimeout
-          ? 'The AI Mentor took too long to respond. Your credits were not used — please try again.'
-          : 'Could not reach the AI service right now. Your credits were not used.',
-        code: isTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNREACHABLE',
-      },
-      isTimeout ? 504 : 502
+    const hasMoreFallbacks = idx < modelCandidates.length - 1;
+    // Fast header timeout on first candidate when fallbacks exist so a hung upstream fails over quickly
+    const attemptTimeoutMs = Math.min(
+      remainingBudgetMs,
+      hasMoreFallbacks && idx === 0 ? 7_500 : 15_000
     );
+
+    const tAttempt = Date.now();
+    usedModel = candidateModel;
+
+    try {
+      let res = await invokeGeminiStream(candidateModel, true, attemptTimeoutMs);
+
+      if (res.status === 400 && modelSupportsThinkingConfig(candidateModel)) {
+        const err400 = await res.text().catch(() => '');
+        console.warn(
+          `[AI Mentor Server] HTTP 400 with thinkingConfig requestId=${requestId} model=${candidateModel} retrying without thinkingConfig: ${err400.slice(0, 160)}`
+        );
+        lastErrorBody = err400;
+        res = await invokeGeminiStream(candidateModel, false, Math.min(10_000, attemptTimeoutMs));
+      }
+
+      const attemptMs = Date.now() - tAttempt;
+      if (res.ok) {
+        geminiRes = res;
+        console.log(
+          `[AI Mentor Server] upstream ready requestId=${requestId} model=${candidateModel} status=${res.status} ttfb=${attemptMs}ms`
+        );
+        break;
+      }
+
+      lastErrorStatus = res.status;
+      lastErrorBody = await res.text().catch(() => '');
+      lastErrorWasTimeout = false;
+      console.warn(
+        `[AI Mentor Server] upstream non-OK requestId=${requestId} model=${candidateModel} status=${res.status} elapsed=${attemptMs}ms body=${lastErrorBody.slice(0, 180)}`
+      );
+
+      // Auth errors won't be fixed by switching models
+      if (res.status === 401 || res.status === 403) {
+        geminiRes = res;
+        break;
+      }
+
+      // Retryable upstream status -> cool down this model & try next candidate
+      if (
+        res.status === 404 ||
+        res.status === 429 ||
+        res.status === 500 ||
+        res.status === 502 ||
+        res.status === 503 ||
+        res.status === 504
+      ) {
+        markModelUnhealthy(candidateModel, `HTTP_${res.status}`);
+        continue;
+      }
+
+      // Non-retryable 4xx (e.g. invalid request payload)
+      geminiRes = res;
+      break;
+    } catch (err) {
+      const attemptMs = Date.now() - tAttempt;
+      const isTimeout = err?.name === 'AbortError';
+      lastErrorWasTimeout = isTimeout;
+      lastErrorStatus = isTimeout ? 504 : 502;
+      lastErrorBody = err?.message || String(err);
+      console.warn(
+        `[AI Mentor Server] upstream ${isTimeout ? 'timeout' : 'network error'} requestId=${requestId} model=${candidateModel} elapsed=${attemptMs}ms err=${lastErrorBody}`
+      );
+      markModelUnhealthy(candidateModel, isTimeout ? 'TIMEOUT' : 'NETWORK_ERROR');
+      continue;
+    }
   }
 
   const tTtfb = Date.now();
 
+  if (!geminiRes) {
+    releaseReservation();
+    console.error(
+      `[AI Mentor Server] all models failed requestId=${requestId} lastStatus=${lastErrorStatus} timeout=${lastErrorWasTimeout} total=${tTtfb - tStart}ms`
+    );
+    if (lastErrorStatus === 429) {
+      return jsonResponse({ error: 'Too many requests. Try again in a minute.', code: 'RATE_LIMITED' }, 429);
+    }
+    return jsonResponse(
+      {
+        error: lastErrorWasTimeout
+          ? 'The AI Mentor took too long to respond. Your credits were not used — please tap Retry.'
+          : 'The AI service is temporarily overloaded. Your credits were not used — please tap Retry.',
+        code: lastErrorWasTimeout ? 'UPSTREAM_TIMEOUT' : 'UPSTREAM_UNAVAILABLE',
+      },
+      lastErrorWasTimeout ? 504 : 503
+    );
+  }
+
   if (!geminiRes.ok) {
     releaseReservation();
-    const errText = await geminiRes.text().catch(() => lastErrorBody);
+    const errText = lastErrorBody || (await geminiRes.text().catch(() => ''));
     let upstreamMessage = '';
     try {
       const parsed = JSON.parse(errText);
@@ -1264,6 +1401,9 @@ export async function handleAiMentorsRequest(request, env) {
     } catch {
       // ignore non-JSON error body
     }
+    console.error(
+      `[AI Mentor Server] returning error requestId=${requestId} model=${usedModel} status=${geminiRes.status} msg=${upstreamMessage.slice(0, 180)}`
+    );
     if (geminiRes.status === 429) {
       return jsonResponse({ error: 'Too many requests. Try again in a minute.', code: 'RATE_LIMITED' }, 429);
     }
@@ -1280,21 +1420,51 @@ export async function handleAiMentorsRequest(request, env) {
       {
         error: upstreamMessage
           ? `AI Mentor error (HTTP ${geminiRes.status}): ${upstreamMessage.slice(0, 180)}`
-          : 'The AI Mentor hit a temporary snag. Your credits were not used — please try again.',
+          : 'The AI Mentor hit a temporary snag. Your credits were not used — please tap Retry.',
         code: 'UPSTREAM_ERROR',
       },
       502
     );
   }
 
-  // Helper to iterate non-thought text deltas from Gemini SSE stream
-  async function* readGeminiSseDeltas(bodyStream) {
+  // Helper to iterate non-thought text deltas from Gemini SSE stream with strict inactivity + total deadlines
+  async function* readGeminiSseDeltas(
+    bodyStream,
+    { chunkTimeoutMs = 20_000, totalStreamTimeoutMs = 45_000 } = {}
+  ) {
     const reader = bodyStream.getReader();
     const decoder = new TextDecoder();
+    const streamStartedAt = Date.now();
     let buffer = '';
+
+    const readChunkWithDeadline = async () => {
+      const remainingTotal = totalStreamTimeoutMs - (Date.now() - streamStartedAt);
+      if (remainingTotal <= 0) {
+        const err = new Error('The AI Mentor took too long to finish replying. Please tap Retry.');
+        err.code = 'STREAM_TIMEOUT';
+        throw err;
+      }
+      const waitMs = Math.min(chunkTimeoutMs, remainingTotal);
+      let timerId = null;
+      try {
+        return await Promise.race([
+          reader.read(),
+          new Promise((_, reject) => {
+            timerId = setTimeout(() => {
+              const err = new Error('The AI Mentor stopped responding mid-reply. Please tap Retry.');
+              err.code = 'STREAM_TIMEOUT';
+              reject(err);
+            }, waitMs);
+          }),
+        ]);
+      } finally {
+        if (timerId !== null) clearTimeout(timerId);
+      }
+    };
+
     try {
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readChunkWithDeadline();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split(/\r?\n/);
@@ -1339,6 +1509,13 @@ export async function handleAiMentorsRequest(request, env) {
           }
         }
       }
+    } catch (err) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore
+      }
+      throw err;
     } finally {
       try {
         reader.releaseLock();
@@ -1360,17 +1537,26 @@ export async function handleAiMentorsRequest(request, env) {
         }
         fullText += item.text;
       }
-    } catch {
+    } catch (err) {
       releaseReservation();
+      console.error(
+        `[AI Mentor Server] JSON stream error requestId=${requestId} model=${usedModel} code=${err?.code || 'STREAM_ERROR'} err=${err?.message || err}`
+      );
       return jsonResponse(
-        { error: 'The AI stream was interrupted. Please try again.' },
-        502
+        {
+          error: err?.message || 'The AI stream was interrupted. Please tap Retry.',
+          code: err?.code || 'STREAM_ERROR',
+        },
+        err?.code === 'STREAM_TIMEOUT' ? 504 : 502
       );
     }
 
     const answerText = fullText.trim();
     if (!answerText) {
       releaseReservation();
+      console.warn(
+        `[AI Mentor Server] empty answer (json) requestId=${requestId} model=${usedModel} depth=${depthCfg.key}`
+      );
       return jsonResponse(
         {
           error: 'The mentor could not generate an answer for that message. Your credits were not used.',
@@ -1394,7 +1580,7 @@ export async function handleAiMentorsRequest(request, env) {
       authDbMs: tGeminiStart - tStart,
     };
     console.log(
-      `[AI Mentor Server] model=${usedModel} depth=${depthCfg.key} words=${countWords(answerText)} cost=${
+      `[AI Mentor Server] done (json) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} words=${countWords(answerText)} cost=${
         planInfo.isUnlimited ? 0 : cost
       } ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
     );
@@ -1418,10 +1604,25 @@ export async function handleAiMentorsRequest(request, env) {
   const encoder = new TextEncoder();
   const sseStream = new ReadableStream({
     async start(controller) {
+      let closed = false;
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // ignore already-closed controller
+        }
+      };
       const sendEvent = (eventName, payload) => {
-        controller.enqueue(
-          encoder.encode(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`)
-        );
+        if (closed) return;
+        try {
+          controller.enqueue(
+            encoder.encode(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`)
+          );
+        } catch {
+          closed = true;
+        }
       };
 
       let fullText = '';
@@ -1437,6 +1638,9 @@ export async function handleAiMentorsRequest(request, env) {
         for await (const item of readGeminiSseDeltas(geminiRes.body)) {
           if (tFirstToken === null) {
             tFirstToken = Date.now();
+            console.log(
+              `[AI Mentor Server] first-token requestId=${requestId} model=${usedModel} ttft=${tFirstToken - tStart}ms`
+            );
             // Fire atomic Firestore credit increment in parallel with streaming — 0ms added to TTFT!
             void triggerAtomicDeductionOnce();
           }
@@ -1446,17 +1650,17 @@ export async function handleAiMentorsRequest(request, env) {
 
         const answerText = fullText.trim();
         if (!answerText) {
-          releaseReservation();
+          console.warn(
+            `[AI Mentor Server] empty answer (sse) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} elapsed=${Date.now() - tStart}ms`
+          );
           sendEvent('error', {
-            error: 'The mentor could not generate an answer for that message. Your credits were not used.',
+            error: 'The mentor could not generate an answer for that message. Your credits were not used — please tap Retry.',
             code: 'EMPTY_ANSWER',
           });
-          controller.close();
           return;
         }
 
         const finalUsed = await triggerAtomicDeductionOnce();
-        releaseReservation();
         const finalCreditsLeft = planInfo.isUnlimited
           ? planInfo.dailyLimit
           : Math.max(0, planInfo.dailyLimit - finalUsed);
@@ -1471,7 +1675,7 @@ export async function handleAiMentorsRequest(request, env) {
         const words = countWords(answerText);
 
         console.log(
-          `[AI Mentor Server] model=${usedModel} depth=${depthCfg.key} words=${words} cost=${
+          `[AI Mentor Server] done (sse) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} words=${words} cost=${
             planInfo.isUnlimited ? 0 : cost
           } ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
         );
@@ -1491,21 +1695,25 @@ export async function handleAiMentorsRequest(request, env) {
           dateKey,
           timings,
         });
-        controller.close();
       } catch (err) {
-        releaseReservation();
+        console.error(
+          `[AI Mentor Server] SSE stream error requestId=${requestId} model=${usedModel} code=${err?.code || 'STREAM_ERROR'} elapsed=${Date.now() - tStart}ms err=${err?.message || err}`
+        );
+        if (err?.code === 'STREAM_TIMEOUT') {
+          markModelUnhealthy(usedModel, 'STREAM_TIMEOUT');
+        }
         sendEvent('error', {
           error: err?.message || 'The AI stream was interrupted. Please tap Retry.',
-          code: 'STREAM_ERROR',
+          code: err?.code || 'STREAM_ERROR',
+          status: err?.code === 'STREAM_TIMEOUT' ? 504 : 502,
         });
-        try {
-          controller.close();
-        } catch {
-          // ignore
-        }
+      } finally {
+        releaseReservation();
+        safeClose();
       }
     },
     cancel() {
+      console.log(`[AI Mentor Server] SSE cancelled by client requestId=${requestId}`);
       releaseReservation();
     },
   });

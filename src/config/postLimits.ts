@@ -97,6 +97,40 @@ export function getDailyPostWindow(nowMs: number = Date.now()): DailyPostWindow 
   };
 }
 
+export const PLAN_LABELS: Record<PlanTier, 'Free' | 'Pro' | 'Plus'> = {
+  free: 'Free',
+  pro: 'Pro',
+  plus: 'Plus',
+};
+
+/**
+ * Single source of truth for resolving a user's canonical subscription plan tier
+ * ('free' | 'pro' | 'plus'). Used by both daily post limits and profile/UI plan labels.
+ */
+export function getUserPlanTier(
+  user: PlanLikeUser | PlanTier | string | null | undefined,
+  crew?: CrewLikeDoc | null,
+  nowMs: number = Date.now()
+): PlanTier {
+  if (!user) return 'free';
+  if (typeof user === 'string') {
+    return normalizePlanTier(user);
+  }
+  return crew ? getEffectiveUserPlan(user, crew, nowMs) : getPlan(user, nowMs);
+}
+
+/**
+ * Single source of truth for human-readable plan labels: 'Free' | 'Pro' | 'Plus'.
+ */
+export function getPlanDisplayLabel(
+  userOrPlan: PlanLikeUser | PlanTier | string | null | undefined,
+  crew?: CrewLikeDoc | null,
+  nowMs: number = Date.now()
+): 'Free' | 'Pro' | 'Plus' {
+  const tier = getUserPlanTier(userOrPlan, crew, nowMs);
+  return PLAN_LABELS[tier];
+}
+
 /**
  * Returns the daily post limit for a canonical PlanTier ('free' | 'pro' | 'plus').
  */
@@ -119,14 +153,7 @@ export function getPostLimit(
   crew?: CrewLikeDoc | null,
   nowMs: number = Date.now()
 ): number {
-  if (!user) return POST_LIMITS.free;
-  if (typeof user === 'string') {
-    return getPostLimitForPlan(user);
-  }
-  const effectivePlan = crew
-    ? getEffectiveUserPlan(user, crew, nowMs)
-    : getPlan(user, nowMs);
-  return getPostLimitForPlan(effectivePlan);
+  return getPostLimitForPlan(getUserPlanTier(user, crew, nowMs));
 }
 
 /**

@@ -377,6 +377,14 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     resolvedPartner?.isSuperAdmin
   );
   const partnerProBadge = resolvedPartner?.proBadge || partner.proBadge || null;
+  const partnerIsPlus =
+    String(partnerProBadge || '')
+      .trim()
+      .toLowerCase()
+      .startsWith('plus') ||
+    String((resolvedPartner as any)?.planTier || (partner as any)?.planTier || (partner as any)?.plan || '')
+      .trim()
+      .toLowerCase() === 'plus';
 
   const scrollToNewest = useCallback((behavior: ScrollBehavior = 'smooth') => {
     requestAnimationFrame(() => {
@@ -779,9 +787,15 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               <span className="text-[14px] sm:text-[15px] font-bold text-white truncate">
                 {partnerName}
               </span>
-              {partnerProBadge && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-amber-500/25 text-amber-200 border border-amber-400/60 shrink-0">
-                  PRO
+              {(partnerProBadge || partnerIsPlus) && (
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider shrink-0 border ${
+                    partnerIsPlus
+                      ? 'bg-gradient-to-r from-amber-600/40 to-amber-400/35 text-amber-100 border-amber-300/75'
+                      : 'bg-amber-500/25 text-amber-200 border-amber-400/60'
+                  }`}
+                >
+                  {partnerIsPlus ? 'PLUS' : 'PRO'}
                 </span>
               )}
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 border border-white/15 text-white/85 shrink-0">

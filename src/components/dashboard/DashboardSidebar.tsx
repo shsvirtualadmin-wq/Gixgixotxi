@@ -313,7 +313,13 @@ export function DashboardSidebar() {
                   roleBadge={isCaptain ? 'CAPTAIN' : undefined}
                 />
                 {isPro && effectiveProBadge && (
-                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                  <ProBadge
+                    design={effectiveProBadge}
+                    tier={isPlus ? 'plus' : 'pro'}
+                    size="sm"
+                    animated
+                    priority
+                  />
                 )}
               </div>
             ) : (
@@ -322,7 +328,13 @@ export function DashboardSidebar() {
                   {displayName}
                 </p>
                 {isPro && effectiveProBadge && (
-                  <ProBadge design={effectiveProBadge} size="sm" animated priority />
+                  <ProBadge
+                    design={effectiveProBadge}
+                    tier={isPlus ? 'plus' : 'pro'}
+                    size="sm"
+                    animated
+                    priority
+                  />
                 )}
               </div>
             )}

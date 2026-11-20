@@ -273,6 +273,7 @@ export function DashboardTopBar({
                   <span className="shrink-0 inline-flex items-center">
                     <ProBadge
                       design={effectiveProBadge}
+                      tier={effectivePlan.isPlus ? 'plus' : 'pro'}
                       size="sm"
                       animated
                       priority

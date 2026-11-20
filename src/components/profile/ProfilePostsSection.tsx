@@ -22,6 +22,7 @@ import { getDisplayName, getUsernameHandle } from '@/utils/displayName';
 import { useDailyPostQuota } from '@/hooks/useDailyPostQuota';
 import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
 import { formatPostLimitReachedMessage } from '@/config/postLimits';
+import type { PlanTier } from '@/lib/planTier';
 
 export interface CommonsCommentItem {
   id: string;
@@ -228,6 +229,7 @@ export interface ProfilePostsSectionProps {
   authorFrame?: string | null;
   authorRole?: string | null;
   authorProBadge?: string | null;
+  authorPlan?: PlanTier;
   isPro?: boolean;
   accentColor?: string;
   theme?: 'dark' | 'light';
@@ -288,6 +290,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   authorAvatar,
   authorFrame,
   authorProBadge,
+  authorPlan,
   isPro = false,
   onCountChange,
 }) => {
@@ -950,14 +953,20 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         <span className="text-[15px] font-semibold text-[var(--text)] truncate">
                           {resolvedPostAuthor}
                         </span>
-                        {(post.authorProBadge || (isPro && authorProBadge)) && (
-                          <ProBadge
-                            design={normalizeProBadgeDesign(
-                              post.authorProBadge || authorProBadge
-                            )}
-                            size="sm"
-                          />
-                        )}
+                        {(post.authorProBadge || (isPro && authorProBadge)) && (() => {
+                          const rawBadge = String(post.authorProBadge || authorProBadge || '');
+                          const badgeTier: 'pro' | 'plus' =
+                            authorPlan === 'plus' || rawBadge.toLowerCase().startsWith('plus')
+                              ? 'plus'
+                              : 'pro';
+                          return (
+                            <ProBadge
+                              design={normalizeProBadgeDesign(rawBadge.replace(/^plus:/i, ''))}
+                              tier={badgeTier}
+                              size="sm"
+                            />
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
                         {resolvedPostHandle && (

@@ -24,6 +24,7 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { getPlanDisplayLabel } from '@/config/postLimits';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import {
@@ -148,6 +149,8 @@ export function OverviewPage() {
   const { user, profile, streak } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
+  const isPlus = effectivePlan.isPlus;
+  const currentPlanLabel = getPlanDisplayLabel(effectivePlan.plan);
 
   // Safety cleanup on mount to remove any leftover scroll lock on body/html
   useEffect(() => {
@@ -1100,16 +1103,29 @@ export function OverviewPage() {
             >
               Current Plan
             </span>
-            {isPro && <Crown size={14} className="shrink-0" style={{ color: 'var(--accent)' }} />}
+            {isPro && (
+              <Crown
+                size={14}
+                className="shrink-0"
+                style={{ color: isPlus ? '#F59E0B' : 'var(--accent)' }}
+              />
+            )}
           </div>
           <div className="space-y-0.5">
             <div
               className="text-2xl sm:text-3xl font-black leading-none"
-              style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+              style={{ fontFamily: 'var(--font-dot)', color: isPlus ? '#F59E0B' : 'var(--text)' }}
             >
-              {isPro ? 'Pro' : 'Free'}
+              {currentPlanLabel}
             </div>
-            {isPro ? (
+            {isPlus ? (
+              <p
+                className="text-[11px] truncate"
+                style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+              >
+                All universities &amp; unlimited posts
+              </p>
+            ) : isPro ? (
               <p
                 className="text-[11px] truncate"
                 style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}

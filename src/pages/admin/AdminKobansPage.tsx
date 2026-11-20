@@ -27,6 +27,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { usePlansConfig } from '@/hooks/usePlansConfig';
+import { getPlanDisplayLabel, getUserPlanTier } from '@/config/postLimits';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
 import {
   fetchKobanRequests,
@@ -1197,13 +1198,20 @@ export function AdminKobansPage() {
 
                                     <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                                       <StatusChip status={u.status} />
-                                      <span
-                                        className={`akb-chip ${
-                                          u.plan === 'pro' ? 'akb-chip--pro' : 'akb-chip--muted'
-                                        }`}
-                                      >
-                                        {u.plan === 'pro' ? 'Pro' : 'Free'}
-                                      </span>
+                                      {(() => {
+                                        const uPlanTier = getUserPlanTier(u.plan);
+                                        return (
+                                          <span
+                                            className={`akb-chip ${
+                                              uPlanTier === 'plus' || uPlanTier === 'pro'
+                                                ? 'akb-chip--pro'
+                                                : 'akb-chip--muted'
+                                            }`}
+                                          >
+                                            {getPlanDisplayLabel(uPlanTier)}
+                                          </span>
+                                        );
+                                      })()}
                                       {u.role && u.role !== 'student' && (
                                         <span className="akb-chip akb-chip--muted">{u.role}</span>
                                       )}

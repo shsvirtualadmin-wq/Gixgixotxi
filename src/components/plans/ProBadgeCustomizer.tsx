@@ -71,16 +71,17 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
     setFeedback(null);
     const res = await saveProBadge(draft);
     if (res.ok) {
+      const tierWord = isActivePlus ? 'Plus' : 'Pro';
       setFeedback({
         type: 'success',
         text: draft.visible
-          ? `Saved! Your "${selectedMeta.name}" Pro badge is now live everywhere.`
-          : 'Saved! Your Pro badge is now hidden.',
+          ? `Saved! Your "${selectedMeta.name}" ${tierWord} badge is now live everywhere.`
+          : `Saved! Your ${tierWord} badge is now hidden.`,
       });
     } else {
       setFeedback({
         type: 'error',
-        text: res.error || 'Could not save your Pro badge choice.',
+        text: res.error || 'Could not save your badge choice.',
       });
     }
   };
@@ -306,7 +307,13 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <ProBadge design={item.id} size="md" animated priority />
+                  <ProBadge
+                    design={item.id}
+                    tier={isActivePlus ? 'plus' : 'pro'}
+                    size="md"
+                    animated
+                    priority
+                  />
                   <span
                     className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
                       isSelected

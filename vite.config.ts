@@ -466,10 +466,13 @@ function aiTutorPlugin() {
             }
             const reader = webRes.body.getReader();
             let clientClosed = false;
-            req.once('close', () => {
-              clientClosed = true;
-              reader.cancel().catch(() => {});
-            });
+            const onResponseClose = () => {
+              if (!res.writableEnded) {
+                clientClosed = true;
+                reader.cancel().catch(() => {});
+              }
+            };
+            res.once('close', onResponseClose);
             try {
               while (!clientClosed) {
                 const { done, value } = await reader.read();
@@ -479,9 +482,17 @@ function aiTutorPlugin() {
                   res.flush?.();
                 }
               }
-            } catch {
-              // Client disconnected or stream aborted
+            } catch (streamErr: any) {
+              if (!clientClosed) {
+                console.error('[Vite /api/ai] SSE pipe error:', streamErr?.message || streamErr);
+              }
             } finally {
+              res.removeListener?.('close', onResponseClose);
+              try {
+                reader.releaseLock();
+              } catch {
+                // ignore
+              }
               if (!res.writableEnded) {
                 res.end();
               }
@@ -492,8 +503,12 @@ function aiTutorPlugin() {
             res.writeHead(webRes.status, outHeaders);
           }
           const text = await webRes.text();
+          if (webRes.status >= 400) {
+            console.warn(`[Vite /api/ai] HTTP ${webRes.status}:`, text.slice(0, 240));
+          }
           res.end(text);
         } catch (err: any) {
+          console.error('[Vite /api/ai] Unhandled middleware error:', err?.message || err);
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
           }

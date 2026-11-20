@@ -50,7 +50,9 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { resolveEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { getPlanDisplayLabel, getUserPlanTier } from '@/config/postLimits';
+import type { PlanTier } from '@/lib/planTier';
 import { getCosmeticById, type CosmeticRarity } from '@/data/cosmeticsCatalog';
 import { useWallet } from '@/hooks/useWallet';
 import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
@@ -208,6 +210,18 @@ interface EnrichedProfile extends PublicProfile {
   followingCount?: number;
   isBanned?: boolean;
   proBadge?: ProBadgeDesignId | null;
+  rawProBadge?: string | null;
+  plan?: string | null;
+  planTier?: string | null;
+  isPro?: boolean;
+  isPlus?: boolean;
+  isPremium?: boolean;
+  proUntil?: any;
+  plusUntil?: any;
+  planExpiresAt?: any;
+  premiumExpiresAt?: any;
+  proPlanId?: string | null;
+  plusPlanId?: string | null;
   kobans?: number;
 }
 
@@ -421,6 +435,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   } = useAuth();
   const navigate = useNavigate();
   const wallet = useWallet();
+  const liveEffectivePlan = useEffectivePlan();
 
   const uid = targetUid || propData?.uid || currentUser?.uid || '';
   const isOwnProfile =
@@ -868,16 +883,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         const resolvedStatus =
           uData?.status ?? pubData?.status ?? (d1Live?.status !== undefined ? d1Live.status : '');
 
-        const resolvedProBadge: ProBadgeDesignId | null = isOwnProfile
+        const rawBadgeFromSources = isOwnProfile
           ? myProBadgeRef.current.visible
             ? myProBadgeRef.current.design
             : null
-          : d1Live?.proBadge
-          ? normalizeProBadgeDesign(d1Live.proBadge)
-          : pubData?.proBadge
-          ? normalizeProBadgeDesign(pubData.proBadge)
-          : uData?.proBadge
-          ? normalizeProBadgeDesign(uData.proBadge)
+          : d1Live?.proBadge || pubData?.proBadge || uData?.proBadge || null;
+
+        const resolvedProBadge: ProBadgeDesignId | null = rawBadgeFromSources
+          ? normalizeProBadgeDesign(
+              String(rawBadgeFromSources).replace(/^plus:/i, '')
+            )
           : null;
 
         const enriched: EnrichedProfile = {
@@ -915,6 +930,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           followingCount: Number(uData?.followingCount ?? immediateSeed?.followingCount ?? 0),
           isBanned: Boolean(uData?.isBanned),
           proBadge: resolvedProBadge,
+          rawProBadge: typeof rawBadgeFromSources === 'string' ? rawBadgeFromSources : null,
+          plan: uData?.plan ?? pubData?.plan ?? d1Live?.plan ?? null,
+          planTier: uData?.planTier ?? pubData?.planTier ?? d1Live?.planTier ?? null,
+          isPro: Boolean(uData?.isPro ?? pubData?.isPro),
+          isPlus: Boolean(uData?.isPlus ?? pubData?.isPlus),
+          isPremium: Boolean(uData?.isPremium ?? pubData?.isPremium),
+          proUntil: uData?.proUntil ?? pubData?.proUntil ?? null,
+          plusUntil: uData?.plusUntil ?? pubData?.plusUntil ?? null,
+          planExpiresAt: uData?.planExpiresAt ?? pubData?.planExpiresAt ?? null,
+          premiumExpiresAt: uData?.premiumExpiresAt ?? pubData?.premiumExpiresAt ?? null,
+          proPlanId: uData?.proPlanId ?? pubData?.proPlanId ?? null,
+          plusPlanId: uData?.plusPlanId ?? pubData?.plusPlanId ?? null,
           kobans: Number(uData?.kobans ?? pubData?.kobans ?? 0),
           stats: {
             streakDays: Number(uData?.streakDays ?? uData?.streak ?? pubData?.stats?.streakDays ?? 0),
@@ -1544,24 +1571,39 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const rawUsername = getRawUsername({ username: profile.username }) || 'student';
 
   const levelInfo = computeLevelFromStats(profile.stats || {});
-  const isTargetPro = (() => {
+
+  // Single source of truth for plan tier (shared with postLimits / useEffectivePlan):
+  // - Own profile reads live from useEffectivePlan() (instant updates on plan change, zero stale cache).
+  // - Other profiles resolve via getUserPlanTier() from the same config/helper.
+  const targetPlan: PlanTier = (() => {
     if (isOwnProfile) {
-      return resolveEffectivePlan({
-        uid: currentUser?.uid,
-        email: currentUser?.email,
-        role: ownProfile?.role || profile.role,
-        isGuest,
-        plan: ownProfile?.plan,
-        isPremium: ownProfile?.isPremium,
-        planExpiresAt: ownProfile?.planExpiresAt,
-      }).isUnlimited;
+      return isGuest ? 'free' : liveEffectivePlan.plan;
     }
-    return (
-      Boolean(profile.proBadge) ||
-      profile.role === 'superadmin' ||
-      profile.role === 'admin'
-    );
+    const resolved = getUserPlanTier({
+      uid: profile.uid,
+      role: profile.role,
+      plan: profile.plan,
+      planTier: profile.planTier,
+      isPro: profile.isPro,
+      isPlus: profile.isPlus,
+      isPremium: profile.isPremium,
+      proUntil: profile.proUntil,
+      plusUntil: profile.plusUntil,
+      planExpiresAt: profile.planExpiresAt,
+      premiumExpiresAt: profile.premiumExpiresAt,
+      proPlanId: profile.proPlanId,
+      plusPlanId: profile.plusPlanId,
+    });
+    if (resolved !== 'free') return resolved;
+    const rawBadge = String(profile.rawProBadge || '').trim().toLowerCase();
+    if (rawBadge === 'plus' || rawBadge.startsWith('plus:')) return 'plus';
+    if (profile.proBadge) return 'pro';
+    return 'free';
   })();
+
+  const targetPlanLabel = getPlanDisplayLabel(targetPlan);
+  const isTargetPlus = targetPlan === 'plus';
+  const isTargetPro = targetPlan === 'pro' || targetPlan === 'plus';
 
   const activeProBadgeDesign: ProBadgeDesignId | null = isTargetPro
     ? isOwnProfile
@@ -1708,10 +1750,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Display Name + @username + PRO Chip */}
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Display Name + Plan Chip (Free / Pro / Plus) + Equipped Badge */}
                 <h2 className="text-[22px] sm:text-[24px] font-bold tracking-tight text-[var(--text)] leading-tight break-words">
                   {displayName}
                 </h2>
-                {isTargetPro && (
+                {isTargetPlus ? (
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(180,83,9,0.22) 0%, rgba(245,158,11,0.28) 100%)',
+                      borderColor: 'rgba(245, 158, 11, 0.55)',
+                      color: '#F59E0B',
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    {targetPlanLabel}
+                  </span>
+                ) : isTargetPro ? (
                   <span
                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border"
                     style={{
@@ -1721,11 +1776,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     }}
                   >
                     <Sparkles className="w-3 h-3" />
-                    PRO
+                    {targetPlanLabel}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)]">
+                    {targetPlanLabel}
                   </span>
                 )}
                 {activeProBadgeDesign && (
-                  <ProBadge design={activeProBadgeDesign} size="sm" animated />
+                  <ProBadge
+                    design={activeProBadgeDesign}
+                    tier={isTargetPlus ? 'plus' : 'pro'}
+                    size="sm"
+                    animated
+                  />
                 )}
               </div>
               {usernameHandle && (
@@ -2032,7 +2096,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }
                 authorFrame={equippedFrameId}
                 authorRole={profile.role}
-                authorProBadge={activeProBadgeDesign}
+                authorProBadge={
+                  activeProBadgeDesign
+                    ? isTargetPlus
+                      ? `plus:${activeProBadgeDesign}`
+                      : activeProBadgeDesign
+                    : null
+                }
+                authorPlan={targetPlan}
                 isPro={isTargetPro}
                 onCountChange={setPostsCount}
               />
