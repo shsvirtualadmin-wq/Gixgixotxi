@@ -21,6 +21,8 @@ function aiTutorPlugin() {
         if (
           !acceptEncoding.includes('gzip') ||
           (req.method !== 'GET' && req.method !== 'POST') ||
+          rawUrl === '/api/ai' ||
+          rawUrl.startsWith('/api/ai/') ||
           rawUrl.startsWith('/api/commons/') ||
           /\.(png|jpe?g|webp|gif|mp4|webm|pdf|woff2?|ttf|eot|ico)$/i.test(rawUrl)
         ) {
@@ -453,6 +455,39 @@ function aiTutorPlugin() {
           webRes.headers.forEach((v, k) => {
             outHeaders[k] = v;
           });
+          const isSse = (webRes.headers.get('content-type') || '').includes('text/event-stream');
+          if (isSse && webRes.body) {
+            outHeaders['X-Accel-Buffering'] = 'no';
+            outHeaders['Cache-Control'] = 'no-cache, no-transform';
+            outHeaders['Connection'] = 'keep-alive';
+            if (!res.headersSent) {
+              res.writeHead(webRes.status, outHeaders);
+              res.flushHeaders?.();
+            }
+            const reader = webRes.body.getReader();
+            let clientClosed = false;
+            req.once('close', () => {
+              clientClosed = true;
+              reader.cancel().catch(() => {});
+            });
+            try {
+              while (!clientClosed) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value && value.byteLength > 0 && !res.writableEnded) {
+                  res.write(Buffer.from(value));
+                  res.flush?.();
+                }
+              }
+            } catch {
+              // Client disconnected or stream aborted
+            } finally {
+              if (!res.writableEnded) {
+                res.end();
+              }
+            }
+            return;
+          }
           if (!res.headersSent) {
             res.writeHead(webRes.status, outHeaders);
           }
@@ -462,7 +497,9 @@ function aiTutorPlugin() {
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
           }
-          res.end(JSON.stringify({ error: err?.message || 'AI Mentors server error.' }));
+          if (!res.writableEnded) {
+            res.end(JSON.stringify({ error: err?.message || 'AI Mentors server error.' }));
+          }
         }
       });
 

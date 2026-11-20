@@ -12424,4 +12424,40 @@ input[type="search"],
   -webkit-appearance: none !important;
 }
 
+@keyframes ai-stream-blink {
+  0%, 48% {
+    opacity: 1;
+  }
+  52%, 100% {
+    opacity: 0.15;
+  }
+}
 
+.ai-stream-cursor {
+  width: 7px;
+  height: 15px;
+  border-radius: 2px;
+  animation: ai-stream-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes ai-mentor-dock-settle {
+  0% {
+    transform: scale(1.22);
+    box-shadow: 0 0 0 3px var(--mentor-accent, var(--accent)), 0 0 18px color-mix(in srgb, var(--mentor-accent, var(--accent)) 65%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mentor-accent, var(--accent)) 65%, transparent);
+  }
+}
+
+.ai-mentor-docked-pulse {
+  animation: ai-mentor-dock-settle 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-stream-cursor,
+  .ai-mentor-docked-pulse {
+    animation: none !important;
+  }
+}

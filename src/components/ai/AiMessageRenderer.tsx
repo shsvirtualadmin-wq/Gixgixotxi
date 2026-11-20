@@ -20,6 +20,7 @@ interface AiMessageRendererProps {
   accentColor: string;
   isGreeting?: boolean;
   isError?: boolean;
+  isStreaming?: boolean;
   onRegenerate?: () => void;
   onRetry?: () => void;
 }
@@ -29,6 +30,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
   accentColor,
   isGreeting = false,
   isError = false,
+  isStreaming = false,
   onRegenerate,
   onRetry,
 }) => {
@@ -170,8 +172,16 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
         </div>
       )}
 
-      {/* Message Action Bar (shown under real AI answers, not greeting or error) */}
-      {!isGreeting && !isError && (
+      {isStreaming && (
+        <span
+          className="ai-stream-cursor inline-block align-middle ml-1"
+          style={{ backgroundColor: accentColor }}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Message Action Bar (shown under completed real AI answers, not greeting, error, or active stream) */}
+      {!isGreeting && !isError && !isStreaming && (
         <div className="relative mt-2.5 flex items-center gap-1 flex-wrap">
           <button
             type="button"

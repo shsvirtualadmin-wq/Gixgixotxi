@@ -13,7 +13,8 @@
 
 import crypto from 'node:crypto';
 import sharp from 'sharp';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import pdfLib from 'pdf-lib';
+const { PDFDocument, StandardFonts, rgb } = pdfLib;
 import {
   CERTIFICATE_WIDTH,
   CERTIFICATE_HEIGHT,

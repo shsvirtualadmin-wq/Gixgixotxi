@@ -9,8 +9,9 @@ export interface AiDepthConfig {
   key: 'quick' | 'balanced' | 'deep' | 'max';
   label: string;
   baseCost: number;
-  thinkingLevel: 'low' | 'medium' | 'high' | 'xhigh';
+  thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
   maxOutputTokens: number;
+  targetVisibleTokens?: number;
   freeAllowed: boolean;
   speed: number;
   detail: number;
@@ -273,6 +274,57 @@ export function prepareApiContents(
   }
 
   return merged;
+}
+
+/**
+ * Prepares the last `maxRecent` (default 10) real messages for Gemini plus a compact
+ * single-turn summary of any older messages so prompts stay small and fast.
+ */
+export function prepareApiContentsWithSummary(
+  messages: LocalChatMessageInput[],
+  maxRecent: number = 10
+): ApiContentMessage[] {
+  const realMessages = messages.filter((m) => !m.isError && !m.isGreeting);
+  const recentLimit = Math.max(2, Math.min(AI_COST_RULES.maxMessagesClient || 10, maxRecent));
+
+  if (realMessages.length <= recentLimit) {
+    return prepareApiContents(realMessages, recentLimit);
+  }
+
+  const older = realMessages.slice(0, realMessages.length - recentLimit);
+  const recent = realMessages.slice(-recentLimit);
+
+  // Build a compact summary (<= 340 chars) from older turns (prioritizing user topics)
+  const snippets: string[] = [];
+  for (const m of older) {
+    const raw = (m.text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) continue;
+    const prefix = m.role === 'user' ? 'Student' : 'Mentor';
+    snippets.push(`${prefix}: ${raw.slice(0, 68)}${raw.length > 68 ? '…' : ''}`);
+  }
+  const summaryBody = snippets.slice(-4).join(' | ').slice(0, 320);
+
+  const recentPrepared = prepareApiContents(recent, recentLimit);
+  if (!summaryBody) {
+    return recentPrepared;
+  }
+
+  const summaryPrefix = `[Earlier chat context: ${summaryBody}]\n\n`;
+  if (recentPrepared.length > 0 && recentPrepared[0].role === 'user') {
+    const first = recentPrepared[0];
+    return [
+      {
+        role: 'user',
+        parts: [{ text: summaryPrefix }, ...first.parts],
+      },
+      ...recentPrepared.slice(1),
+    ];
+  }
+
+  return [
+    { role: 'user', parts: [{ text: summaryPrefix.trim() }] },
+    ...recentPrepared,
+  ];
 }
 
 export function buildChatTitle(firstQuestion: string): string {

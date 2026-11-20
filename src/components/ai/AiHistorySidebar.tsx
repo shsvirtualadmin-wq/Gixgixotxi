@@ -7,6 +7,7 @@ import {
 } from '@/utils/aiMentorsLogic';
 import type { AiPlan } from '@/utils/aiMentorsLogic';
 import type { SavedAiChat } from '@/services/aiMentorsService';
+import { MentorAvatar } from './MentorAvatar';
 
 interface AiHistorySidebarProps {
   chats: SavedAiChat[];
@@ -197,12 +198,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
                       : '1px solid transparent',
                   }}
                 >
-                  <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white"
-                    style={{ backgroundColor: m.accent }}
-                  >
-                    {m.name[0]}
-                  </span>
+                  <MentorAvatar mentorId={m.id} size={30} active={isCurrent} />
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-semibold truncate" style={{ color: 'var(--text)' }}>
                       {m.name}
@@ -262,9 +258,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
                       }}
                       className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left cursor-pointer"
                     >
-                      <span className="shrink-0 text-[13px]" aria-hidden="true">
-                        {mentor.emoji}
-                      </span>
+                      <MentorAvatar mentorId={mentor.id} size={20} ring={false} />
                       <span
                         className="min-w-0 flex-1 truncate text-[13px] font-medium"
                         style={{ color: 'var(--text)' }}

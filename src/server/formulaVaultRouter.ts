@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import type { Express, Request, Response } from 'express';
-import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import pdfLib from 'pdf-lib';
+const { PDFDocument, StandardFonts, rgb, degrees } = pdfLib;
 import katex from 'katex';
 import {
   buildInitialFormulaVaultSeed,

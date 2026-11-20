@@ -49,6 +49,7 @@ export interface StoredAiMessage {
   text: string;
   isGreeting?: boolean;
   isError?: boolean;
+  isStreaming?: boolean;
   attachmentLabels?: string[];
   retryPayload?: {
     text: string;
@@ -224,6 +225,15 @@ export async function fetchAiCreditsStatus(
   }
 }
 
+export interface AiMessageTimings {
+  ttfbMs: number;
+  ttftMs: number;
+  totalMs: number;
+  wordCount: number;
+  model?: string;
+  depth?: number;
+}
+
 export interface SendAiMessageResult {
   text: string;
   creditsLeft: number;
@@ -233,6 +243,7 @@ export interface SendAiMessageResult {
   cost: number;
   resetAt: string;
   dateKey: string;
+  timings?: AiMessageTimings;
 }
 
 export class AiMentorApiError extends Error {
@@ -273,12 +284,30 @@ async function getIdTokenWithTimeout(timeoutMs = 10_000): Promise<string | null>
   }
 }
 
+function createIdempotentRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `req_${crypto.randomUUID()}`;
+  }
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function countWordsSimple(text: string): number {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
 export async function sendAiMentorMessage(params: {
   mentor: AiMentorId;
   depth: AiDepthId;
   contents: ApiContentMessage[];
   signal?: AbortSignal;
+  requestId?: string;
+  stream?: boolean;
+  onDelta?: (delta: string, fullText: string) => void;
+  onMeta?: (meta: { model?: string; depth?: number; cost?: number }) => void;
 }): Promise<SendAiMessageResult> {
+  const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const token = await getIdTokenWithTimeout(10_000);
   if (!token) {
     throw new AiMentorApiError('Please sign in with a registered Boardly account to chat.', 401);
@@ -300,23 +329,33 @@ export async function sendAiMentorMessage(params: {
     params.signal.addEventListener('abort', onExternalAbort, { once: true });
   }
 
+  const requestId = params.requestId || createIdempotentRequestId();
+  const wantStream = params.stream !== false;
+
   try {
     const res = await fetch('/api/ai', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(wantStream ? { Accept: 'text/event-stream' } : {}),
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         mentor: params.mentor,
         depth: params.depth,
         contents: params.contents,
+        stream: wantStream,
+        requestId,
       }),
       signal: controller.signal,
     });
 
-    const data = await res.json().catch(() => ({}));
+    const tHeaders = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const ttfbMs = Math.round(tHeaders - tStart);
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       throw new AiMentorApiError(
         data?.error || `Could not get a response from your AI Mentor (HTTP ${res.status}).`,
         res.status,
@@ -329,6 +368,139 @@ export async function sendAiMentorMessage(params: {
       );
     }
 
+    // Streaming SSE path — render tokens immediately as they arrive
+    if (contentType.includes('text/event-stream') && res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let ttftMs: number | null = null;
+      let donePayload: Record<string, any> | null = null;
+      let metaModel: string | undefined;
+      let metaDepth: number = params.depth;
+
+      const processEventBlock = (block: string) => {
+        const lines = block.split('\n');
+        let eventName = 'message';
+        const dataLines: string[] = [];
+
+        for (const rawLine of lines) {
+          const line = rawLine.replace(/\r$/, '');
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        }
+
+        if (dataLines.length === 0) return;
+        const payloadStr = dataLines.join('\n');
+        if (!payloadStr || payloadStr === '[DONE]') return;
+
+        let parsed: Record<string, any>;
+        try {
+          parsed = JSON.parse(payloadStr);
+        } catch {
+          return;
+        }
+
+        if (eventName === 'meta') {
+          metaModel = typeof parsed.model === 'string' ? parsed.model : metaModel;
+          if (typeof parsed.depth === 'number') metaDepth = parsed.depth;
+          params.onMeta?.({
+            model: metaModel,
+            depth: metaDepth,
+            cost: typeof parsed.cost === 'number' ? parsed.cost : undefined,
+          });
+        } else if (eventName === 'delta') {
+          const delta = typeof parsed.text === 'string' ? parsed.text : '';
+          if (delta) {
+            if (ttftMs === null) {
+              const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+              ttftMs = Math.round(now - tStart);
+            }
+            fullText += delta;
+            params.onDelta?.(delta, fullText);
+          }
+        } else if (eventName === 'done') {
+          donePayload = parsed;
+        } else if (eventName === 'error') {
+          throw new AiMentorApiError(
+            parsed.error || 'Could not get a response from your AI Mentor.',
+            Number(parsed.status) || 502,
+            {
+              code: typeof parsed.code === 'string' ? parsed.code : undefined,
+              creditsLeft: typeof parsed.creditsLeft === 'number' ? parsed.creditsLeft : undefined,
+              dailyLimit: typeof parsed.dailyLimit === 'number' ? parsed.dailyLimit : undefined,
+              resetAt: typeof parsed.resetAt === 'string' ? parsed.resetAt : undefined,
+            }
+          );
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let boundaryIdx = buffer.indexOf('\n\n');
+        while (boundaryIdx !== -1) {
+          const block = buffer.slice(0, boundaryIdx);
+          buffer = buffer.slice(boundaryIdx + 2);
+          if (block.trim()) {
+            processEventBlock(block);
+          }
+          boundaryIdx = buffer.indexOf('\n\n');
+        }
+      }
+
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        processEventBlock(buffer);
+      }
+
+      const finalText = (fullText || String(donePayload?.text || '')).trim();
+      if (!finalText) {
+        throw new AiMentorApiError(
+          'The mentor returned an empty reply. Please try again.',
+          502,
+          { code: 'EMPTY_ANSWER' }
+        );
+      }
+
+      const tEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const totalMs = Math.round(tEnd - tStart);
+      const resolvedTtft = ttftMs ?? totalMs;
+      const wordCount = countWordsSimple(finalText);
+      const cost = Number(donePayload?.cost ?? 0);
+
+      console.log(
+        `[AI Mentor] mentor=${params.mentor} depth=${metaDepth} model=${metaModel || 'gemini-4-hydrogen'} ` +
+          `TTFB=${ttfbMs}ms TTFT=${resolvedTtft}ms Total=${totalMs}ms words=${wordCount} cost=${cost}`
+      );
+
+      return {
+        text: finalText,
+        creditsLeft: Number(donePayload?.creditsLeft ?? 0),
+        creditsUsed: Number(donePayload?.creditsUsed ?? 0),
+        dailyLimit: Number(donePayload?.dailyLimit ?? FREE_AI_CREDITS_PER_DAY),
+        isUnlimited: Boolean(donePayload?.isUnlimited),
+        cost,
+        resetAt: String(donePayload?.resetAt || getPktResetInfo().resetAtIso),
+        dateKey: String(donePayload?.dateKey || getPktDateKey()),
+        timings: {
+          ttfbMs,
+          ttftMs: resolvedTtft,
+          totalMs,
+          wordCount,
+          model: metaModel,
+          depth: metaDepth,
+        },
+      };
+    }
+
+    // Standard JSON fallback path
+    const data = await res.json().catch(() => ({}));
     const answerText = String(data.text || '').trim();
     if (!answerText) {
       throw new AiMentorApiError(
@@ -338,15 +510,35 @@ export async function sendAiMentorMessage(params: {
       );
     }
 
+    const tEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const totalMs = Math.round(tEnd - tStart);
+    const wordCount = countWordsSimple(answerText);
+    const cost = Number(data.cost ?? 0);
+
+    params.onDelta?.(answerText, answerText);
+
+    console.log(
+      `[AI Mentor] mentor=${params.mentor} depth=${params.depth} (json) ` +
+        `TTFB=${ttfbMs}ms TTFT=${totalMs}ms Total=${totalMs}ms words=${wordCount} cost=${cost}`
+    );
+
     return {
       text: answerText,
       creditsLeft: Number(data.creditsLeft ?? 0),
       creditsUsed: Number(data.creditsUsed ?? 0),
       dailyLimit: Number(data.dailyLimit ?? FREE_AI_CREDITS_PER_DAY),
       isUnlimited: Boolean(data.isUnlimited),
-      cost: Number(data.cost ?? 0),
+      cost,
       resetAt: String(data.resetAt || getPktResetInfo().resetAtIso),
       dateKey: String(data.dateKey || getPktDateKey()),
+      timings: {
+        ttfbMs,
+        ttftMs: totalMs,
+        totalMs,
+        wordCount,
+        model: data.model,
+        depth: data.depth ?? params.depth,
+      },
     };
   } catch (err: any) {
     if (err instanceof AiMentorApiError) throw err;

@@ -6,6 +6,7 @@ import {
   type AiDepthId,
   type AiMentorId,
 } from '@/utils/aiMentorsLogic';
+import { MentorAvatar } from './MentorAvatar';
 
 interface AiMentorPickerModalProps {
   open: boolean;
@@ -108,12 +109,7 @@ export const AiMentorPickerModal: React.FC<AiMentorPickerModalProps> = ({
                   border: active ? `1.5px solid ${m.accent}` : '1px solid var(--border)',
                 }}
               >
-                <span
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-bold text-white"
-                  style={{ backgroundColor: m.accent }}
-                >
-                  {m.name[0]}
-                </span>
+                <MentorAvatar mentorId={m.id} size={42} active={active} eager />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
