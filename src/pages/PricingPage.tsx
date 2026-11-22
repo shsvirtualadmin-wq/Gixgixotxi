@@ -25,6 +25,7 @@ function getComparisonRows(freeAi: number, proAi: number, plusAi: number) {
     { feature: 'Complete Subject Question Bank Access', free: 'Core Sets', pro: 'Full Access', plus: 'Full Access' },
     { feature: 'Weak Chapter Analytics & Mistake Tracking', free: 'Basic', pro: 'Comprehensive', plus: 'Comprehensive' },
     { feature: 'Exclusive Profile Badge', free: false, pro: 'Pro Badge', plus: 'Plus Badge' },
+    { feature: 'Ad-free experience', free: false, pro: true, plus: true },
   ];
 }
 
@@ -195,6 +196,7 @@ export function PricingPage() {
                     'Complete subject question banks unlocked',
                     'Advanced weak chapter diagnostics & mistake curves',
                     'Pro badge next to your name',
+                    'Ad-free experience',
                   ].map((item) => (
                     <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
                       <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
@@ -263,6 +265,7 @@ export function PricingPage() {
                     'Plus badge next to your name',
                     'Unused Pro days credited automatically on upgrade',
                     'Share Plus benefits with your Nakama Crew',
+                    'Ad-free experience',
                   ].map((item) => (
                     <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />

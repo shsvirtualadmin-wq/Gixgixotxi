@@ -86,6 +86,32 @@ export function DashboardShell() {
     scheduleIdleTabPrefetch(user?.uid);
   }, [user?.uid]);
 
+  // Helper: map public-equivalent /dashboard/* paths to their public routes for logged-out visitors
+  const getPublicEquivalentForLoggedOut = (pathname: string): string | null => {
+    const lower = pathname.toLowerCase();
+    if (
+      lower === '/dashboard/store' ||
+      lower.startsWith('/dashboard/store/') ||
+      lower === '/dashboard/commons' ||
+      lower.startsWith('/dashboard/commons/') ||
+      lower === '/dashboard/formulas' ||
+      lower.startsWith('/dashboard/formulas/') ||
+      lower === '/dashboard/formula-vault' ||
+      lower.startsWith('/dashboard/formula-vault/') ||
+      lower === '/dashboard/grand-line' ||
+      lower.startsWith('/dashboard/grand-line/') ||
+      lower === '/dashboard/leaderboard' ||
+      lower.startsWith('/dashboard/leaderboard/') ||
+      lower === '/dashboard/captains' ||
+      lower.startsWith('/dashboard/captains/') ||
+      lower === '/dashboard/rewards' ||
+      lower.startsWith('/dashboard/rewards/')
+    ) {
+      return pathname.replace(/^\/dashboard/i, '') || '/';
+    }
+    return null;
+  };
+
   useEffect(() => {
     const signingOutNow =
       isSigningOut ||
@@ -94,6 +120,11 @@ export function DashboardShell() {
       return;
     }
     if (!isAuthenticated && !profileLoading && !user) {
+      const publicPath = getPublicEquivalentForLoggedOut(location.pathname);
+      if (publicPath) {
+        navigate(`${publicPath}${location.search}${location.hash}`, { replace: true });
+        return;
+      }
       const target = `${location.pathname}${location.search}${location.hash}`;
       try {
         sessionStorage.setItem('boardly_post_login_redirect', target);
@@ -120,6 +151,10 @@ export function DashboardShell() {
       (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
     if (signingOutNow) {
       return <Navigate to="/login" replace />;
+    }
+    const publicPath = getPublicEquivalentForLoggedOut(location.pathname);
+    if (publicPath) {
+      return <Navigate to={`${publicPath}${location.search}${location.hash}`} replace />;
     }
     const target = `${location.pathname}${location.search}${location.hash}`;
     return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;

@@ -721,7 +721,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   };
 
   const handleSharePost = async (post: ProfilePostItem) => {
-    const url = `${window.location.origin}/commons?post=${encodeURIComponent(post.id)}`;
+    const url = `${window.location.origin}/commons/post/${encodeURIComponent(post.id)}`;
     try {
       if (navigator.share) {
         await navigator.share({

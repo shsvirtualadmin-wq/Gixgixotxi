@@ -245,7 +245,7 @@ export const MaterialDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard?.writeText(`https://boardly.cfd${canonicalPath}`);
+                  navigator.clipboard?.writeText(`${window.location.origin}${canonicalPath}`);
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}

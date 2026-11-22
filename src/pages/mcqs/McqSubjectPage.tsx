@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { BookOpen, ArrowRight, FolderOpen, MessageSquare, GraduationCap } from 'lucide-react';
+import { BookOpen, ArrowRight, FolderOpen, MessageSquare, GraduationCap, Share2, Check } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -144,6 +144,7 @@ export const McqSubjectPage: React.FC<McqSubjectPageProps> = ({
   }>();
   const location = useLocation();
   const { requireAuth } = useAuthGate();
+  const [copied, setCopied] = useState(false);
 
   const rawUniversity = (universityOverride || params.university || '').toLowerCase().trim();
   const rawSubject = (
@@ -198,6 +199,18 @@ export const McqSubjectPage: React.FC<McqSubjectPageProps> = ({
             </div>
 
             <div className="flex flex-wrap gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${window.location.origin}/mcqs/${uniKey}`);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="btn-secondary px-4 py-3 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+              >
+                {copied ? <Check size={14} className="text-emerald-400" /> : <Share2 size={14} />}
+                <span>{copied ? 'Link Copied' : 'Share'}</span>
+              </button>
               <Link
                 to={`/practice?university=${uniKey.toUpperCase()}`}
                 className="btn-primary px-5 py-3 text-xs font-semibold inline-flex items-center gap-2"
@@ -380,6 +393,18 @@ export const McqSubjectPage: React.FC<McqSubjectPageProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(`${window.location.origin}${canonicalPath}`);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="btn-secondary px-4 py-3 text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
+            >
+              {copied ? <Check size={14} className="text-emerald-400" /> : <Share2 size={14} />}
+              <span>{copied ? 'Link Copied' : 'Share'}</span>
+            </button>
             <button
               type="button"
               onClick={() =>

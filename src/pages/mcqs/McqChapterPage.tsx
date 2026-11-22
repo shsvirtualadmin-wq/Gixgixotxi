@@ -9,13 +9,15 @@ import {
   Lock,
   FolderOpen,
   RotateCcw,
+  Share2,
+  Check,
 } from 'lucide-react';
 import { collection, getDocs, query, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { MathText } from '@/components/ui/MathText';
-import { SYLLABUS_MAP } from '@/constants/syllabusMap';
+import { SYLLABUS_MAP, TOPIC_LISTS } from '@/constants/syllabusMap';
 import { formatSubjectName, formatChapterName, slugify } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
@@ -376,19 +378,23 @@ export const McqChapterPage: React.FC = () => {
       ? 'english'
       : subject.toLowerCase();
   const syllabusEntry = SYLLABUS_MAP[syllabusKey];
+  const topicKey = syllabusKey === 'computer-science' ? 'computer' : syllabusKey;
+  const allTopicClusters = TOPIC_LISTS[topicKey] || [];
   const allSyllabusChapters = syllabusEntry
     ? [
         ...syllabusEntry.chaptersClass11.map((c) => c.name),
         ...syllabusEntry.chaptersClass12.map((c) => c.name),
       ]
     : [];
+  const allKnownChaptersAndTopics = [...allSyllabusChapters, ...allTopicClusters];
+  const exactOrPartialMatch = allKnownChaptersAndTopics.find(
+    (c) =>
+      slugify(c) === chapter.toLowerCase() ||
+      slugify(c).includes(chapter.toLowerCase()) ||
+      chapter.toLowerCase().includes(slugify(c))
+  );
   const matchedChapterTitle =
-    allSyllabusChapters.find(
-      (c) =>
-        slugify(c) === chapter.toLowerCase() ||
-        slugify(c).includes(chapter.toLowerCase()) ||
-        chapter.toLowerCase().includes(slugify(c))
-    ) || formatChapterName(syllabusKey, chapter);
+    exactOrPartialMatch || formatChapterName(syllabusKey, chapter);
   const relatedChapters = allSyllabusChapters
     .filter((c) => slugify(c) !== slugify(matchedChapterTitle))
     .slice(0, 6);
@@ -405,6 +411,7 @@ export const McqChapterPage: React.FC = () => {
     getCuratedSampleQuestions(subject, matchedChapterTitle)
   );
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
+  const [copied, setCopied] = useState(false);
 
   // Attempt to load up to 4 real published D1 questions (or Firestore if feature flag enabled) for this subject/chapter
   useEffect(() => {
@@ -556,7 +563,7 @@ export const McqChapterPage: React.FC = () => {
     );
   }
 
-  if (!VALID_SUBJECT_KEYS.has(subject) || (universityKey && !uniMeta)) {
+  if (!VALID_SUBJECT_KEYS.has(subject) || (universityKey && !uniMeta) || !exactOrPartialMatch) {
     return <NotFoundPage />;
   }
 
@@ -645,9 +652,23 @@ export const McqChapterPage: React.FC = () => {
                 {subjectName} · Chapter Practice
               </span>
             </div>
-            <span className="glass-pill px-3 py-1 text-xs text-white/70">
-              {sampleQuestions.length} Interactive Sample MCQs
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${window.location.origin}${canonicalPath}`);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="glass-pill px-3 py-1 text-xs text-white/75 hover:text-white inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {copied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} />}
+                <span>{copied ? 'Link Copied' : 'Share'}</span>
+              </button>
+              <span className="glass-pill px-3 py-1 text-xs text-white/70">
+                {sampleQuestions.length} Interactive Sample MCQs
+              </span>
+            </div>
           </div>
 
           <h1 className="font-dot text-3xl sm:text-4xl font-bold text-white mb-3">

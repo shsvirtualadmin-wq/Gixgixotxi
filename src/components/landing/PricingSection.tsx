@@ -33,6 +33,7 @@ export function PricingSection() {
     'Complete subject question banks unlocked',
     'Detailed chapter weakness diagnostics and mistake curves',
     'Pro badge next to your name',
+    'Ad-free experience',
   ];
 
   const PLUS_FEATURES = [
@@ -42,6 +43,7 @@ export function PricingSection() {
     'Plus badge next to your name',
     'Unused Pro days credited automatically on upgrade',
     'Share Plus benefits with your Nakama Crew',
+    'Ad-free experience',
   ];
 
   useEffect(() => {

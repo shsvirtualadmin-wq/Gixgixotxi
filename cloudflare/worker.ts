@@ -8245,6 +8245,30 @@ ${urls
         return jsonResponse({ success: true, reportId: id }, 201, cors);
       }
 
+      if (path === '/ads.txt' && (request.method === 'GET' || request.method === 'HEAD')) {
+        if ((env as any).ASSETS?.fetch) {
+          const assetRes = await (env as any).ASSETS.fetch(request);
+          if (assetRes && assetRes.status === 200) {
+            const headers = new Headers(assetRes.headers);
+            headers.set('Content-Type', 'text/plain; charset=utf-8');
+            return new Response(assetRes.body, { status: 200, headers });
+          }
+        }
+        return new Response('google.com, pub-6994939022289204, DIRECT, f08c47fec0942fa0\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
+
+      if (
+        request.method === 'GET' &&
+        !path.startsWith('/api/') &&
+        path !== '/ads.txt' &&
+        (env as any).ASSETS?.fetch
+      ) {
+        return (env as any).ASSETS.fetch(new Request(new URL('/index.html', request.url), request));
+      }
+
       return jsonResponse({ error: 'Endpoint not found' }, 404, cors);
     } catch (err: any) {
       console.error('[CloudflareWorker] Unhandled exception:', err);

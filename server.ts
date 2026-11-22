@@ -14053,6 +14053,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // Mount Cloudflare D1 + R2 Post API (/api/posts, /api/r2, /sitemap.xml) & Auth/Admin deletion endpoints
   registerCloudflarePostsAndAuthRoutes(app, { getGoogleAccessToken });
 
+  app.get('/ads.txt', (_req, res) => {
+    res
+      .status(200)
+      .type('text/plain; charset=utf-8')
+      .send('google.com, pub-6994939022289204, DIRECT, f08c47fec0942fa0\n');
+  });
+
   // Universal Crawler, Search Engine & Social Share Metadata Responder
   app.use((req, res, next) => {
     const rawPath = req.path.replace(/\/+$/, '') || '/';

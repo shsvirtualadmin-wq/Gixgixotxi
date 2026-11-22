@@ -17,21 +17,39 @@ export function SignupPage() {
   } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
+      if (redirectParam && redirectParam.startsWith('/')) {
+        sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   // Only redirect once the 6-digit verification code has been verified (or guest session created)
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
       const searchParams = new URLSearchParams(window.location.search);
       const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
       const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
+      const intendedTarget =
+        (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
+        (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
+
       let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-      if (redirectParam && redirectParam.startsWith('/')) {
-        dest = redirectParam;
-      } else if (storedRedirect && storedRedirect.startsWith('/')) {
-        dest = storedRedirect;
-      } else if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
-        dest = '/onboarding';
+      if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
+        dest = intendedTarget
+          ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
+          : '/onboarding';
+      } else if (intendedTarget) {
+        dest = intendedTarget;
+        sessionStorage.removeItem('boardly_post_login_redirect');
+      } else {
+        sessionStorage.removeItem('boardly_post_login_redirect');
       }
-      sessionStorage.removeItem('boardly_post_login_redirect');
       navigate(dest, { replace: true });
     }
   }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl]);

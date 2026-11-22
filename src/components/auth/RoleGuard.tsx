@@ -27,7 +27,13 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
 
   // Not logged in or guest -> redirect to login with return parameter
   if (!user || isGuest) {
-    return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    try {
+      sessionStorage.setItem('boardly_post_login_redirect', target);
+    } catch {
+      // Ignore storage errors
+    }
+    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
   }
 
   // Hierarchy: superAdmin > admin > captain > student (strictly from ID token custom claims)

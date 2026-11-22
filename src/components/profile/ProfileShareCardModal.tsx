@@ -22,7 +22,8 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
   if (!isOpen) return null;
 
   const handleCopyLink = () => {
-    const shareUrl = `${window.location.origin}/dashboard/profile?uid=${profile.uid}`;
+    const handleOrId = (profile as any).username || profile.uid;
+    const shareUrl = `${window.location.origin}/u/${encodeURIComponent(handleOrId)}`;
     navigator.clipboard?.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

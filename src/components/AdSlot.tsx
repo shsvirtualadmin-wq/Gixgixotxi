@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ADSENSE_CLIENT_ID } from '@/config/ads';
+import { useAuth } from '@/contexts/AuthContext';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
 declare global {
   interface Window {
@@ -14,9 +16,29 @@ export interface AdSlotProps {
   label?: string;
 }
 
+const ADSENSE_SCRIPT_ID = 'boardly-adsense-script';
+
+function ensureAdSenseScriptLoaded() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(ADSENSE_SCRIPT_ID)) return;
+  const existing = document.querySelector(
+    'script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
+  );
+  if (existing) return;
+
+  const script = document.createElement('script');
+  script.id = ADSENSE_SCRIPT_ID;
+  script.async = true;
+  script.crossOrigin = 'anonymous';
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADSENSE_CLIENT_ID}`;
+  document.head.appendChild(script);
+}
+
 /**
  * Reusable Google AdSense slot with CLS-safe reserved height, dark/light Boardly styling,
  * single-push mount guard, and dashed placeholder fallback while slotId is empty.
+ * Renders null (no space reserved) and does not load the ad script when the user has an
+ * active Pro or Plus plan and the Ad-free experience toggle is ON.
  */
 export function AdSlot({
   slotId,
@@ -24,10 +46,59 @@ export function AdSlot({
   className = '',
   label = 'Advertisement',
 }: AdSlotProps) {
+  const { user, profile } = useAuth();
+  const { isPaid } = useEffectivePlan();
   const hasPushedRef = useRef(false);
   const trimmedSlotId = (slotId || '').trim();
 
+  // Read cached or profile-synced adFreeEnabled preference (defaults to true for active Pro/Plus)
+  const [localAdFreeOverride, setLocalAdFreeOverride] = useState<boolean | null>(() => {
+    try {
+      if (user?.uid) {
+        const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
+        if (cached === '1') return true;
+        if (cached === '0') return false;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return null;
+  });
+
   useEffect(() => {
+    if (typeof profile?.adFreeEnabled === 'boolean') {
+      setLocalAdFreeOverride(profile.adFreeEnabled);
+    }
+  }, [profile?.adFreeEnabled]);
+
+  useEffect(() => {
+    const onAdFreeChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ adFreeEnabled?: boolean }>).detail;
+      if (typeof detail?.adFreeEnabled === 'boolean') {
+        setLocalAdFreeOverride(detail.adFreeEnabled);
+      }
+    };
+    window.addEventListener('boardly:ad-free-changed', onAdFreeChanged);
+    return () => window.removeEventListener('boardly:ad-free-changed', onAdFreeChanged);
+  }, []);
+
+  const adFreeToggleOn =
+    typeof profile?.adFreeEnabled === 'boolean'
+      ? profile.adFreeEnabled
+      : localAdFreeOverride !== null
+      ? localAdFreeOverride
+      : true;
+
+  // Hide ads when the user has an active Pro or Plus plan and the toggle is ON.
+  // If the plan expires (isPaid becomes false), ads automatically come back.
+  const shouldHideAds = Boolean(isPaid && adFreeToggleOn);
+
+  useEffect(() => {
+    if (shouldHideAds) {
+      hasPushedRef.current = false;
+      return;
+    }
+    ensureAdSenseScriptLoaded();
     if (!trimmedSlotId || hasPushedRef.current) return;
     hasPushedRef.current = true;
     try {
@@ -35,7 +106,11 @@ export function AdSlot({
     } catch {
       // Silently ignore AdSense push errors (e.g. ad blocker or script not yet ready)
     }
-  }, [trimmedSlotId]);
+  }, [trimmedSlotId, shouldHideAds]);
+
+  if (shouldHideAds) {
+    return null;
+  }
 
   return (
     <aside

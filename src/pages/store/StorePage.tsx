@@ -28,7 +28,9 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Share2,
 } from 'lucide-react';
+import { NotFoundPage } from '@/pages/NotFoundPage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
 import { useStoreCart } from '@/hooks/useStoreCart';
@@ -586,6 +588,51 @@ export const StorePage: React.FC<StorePageProps> = ({
     return liveCatalog.find((i) => i.id === detailItemId) || null;
   }, [detailItemId, detailIndex, filteredItems, liveCatalog]);
 
+  const [notFoundItemQuery, setNotFoundItemQuery] = useState(false);
+
+  // Open item from ?item=<id> query param on initial load
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const qItem = (params.get('item') || '').trim();
+    if (!qItem) {
+      setNotFoundItemQuery(false);
+      return;
+    }
+    const matched =
+      liveCatalog.find(
+        (c) =>
+          c.id.toLowerCase() === qItem.toLowerCase() ||
+          c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === qItem.toLowerCase()
+      ) || getCosmeticById(qItem);
+    if (matched) {
+      setNotFoundItemQuery(false);
+      setDetailItemId(matched.id);
+    } else if (liveCatalog.length > 0) {
+      setNotFoundItemQuery(true);
+    }
+  }, [liveCatalog]);
+
+  // Keep browser address bar synced with /store/<itemId> when an item detail modal is open
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isDashboardStore = window.location.pathname.toLowerCase().startsWith('/dashboard/store');
+    const baseStorePath = isDashboardStore ? '/dashboard/store' : '/store';
+    if (detailItem) {
+      const targetUrl = `${baseStorePath}/${encodeURIComponent(detailItem.id)}`;
+      if (window.location.pathname !== targetUrl) {
+        window.history.replaceState(null, '', targetUrl);
+      }
+    } else if (
+      !notFoundItemQuery &&
+      window.location.pathname.toLowerCase() !== '/store/get-kobans' &&
+      (window.location.pathname.toLowerCase().startsWith('/store/') ||
+        window.location.pathname.toLowerCase().startsWith('/dashboard/store/'))
+    ) {
+      window.history.replaceState(null, '', baseStorePath);
+    }
+  }, [detailItem, notFoundItemQuery]);
+
   const handleNavigateDetail = useCallback(
     (direction: 'prev' | 'next') => {
       if (filteredItems.length <= 1 || detailIndex < 0) return;
@@ -852,7 +899,8 @@ export const StorePage: React.FC<StorePageProps> = ({
   const handleCartCheckout = async () => {
     if (!user) {
       setCartOpen(false);
-      navigate('/login');
+      const target = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      navigate(`/login?redirect=${encodeURIComponent(target)}`);
       return;
     }
     if (isGuest || user.uid.startsWith('guest_')) {
@@ -978,6 +1026,10 @@ export const StorePage: React.FC<StorePageProps> = ({
   ];
 
   const isLoadingGrid = catalogLoading || (Boolean(user) && walletLoading);
+
+  if (notFoundItemQuery) {
+    return <NotFoundPage />;
+  }
 
   return (
     <div data-student-page="store" className="min-h-[100dvh] bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)] overflow-x-clip">
@@ -1949,14 +2001,30 @@ export const StorePage: React.FC<StorePageProps> = ({
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setDetailItemId(null)}
-                    aria-label="Close item details"
-                    className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const shareUrl = `${window.location.origin}/store/${encodeURIComponent(detailItem.id)}`;
+                        navigator.clipboard?.writeText(shareUrl).then(() => {
+                          showToast('success', 'Item link copied to clipboard!');
+                        });
+                      }}
+                      aria-label="Share item link"
+                      className="h-8 px-3 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] inline-flex items-center gap-1.5 text-xs font-bold text-[var(--text-primary)] cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Share</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailItemId(null)}
+                      aria-label="Close item details"
+                      className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-y-auto flex-1">

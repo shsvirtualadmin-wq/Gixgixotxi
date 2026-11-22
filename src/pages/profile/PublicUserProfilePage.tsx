@@ -101,15 +101,15 @@ export const PublicUserProfilePage: React.FC = () => {
           return;
         }
 
-        // 5. Fallback: treat rawParam as the UID directly
+        // 5. Not found in any profile table
         if (mounted) {
-          setTargetUid(uid);
+          setNotFound(true);
           setLoading(false);
         }
       } catch (err) {
         console.warn('[PublicUserProfilePage] resolveUid warning:', err);
         if (mounted) {
-          setTargetUid(rawParam);
+          setNotFound(true);
           setLoading(false);
         }
       }

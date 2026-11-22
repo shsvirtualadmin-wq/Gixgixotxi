@@ -36,19 +36,7 @@ export function ContactPage() {
     }
   }, [user, profile]);
 
-  // If a student's active session really expired, redirect to login and bring them back after signing in
-  useEffect(() => {
-    if (!profileLoading && !user) {
-      try {
-        const wasAuthenticated = localStorage.getItem('boardly_user_authenticated') === 'true';
-        if (wasAuthenticated) {
-          navigate('/login?redirect=/contact', { replace: true });
-        }
-      } catch {
-        // Ignore storage errors
-      }
-    }
-  }, [user, profileLoading, navigate]);
+  // Contact page is public for logged-out visitors, guests, and signed-in students alike.
 
   const [formLoadedAt] = useState<number>(() => Date.now());
   const [submitting, setSubmitting] = useState(false);

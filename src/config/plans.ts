@@ -141,6 +141,7 @@ export function buildPlansCatalog(rawConfig?: Partial<PlansConfigDoc> | null): P
         `${cfg.pro.aiCreditsPerDay} AI Mentor credits per day with Deep & Max thinking`,
         'FAST-NUCES Negative Marking Optimizer',
         'Comprehensive Mistakes & Topic Breakdown',
+        'Ad-free experience',
       ],
     },
     pro_annual: {
@@ -165,6 +166,7 @@ export function buildPlansCatalog(rawConfig?: Partial<PlansConfigDoc> | null): P
         'Priority support & exam session archives',
         'Detailed topic accuracy & weakness tracking',
         'Pro Scholar badge next to your name across Boardly',
+        'Ad-free experience',
       ],
     },
     plus_monthly: {
@@ -185,6 +187,7 @@ export function buildPlansCatalog(rawConfig?: Partial<PlansConfigDoc> | null): P
         `${cfg.plus.aiCreditsPerDay} AI Mentor credits per day (2x Pro)`,
         'Deep & Max AI thinking',
         'Plus badge next to your name',
+        'Ad-free experience',
       ],
     },
     plus_annual: {
@@ -207,6 +210,7 @@ export function buildPlansCatalog(rawConfig?: Partial<PlansConfigDoc> | null): P
         `${cfg.plus.aiCreditsPerDay} AI Mentor credits per day (2x Pro)`,
         'Deep & Max AI thinking',
         'Plus badge next to your name',
+        'Ad-free experience',
       ],
     },
     crew: {
@@ -293,6 +297,13 @@ export function buildPlanComparisonRows(
       pro: 'Pro badge & Kobans',
       plus: 'Plus badge & Kobans',
       crew: 'Crew Tag',
+    },
+    {
+      feature: 'Ad-free experience',
+      free: 'Ad-supported',
+      pro: 'Ad-free experience',
+      plus: 'Ad-free experience',
+      crew: 'Best plan in squad',
     },
   ];
 }

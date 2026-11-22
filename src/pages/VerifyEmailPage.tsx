@@ -58,14 +58,24 @@ export function VerifyEmailPage() {
   // Redirect once verified
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
+      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
+      const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
+      const intendedTarget =
+        (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
+        (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
+
       if (profile && !profile.onboardingCompleted && profile.role === 'student') {
-        navigate('/onboarding', { replace: true });
+        navigate(
+          intendedTarget ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}` : '/onboarding',
+          { replace: true }
+        );
         return;
       }
-      const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+      sessionStorage.removeItem('boardly_post_login_redirect');
+      const dest = intendedTarget || (profile ? getRoleRedirectUrl(profile.role) : '/dashboard');
       navigate(dest, { replace: true });
     }
-  }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl]);
+  }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl, searchParams]);
 
   if (linkStatus === 'verifying' || otpVerificationState.status === 'checking') {
     return (

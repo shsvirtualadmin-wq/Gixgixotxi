@@ -250,6 +250,64 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     }
   });
 
+  // Ad-free experience preference (ON by default for active Pro/Plus; synced to user profile across devices)
+  const [adFreeEnabled, setAdFreeEnabled] = useState<boolean>(() => {
+    if (typeof profile?.adFreeEnabled === 'boolean') {
+      return profile.adFreeEnabled;
+    }
+    try {
+      if (user?.uid) {
+        const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
+        if (cached === '1') return true;
+        if (cached === '0') return false;
+      }
+    } catch {
+      // Ignore
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof profile?.adFreeEnabled === 'boolean') {
+      setAdFreeEnabled(profile.adFreeEnabled);
+    }
+  }, [profile?.adFreeEnabled]);
+
+  const handleToggleAdFree = useCallback(
+    async (nextVal: boolean) => {
+      if (!isPaid) return;
+      setAdFreeEnabled(nextVal);
+      try {
+        if (user?.uid) {
+          localStorage.setItem(`boardly_ad_free_${user.uid}`, nextVal ? '1' : '0');
+        }
+        window.dispatchEvent(
+          new CustomEvent('boardly:ad-free-changed', {
+            detail: { adFreeEnabled: nextVal },
+          })
+        );
+      } catch {
+        // Ignore
+      }
+      try {
+        await updateProfile({ adFreeEnabled: nextVal });
+        if (user?.uid && !isGuest) {
+          await setDoc(
+            doc(db, 'users', user.uid),
+            {
+              adFreeEnabled: nextVal,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+      } catch {
+        // Non-fatal
+      }
+    },
+    [isPaid, user?.uid, isGuest, updateProfile]
+  );
+
   // Boardly AI Mentors privacy controls
   const [saveAiChatHistory, setSaveAiChatHistory] = useState<boolean>(() =>
     getSaveChatHistoryPref()
@@ -719,6 +777,39 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           ) : null}
         </SettingsGroup>
 
+        <SettingsGroup
+          label="Ad-free experience"
+          helperText={
+            isPaid
+              ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+              : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
+          }
+        >
+          <SettingsToggleRow
+            icon={<Sparkles />}
+            label="Ad-free experience"
+            subtitle={
+              isPaid
+                ? 'Ads are hidden because you are on Pro/Plus'
+                : 'Locked on Free tier'
+            }
+            checked={isPaid ? adFreeEnabled : false}
+            disabled={!isPaid}
+            isLast={isPaid}
+            onChange={(val) => {
+              void handleToggleAdFree(val);
+            }}
+          />
+          {!isPaid && (
+            <SettingsRow
+              icon={<Crown />}
+              label="Upgrade to remove ads"
+              tone="accent"
+              onClick={() => navigateTo('/pricing')}
+            />
+          )}
+        </SettingsGroup>
+
         <SettingsGroup danger>
           <SettingsRow
             icon={<LogOut />}
@@ -928,6 +1019,39 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
               }
             }}
           />
+        </SettingsGroup>
+
+        <SettingsGroup
+          label="Ad-free experience"
+          helperText={
+            isPaid
+              ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+              : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
+          }
+        >
+          <SettingsToggleRow
+            icon={<Sparkles />}
+            label="Ad-free experience"
+            subtitle={
+              isPaid
+                ? 'Ads are hidden because you are on Pro/Plus'
+                : 'Locked on Free tier'
+            }
+            checked={isPaid ? adFreeEnabled : false}
+            disabled={!isPaid}
+            isLast={isPaid}
+            onChange={(val) => {
+              void handleToggleAdFree(val);
+            }}
+          />
+          {!isPaid && (
+            <SettingsRow
+              icon={<Crown />}
+              label="Upgrade to remove ads"
+              tone="accent"
+              onClick={() => navigateTo('/pricing')}
+            />
+          )}
         </SettingsGroup>
 
         <SettingsChoiceSheet
@@ -1313,6 +1437,16 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       ),
   ].filter(Boolean);
 
+  const showAdFreeSection = matchesSearch(
+    'ad-free experience',
+    'ad-free',
+    'ads',
+    'remove ads',
+    'upgrade to remove ads',
+    'pro',
+    'plus'
+  );
+
   const card2Rows = [
     matchesSearch('customize boardly', 'appearance', 'theme', 'dark', 'light', 'koban icon', 'pro badge', 'reduce effects') && (
       <SettingsRow
@@ -1477,6 +1611,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   const showSignOut = matchesSearch('sign out', 'log out', 'logout', 'version');
   const hasAnyResults =
     card1Rows.length > 0 ||
+    showAdFreeSection ||
     card2Rows.length > 0 ||
     card3Rows.length > 0 ||
     card4Rows.length > 0 ||
@@ -1516,6 +1651,40 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       ) : (
         <>
           {card1Rows.length > 0 && <SettingsGroup>{card1Rows}</SettingsGroup>}
+          {showAdFreeSection && (
+            <SettingsGroup
+              label="Ad-free experience"
+              helperText={
+                isPaid
+                  ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+                  : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
+              }
+            >
+              <SettingsToggleRow
+                icon={<Sparkles />}
+                label="Ad-free experience"
+                subtitle={
+                  isPaid
+                    ? 'Ads are hidden because you are on Pro/Plus'
+                    : 'Locked on Free tier'
+                }
+                checked={isPaid ? adFreeEnabled : false}
+                disabled={!isPaid}
+                isLast={isPaid}
+                onChange={(val) => {
+                  void handleToggleAdFree(val);
+                }}
+              />
+              {!isPaid && (
+                <SettingsRow
+                  icon={<Crown />}
+                  label="Upgrade to remove ads"
+                  tone="accent"
+                  onClick={() => navigateTo('/pricing')}
+                />
+              )}
+            </SettingsGroup>
+          )}
           {card2Rows.length > 0 && <SettingsGroup>{card2Rows}</SettingsGroup>}
           {card3Rows.length > 0 && <SettingsGroup>{card3Rows}</SettingsGroup>}
           {card4Rows.length > 0 && <SettingsGroup>{card4Rows}</SettingsGroup>}

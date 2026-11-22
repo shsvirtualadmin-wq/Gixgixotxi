@@ -14,9 +14,9 @@ export interface ContentUnavailableScreenProps {
 }
 
 export const ContentUnavailableScreen: React.FC<ContentUnavailableScreenProps> = ({
-  title = 'This content is no longer available',
-  message = 'The user profile, post, or resource you are looking for may have been deleted, moved, or the link is outdated.',
-  badge = 'Notice',
+  title = 'Not Found — This content is no longer available',
+  message = 'The user profile, post, or resource you are looking for was not found, may have been deleted, or the link is invalid.',
+  badge = 'Not Found',
   backUrl,
   backLabel,
 }) => {
@@ -34,7 +34,7 @@ export const ContentUnavailableScreen: React.FC<ContentUnavailableScreenProps> =
       <div className="pt-28 pb-24 boardly-container min-h-[65vh] flex items-center justify-center px-4">
         <div className="glass-panel max-w-lg w-full text-center p-8 sm:p-12 space-y-6 rounded-[32px] sm:rounded-[36px] border border-[var(--border)] shadow-xl">
           <div className="flex justify-center pb-1">
-            <Link to={homeUrl} aria-label="Boardly Home">
+            <Link to="/" aria-label="Boardly Home">
               <Logo height={32} className="text-[var(--text)] hover:opacity-80 transition-opacity" />
             </Link>
           </div>
@@ -60,11 +60,11 @@ export const ContentUnavailableScreen: React.FC<ContentUnavailableScreenProps> =
 
           <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
-              to={homeUrl}
+              to="/"
               className="btn-primary w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-xs font-bold rounded-xl active:scale-[0.98] cursor-pointer"
             >
               <Home size={15} />
-              <span>Back to Home</span>
+              <span>Back to Home Page</span>
             </Link>
 
             {backUrl && backLabel ? (

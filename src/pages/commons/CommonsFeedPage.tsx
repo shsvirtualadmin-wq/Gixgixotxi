@@ -116,6 +116,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     setFeedTabState(urlFeedTab);
   }, [urlFeedTab]);
 
+  // Support legacy/query-based shared links (/commons?post=<id>) by redirecting to the canonical post detail page
+  useEffect(() => {
+    const sharedPostId = searchParams.get('post');
+    if (sharedPostId && sharedPostId.trim()) {
+      navigate(`${baseCommonsPath}/post/${encodeURIComponent(sharedPostId.trim())}`, { replace: true });
+    }
+  }, [searchParams, baseCommonsPath, navigate]);
+
   const normalizedRouteSubj = (routeSubject || '').toLowerCase();
   const subjectFilter =
     normalizedRouteSubj === 'computer-science'

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ShoppingBag, Sparkles, Lock, Check, ArrowLeft } from 'lucide-react';
+import { ShoppingBag, Sparkles, Lock, Check, ArrowLeft, Share2 } from 'lucide-react';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -43,6 +43,7 @@ export const StoreItemDetailPage: React.FC = () => {
 
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
   const busyLockRef = React.useRef(false);
   const idempotencyKeyRef = React.useRef<string>('');
 
@@ -282,6 +283,21 @@ export const StoreItemDetailPage: React.FC = () => {
                     <span>Buy for {cosmetic.priceKobans} Kobans</span>
                   </>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const fullUrl = `${window.location.origin}${canonicalPath}`;
+                  navigator.clipboard?.writeText(fullUrl).then(() => {
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  });
+                }}
+                className="btn-secondary py-3 px-4 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Share2 size={14} />}
+                <span>{copiedLink ? 'Link copied!' : 'Share'}</span>
               </button>
 
               <Link

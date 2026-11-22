@@ -26,7 +26,8 @@ export const ShareProfileCardModal: React.FC<ShareProfileCardModalProps> = ({
   const mcqs = profile.stats?.mcqs ?? profile.publicStats?.totalQuestionsSolved ?? 0;
 
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/dashboard/profile?uid=${profile.uid}`;
+    const handleOrId = (profile as any).username || profile.uid;
+    const url = `${window.location.origin}/u/${encodeURIComponent(handleOrId)}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
@@ -34,7 +35,8 @@ export const ShareProfileCardModal: React.FC<ShareProfileCardModalProps> = ({
   };
 
   const handleNativeShare = () => {
-    const url = `${window.location.origin}/dashboard/profile?uid=${profile.uid}`;
+    const handleOrId = (profile as any).username || profile.uid;
+    const url = `${window.location.origin}/u/${encodeURIComponent(handleOrId)}`;
     if (navigator.share) {
       navigator.share({
         title: `${profile.displayName} on Boardly`,

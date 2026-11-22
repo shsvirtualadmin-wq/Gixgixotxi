@@ -18,6 +18,18 @@ export function LoginPage() {
   } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
+      if (redirectParam && redirectParam.startsWith('/')) {
+        sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   // Only redirect to intended target or dashboard once session is verified
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
@@ -25,19 +37,25 @@ export function LoginPage() {
       const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
       const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
       const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
+      const intendedTarget =
+        (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
+        (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
 
       let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-      if (redirectParam && redirectParam.startsWith('/')) {
-        dest = redirectParam;
-      } else if (storedRedirect && storedRedirect.startsWith('/')) {
-        dest = storedRedirect;
+      if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
+        dest = intendedTarget
+          ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
+          : '/onboarding';
+      } else if (intendedTarget) {
+        dest = intendedTarget;
+        sessionStorage.removeItem('boardly_post_login_redirect');
       } else if (pendingCrew) {
         dest = `/join/${pendingCrew}`;
-      } else if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
-        dest = '/onboarding';
+        sessionStorage.removeItem('boardly_post_login_redirect');
+      } else {
+        sessionStorage.removeItem('boardly_post_login_redirect');
       }
 
-      sessionStorage.removeItem('boardly_post_login_redirect');
       logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
       navigate(dest, { replace: true });
     }

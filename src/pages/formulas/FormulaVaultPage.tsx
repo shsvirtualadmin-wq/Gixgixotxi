@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   Search,
@@ -20,13 +20,16 @@ import {
   BookOpen,
   AlertCircle,
   RotateCcw,
+  Share2,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   D1FormulaCategoryRow,
   D1FormulaChapterRow,
   D1FormulaItemRow,
+  FORMULA_VAULT_ITEMS_SEED,
 } from '../../constants/formulaVaultSeed';
+import { NotFoundPage } from '../NotFoundPage';
 import {
   fetchFormulaVaultOverview,
   fetchChapterFormulas,
@@ -157,11 +160,13 @@ type EnrichedFormulaItem = D1FormulaItemRow & {
 export const FormulaVaultPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { formulaId: routeFormulaId } = useParams<{ formulaId?: string }>();
   const { user, isGuest, isAdmin, isSuperAdmin } = useAuth();
   const { isUnlimited } = useEffectivePlan();
 
   const isSignedIn = Boolean(user && !isGuest);
   const isProOrAdmin = Boolean(isUnlimited || isAdmin || isSuperAdmin);
+  const [formulaNotFound, setFormulaNotFound] = useState(false);
 
   const [toastBanner, setToastBanner] = useState<{
     message: string;
@@ -216,7 +221,7 @@ export const FormulaVaultPage: React.FC = () => {
     categoryName: string;
     pool: D1FormulaItemRow[];
   } | null>(null);
-  const [copiedType, setCopiedType] = useState<'latex' | 'plain' | null>(null);
+  const [copiedType, setCopiedType] = useState<'latex' | 'plain' | 'share' | null>(null);
 
   // Report issue state inside enlarged view
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -251,20 +256,140 @@ export const FormulaVaultPage: React.FC = () => {
   const handleCloseEnlarged = useCallback(() => {
     setEnlargedFormula(null);
     setReportModalOpen(false);
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.toLowerCase();
+      const base = p.startsWith('/dashboard/formula-vault')
+        ? '/dashboard/formula-vault'
+        : p.startsWith('/dashboard/formulas')
+        ? '/dashboard/formulas'
+        : p.startsWith('/formula-vault')
+        ? '/formula-vault'
+        : '/formulas';
+      if (window.location.pathname !== base) {
+        window.history.replaceState(null, '', base);
+      }
+    }
     window.setTimeout(() => safetyCleanupScrollLocks(), 0);
   }, []);
 
-  // Load initial overview
+  // Sync browser URL when an enlarged formula is open
+  useEffect(() => {
+    if (typeof window === 'undefined' || !enlargedFormula) return;
+    const p = window.location.pathname.toLowerCase();
+    const base = p.startsWith('/dashboard/formula-vault')
+      ? '/dashboard/formula-vault'
+      : p.startsWith('/dashboard/formulas')
+      ? '/dashboard/formulas'
+      : p.startsWith('/formula-vault')
+      ? '/formula-vault'
+      : '/formulas';
+    const nextUrl = `${base}/${encodeURIComponent(enlargedFormula.formula.id)}`;
+    if (window.location.pathname !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [enlargedFormula]);
+
+  // Load initial overview + resolve deep-linked formula or chapter if present
   useEffect(() => {
     let mounted = true;
     (async () => {
       setLoadingOverview(true);
+      setFormulaNotFound(false);
       const data = await fetchFormulaVaultOverview();
       if (!mounted) return;
       setCategories(data.categories);
       setChapters(data.chapters);
       setFormulaOfTheDay(data.formulaOfTheDay);
       setBookmarkedIds(new Set(data.bookmarkedIds));
+
+      const params =
+        typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+      const requestedFormulaId = (routeFormulaId || params.get('formula') || '').trim();
+      const requestedChapterId = (params.get('chapter') || '').trim();
+
+      if (requestedFormulaId) {
+        const lowerId = requestedFormulaId.toLowerCase();
+        // Check if requestedFormulaId is actually a chapter ID or chapter slug
+        const matchedChapter = data.chapters.find(
+          (c) =>
+            c.id.toLowerCase() === lowerId ||
+            (c.slug && c.slug.toLowerCase() === lowerId)
+        );
+        if (matchedChapter) {
+          setSelectedCategoryId(matchedChapter.category_id);
+          setOpenChapterId(matchedChapter.id);
+          setLoadingOverview(false);
+          return;
+        }
+
+        // Otherwise resolve formula by ID or title slug
+        let matchedFormula: D1FormulaItemRow | undefined = FORMULA_VAULT_ITEMS_SEED.find(
+          (f) =>
+            f.id.toLowerCase() === lowerId ||
+            f.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === lowerId
+        );
+        if (!matchedFormula) {
+          try {
+            const searchRes = await searchFormulaVault(requestedFormulaId);
+            matchedFormula = searchRes.formulas.find(
+              (f) =>
+                f.id.toLowerCase() === lowerId ||
+                f.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === lowerId
+            );
+          } catch {
+            // Ignore search error
+          }
+        }
+
+        if (!mounted) return;
+        if (!matchedFormula) {
+          setFormulaNotFound(true);
+          setLoadingOverview(false);
+          return;
+        }
+
+        setSelectedCategoryId(matchedFormula.category_id);
+        setOpenChapterId(matchedFormula.chapter_id);
+        let pool: D1FormulaItemRow[] = [matchedFormula];
+        try {
+          const chRes = await fetchChapterFormulas(matchedFormula.chapter_id);
+          if (chRes.formulas.length > 0) {
+            pool = chRes.formulas;
+          }
+        } catch {
+          // Fallback to single-item pool
+        }
+        if (!mounted) return;
+        const ch = data.chapters.find((c) => c.id === matchedFormula!.chapter_id);
+        const cat = data.categories.find((c) => c.id === matchedFormula!.category_id);
+        setEnlargedFormula({
+          formula: matchedFormula,
+          chapterTitle: ch?.title || 'Chapter',
+          chapterNo: ch?.chapter_no || 1,
+          categoryName: cat?.name || 'Formula Library',
+          pool,
+        });
+        setLoadingOverview(false);
+        return;
+      }
+
+      if (requestedChapterId) {
+        const lowerCh = requestedChapterId.toLowerCase();
+        const matchedCh = data.chapters.find(
+          (c) =>
+            c.id.toLowerCase() === lowerCh ||
+            (c.slug && c.slug.toLowerCase() === lowerCh)
+        );
+        if (!matchedCh) {
+          setFormulaNotFound(true);
+          setLoadingOverview(false);
+          return;
+        }
+        setSelectedCategoryId(matchedCh.category_id);
+        setOpenChapterId(matchedCh.id);
+        setLoadingOverview(false);
+        return;
+      }
 
       if (data.categories.length > 0) {
         const firstCatId = data.categories[0].id;
@@ -285,7 +410,7 @@ export const FormulaVaultPage: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [user?.uid]);
+  }, [user?.uid, routeFormulaId]);
 
   // Load formulas ONLY for the currently open chapter
   useEffect(() => {
@@ -607,7 +732,7 @@ export const FormulaVaultPage: React.FC = () => {
     }
     if (!isProOrAdmin) {
       showToast('Chapter PDF sheets are a Boardly Pro feature.', 'info');
-      navigate('/pro');
+      navigate('/dashboard/plan');
       return;
     }
 
@@ -766,6 +891,10 @@ export const FormulaVaultPage: React.FC = () => {
       </div>
     );
   };
+
+  if (formulaNotFound) {
+    return <NotFoundPage />;
+  }
 
   return (
     <div className="formula-library-page min-h-screen text-[var(--text)] pb-36">
@@ -1606,6 +1735,31 @@ export const FormulaVaultPage: React.FC = () => {
                     fill={bookmarkedIds.has(enlargedFormula.formula.id) ? 'currentColor' : 'none'}
                   />
                   <span>Bookmark</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const shareUrl = `${window.location.origin}/formulas/${encodeURIComponent(enlargedFormula.formula.id)}`;
+                    navigator.clipboard
+                      ?.writeText(shareUrl)
+                      .then(() => {
+                        setCopiedType('share');
+                        showToast('Formula link copied to clipboard', 'success');
+                        window.setTimeout(() => setCopiedType(null), 1800);
+                      })
+                      .catch(() => {
+                        showToast('Unable to copy link', 'error');
+                      });
+                  }}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-transform duration-150 active:scale-[0.98]"
+                >
+                  {copiedType === 'share' ? (
+                    <Check className="h-4 w-4 text-[var(--accent)]" />
+                  ) : (
+                    <Share2 className="h-4 w-4" />
+                  )}
+                  <span>{copiedType === 'share' ? 'Link copied!' : 'Share'}</span>
                 </button>
 
                 <button

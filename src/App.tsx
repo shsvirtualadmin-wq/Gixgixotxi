@@ -390,7 +390,9 @@ function AppInner() {
           <Route index element={<OverviewPage />} />
           <Route path="commons" element={<CommonsFeedPage />} />
           <Route path="formulas" element={<FormulaVaultPage />} />
+          <Route path="formulas/:formulaId" element={<FormulaVaultPage />} />
           <Route path="formula-vault" element={<FormulaVaultPage />} />
+          <Route path="formula-vault/:formulaId" element={<FormulaVaultPage />} />
           <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="messages" element={<MessagesPage />} />
@@ -403,6 +405,8 @@ function AppInner() {
           <Route path="results/:attemptId" element={<TestResultPage />} />
           <Route path="certificates" element={<MyCertificatesPage />} />
           <Route path="store" element={<StorePage />} />
+          <Route path="store/item/:item" element={<StoreItemDetailPage />} />
+          <Route path="store/:item" element={<StoreItemDetailPage />} />
           <Route path="locker" element={<LockerPage />} />
           <Route path="rewards" element={<Navigate to="/rewards" replace />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
@@ -559,7 +563,9 @@ function AppInner() {
           {/* Public Boardly Commons Feed, Post Permalinks, Subject Feeds & Info */}
           <Route path="/commons" element={<CommonsFeedPage />} />
           <Route path="/formulas" element={<FormulaVaultPage />} />
+          <Route path="/formulas/:formulaId" element={<FormulaVaultPage />} />
           <Route path="/formula-vault" element={<FormulaVaultPage />} />
+          <Route path="/formula-vault/:formulaId" element={<FormulaVaultPage />} />
           <Route path="/commons/trending" element={<CommonsFeedPage />} />
           <Route path="/commons/following" element={<CommonsFeedPage />} />
           <Route path="/commons/about" element={<CommonsAboutPage />} />

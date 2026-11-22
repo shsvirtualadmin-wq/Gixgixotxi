@@ -83,6 +83,7 @@ export interface UserProfile {
   proBadge?: string | null;
   proBadgeDesign?: string | null;
   proBadgeVisible?: boolean;
+  adFreeEnabled?: boolean;
   notificationPrefs?: {
     emailKobanReceipts?: boolean;
     emailArenaStarts?: boolean;
