@@ -1,8 +1,14 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
   getFirestore,
   initializeFirestore,
+  limit,
   memoryLocalCache,
+  query,
   type Firestore,
 } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, signOut, type Auth, type User } from 'firebase/auth';
@@ -452,8 +458,6 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
   for (const src of sources) {
     const startTime = Date.now();
     try {
-      const { collection, getDocs, limit, query, doc, getDoc } = await import('firebase/firestore');
-
       // 1. Probe subject pool: check if collection read works
       const testColl = collection(src.db, 'questions_mathematics');
       await getDocs(query(testColl, limit(1)));

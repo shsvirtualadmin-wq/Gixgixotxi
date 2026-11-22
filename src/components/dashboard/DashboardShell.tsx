@@ -8,7 +8,7 @@ import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
-import { scheduleIdleTabPrefetch } from '@/lib/swrCache';
+import { scheduleIdleTabPrefetch } from '@/lib/routePrefetch';
 import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
@@ -218,7 +218,7 @@ export function DashboardShell() {
 
       {/* Main Content Container (+ Desktop-Only Sticky Sidebar Ad Slot) */}
       <main
-        inert={isMenuOpen ? true : undefined}
+        inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
         className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''

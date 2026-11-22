@@ -12,7 +12,8 @@ import {
 } from '@/services/publicProfileService';
 import { invalidateCommonsPostsCache } from '@/services/commonsService';
 import { ensureUserShortId } from '@/utils/shortId';
-import { writeOptimisticUserSnapshot } from '@/lib/swrCache';
+import { readOptimisticWalletSnapshot, writeOptimisticUserSnapshot } from '@/lib/swrCache';
+import { isValidAvatar } from '@/lib/matrixAvatarsData';
 import type { UserProfile } from '@/types/index';
 
 function getLocalCachedProfile(uid: string): UserProfile | null {
@@ -617,8 +618,6 @@ export function useUserProfile(): UserProfileHookResult {
       if (updates.avatar !== undefined || updates.equippedAvatar !== undefined) {
         const av = updates.equippedAvatar ?? updates.avatar ?? null;
         if (av !== null && av !== '' && av !== 'none') {
-          const { isValidAvatar } = await import('@/lib/matrixAvatarsData');
-          const { readOptimisticWalletSnapshot } = await import('@/lib/swrCache');
           const ownedList = Array.from(
             new Set([
               ...(Array.isArray(profile?.ownedCosmetics) ? profile.ownedCosmetics : []),

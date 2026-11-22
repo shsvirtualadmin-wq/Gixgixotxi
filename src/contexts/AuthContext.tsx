@@ -55,6 +55,11 @@ import {
 } from '@/constants/legalConsent';
 import { seedSharedUserProfileCache, teardownSharedUserProfile } from '@/hooks/useUserProfile';
 import { teardownNotificationStore } from '@/services/notificationService';
+import {
+  broadcastPublicProfileUpdate,
+  syncProfileToD1Backend,
+  syncPublicProfile,
+} from '@/services/publicProfileService';
 import { teardownEffectivePlanListeners } from '@/hooks/useEffectivePlan';
 import {
   readOptimisticUserSnapshot,
@@ -3385,27 +3390,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             streak: Number(mergedProfile.streak || 0),
             targetUniversity: mergedProfile.targetUniversity || undefined,
           });
-          void import('@/services/publicProfileService')
-            .then(({ broadcastPublicProfileUpdate, syncProfileToD1Backend, syncPublicProfile }) => {
-              broadcastPublicProfileUpdate(user.uid, {
-                displayName: cleanDisplayName,
-                display_name: cleanDisplayName,
-                ...(normalizedUpdates.username ? { username: normalizedUpdates.username } : {}),
-              });
-              void syncProfileToD1Backend(user.uid, {
+          try {
+            broadcastPublicProfileUpdate(user.uid, {
+              displayName: cleanDisplayName,
+              display_name: cleanDisplayName,
+              ...(normalizedUpdates.username ? { username: normalizedUpdates.username } : {}),
+            });
+            void syncProfileToD1Backend(user.uid, {
+              ...mergedProfile,
+              displayName: cleanDisplayName,
+              display_name: cleanDisplayName,
+            }).catch(() => {});
+            if (!isGuest) {
+              void syncPublicProfile(user.uid, {
                 ...mergedProfile,
                 displayName: cleanDisplayName,
                 display_name: cleanDisplayName,
-              });
-              if (!isGuest) {
-                void syncPublicProfile(user.uid, {
-                  ...mergedProfile,
-                  displayName: cleanDisplayName,
-                  display_name: cleanDisplayName,
-                });
-              }
-            })
-            .catch(() => {});
+              }).catch(() => {});
+            }
+          } catch {
+            // Non-blocking public profile sync
+          }
         }
       }
 

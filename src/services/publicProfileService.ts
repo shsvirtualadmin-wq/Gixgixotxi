@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME, isAdminAccount } from '@/constants/superAdmin';
@@ -224,7 +224,6 @@ export async function syncProfileToD1Backend(
 ): Promise<void> {
   if (!uid) return;
   try {
-    const { auth } = await import('@/lib/firebase');
     const token = await auth.currentUser?.getIdToken().catch(() => null);
     const guestSession = (() => {
       try {

@@ -67,7 +67,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {!isGuest && <LegalUpdateNoticeBanner />}
 
       <main
-        inert={isMenuOpen ? true : undefined}
+        inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
         className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''

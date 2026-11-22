@@ -24,7 +24,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
 import { useSmoothMode } from '@/utils/smoothMode';
-import { prefetchTabRouteAndData } from '@/lib/swrCache';
+import { prefetchTabRouteAndData } from '@/lib/routePrefetch';
 import {
   BOTTOM_NAV_TAB_INDEX,
   markNavTapStart,
