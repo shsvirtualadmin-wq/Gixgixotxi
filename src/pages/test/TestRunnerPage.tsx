@@ -36,6 +36,8 @@ import {
 } from '@/services/universityMcqService';
 import type { D1UniversityRow } from '@/constants/d1Universities';
 import { useBodyScrollLock } from '@/utils/scrollLock';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
@@ -678,6 +680,13 @@ export function TestRunnerPage() {
           isPro={isPro || isAdmin}
           onDownloadPdf={handleDownloadPdf}
         />
+
+        {/* Show ad below question card & options only on untimed practice, never during an active timed exam */}
+        {!attempt.timed && (
+          <div className="mt-4">
+            <AdSlot slotId={AD_SLOTS.quizBelowQuestion} />
+          </div>
+        )}
       </main>
 
       {/* 5. BOTTOM DOCK: pinned, frosted-glass bar with square Previous icon button, Next button, and red Finish & Submit button */}

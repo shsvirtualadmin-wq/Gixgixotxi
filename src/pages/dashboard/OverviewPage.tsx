@@ -52,7 +52,55 @@ import type { AttemptQuestion } from '@/types/index';
 import type { GradedAttemptQuestion } from '@/services/ambassadorTestService';
 
 import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
-import { UniversityLogoBox } from '@/components/ui/UniversityLogoBox';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
+import {
+  UniversityLogoBox,
+  normalizeUniversityLogoUrl,
+  getUniversityInitials,
+} from '@/components/ui/UniversityLogoBox';
+
+const UniversityCardLogo = memo(function UniversityCardLogo({
+  logoUrl,
+  name,
+  variant,
+}: {
+  logoUrl?: string | null;
+  name: string;
+  variant: 'badge' | 'hero';
+}) {
+  const cleanUrl = normalizeUniversityLogoUrl(logoUrl);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [cleanUrl]);
+
+  const showLogo = Boolean(cleanUrl && !hasError);
+  const initials = getUniversityInitials(name);
+
+  if (showLogo) {
+    return (
+      <img
+        src={cleanUrl}
+        alt={name}
+        loading="lazy"
+        decoding="async"
+        onError={() => setHasError(true)}
+        className={variant === 'badge' ? 'uni-lg-badge-img' : 'uni-lg-big-logo-img'}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={variant === 'badge' ? 'uni-lg-badge-initials' : 'uni-lg-big-logo-initials'}
+      aria-hidden="true"
+    >
+      {initials}
+    </span>
+  );
+});
 
 const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
   const { smoothMode } = useSmoothMode();
@@ -715,342 +763,318 @@ export function OverviewPage() {
         </h1>
       </section>
 
-      {/* d) Choose your university: horizontal snap carousel of LIVE tiles (80% width) */}
-      <section
-        id="choose-university-section"
-        className="space-y-3"
-        aria-label="Choose your university"
-      >
-        <div className="flex items-center justify-between gap-2 flex-wrap px-1">
-          <div className="space-y-0.5">
-            <h2
-              className="text-base sm:text-lg font-black tracking-tight"
-              style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
-            >
-              Choose your university
-            </h2>
-            <p
-              className="text-xs"
-              style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-            >
-              Swipe live universities and tap to start the official test pattern
-            </p>
-          </div>
+      {/* d & e) Liquid-glass stage: Choose your university carousel, coming-soon pill & stats */}
+      <div className="uni-lg-stage">
+        <div className="uni-lg-backdrop" aria-hidden="true">
+          <div className="uni-lg-dotgrid" />
+          <div className="uni-lg-blob uni-lg-blob--red" />
+          <div className="uni-lg-blob uni-lg-blob--orange" />
         </div>
 
-        {loadingUniversities && universities.length === 0 ? (
-          <UniversityGridSkeleton count={3} />
-        ) : universitiesError ? (
-          <div
-            className="rounded-[28px] p-6 text-center space-y-3"
-            style={{
-              backgroundColor: 'var(--pill-card-bg)',
-              border: '1px solid var(--pill-card-border)',
-              boxShadow: 'var(--shadow)',
-            }}
+        <div className="uni-lg-content space-y-5">
+          {/* d) Choose your university: horizontal snap carousel of LIVE liquid-glass cards */}
+          <section
+            id="choose-university-section"
+            className="space-y-3"
+            aria-label="Choose your university"
           >
-            <div
-              className="inline-flex items-center justify-center w-10 h-10 rounded-full"
-              style={{ backgroundColor: 'var(--surface-2)', color: 'var(--accent)' }}
-            >
-              <AlertCircle size={20} />
+            <div className="flex items-center justify-between gap-2 flex-wrap px-4 sm:px-5">
+              <div className="space-y-0.5">
+                <h2
+                  className="text-base sm:text-lg font-black tracking-tight"
+                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                >
+                  Choose your university
+                </h2>
+                <p
+                  className="text-xs"
+                  style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+                >
+                  Swipe live universities and tap to start the official test pattern
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p
-                className="text-sm font-bold"
-                style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
-              >
-                Could not load universities
-              </p>
-              <p
-                className="text-xs max-w-md mx-auto"
-                style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-              >
-                {universitiesError}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void loadUniversitiesFromD1()}
-              className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-5 py-2.5 rounded-full text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
-              style={{
-                fontFamily: 'var(--font-heading)',
-                backgroundColor: 'var(--accent)',
-                color: 'var(--text-on-accent)',
-              }}
-            >
-              <RefreshCw size={13} />
-              <span>Retry</span>
-            </button>
-          </div>
-        ) : universities.length === 0 ? (
-          <div
-            className="rounded-[28px] p-6 text-center space-y-1.5"
-            style={{
-              backgroundColor: 'var(--pill-card-bg)',
-              border: '1px solid var(--pill-card-border)',
-              boxShadow: 'var(--shadow)',
-            }}
-          >
-            <p
-              className="text-sm font-bold"
-              style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
-            >
-              No universities configured yet
-            </p>
-            <p
-              className="text-xs"
-              style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-            >
-              Universities added in the Admin Question Bank will appear here automatically.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Horizontal snap carousel of LIVE tiles (80% width, padding-bottom 40px, margin-bottom -30px) */}
-            {liveUniversities.length > 0 && (
-              <>
+
+            {loadingUniversities && universities.length === 0 ? (
+              <div className="px-4 sm:px-5">
+                <UniversityGridSkeleton count={3} />
+              </div>
+            ) : universitiesError ? (
+              <div className="px-4 sm:px-5">
                 <div
-                  ref={carouselRef}
-                  onScroll={handleCarouselScroll}
-                  data-testid="live-universities-carousel"
-                  className="flex items-stretch gap-3.5 overflow-x-auto snap-x snap-mandatory no-scrollbar px-1 pt-1"
+                  className="rounded-[28px] p-6 text-center space-y-3"
                   style={{
-                    paddingBottom: '40px',
-                    marginBottom: '-30px',
-                    scrollbarWidth: 'none',
+                    backgroundColor: 'var(--pill-card-bg)',
+                    border: '1px solid var(--pill-card-border)',
+                    boxShadow: 'var(--shadow)',
                   }}
                 >
-                  {liveUniversities.map((uni) => {
-                    const mcqCount = Number(uni.mcq_count || 0);
-                    return (
-                      <button
-                        key={uni.id}
-                        type="button"
-                        data-testid={`live-uni-tile-${uni.slug || uni.id}`}
-                        onClick={() => void openUniversityBubble(uni)}
-                        className="snap-center shrink-0 w-[80%] sm:w-[320px] rounded-[28px] p-4 sm:p-5 text-left flex flex-col justify-between gap-4 transition-transform duration-150 active:scale-[0.98] cursor-pointer"
-                        style={{
-                          flex: '0 0 80%',
-                          maxWidth: '340px',
-                          background: 'var(--uni-tile-grad)',
-                          border: '1px solid var(--uni-tile-border)',
-                          boxShadow: '0 12px 24px rgba(200,15,27,.3)',
-                          isolation: 'isolate',
-                          color: 'var(--uni-tile-text)',
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-2 w-full">
-                          <UniversityLogoBox logoUrl={uni.logo_url} name={uni.name} />
-
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0"
-                            style={{
-                              fontFamily: 'var(--font-mono)',
-                              backgroundColor: 'var(--uni-live-badge-bg)',
-                              border: '1px solid var(--uni-live-badge-border)',
-                              color: 'var(--uni-tile-text)',
-                            }}
-                          >
-                            <span
-                              className="w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: 'var(--uni-live-badge-dot)' }}
-                              aria-hidden="true"
-                            />
-                            <span>LIVE</span>
-                          </span>
-                        </div>
-
-                        <div className="space-y-1 w-full min-w-0">
-                          <div
-                            className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
-                            style={{ fontFamily: 'var(--font-dot)', color: 'var(--uni-tile-text)' }}
-                          >
-                            <CountUpMcq value={mcqCount} />{' '}
-                            <span
-                              className="text-xs font-bold uppercase tracking-wider"
-                              style={{ fontFamily: 'var(--font-mono)', color: 'var(--uni-tile-subtext)' }}
-                            >
-                              MCQs
-                            </span>
-                          </div>
-
-                          <div
-                            className="text-base sm:text-lg font-bold truncate"
-                            style={{ fontFamily: 'var(--font-heading)', color: 'var(--uni-tile-text)' }}
-                          >
-                            {uni.name}
-                          </div>
-                        </div>
-
-                        <div
-                          className="flex items-center justify-between pt-1 text-xs font-bold"
-                          style={{ fontFamily: 'var(--font-heading)', color: 'var(--uni-tile-subtext)' }}
-                        >
-                          <span>Start test →</span>
-                          <ArrowRight size={14} />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Carousel Dots */}
-                {liveUniversities.length > 1 && (
                   <div
-                    className="flex items-center justify-center gap-1.5 pt-1"
-                    role="tablist"
-                    aria-label="University carousel slides"
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-full"
+                    style={{ backgroundColor: 'var(--surface-2)', color: 'var(--accent)' }}
                   >
-                    {liveUniversities.map((uni, idx) => {
-                      const isActive = idx === activeCarouselIdx;
-                      return (
-                        <button
-                          key={uni.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={isActive}
-                          aria-label={`Slide ${idx + 1}: ${uni.name}`}
-                          onClick={() => scrollToCarouselIndex(idx)}
-                          className="h-2 rounded-full transition-transform duration-150 cursor-pointer"
-                          style={{
-                            width: isActive ? '20px' : '8px',
-                            backgroundColor: isActive ? 'var(--accent)' : 'var(--meter-off)',
-                          }}
-                        />
-                      );
-                    })}
+                    <AlertCircle size={20} />
                   </div>
-                )}
-              </>
-            )}
-
-            {/* Dark pill "N more coming soon" that expands into chips */}
-            {soonUniversities.length > 0 && (
-              <div className="space-y-2.5 pt-1">
-                <button
-                  type="button"
-                  data-testid="coming-soon-pill-toggle"
-                  onClick={() => setShowAllSoonUnis((prev) => !prev)}
-                  aria-expanded={showAllSoonUnis}
-                  className="inline-flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-full text-xs font-bold transition-transform duration-150 active:scale-[0.98] cursor-pointer"
+                  <div className="space-y-1">
+                    <p
+                      className="text-sm font-bold"
+                      style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
+                    >
+                      Could not load universities
+                    </p>
+                    <p
+                      className="text-xs max-w-md mx-auto"
+                      style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+                    >
+                      {universitiesError}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadUniversitiesFromD1()}
+                    className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-5 py-2.5 rounded-full text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                    style={{
+                      fontFamily: 'var(--font-heading)',
+                      backgroundColor: 'var(--accent)',
+                      color: 'var(--text-on-accent)',
+                    }}
+                  >
+                    <RefreshCw size={13} />
+                    <span>Retry</span>
+                  </button>
+                </div>
+              </div>
+            ) : universities.length === 0 ? (
+              <div className="px-4 sm:px-5">
+                <div
+                  className="rounded-[28px] p-6 text-center space-y-1.5"
                   style={{
-                    fontFamily: 'var(--font-mono)',
-                    backgroundColor: 'var(--soon-pill-bg)',
-                    color: 'var(--soon-pill-text)',
-                    border: '1px solid var(--soon-pill-border)',
+                    backgroundColor: 'var(--pill-card-bg)',
+                    border: '1px solid var(--pill-card-border)',
+                    boxShadow: 'var(--shadow)',
                   }}
                 >
-                  <span>{soonUniversities.length} more coming soon</span>
-                  <span aria-hidden="true">{showAllSoonUnis ? '▴' : '▾'}</span>
-                </button>
-
-                {showAllSoonUnis && (
-                  <div
-                    className="flex flex-wrap items-center gap-2 pt-1"
-                    data-testid="coming-soon-chips"
+                  <p
+                    className="text-sm font-bold"
+                    style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
                   >
-                    {soonUniversities.map((uni) => (
-                      <span
-                        key={uni.id}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium"
-                        style={{
-                          fontFamily: 'var(--font-heading)',
-                          backgroundColor: 'var(--pill-card-bg)',
-                          border: '1px solid var(--pill-card-border)',
-                          color: 'var(--text)',
-                        }}
+                    No universities configured yet
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+                  >
+                    Universities added in the Admin Question Bank will appear here automatically.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Horizontal snap carousel of LIVE liquid-glass cards */}
+                {liveUniversities.length > 0 && (
+                  <>
+                    <div
+                      ref={carouselRef}
+                      onScroll={handleCarouselScroll}
+                      data-testid="live-universities-carousel"
+                      className={`uni-lg-carousel${
+                        liveUniversities.length === 1 ? ' uni-lg-carousel--single' : ''
+                      }`}
+                    >
+                      {liveUniversities.map((uni) => {
+                        const mcqCount = Number(uni.mcq_count || 0);
+                        return (
+                          <button
+                            key={uni.id}
+                            type="button"
+                            data-testid={`live-uni-tile-${uni.slug || uni.id}`}
+                            onClick={() => void openUniversityBubble(uni)}
+                            className="uni-lg-card"
+                          >
+                            {/* 3 floating glass bubbles */}
+                            <span className="uni-lg-bubble uni-lg-bubble--1" aria-hidden="true" />
+                            <span className="uni-lg-bubble uni-lg-bubble--2" aria-hidden="true" />
+                            <span className="uni-lg-bubble uni-lg-bubble--3" aria-hidden="true" />
+
+                            {/* 1. Top row: small logo badge + LIVE pill */}
+                            <div className="uni-lg-top">
+                              <span className="uni-lg-badge">
+                                <UniversityCardLogo
+                                  logoUrl={uni.logo_url}
+                                  name={uni.name}
+                                  variant="badge"
+                                />
+                              </span>
+
+                              <span className="uni-lg-live-pill">
+                                <span className="uni-lg-live-dot" aria-hidden="true" />
+                                <span>LIVE</span>
+                              </span>
+                            </div>
+
+                            {/* 2. Big logo with breathing white glass disc */}
+                            <div className="uni-lg-hero" aria-hidden="true">
+                              <span className="uni-lg-disc" />
+                              <span className="uni-lg-big-logo">
+                                <UniversityCardLogo
+                                  logoUrl={uni.logo_url}
+                                  name={uni.name}
+                                  variant="hero"
+                                />
+                              </span>
+                            </div>
+
+                            {/* 3. Text: 50px dot-matrix MCQ count, MCQS label, 26px bold university name */}
+                            <div className="uni-lg-meta">
+                              <div className="uni-lg-count">
+                                <CountUpMcq value={mcqCount} />
+                              </div>
+                              <div className="uni-lg-mcqs-label">MCQS</div>
+                              <div className="uni-lg-name" title={uni.name}>
+                                {uni.name}
+                              </div>
+                            </div>
+
+                            {/* 4. Start test glass pill with 40px white arrow circle */}
+                            <div className="uni-lg-cta">
+                              <span>Start test</span>
+                              <span className="uni-lg-cta-circle" aria-hidden="true">
+                                <ArrowRight size={17} strokeWidth={2.4} />
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination Dots */}
+                    {liveUniversities.length > 1 && (
+                      <div
+                        className="uni-lg-dots px-4 sm:px-5"
+                        role="tablist"
+                        aria-label="University carousel slides"
                       >
-                        <UniversityLogoBox
-                          name={uni.name}
-                          logoUrl={uni.logo_url}
-                          size="xs"
-                        />
-                        <span className="truncate max-w-[180px]">{uni.name}</span>
-                      </span>
-                    ))}
+                        {liveUniversities.map((uni, idx) => {
+                          const isActive = idx === activeCarouselIdx;
+                          return (
+                            <button
+                              key={uni.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={isActive}
+                              aria-label={`Slide ${idx + 1}: ${uni.name}`}
+                              onClick={() => scrollToCarouselIndex(idx)}
+                              className={`uni-lg-dot${isActive ? ' uni-lg-dot--active' : ''}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Glass pill "N more coming soon" that expands into chips */}
+                {soonUniversities.length > 0 && (
+                  <div className="space-y-2.5 pt-1 px-4 sm:px-5">
+                    <button
+                      type="button"
+                      data-testid="coming-soon-pill-toggle"
+                      onClick={() => setShowAllSoonUnis((prev) => !prev)}
+                      aria-expanded={showAllSoonUnis}
+                      className="uni-lg-glass-pill text-xs font-bold"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    >
+                      <span>{soonUniversities.length} more coming soon</span>
+                      <span aria-hidden="true">{showAllSoonUnis ? '▴' : '▾'}</span>
+                    </button>
+
+                    {showAllSoonUnis && (
+                      <div
+                        className="flex flex-wrap items-center gap-2 pt-1"
+                        data-testid="coming-soon-chips"
+                      >
+                        {soonUniversities.map((uni) => (
+                          <span
+                            key={uni.id}
+                            className="uni-lg-glass-chip text-xs font-medium"
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            <UniversityLogoBox
+                              name={uni.name}
+                              logoUrl={uni.logo_url}
+                              size="xs"
+                            />
+                            <span className="truncate max-w-[180px]">{uni.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
-          </div>
-        )}
-      </section>
+          </section>
 
-      {/* e) Stats bento (2×2): questions solved, 7-day streak, daily limit, current plan */}
-      <section
-        className="grid grid-cols-2 gap-3 sm:gap-3.5"
-        aria-label="Stats Bento"
-        data-testid="stats-bento-grid"
-      >
-        <div
-          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px]"
-          style={{
-            backgroundColor: 'var(--pill-card-bg)',
-            border: '1px solid var(--pill-card-border)',
-            boxShadow: 'var(--shadow)',
-          }}
-        >
-          <span
-            className="text-[10.5px] font-bold uppercase tracking-wider"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+          {/* e) Stats bento (2×2): questions solved, 7-day streak, daily limit, current plan */}
+          <section
+            className="grid grid-cols-2 gap-3 sm:gap-3.5 px-4 sm:px-5"
+            aria-label="Stats Bento"
+            data-testid="stats-bento-grid"
           >
-            Questions Solved
-          </span>
-          <div className="space-y-0.5">
-            <div
-              className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
-              style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
-            >
-              {d1Stats.questionsSolved.toLocaleString()}
-            </div>
-            <p
-              className="text-[11px] truncate"
-              style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-            >
-              University question bank
-            </p>
-          </div>
-        </div>
-
-        <div
-          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px]"
-          style={{
-            backgroundColor: 'var(--pill-card-bg)',
-            border: '1px solid var(--pill-card-border)',
-            boxShadow: 'var(--shadow)',
-          }}
-        >
-          <div className="flex items-center justify-between gap-1">
-            <span
-              className="text-[10.5px] font-bold uppercase tracking-wider"
-              style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
-            >
-              7-Day Streak
-            </span>
-            <Flame size={14} className="shrink-0" style={{ color: 'var(--accent)' }} />
-          </div>
-          <div className="space-y-1.5">
-            <div
-              className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
-              style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
-            >
-              {safeStreak} {safeStreak === 1 ? 'Day' : 'Days'}
-            </div>
-            <div className="flex items-center gap-1" aria-hidden="true">
-              {Array.from({ length: 7 }).map((_, i) => (
+            <div className="uni-lg-glass-tile">
+              <span
+                className="text-[10.5px] font-bold uppercase tracking-wider"
+                style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+              >
+                Questions Solved
+              </span>
+              <div className="space-y-0.5">
                 <div
-                  key={i}
-                  className="h-1.5 flex-1 rounded-full"
-                  style={{
-                    backgroundColor:
-                      i < filledBars ? 'var(--accent)' : 'var(--meter-off)',
-                  }}
-                />
-              ))}
+                  className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
+                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                >
+                  {d1Stats.questionsSolved.toLocaleString()}
+                </div>
+                <p
+                  className="text-[11px] truncate"
+                  style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
+                >
+                  University question bank
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
+
+            <div className="uni-lg-glass-tile">
+              <div className="flex items-center justify-between gap-1">
+                <span
+                  className="text-[10.5px] font-bold uppercase tracking-wider"
+                  style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+                >
+                  7-Day Streak
+                </span>
+                <Flame size={14} className="shrink-0" style={{ color: 'var(--accent)' }} />
+              </div>
+              <div className="space-y-1.5">
+                <div
+                  className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
+                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                >
+                  {safeStreak} {safeStreak === 1 ? 'Day' : 'Days'}
+                </div>
+                <div className="flex items-center gap-1" aria-hidden="true">
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-1.5 flex-1 rounded-full"
+                      style={{
+                        backgroundColor:
+                          i < filledBars ? 'var(--accent)' : 'var(--meter-off)',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
 
         <div
           className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px]"
@@ -1144,7 +1168,9 @@ export function OverviewPage() {
             )}
           </div>
         </div>
-      </section>
+          </section>
+        </div>
+      </div>
 
       {/* f) Weak Chapters */}
       <div className="cv-auto">
@@ -1762,6 +1788,8 @@ export function OverviewPage() {
                             </button>
                           </div>
                         </div>
+
+                        <AdSlot slotId={AD_SLOTS.resultsBelowSummary} />
 
                         <div className="space-y-3">
                           {testMcqs.map((q, idx) => {

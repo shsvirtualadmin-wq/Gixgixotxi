@@ -23,6 +23,8 @@ import { USE_FIRESTORE_QUESTION_READER } from '@/config/questionBankSources';
 import { UNIVERSITY_META } from '@/utils/routeSeoMeta';
 import { McqSubjectPage } from './McqSubjectPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 const VALID_SUBJECT_KEYS = new Set([
   'physics',
@@ -850,6 +852,11 @@ export const McqChapterPage: React.FC = () => {
             );
           })}
         </section>
+
+        {/* Ad Slot below MCQ question cards (never between question and options) */}
+        <div className="mb-10">
+          <AdSlot slotId={AD_SLOTS.quizBelowQuestion} />
+        </div>
 
         {/* Sign in to Practice & Save Progress Banner */}
         <section className="glass-panel p-8 text-center mb-8">

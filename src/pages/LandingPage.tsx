@@ -8,6 +8,8 @@ import { HowItWorks } from '../components/landing/HowItWorks';
 import { PricingSection } from '../components/landing/PricingSection';
 import { FaqSection } from '../components/landing/FaqSection';
 import { TestCockpitCta } from '../components/landing/TestCockpitCta';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 export function LandingPage() {
   const homeJsonLd = {
@@ -116,6 +118,9 @@ export function LandingPage() {
       />
       <main className="w-full">
         <HeroSection />
+        <section className="boardly-container py-6 sm:py-8" aria-label="Sponsored">
+          <AdSlot slotId={AD_SLOTS.homeHeroBelow} />
+        </section>
         <MissionSection />
         <FeaturesGrid />
         <ScrollDrivenPreview />

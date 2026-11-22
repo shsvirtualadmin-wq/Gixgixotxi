@@ -12461,3 +12461,654 @@ input[type="search"],
     animation: none !important;
   }
 }
+
+/* ==========================================================================
+   DASHBOARD "CHOOSE YOUR UNIVERSITY" LIQUID-GLASS + NOTHING OS SECTION
+   ========================================================================== */
+
+.uni-lg-stage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 32px;
+  padding: 20px 0;
+  background-color: #f3f2f6;
+  border: 1px solid rgba(17, 17, 24, 0.08);
+  box-shadow: 0 18px 46px -22px rgba(17, 17, 24, 0.14);
+}
+
+.dark .uni-lg-stage,
+[data-theme="dark"] .uni-lg-stage {
+  background-color: #050507;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.85);
+}
+
+/* Faint Nothing OS dot grid + red (left) & soft orange (right) glow blobs behind glass */
+.uni-lg-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.uni-lg-dotgrid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(17, 17, 24, 0.11) 1px, transparent 1px);
+  background-size: 18px 18px;
+  opacity: 0.7;
+}
+
+.dark .uni-lg-dotgrid,
+[data-theme="dark"] .uni-lg-dotgrid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  opacity: 0.65;
+}
+
+.uni-lg-blob {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  filter: blur(56px);
+}
+
+.uni-lg-blob--red {
+  width: 340px;
+  height: 420px;
+  top: 76px;
+  left: -92px;
+  background: radial-gradient(circle, rgba(255, 42, 56, 0.46) 0%, rgba(220, 20, 38, 0.22) 48%, transparent 74%);
+}
+
+.uni-lg-blob--orange {
+  width: 360px;
+  height: 440px;
+  top: 168px;
+  right: -96px;
+  background: radial-gradient(circle, rgba(255, 138, 48, 0.4) 0%, rgba(255, 98, 36, 0.18) 48%, transparent 74%);
+}
+
+.dark .uni-lg-blob--red,
+[data-theme="dark"] .uni-lg-blob--red {
+  background: radial-gradient(circle, rgba(255, 36, 52, 0.62) 0%, rgba(215, 20, 34, 0.26) 48%, transparent 74%);
+}
+
+.dark .uni-lg-blob--orange,
+[data-theme="dark"] .uni-lg-blob--orange {
+  background: radial-gradient(circle, rgba(255, 142, 46, 0.48) 0%, rgba(255, 96, 36, 0.2) 48%, transparent 74%);
+}
+
+.uni-lg-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Horizontal snap carousel */
+.uni-lg-carousel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: visible;
+  scroll-snap-type: x mandatory;
+  padding: 18px 55px 30px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.uni-lg-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.uni-lg-carousel--single {
+  justify-content: center;
+}
+
+/* Liquid-Glass University Card */
+.uni-lg-card {
+  position: relative;
+  flex: 0 0 280px;
+  width: 280px;
+  height: 410px;
+  border-radius: 44px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  scroll-snap-align: center;
+  overflow: hidden;
+  isolation: isolate;
+  text-align: left;
+  color: #ffffff;
+  cursor: pointer;
+  border: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(255, 40, 50, 0.6), transparent 55%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.12)),
+    linear-gradient(155deg, rgba(32, 14, 20, 0.58), rgba(52, 18, 24, 0.44));
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  backdrop-filter: blur(30px) saturate(190%);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 26px rgba(255, 255, 255, 0.08),
+    0 26px 50px -14px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
+  scale: 1;
+  transition:
+    scale 0.6s cubic-bezier(0.3, 1.9, 0.5, 1),
+    box-shadow 0.25s ease;
+}
+
+.dark .uni-lg-card,
+[data-theme="dark"] .uni-lg-card {
+  background:
+    radial-gradient(circle at 90% 0%, rgba(255, 40, 50, 0.6), transparent 55%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.12));
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 26px rgba(255, 255, 255, 0.08),
+    0 26px 50px -14px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Specular diagonal glass sheen overlay */
+.uni-lg-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.32), transparent 28%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.uni-lg-card:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.9);
+  outline-offset: 3px;
+}
+
+/* Jelly press effect (uses CSS scale property so it never conflicts with transform animations) */
+.uni-lg-card:active {
+  scale: 0.94;
+  box-shadow:
+    inset 0 2.5px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 32px rgba(255, 255, 255, 0.14),
+    0 22px 44px -14px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+/* Scroll-driven focus scaling & fade where supported */
+@supports (animation-timeline: view()) {
+  @keyframes uni-lg-card-focus {
+    0%, 100% {
+      transform: scale(0.86);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .uni-lg-carousel:not(.uni-lg-carousel--single) .uni-lg-card {
+    animation: uni-lg-card-focus linear both;
+    animation-timeline: view(inline);
+    animation-range: cover 0% cover 100%;
+  }
+}
+
+/* Top row: small white circle logo badge + dark LIVE pill */
+.uni-lg-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.uni-lg-badge {
+  width: 52px;
+  height: 52px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: linear-gradient(145deg, #ffffff 0%, #eef1f7 100%);
+  box-shadow:
+    0 6px 16px -4px rgba(0, 0, 0, 0.26),
+    0 0 0 1.5px rgba(255, 255, 255, 0.75),
+    inset 0 1px 0 #ffffff;
+}
+
+.uni-lg-badge-img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  display: block;
+}
+
+.uni-lg-badge-initials {
+  font-family: var(--font-dot);
+  font-size: 13px;
+  font-weight: 800;
+  color: #111116;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.uni-lg-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.uni-lg-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #ff2832;
+  box-shadow:
+    0 0 8px rgba(255, 40, 50, 0.95),
+    0 0 14px rgba(255, 40, 50, 0.65);
+  flex-shrink: 0;
+}
+
+/* Centerpiece big logo + breathing glass disc */
+.uni-lg-hero {
+  position: relative;
+  z-index: 3;
+  height: 170px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@keyframes uni-lg-disc-breathe {
+  0%, 100% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+
+@keyframes uni-lg-logo-breathe {
+  0%, 100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.14);
+  }
+}
+
+.uni-lg-disc {
+  position: absolute;
+  width: 158px;
+  height: 158px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 26%, #ffffff 0%, #f5f7fc 56%, #e6e9f2 100%);
+  box-shadow:
+    0 16px 34px -10px rgba(0, 0, 0, 0.36),
+    0 0 0 1.5px rgba(255, 255, 255, 0.72),
+    inset 0 2px 4px rgba(255, 255, 255, 0.95);
+  animation: uni-lg-disc-breathe 10s ease-in-out infinite;
+  scale: 1;
+  transition: scale 0.6s cubic-bezier(0.3, 1.9, 0.5, 1);
+  pointer-events: none;
+}
+
+.uni-lg-big-logo {
+  position: relative;
+  z-index: 1;
+  width: 128px;
+  height: 128px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: uni-lg-logo-breathe 10s ease-in-out infinite;
+  scale: 1;
+  transition: scale 0.6s cubic-bezier(0.3, 1.9, 0.5, 1);
+  pointer-events: none;
+}
+
+.uni-lg-big-logo-img {
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.18));
+  display: block;
+}
+
+.uni-lg-big-logo-initials {
+  font-family: var(--font-dot);
+  font-size: 36px;
+  font-weight: 800;
+  color: #111116;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.uni-lg-card:active .uni-lg-big-logo {
+  scale: 1.22;
+}
+
+.uni-lg-card:active .uni-lg-disc {
+  scale: 1.05;
+}
+
+/* Text block: 50px dot-matrix count, MCQS label, 26px bold name */
+.uni-lg-meta {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.uni-lg-count {
+  font-family: var(--font-dot);
+  font-size: 50px;
+  font-weight: 800;
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.uni-lg-mcqs-label {
+  margin-top: 3px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.15;
+}
+
+.uni-lg-name {
+  margin-top: 3px;
+  width: 100%;
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "Start test" glass pill with 40px white arrow circle */
+.uni-lg-cta {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 46px;
+  padding: 3px 3px 3px 18px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  scale: 1;
+  transition: scale 0.55s cubic-bezier(0.3, 1.9, 0.5, 1);
+}
+
+.uni-lg-card:active .uni-lg-cta {
+  scale: 0.92;
+}
+
+.uni-lg-cta-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #0b0b0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+/* Floating glass bubbles inside each card */
+@keyframes uni-lg-bubble-rise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(0, -450px, 0) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.uni-lg-bubble {
+  position: absolute;
+  bottom: -36px;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    circle at 30% 28%,
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.12) 55%,
+    rgba(255, 255, 255, 0.04)
+  );
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.65),
+    inset 0 -1px 3px rgba(255, 255, 255, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.28);
+  animation: uni-lg-bubble-rise 9s linear infinite;
+}
+
+.uni-lg-bubble--1 {
+  width: 16px;
+  height: 16px;
+  left: 14%;
+  animation-delay: -1s;
+}
+
+.uni-lg-bubble--2 {
+  width: 26px;
+  height: 26px;
+  left: 70%;
+  animation-delay: -4.5s;
+}
+
+.uni-lg-bubble--3 {
+  width: 11px;
+  height: 11px;
+  left: 42%;
+  animation-delay: -7s;
+}
+
+/* Pagination dots under carousel */
+.uni-lg-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.uni-lg-dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 9999px;
+  background: rgba(17, 17, 24, 0.24);
+  cursor: pointer;
+  padding: 0;
+  border: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.25s ease, opacity 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dark .uni-lg-dot,
+[data-theme="dark"] .uni-lg-dot {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.uni-lg-dot--active {
+  width: 34px;
+  background: #ff2832 !important;
+  box-shadow:
+    0 0 14px rgba(255, 40, 50, 0.78),
+    0 0 4px rgba(255, 40, 50, 0.92);
+}
+
+/* Shared glass style for "5 more coming soon" pill, "Questions Solved" tile & "7-Day Streak" tile */
+.uni-lg-glass-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 18px;
+  border-radius: 9999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.32));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 1px rgba(17, 17, 24, 0.09),
+    0 10px 24px -12px rgba(17, 17, 24, 0.16);
+  color: #111114;
+  scale: 1;
+  transition: scale 0.45s cubic-bezier(0.3, 1.9, 0.5, 1), box-shadow 0.2s ease;
+}
+
+.dark .uni-lg-glass-pill,
+[data-theme="dark"] .uni-lg-glass-pill {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 12px 28px -12px rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+}
+
+.uni-lg-glass-pill:active {
+  scale: 0.95;
+}
+
+.uni-lg-glass-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.28));
+  -webkit-backdrop-filter: blur(20px) saturate(175%);
+  backdrop-filter: blur(20px) saturate(175%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 0 0 1px rgba(17, 17, 24, 0.08);
+  color: #111114;
+}
+
+.dark .uni-lg-glass-chip,
+[data-theme="dark"] .uni-lg-glass-chip {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.uni-lg-glass-tile {
+  border-radius: 28px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 112px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.32));
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    0 0 0 1px rgba(17, 17, 24, 0.09),
+    0 14px 30px -14px rgba(17, 17, 24, 0.16);
+}
+
+.dark .uni-lg-glass-tile,
+[data-theme="dark"] .uni-lg-glass-tile {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 16px 34px -14px rgba(0, 0, 0, 0.62);
+}
+
+/* Reduced motion: turn off breathing & floating bubbles cleanly */
+@media (prefers-reduced-motion: reduce) {
+  .uni-lg-disc,
+  .uni-lg-big-logo {
+    animation: none !important;
+  }
+
+  .uni-lg-bubble {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+
+  .uni-lg-card,
+  .uni-lg-disc,
+  .uni-lg-big-logo,
+  .uni-lg-cta,
+  .uni-lg-glass-pill {
+    transition-duration: 0.01ms !important;
+  }
+}
+

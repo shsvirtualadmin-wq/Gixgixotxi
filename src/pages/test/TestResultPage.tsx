@@ -27,6 +27,8 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getBoardyExplanation } from '@/services/boardyAiService';
 import { routes } from '@/utils/routes';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
 
@@ -360,6 +362,9 @@ export function TestResultPage() {
           </Button>
         </div>
       </div>
+
+      {/* Ad Slot below score summary */}
+      <AdSlot slotId={AD_SLOTS.resultsBelowSummary} />
 
       {/* Review Section */}
       <div className="min-w-0 max-w-full">

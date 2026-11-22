@@ -26,6 +26,8 @@ import { useWallet } from '@/hooks/useWallet';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 export function DashboardSidebar() {
   const { isAdmin, isSuperAdmin, isCaptain, isGuest, signOutUser, isSigningOut } = useAuth();
@@ -284,6 +286,10 @@ export function DashboardSidebar() {
             )}
           </div>
         )}
+        {/* Desktop-only sticky ad slot */}
+        <div className="hidden md:block sticky bottom-0 pt-3 mt-auto">
+          <AdSlot slotId={AD_SLOTS.desktopSidebar} format="vertical" />
+        </div>
       </nav>
 
       {/* Footer: User summary, Theme Toggle & Sign Out */}

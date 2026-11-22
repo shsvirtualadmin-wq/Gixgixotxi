@@ -14,6 +14,8 @@ import { ensureWelcomeNotificationForUser } from '@/services/notificationService
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { useNavStore } from '@/lib/navStore';
 import { UserPlus, X } from 'lucide-react';
+import { AdSlot } from '@/components/AdSlot';
+import { AD_SLOTS } from '@/config/ads';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
@@ -65,6 +67,13 @@ export function DashboardShell() {
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
     location.pathname === '/saved';
+  const isAiRoute =
+    location.pathname.startsWith('/dashboard/ai');
+  const isFormulaRoute =
+    location.pathname.startsWith('/dashboard/formulas') ||
+    location.pathname.startsWith('/dashboard/formula-vault');
+  const showDesktopSidebarAd =
+    !isSettingsRoute && !isProfileRoute && !isAiRoute && !isFormulaRoute;
 
   useEffect(() => {
     if (user?.uid && isSessionVerified && !isGuest) {
@@ -172,7 +181,7 @@ export function DashboardShell() {
         </div>
       )}
 
-      {/* Main Content Container */}
+      {/* Main Content Container (+ Desktop-Only Sticky Sidebar Ad Slot) */}
       <main
         inert={isMenuOpen ? true : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
@@ -181,12 +190,25 @@ export function DashboardShell() {
         } ${
           isSettingsRoute || isProfileRoute
             ? 'max-w-none p-0'
+            : showDesktopSidebarAd
+            ? 'max-w-7xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
             : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
           <BoardlySuspenseBoundary variant="page">
-            <KeepAliveTabsOutlet />
+            {showDesktopSidebarAd ? (
+              <div className="w-full flex items-start gap-6 min-w-0">
+                <div className="flex-1 min-w-0 max-w-5xl mx-auto">
+                  <KeepAliveTabsOutlet />
+                </div>
+                <div className="hidden xl:block w-[260px] shrink-0 sticky top-24 self-start">
+                  <AdSlot slotId={AD_SLOTS.desktopSidebar} format="vertical" />
+                </div>
+              </div>
+            ) : (
+              <KeepAliveTabsOutlet />
+            )}
           </BoardlySuspenseBoundary>
         </DashboardErrorBoundary>
       </main>
