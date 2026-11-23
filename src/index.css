@@ -2136,8 +2136,9 @@ body,
   }
   .boardly-top-nav-pill,
   .public-header-glass-bar {
-    -webkit-backdrop-filter: blur(18px) !important;
-    backdrop-filter: blur(18px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32) !important;
   }
   .dashboard-glass-bar {
     -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
@@ -5632,6 +5633,18 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   transition: none !important;
 }
 
+.boardly-strip-shell {
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  contain: layout paint;
+}
+
+.boardly-strip-viewport {
+  contain: layout paint;
+  overflow: hidden;
+}
+
 @keyframes boardly-strip-marquee {
   0% {
     transform: translate3d(0, 0, 0);
@@ -5644,17 +5657,17 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 .boardly-strip-track {
   width: max-content;
   will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout paint;
   animation: boardly-strip-marquee 68s linear infinite;
-}
-
-.boardly-strip-track:hover,
-.boardly-strip-track:focus-within {
-  animation-play-state: paused;
+  animation-play-state: running;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .boardly-strip-track {
-    animation: none;
+    animation: none !important;
+    transform: translate3d(0, 0, 0) !important;
   }
 }
 
@@ -5671,6 +5684,16 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   .public-header-glass-bar {
     padding-inline: 20px 14px;
     gap: 12px;
+  }
+}
+
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  .boardly-top-nav-pill,
+  .public-header-glass-bar,
+  :is(.light, [data-theme="light"]) :is(.boardly-top-nav-pill, .public-header-glass-bar) {
+    -webkit-backdrop-filter: blur(10px) !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28) !important;
   }
 }
 
@@ -10148,17 +10171,30 @@ html[data-theme="light"] .pb-badge--emerald {
   }
 }
 
-/* Pause all infinite animations while scrolling (resumes 150ms after scroll stops) or when tab is hidden */
-html.is-scrolling *,
-html.is-scrolling *::before,
-html.is-scrolling *::after,
-html[data-scrolling="true"] *,
-html[data-scrolling="true"] *::before,
-html[data-scrolling="true"] *::after,
+/* Pause heavy decorative infinite animations while scrolling (resumes 150ms after scroll stops),
+   but NEVER pause the top announcement strip marquee (.boardly-strip-track). */
+html.is-scrolling *:not(.boardly-strip-shell):not(.boardly-strip-shell *),
+html.is-scrolling *:not(.boardly-strip-shell):not(.boardly-strip-shell *)::before,
+html.is-scrolling *:not(.boardly-strip-shell):not(.boardly-strip-shell *)::after,
+html[data-scrolling="true"] *:not(.boardly-strip-shell):not(.boardly-strip-shell *),
+html[data-scrolling="true"] *:not(.boardly-strip-shell):not(.boardly-strip-shell *)::before,
+html[data-scrolling="true"] *:not(.boardly-strip-shell):not(.boardly-strip-shell *)::after,
 html.tab-hidden .pb-badge,
 html.tab-hidden .pb-badge::before,
 html.tab-hidden .pb-badge::after,
 html.tab-hidden .pb-badge * {
+  animation-play-state: paused !important;
+}
+
+/* Guarantee the yellow announcement strip NEVER pauses during scroll,
+   and ONLY pauses when the browser tab is hidden. */
+html.is-scrolling .boardly-strip-track,
+html[data-scrolling="true"] .boardly-strip-track {
+  animation-play-state: running !important;
+}
+
+html.tab-hidden .boardly-strip-track,
+html[data-tab-hidden="true"] .boardly-strip-track {
   animation-play-state: paused !important;
 }
 

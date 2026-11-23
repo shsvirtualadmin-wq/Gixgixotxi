@@ -46,14 +46,20 @@ export function PublicLayout() {
     pathname === '/commons/following' ||
     pathname.startsWith('/commons/subject/');
 
-  if (isStoreMainPage || isCommonsFeed) {
-    return (
-      <div
-        className="relative min-h-screen flex flex-col antialiased overflow-x-clip"
-        style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-      >
-        <BackgroundCanvas />
-        <RotatingBoardlyAd variant="strip" slotKey="public_top_strip" />
+  return (
+    <div
+      className={`relative min-h-screen flex flex-col${
+        isStoreMainPage || isCommonsFeed ? ' antialiased overflow-x-clip' : ''
+      }`}
+      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+    >
+      <BackgroundCanvas />
+      <RotatingBoardlyAd
+        key="boardly-public-top-strip"
+        variant="strip"
+        slotKey="public_top_strip"
+      />
+      {isStoreMainPage || isCommonsFeed ? (
         <main
           className="flex-1 w-full flex flex-col"
           style={{ paddingTop: 'var(--boardly-top-strip-h, 0px)' }}
@@ -62,36 +68,29 @@ export function PublicLayout() {
             <Outlet />
           </BoardlySuspenseBoundary>
         </main>
-        {!isLoadingSession && <Footer />}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="relative min-h-screen flex flex-col"
-      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
-    >
-      <BackgroundCanvas />
-      <RotatingBoardlyAd variant="strip" slotKey="public_top_strip" />
-      {isHomePage ? <Navbar /> : <PublicPageHeader />}
-      {isHomePage ? (
-        <div className="flex-1 flex flex-col">
-          <BoardlySuspenseBoundary variant="page">
-            <Outlet />
-          </BoardlySuspenseBoundary>
-        </div>
       ) : (
-        <main
-          className="flex-1 flex flex-col pb-12"
-          style={{
-            paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px))',
-          }}
-        >
-          <BoardlySuspenseBoundary variant="page">
-            <Outlet />
-          </BoardlySuspenseBoundary>
-        </main>
+        <>
+          {isHomePage ? <Navbar /> : <PublicPageHeader />}
+          {isHomePage ? (
+            <div className="flex-1 flex flex-col">
+              <BoardlySuspenseBoundary variant="page">
+                <Outlet />
+              </BoardlySuspenseBoundary>
+            </div>
+          ) : (
+            <main
+              className="flex-1 flex flex-col pb-12"
+              style={{
+                paddingTop:
+                  'calc(64px + 24px + env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px))',
+              }}
+            >
+              <BoardlySuspenseBoundary variant="page">
+                <Outlet />
+              </BoardlySuspenseBoundary>
+            </main>
+          )}
+        </>
       )}
       {!isLoadingSession && <Footer />}
     </div>

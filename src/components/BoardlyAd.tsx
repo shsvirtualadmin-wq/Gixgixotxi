@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
 import {
@@ -123,14 +124,18 @@ const POSTER_AUTOPLAY_MS = 5000;
 
 /**
  * Top yellow scrolling announcement strip (`variant="strip"`).
- * Automatically reserves 36px at top via `--boardly-top-strip-h` CSS variable so the
- * floating navbar and hero content never overlap or jump when dismissed.
+ * - Memoized + portaled to document.body on its own GPU compositor layer so scrolling never
+ *   triggers re-renders, paint invalidation, or animation restarts.
+ * - Pure CSS `translate3d(0,0,0) -> translate3d(-50%,0,0)` linear infinite loop.
+ * - Automatically reserves 36px at top via `--boardly-top-strip-h` CSS variable so the
+ *   floating navbar and hero content never overlap or jump when dismissed.
  */
-function TopAnnouncementStrip({
+const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
   slides,
   infoText,
   dismissible,
   onDismiss,
+  onLoopComplete,
   slotId,
   isPreview,
   className,
@@ -139,6 +144,7 @@ function TopAnnouncementStrip({
   infoText: string;
   dismissible: boolean;
   onDismiss?: () => void;
+  onLoopComplete?: () => void;
   slotId?: string;
   isPreview?: boolean;
   className?: string;
@@ -168,9 +174,9 @@ function TopAnnouncementStrip({
     };
   }, [visible, isPreview]);
 
-  if (!visible) return null;
+  const marqueeItems = useMemo(() => [...slides, ...slides], [slides]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setInfoOpen(false);
     setDismissed(true);
     try {
@@ -179,21 +185,20 @@ function TopAnnouncementStrip({
       // Ignore storage errors
     }
     onDismiss?.();
-  };
+  }, [onDismiss]);
 
-  // Duplicate items once for seamless infinite CSS marquee scrolling
-  const marqueeItems = [...slides, ...slides];
+  if (!visible) return null;
 
-  return (
+  const stripElement = (
     <div
       role="region"
       aria-label="Boardly announcement advertisement"
       data-boardly-ad="true"
       data-boardly-variant="strip"
       data-boardly-slot={slotId || 'top_strip'}
-      className={`${
+      className={`boardly-strip-shell ${
         isPreview ? 'relative' : 'fixed left-0 right-0 z-[1010]'
-      } w-full h-[36px] bg-[#ffd23f] text-[#1a0b2e] border-b border-black/15 shadow-[0_2px_10px_rgba(26,11,46,0.18)] select-none ${
+      } w-full h-[36px] bg-[#ffd23f] text-[#1a0b2e] border-b border-black/15 shadow-[0_1px_6px_rgba(26,11,46,0.14)] select-none ${
         className || ''
       }`}
       style={isPreview ? undefined : { top: 'env(safe-area-inset-top, 0px)' }}
@@ -207,9 +212,12 @@ function TopAnnouncementStrip({
           Ad
         </span>
 
-        {/* Scrolling headlines ticker */}
-        <div className="relative flex-1 min-w-0 h-full overflow-hidden flex items-center">
-          <div className="boardly-strip-track flex items-center whitespace-nowrap">
+        {/* Scrolling headlines ticker (isolated GPU compositor layer) */}
+        <div className="boardly-strip-viewport relative flex-1 min-w-0 h-full flex items-center">
+          <div
+            className="boardly-strip-track flex items-center whitespace-nowrap"
+            onAnimationIteration={onLoopComplete}
+          >
             {marqueeItems.map((item, idx) => (
               <span
                 key={`${item.id}-${idx}`}
@@ -282,7 +290,13 @@ function TopAnnouncementStrip({
       )}
     </div>
   );
-}
+
+  if (!isPreview && typeof document !== 'undefined' && document.body) {
+    return createPortal(stripElement, document.body);
+  }
+
+  return stripElement;
+});
 
 /**
  * Large festive hero poster carousel (`variant="poster"`).
@@ -1159,22 +1173,28 @@ export function RotatingBoardlyAd({
     return getPosterSlides(pathname, uniqueSlotKey, isPromoActive, slideCount);
   });
 
-  const [stripSlides, setStripSlides] = useState<BoardlyCatalogAd[]>(() => {
-    if (!canShow || variant !== 'strip') return [];
-    return getStripHeadlines(isPromoActive, 12);
-  });
+  const [stripSlides, setStripSlides] = useState<BoardlyCatalogAd[]>(() =>
+    variant === 'strip' ? getStripHeadlines(isPromoActive, 12) : []
+  );
+  const stripPromoRef = useRef<boolean>(isPromoActive);
 
+  // Only refresh strip headlines when promo eligibility actually changes (never on scroll or route change)
   useEffect(() => {
+    if (variant !== 'strip') return;
+    if (stripPromoRef.current !== isPromoActive) {
+      stripPromoRef.current = isPromoActive;
+      setStripSlides(getStripHeadlines(isPromoActive, 12));
+    }
+  }, [variant, isPromoActive]);
+
+  // Keep card/poster claims in sync without touching stripSlides
+  useEffect(() => {
+    if (variant === 'strip') return;
+
     if (!canShow || slotClosed) {
       setSingleAd(null);
       setPosterSlides([]);
-      setStripSlides([]);
       releaseRotatingCatalogClaim(pathname, uniqueSlotKey);
-      return;
-    }
-
-    if (variant === 'strip') {
-      setStripSlides(getStripHeadlines(isPromoActive, 12));
       return;
     }
 
@@ -1196,16 +1216,21 @@ export function RotatingBoardlyAd({
     };
   }, [canShow, slotClosed, variant, pathname, uniqueSlotKey, isPromoActive, slideCount, dismissVersion]);
 
+  const handleStripDismiss = useCallback(() => {
+    setSlotClosed(true);
+  }, []);
+
   if (!canShow || slotClosed) return null;
 
   if (variant === 'strip') {
     if (stripSlides.length === 0) return null;
     return (
-      <BoardlyAd
-        variant="strip"
+      <TopAnnouncementStrip
         slides={stripSlides}
+        infoText={DEFAULT_INFO_TEXT}
+        dismissible
+        onDismiss={handleStripDismiss}
         slotId={slotKey}
-        onDismiss={() => setSlotClosed(true)}
         className={className}
       />
     );
