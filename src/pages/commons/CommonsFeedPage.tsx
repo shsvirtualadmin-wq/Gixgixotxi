@@ -309,6 +309,29 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   // Back to top indicator
   const [showBackToTop, setShowBackToTop] = useState(false);
 
+  // Measure sticky header height dynamically so tabs bar always stacks directly below it with zero overlap or gap
+  const stickyHeaderWrapRef = useRef<HTMLDivElement | null>(null);
+  const [stickyHeaderHeight, setStickyHeaderHeight] = useState<number>(76);
+
+  useEffect(() => {
+    const el = stickyHeaderWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const next = Math.floor(el.getBoundingClientRect().height);
+      if (next > 0) {
+        setStickyHeaderHeight((prev) => (prev === next ? prev : next));
+      }
+    };
+    measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', measure, { passive: true });
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
   // Pull-to-refresh state
   const [isPulling, setIsPulling] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
@@ -786,7 +809,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-clip mx-auto space-y-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))]"
+      style={{ '--commons-header-h': `${stickyHeaderHeight}px` } as React.CSSProperties}
+      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-clip mx-auto space-y-3 pb-[calc(128px+env(safe-area-inset-bottom,0px))]"
     >
       {isPublicRoute && (
         <PageMeta
@@ -797,7 +821,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Floating Glass Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
-      <header className="sticky top-2 z-30 glass glass-card allow-backdrop-blur rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-2.5 w-full max-w-full min-w-0 box-border overflow-x-clip transition-colors">
+      <div
+        ref={stickyHeaderWrapRef}
+        className="commons-sticky-header-wrap sticky top-0 z-40 w-full max-w-full pt-2 pb-1.5"
+      >
+        <header className="commons-top-header glass glass-card allow-backdrop-blur rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-2.5 w-full max-w-full min-w-0 box-border overflow-x-clip transition-colors">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span
@@ -872,6 +900,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           </button>
         </div>
       </header>
+      </div>
 
       {/* Pull-to-refresh mobile visual indicator */}
       {pullDistance > 0 && (
@@ -1034,7 +1063,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       </div>
 
       {/* ── Segmented Control in a Glass Track: "All", "Trending", and "Following" ── */}
-      <div className="sticky top-[68px] z-20 flex items-center justify-between gap-2 w-full max-w-full min-w-0 box-border">
+      <div
+        data-commons-tabs-bar="true"
+        style={{ top: 'var(--commons-header-h, 76px)' }}
+        className="commons-sticky-tabs-bar sticky z-30 w-full max-w-full py-1.5 flex items-center justify-between gap-2 min-w-0 box-border"
+      >
         <div
           role="tablist"
           aria-label="Commons feed filter"
@@ -1093,14 +1126,14 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
         <Link
           to="/search"
-          className="px-3.5 min-h-[44px] rounded-full glass-pill inline-flex items-center justify-center text-xs text-muted hover:text-primary font-semibold transition-colors shrink-0"
+          className="commons-tabs-search-pill px-3.5 min-h-[44px] rounded-full glass-pill inline-flex items-center justify-center text-xs text-muted hover:text-primary font-semibold transition-colors shrink-0"
         >
           Search →
         </Link>
       </div>
 
       {/* ── Posts Stream (15 at a time, staggered entry, Facebook-style post skeletons) ── */}
-      <div className="boardly-feed-container stagger-list w-full max-w-full min-w-0 box-border overflow-x-clip space-y-3 pt-1 pb-[var(--sdn-page-pb)]">
+      <div className="boardly-feed-container commons-feed-stream relative z-[1] stagger-list w-full max-w-full min-w-0 box-border overflow-x-clip space-y-3 pt-1 pb-6">
         {loading && displayedPosts.length === 0 ? (
           <FeedPostSkeletonList count={3} />
         ) : loadError ? (
@@ -1249,7 +1282,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-[calc(96px+env(safe-area-inset-bottom,0px))] md:bottom-8 right-4 sm:right-8 z-30 px-3.5 py-2 rounded-full floating-blur backdrop-blur-lg border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          className="commons-back-to-top fixed bottom-[calc(104px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 sm:right-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title="Back to top"
         >
           <ArrowUp size={14} />

@@ -7329,27 +7329,29 @@ body.modal-open .sdn-dock {
   }
 }
 
-/* Sibling (a): .plate — the static liquid glass blur layer behind the bubble (never animates) */
+/* Sibling (a): .plate — the static opaque-frosted layer behind the bubble (never animates) */
 .sdn-dock > .plate {
   position: absolute;
   inset: 0;
   border-radius: 32px;
   z-index: 1;
   pointer-events: none;
-  background: rgba(18, 18, 20, 0.78);
-  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 16px 40px rgba(0, 0, 0, 0.55);
-  -webkit-backdrop-filter: blur(30px) saturate(150%);
-  backdrop-filter: blur(30px) saturate(150%);
+  background-color: rgba(18, 18, 18, 0.96);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 16px 40px rgba(0, 0, 0, 0.58);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
   transform: translateZ(0);
 }
 .light .sdn-dock > .plate,
 [data-theme="light"] .sdn-dock > .plate {
-  background: var(--nav-glass-bg);
+  background-color: rgba(255, 255, 255, 0.97);
   background-image: var(--nav-top-highlight);
   border: 1px solid var(--nav-glass-border);
   box-shadow: var(--nav-glass-shadow);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
 }
 
 /* Sibling (b): .g — GPU-accelerated active-tab red pill driven strictly by translate3d:
@@ -7525,12 +7527,12 @@ body.modal-open .sdn-dock {
   border: 1.5px solid var(--bubble-rim);
 }
 
-/* Low-memory devices or Reduce effects ("Smooth Mode"): drop backdrop blur and use solid translucent colour */
+/* Low-memory devices or Reduce effects ("Smooth Mode"): drop backdrop blur and use solid opaque colour */
 .sdn-dock.low-fx > .plate,
 :is(html.smooth-mode, html[data-smooth-mode="true"]) .sdn-dock > .plate {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
-  background-color: color-mix(in srgb, var(--menu-card) 94%, transparent);
+  background-color: var(--menu-card, #121212);
 }
 
 .sdn-dock.low-fx > .g > .gi,
@@ -11509,11 +11511,61 @@ button.section-chip:active:not(:disabled),
 
 .dark .ios-seg-track,
 [data-theme="dark"] .ios-seg-track {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(24, 24, 27, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    0 8px 24px rgba(0, 0, 0, 0.38);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+/* Commons mobile sticky header, sticky tabs bar, and solid Back-to-top chip */
+.commons-sticky-header-wrap {
+  background-color: var(--bg, #121212);
+}
+
+.commons-top-header {
+  background: rgba(18, 18, 18, 0.96);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.light .commons-top-header,
+[data-theme="light"] .commons-top-header {
+  background: rgba(255, 255, 255, 0.97);
+  border-color: rgba(15, 16, 20, 0.09);
+}
+
+.commons-sticky-tabs-bar {
+  background-color: rgba(18, 18, 18, 0.96);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.light .commons-sticky-tabs-bar,
+[data-theme="light"] .commons-sticky-tabs-bar {
+  background-color: rgba(246, 247, 249, 0.97);
+  border-bottom: 1px solid rgba(15, 16, 20, 0.08);
+}
+
+.dark .commons-tabs-search-pill,
+[data-theme="dark"] .commons-tabs-search-pill {
+  background: rgba(24, 24, 27, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.commons-back-to-top {
+  background-color: #121212;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.light .commons-back-to-top,
+[data-theme="light"] .commons-back-to-top {
+  background-color: #ffffff;
+  border-color: rgba(15, 16, 20, 0.12);
 }
 
 .ios-seg-thumb {
@@ -12261,14 +12313,17 @@ input[type="search"],
   height: 50px;
   aspect-ratio: 1 / 1;
   border-radius: 9999px;
-  border: 2px solid color-mix(in srgb, #ffffff 34%, transparent);
-  background: linear-gradient(145deg, #f43f5e 0%, #e11d1d 48%, #b91c1c 100%);
+  border: 2px solid #121212;
+  background-color: #d71921;
+  background-image: linear-gradient(145deg, #f43f5e 0%, #e11d1d 48%, #b91c1c 100%);
   color: #ffffff !important;
+  opacity: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.24),
     0 10px 26px -4px rgba(225, 29, 29, 0.56),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.35);
   transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease;
