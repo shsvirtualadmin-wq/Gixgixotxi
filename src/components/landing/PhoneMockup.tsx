@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Zap, Target } from 'lucide-react';
 
 interface PhoneMockupProps {
@@ -13,7 +13,7 @@ const TABS: { id: 0 | 1 | 2 | 3; label: string }[] = [
   { id: 3, label: 'Arena' },
 ];
 
-export function PhoneMockup({
+export const PhoneMockup = React.memo(function PhoneMockup({
   screen: externalScreen,
   onScreenChange,
 }: PhoneMockupProps) {
@@ -74,7 +74,7 @@ export function PhoneMockup({
       (entries) => {
         setIsInView(Boolean(entries[0]?.isIntersecting));
       },
-      { threshold: 0.05 }
+      { threshold: 0.01, rootMargin: '120px 0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -466,6 +466,6 @@ export function PhoneMockup({
       </div>
     </div>
   );
-}
+});
 
 export default PhoneMockup;

@@ -1,8 +1,3 @@
-import { fetchCommonsPosts } from '@/services/commonsService';
-import { syncUserNotificationsStore } from '@/services/notificationService';
-import { prefetchUserChats } from '@/services/chatService';
-import { prefetchRewardsSummary } from '@/services/rewardsService';
-
 // ─── Route Chunk & Data Prefetching for Instant Tab Switching ───────────────
 const prefetchedTabs = new Set<string>();
 
@@ -14,7 +9,9 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
   switch (tabId) {
     case 'commons': {
       void import('@/pages/commons/CommonsFeedPage').catch(() => {});
-      void fetchCommonsPosts({ feedTab: 'all', pageSize: 15, currentUid: uid }).catch(() => {});
+      void import('@/services/commonsService')
+        .then((m) => m.fetchCommonsPosts({ feedTab: 'all', pageSize: 15, currentUid: uid }))
+        .catch(() => {});
       break;
     }
     case 'home':
@@ -35,7 +32,9 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
     case 'notifications': {
       void import('@/pages/dashboard/NotificationsPage').catch(() => {});
       if (uid && !uid.startsWith('guest_')) {
-        void Promise.resolve(syncUserNotificationsStore(uid)).catch(() => {});
+        void import('@/services/notificationService')
+          .then((m) => m.syncUserNotificationsStore(uid))
+          .catch(() => {});
       }
       break;
     }
@@ -46,7 +45,9 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
     case 'messages': {
       void import('@/pages/dashboard/MessagesPage').catch(() => {});
       if (uid && !uid.startsWith('guest_')) {
-        void Promise.resolve(prefetchUserChats(uid)).catch(() => {});
+        void import('@/services/chatService')
+          .then((m) => m.prefetchUserChats(uid))
+          .catch(() => {});
       }
       break;
     }
@@ -61,7 +62,9 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
     case 'menu':
     case 'rewards': {
       void import('@/pages/RewardsPage').catch(() => {});
-      void Promise.resolve(prefetchRewardsSummary(uid)).catch(() => {});
+      void import('@/services/rewardsService')
+        .then((m) => m.prefetchRewardsSummary(uid))
+        .catch(() => {});
       break;
     }
     default:

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   DEFAULT_BOARDLY_OFFERS,
@@ -77,7 +77,7 @@ function isAdminCustomizedOffer(offer: BoardlyOffer): boolean {
  * - In /admin/ads phone preview (`isPreview`), always renders the exact selected offer.
  * - Preserves all existing route-block, schedule, URL sanitization, and impression/click tracking logic.
  */
-export function PromoBanner({
+export const PromoBanner = memo(function PromoBanner({
   offer,
   slotId,
   className = '',
@@ -195,15 +195,26 @@ export function PromoBanner({
     location.pathname,
   ]);
 
-  if (!isPreview && (!isAdAllowed || isBlocked || !isActive || slotDismissed || isCustomDismissed)) {
-    return null;
-  }
-
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     if (!isPreview && offer?.id) {
       recordBoardlyOfferEvent('click', slotId, offer.id);
     }
-  };
+  }, [isPreview, offer?.id, slotId]);
+
+  const handleDismissCatalog = useCallback(() => {
+    if (!catalogAd) return;
+    dismissAdForSession(catalogAd.id);
+    setSlotDismissed(true);
+  }, [catalogAd]);
+
+  const handleDismissCustom = useCallback(() => {
+    dismissAdForSession(`custom::${offer.id}`);
+    setSlotDismissed(true);
+  }, [offer.id]);
+
+  if (!isPreview && (!isAdAllowed || isBlocked || !isActive || slotDismissed || isCustomDismissed)) {
+    return null;
+  }
 
   if (catalogAd) {
     const safeCatalogHref = sanitizeSafeOfferUrl(catalogAd.link);
@@ -223,10 +234,7 @@ export function PromoBanner({
         isPreview={false}
         slotId={String(slotId)}
         offerId={catalogAd.id}
-        onDismiss={() => {
-          dismissAdForSession(catalogAd.id);
-          setSlotDismissed(true);
-        }}
+        onDismiss={handleDismissCatalog}
         containerRef={bannerRef}
         className={className}
       />
@@ -254,18 +262,11 @@ export function PromoBanner({
       isPreview={isPreview}
       slotId={String(slotId)}
       offerId={offer.id}
-      onDismiss={
-        isPreview
-          ? undefined
-          : () => {
-              dismissAdForSession(`custom::${offer.id}`);
-              setSlotDismissed(true);
-            }
-      }
+      onDismiss={isPreview ? undefined : handleDismissCustom}
       containerRef={bannerRef}
       className={className}
     />
   );
-}
+});
 
 export default PromoBanner;

@@ -46,18 +46,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   }, [title, scrollContainer]);
 
   useEffect(() => {
+    let rafId = 0;
     if (scrollContainer === 'self') {
       const el = selfScrollRef.current;
       if (!el) return;
-      const onScroll = () => setScrolled(el.scrollTop > 4);
+      const sync = () => {
+        const over = el.scrollTop > 4;
+        setScrolled((prev) => (prev === over ? prev : over));
+      };
+      const onScroll = () => {
+        if (rafId) return;
+        rafId = window.requestAnimationFrame(() => {
+          rafId = 0;
+          sync();
+        });
+      };
       el.addEventListener('scroll', onScroll, { passive: true });
-      return () => el.removeEventListener('scroll', onScroll);
+      return () => {
+        if (rafId) window.cancelAnimationFrame(rafId);
+        el.removeEventListener('scroll', onScroll);
+      };
     }
 
-    const onWindowScroll = () => setScrolled(window.scrollY > 4);
-    onWindowScroll();
+    const syncWindow = () => {
+      const over = window.scrollY > 4;
+      setScrolled((prev) => (prev === over ? prev : over));
+    };
+    const onWindowScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        syncWindow();
+      });
+    };
+    syncWindow();
     window.addEventListener('scroll', onWindowScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onWindowScroll);
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', onWindowScroll);
+    };
   }, [scrollContainer]);
 
   const containerClass =

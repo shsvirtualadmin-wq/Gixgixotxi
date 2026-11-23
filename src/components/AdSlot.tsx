@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
   ADSENSE_CLIENT_ID,
@@ -94,6 +94,47 @@ function ensureAdSenseScriptLoaded(publisherId: string, onScriptError?: () => vo
   document.head.appendChild(script);
 }
 
+function scheduleAdSenseScriptLoad(publisherId: string, onScriptError?: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const existing =
+    document.getElementById(ADSENSE_SCRIPT_ID) ||
+    document.querySelector(
+      'script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
+    );
+  if (existing || window.__boardlyAdSenseFailed) {
+    ensureAdSenseScriptLoaded(publisherId, onScriptError);
+    return () => {};
+  }
+
+  let cancelled = false;
+  const run = () => {
+    if (!cancelled) {
+      ensureAdSenseScriptLoaded(publisherId, onScriptError);
+    }
+  };
+
+  if ('requestIdleCallback' in window) {
+    const idleId = (
+      window as Window & {
+        requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (id: number) => void;
+      }
+    ).requestIdleCallback(run, { timeout: 1500 });
+    return () => {
+      cancelled = true;
+      (
+        window as Window & { cancelIdleCallback?: (id: number) => void }
+      ).cancelIdleCallback?.(idleId);
+    };
+  }
+
+  const timerId = window.setTimeout(run, 300);
+  return () => {
+    cancelled = true;
+    window.clearTimeout(timerId);
+  };
+}
+
 /**
  * Clean reserved placeholder shown while a signed-in user's plan is still loading,
  * or when a Google slot has no fill and Boardly offer fallback is disabled/exhausted.
@@ -153,7 +194,7 @@ function AdSpacePlaceholder({
  * 7. Only one ad/offer is visible at a time on mobile screens (<768px).
  * 8. Add `?adsdebug=1` to any URL to inspect every slot's ID, mode, viewer, state, and hidden reason.
  */
-export function AdSlot({
+export const AdSlot = memo(function AdSlot({
   slotId,
   instanceKey = 'main',
   format = 'auto',
@@ -333,8 +374,9 @@ export function AdSlot({
       if (!cancelled) setGoogleState('unfilled');
     };
 
-    ensureAdSenseScriptLoaded(cleanPublisherId, markUnfilled);
+    const cancelScheduledScript = scheduleAdSenseScriptLoad(cleanPublisherId, markUnfilled);
     if (typeof window !== 'undefined' && window.__boardlyAdSenseFailed) {
+      cancelScheduledScript();
       setGoogleState('unfilled');
       return;
     }
@@ -412,6 +454,7 @@ export function AdSlot({
 
     return () => {
       cancelled = true;
+      cancelScheduledScript();
       window.clearTimeout(timeoutId);
       if (observer) observer.disconnect();
     };
@@ -635,7 +678,7 @@ export function AdSlot({
     <div
       ref={containerRef}
       data-boardly-slot={slotConfig.id}
-      className={`w-full min-w-0 ${desktopOnlyClass} ${className} ${
+      className={`boardly-ad-contain w-full min-w-0 ${desktopOnlyClass} ${className} ${
         isDebugMode
           ? 'rounded-2xl border-2 border-dashed border-emerald-500/85 bg-emerald-500/[0.04] p-2'
           : ''
@@ -658,6 +701,6 @@ export function AdSlot({
   );
 
   return wrapperClassName ? <div className={wrapperClassName}>{renderedSlot}</div> : renderedSlot;
-}
+});
 
 export default AdSlot;

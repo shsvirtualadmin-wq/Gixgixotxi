@@ -522,10 +522,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!previewMode && !isModal) {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
-    const onScroll = () => setScrolled(window.scrollY > 4);
-    onScroll();
+    let rafId = 0;
+    const syncScrolled = () => {
+      const over = window.scrollY > 4;
+      setScrolled((prev) => (prev === over ? prev : over));
+    };
+    const onScroll = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        syncScrolled();
+      });
+    };
+    syncScrolled();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', onScroll);
+    };
   }, [uid, previewMode, isModal]);
 
   // Sync modal attribute for bottom nav hiding when sub-modals are open

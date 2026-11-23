@@ -126,6 +126,102 @@ const TOP_STRIP_DISMISSED_KEY = 'boardly_top_strip_dismissed_v1';
 const POSTER_AUTOPLAY_MS = 5000;
 
 /**
+ * Isolated memoized 1-second countdown component so ticking seconds NEVER re-render
+ * parent ad cards, carousels, or student illustrations. Automatically pauses when
+ * offscreen (`active === false`) or when the browser tab is hidden.
+ */
+const AdCountdownGrid = memo(function AdCountdownGrid({
+  targetEndMs,
+  variant,
+  active = true,
+}: {
+  targetEndMs: number | null;
+  variant: 'poster' | 'card';
+  active?: boolean;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!active || !targetEndMs || targetEndMs <= Date.now()) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setNowMs(Date.now());
+    }, 1000);
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        setNowMs(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility, { passive: true });
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [targetEndMs, active]);
+
+  const countdown = useMemo(() => computeCountdown(targetEndMs, nowMs), [targetEndMs, nowMs]);
+  if (!countdown) return null;
+
+  const units = [
+    { label: 'Days', value: pad2(countdown.days) },
+    { label: 'Hrs', value: pad2(countdown.hours) },
+    { label: 'Min', value: pad2(countdown.minutes) },
+    { label: 'Sec', value: pad2(countdown.seconds) },
+  ];
+
+  if (variant === 'poster') {
+    return (
+      <div
+        className="grid grid-cols-4 gap-1.5 w-full max-w-[260px] pt-0.5"
+        aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours`}
+      >
+        {units.map((u) => (
+          <div
+            key={u.label}
+            className="rounded-[8px] border border-white/30 bg-black/20 px-1.5 py-1 text-center"
+          >
+            <div
+              className="text-sm font-extrabold tabular-nums text-white leading-none"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              {u.value}
+            </div>
+            <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
+              {u.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="grid grid-cols-4 gap-1.5 sm:gap-2 max-w-[300px]"
+      aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours ${countdown.minutes} minutes`}
+    >
+      {units.map((unit) => (
+        <div
+          key={unit.label}
+          className="rounded-[8px] border border-white/25 bg-white/12 px-1.5 py-1.5 text-center"
+        >
+          <div
+            className="text-sm sm:text-base font-extrabold tabular-nums text-white leading-none"
+            style={{ fontFamily: 'var(--font-mono)' }}
+          >
+            {unit.value}
+          </div>
+          <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
+            {unit.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+/**
  * Top yellow scrolling announcement strip (`variant="strip"`).
  * - Memoized + portaled to document.body on its own GPU compositor layer so scrolling never
  *   triggers re-renders, paint invalidation, or animation restarts.
@@ -306,7 +402,7 @@ const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
  * 4–5 rotating slides, auto-rotates every 5s, touch swipe on mobile, dots at bottom,
  * bunting flags, confetti accents, light rays, circular seal badge, and zero layout shift.
  */
-function HeroPosterCarousel({
+const HeroPosterCarousel = memo(function HeroPosterCarousel({
   slides,
   promoEndDate,
   infoText,
@@ -329,10 +425,26 @@ function HeroPosterCarousel({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [inViewport, setInViewport] = useState(true);
   const [infoOpen, setInfoOpen] = useState(false);
   const [localDismissedIds, setLocalDismissedIds] = useState<string[]>([]);
+  const posterRef = useRef<HTMLElement | null>(null);
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isPreview) return;
+    const el = posterRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setInViewport(Boolean(entries[0]?.isIntersecting));
+      },
+      { threshold: 0.01 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isPreview]);
 
   const visibleSlides = useMemo(
     () => slides.filter((s) => !localDismissedIds.includes(s.id)),
@@ -343,19 +455,7 @@ function HeroPosterCarousel({
   const safeIndex = visibleSlides.length > 0 ? activeIndex % visibleSlides.length : 0;
   const activeSlide = visibleSlides[safeIndex] || null;
 
-  const targetEndMs = useMemo(
-    () => (activeSlide?.requiresPromoActive ? parseEndDateMs(promoEndDate) : null),
-    [activeSlide?.requiresPromoActive, promoEndDate]
-  );
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!targetEndMs || targetEndMs <= Date.now()) return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [targetEndMs]);
-
-  const countdown = useMemo(() => computeCountdown(targetEndMs, nowMs), [targetEndMs, nowMs]);
+  const promoTargetEndMs = useMemo(() => parseEndDateMs(promoEndDate), [promoEndDate]);
 
   const goNext = useCallback(() => {
     if (visibleSlides.length <= 1) return;
@@ -392,15 +492,15 @@ function HeroPosterCarousel({
     }
   }, [visibleSlides, safeIndex]);
 
-  // Auto-rotate every 5 seconds while visible & not paused
+  // Auto-rotate every 5 seconds ONLY while visible in viewport, tab active, and not paused
   useEffect(() => {
-    if (isPreview || paused || infoOpen || visibleSlides.length <= 1) return;
+    if (isPreview || paused || infoOpen || !inViewport || visibleSlides.length <= 1) return;
     const timer = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       setActiveIndex((prev) => (prev + 1) % visibleSlides.length);
     }, POSTER_AUTOPLAY_MS);
     return () => window.clearInterval(timer);
-  }, [isPreview, paused, infoOpen, visibleSlides.length]);
+  }, [isPreview, paused, infoOpen, inViewport, visibleSlides.length]);
 
   if (!activeSlide) return null;
 
@@ -440,6 +540,7 @@ function HeroPosterCarousel({
 
   return (
     <aside
+      ref={posterRef}
       aria-label={`Boardly featured promotion: ${activeSlide.headline}`}
       aria-roledescription="carousel"
       data-boardly-ad="true"
@@ -450,7 +551,7 @@ function HeroPosterCarousel({
       onMouseLeave={() => setPaused(false)}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
-      className={`relative w-full min-w-0 max-w-full overflow-hidden box-border rounded-[24px] text-white transition-[background] duration-500 min-h-[430px] sm:min-h-[340px] flex flex-col justify-between ${
+      className={`boardly-ad-contain relative w-full min-w-0 max-w-full overflow-hidden box-border rounded-[24px] text-white transition-[background] duration-500 min-h-[430px] sm:min-h-[340px] flex flex-col justify-between ${
         className || ''
       }`}
       style={{
@@ -569,7 +670,7 @@ function HeroPosterCarousel({
             const isSlideActive = idx === safeIndex;
             const slideAccent =
               BOARDLY_AD_ACCENTS[slide.accent] || BOARDLY_AD_ACCENTS['purple-pink'];
-            const showSlideCountdown = Boolean(slide.requiresPromoActive && countdown);
+            const showSlideCountdown = Boolean(slide.requiresPromoActive && promoTargetEndMs);
 
             return (
               <div
@@ -594,34 +695,13 @@ function HeroPosterCarousel({
                     {slide.description}
                   </p>
 
-                  {/* Real Countdown (only if active EARLY21 slide has a real endDate) */}
-                  {showSlideCountdown && countdown && (
-                    <div
-                      className="grid grid-cols-4 gap-1.5 w-full max-w-[260px] pt-0.5"
-                      aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours`}
-                    >
-                      {[
-                        { label: 'Days', value: pad2(countdown.days) },
-                        { label: 'Hrs', value: pad2(countdown.hours) },
-                        { label: 'Min', value: pad2(countdown.minutes) },
-                        { label: 'Sec', value: pad2(countdown.seconds) },
-                      ].map((u) => (
-                        <div
-                          key={u.label}
-                          className="rounded-[8px] border border-white/30 bg-black/20 px-1.5 py-1 text-center"
-                        >
-                          <div
-                            className="text-sm font-extrabold tabular-nums text-white leading-none"
-                            style={{ fontFamily: 'var(--font-mono)' }}
-                          >
-                            {u.value}
-                          </div>
-                          <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
-                            {u.label}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  {/* Real Countdown (only if active EARLY21 slide has a real endDate; isolated timer) */}
+                  {showSlideCountdown && (
+                    <AdCountdownGrid
+                      targetEndMs={promoTargetEndMs}
+                      variant="poster"
+                      active={inViewport && isSlideActive}
+                    />
                   )}
 
                   {/* Desktop CTA button (shown inline on sm+, moved below illustration on mobile) */}
@@ -747,7 +827,7 @@ function HeroPosterCarousel({
       </div>
     </aside>
   );
-}
+});
 
 /**
  * Unified visual design for ALL Boardly-owned ads, promos, banners, strips, posters, and upsells.
@@ -755,7 +835,7 @@ function HeroPosterCarousel({
  * info & dismiss controls, yellow chip, bold white typography, student character illustration,
  * optional real countdown (only when a real endDate exists), and white pill CTA.
  */
-export function BoardlyAd({
+export const BoardlyAd = memo(function BoardlyAd({
   variant = 'card',
   accent = 'purple-pink',
   illustrationId = 'girl-books',
@@ -790,19 +870,6 @@ export function BoardlyAd({
   const [infoOpen, setInfoOpen] = useState(false);
 
   const targetEndMs = useMemo(() => parseEndDateMs(endDate), [endDate]);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!isPreview && !showAds) return;
-    if (!targetEndMs) return;
-    if (targetEndMs <= Date.now()) return;
-    const id = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [targetEndMs, isPreview, showAds]);
-
-  const countdown = useMemo(() => computeCountdown(targetEndMs, nowMs), [targetEndMs, nowMs]);
 
   // Strictly honor Pro/Plus ad-free setting (and wait while plan/setting loads) across EVERY BoardlyAd variant
   if (!isPreview && !showAds) {
@@ -999,7 +1066,7 @@ export function BoardlyAd({
       data-boardly-variant={variant}
       data-boardly-slot={slotId || undefined}
       data-boardly-offer={offerId || undefined}
-      className={`relative w-full min-w-0 max-w-full overflow-hidden box-border rounded-[12px] text-white ${paddingClass} ${className}`}
+      className={`boardly-ad-contain relative w-full min-w-0 max-w-full overflow-hidden box-border rounded-[12px] text-white ${paddingClass} ${className}`}
       style={{
         background: accentStyle.background,
         boxShadow: accentStyle.shadow,
@@ -1098,34 +1165,13 @@ export function BoardlyAd({
           />
         </div>
 
-        {/* Real Countdown Boxes (ONLY rendered when a real future endDate is provided) */}
-        {countdown && (
-          <div
-            className="grid grid-cols-4 gap-1.5 sm:gap-2 max-w-[300px]"
-            aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours ${countdown.minutes} minutes`}
-          >
-            {[
-              { label: 'Days', value: pad2(countdown.days) },
-              { label: 'Hrs', value: pad2(countdown.hours) },
-              { label: 'Min', value: pad2(countdown.minutes) },
-              { label: 'Sec', value: pad2(countdown.seconds) },
-            ].map((unit) => (
-              <div
-                key={unit.label}
-                className="rounded-[8px] border border-white/25 bg-white/12 px-1.5 py-1.5 text-center"
-              >
-                <div
-                  className="text-sm sm:text-base font-extrabold tabular-nums text-white leading-none"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  {unit.value}
-                </div>
-                <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
-                  {unit.label}
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Real Countdown Boxes (ONLY rendered when a real future endDate is provided; isolated timer) */}
+        {targetEndMs && (
+          <AdCountdownGrid
+            targetEndMs={targetEndMs}
+            variant="card"
+            active={isPreview || showAds}
+          />
         )}
 
         {/* Optional Real Highlights List (used in Pro/Plus upgrade popups) */}
@@ -1175,7 +1221,7 @@ export function BoardlyAd({
       </div>
     </aside>
   );
-}
+});
 
 /**
  * Self-contained rotating Boardly ad wrapper that automatically:
@@ -1193,7 +1239,7 @@ export interface RotatingBoardlyAdProps {
   wrapperClassName?: string;
 }
 
-export function RotatingBoardlyAd({
+export const RotatingBoardlyAd = memo(function RotatingBoardlyAd({
   variant,
   slotKey,
   slideCount = 5,
@@ -1275,6 +1321,17 @@ export function RotatingBoardlyAd({
     setSlotClosed(true);
   }, []);
 
+  const handlePosterSlideDismiss = useCallback((adId: string) => {
+    dismissAdForSession(adId);
+  }, []);
+
+  const handleSingleDismiss = useCallback(() => {
+    if (singleAd) {
+      dismissAdForSession(singleAd.id);
+    }
+    setSlotClosed(true);
+  }, [singleAd]);
+
   if (!canShow || slotClosed) return null;
 
   const wrapIfNeeded = (node: React.ReactNode) =>
@@ -1302,10 +1359,8 @@ export function RotatingBoardlyAd({
         slides={posterSlides}
         promoEndDate={promoEndDate}
         slotId={slotKey}
-        onSlideDismiss={(adId) => {
-          dismissAdForSession(adId);
-        }}
-        onDismiss={() => setSlotClosed(true)}
+        onSlideDismiss={handlePosterSlideDismiss}
+        onDismiss={handleStripDismiss}
         className={className}
       />
     );
@@ -1327,13 +1382,10 @@ export function RotatingBoardlyAd({
       endDate={singleAd.requiresPromoActive ? promoEndDate : null}
       slotId={slotKey}
       offerId={singleAd.id}
-      onDismiss={() => {
-        dismissAdForSession(singleAd.id);
-        setSlotClosed(true);
-      }}
+      onDismiss={handleSingleDismiss}
       className={className}
     />
   );
-}
+});
 
 export default BoardlyAd;

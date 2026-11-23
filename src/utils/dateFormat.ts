@@ -370,21 +370,43 @@ export function getPktDateGroupLabel(
 let sharedTickNowMs = getNowMs();
 const tickSubscribers = new Set<(now: number) => void>();
 let tickIntervalId: ReturnType<typeof setInterval> | null = null;
+let tickVisibilityListenerAttached = false;
+
+function broadcastSharedTick(): void {
+  sharedTickNowMs = getNowMs();
+  for (const sub of tickSubscribers) {
+    sub(sharedTickNowMs);
+  }
+}
+
+function handleTickVisibilityChange(): void {
+  if (typeof document !== 'undefined' && !document.hidden && tickSubscribers.size > 0) {
+    broadcastSharedTick();
+  }
+}
 
 function ensureTickRunning(): void {
   if (tickIntervalId !== null || typeof window === 'undefined') return;
   tickIntervalId = setInterval(() => {
-    sharedTickNowMs = getNowMs();
-    for (const sub of tickSubscribers) {
-      sub(sharedTickNowMs);
-    }
+    if (typeof document !== 'undefined' && document.hidden) return;
+    broadcastSharedTick();
   }, 30_000);
+  if (!tickVisibilityListenerAttached && typeof document !== 'undefined') {
+    tickVisibilityListenerAttached = true;
+    document.addEventListener('visibilitychange', handleTickVisibilityChange, { passive: true });
+  }
 }
 
 function stopTickIfIdle(): void {
-  if (tickSubscribers.size === 0 && tickIntervalId !== null) {
-    clearInterval(tickIntervalId);
-    tickIntervalId = null;
+  if (tickSubscribers.size === 0) {
+    if (tickIntervalId !== null) {
+      clearInterval(tickIntervalId);
+      tickIntervalId = null;
+    }
+    if (tickVisibilityListenerAttached && typeof document !== 'undefined') {
+      tickVisibilityListenerAttached = false;
+      document.removeEventListener('visibilitychange', handleTickVisibilityChange);
+    }
   }
 }
 

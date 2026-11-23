@@ -1,4 +1,4 @@
-import { jsPDF } from 'jspdf';
+import type { jsPDF as JsPDFInstance } from 'jspdf';
 import { cleanMathForPdf, type PdfExportProgress } from './testPdfExporter';
 import { drawVectorDottedLogoOnPdf } from './logoDottedSvg';
 import type { D1FormulaChapterRow, D1FormulaItemRow } from '../constants/formulaVaultSeed';
@@ -19,7 +19,7 @@ export interface ExportFormulaSheetPdfOptions {
  * 2. Large centered BLACK dotted Boardly logo (icon + "Boardly" wordmark)
  *    drawn as pure vector circles at ~8% black opacity (RGB [233, 233, 233] on white paper).
  */
-function stampGrandLineBackgroundWatermarks(doc: jsPDF, pageWidth = 210): void {
+function stampGrandLineBackgroundWatermarks(doc: JsPDFInstance, pageWidth = 210): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(242, 245, 249);
@@ -158,6 +158,7 @@ export async function exportFormulaSheetToPdf(options: ExportFormulaSheetPdfOpti
   const formattedDate = new Date().toLocaleDateString('en-GB');
   const totalFormulas = formulas.length;
 
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

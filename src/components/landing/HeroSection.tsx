@@ -1,8 +1,9 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { PhoneMockup } from './PhoneMockup';
 
-export function HeroSection() {
+export const HeroSection = React.memo(function HeroSection() {
   return (
     <section
       className="relative overflow-hidden isolate"
@@ -113,6 +114,6 @@ export function HeroSection() {
       </div>
     </section>
   );
-}
+});
 
 export default HeroSection;

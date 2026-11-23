@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Minus } from 'lucide-react';
 
 const FAQS = [
@@ -28,7 +28,7 @@ const FAQS = [
   },
 ];
 
-export function FaqSection() {
+export const FaqSection = React.memo(function FaqSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   const [isVisible, setIsVisible] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -181,6 +181,6 @@ export function FaqSection() {
       </div>
     </section>
   );
-}
+});
 
 export default FaqSection;

@@ -1710,23 +1710,30 @@ export default defineConfig({
     '__BUILD_TIME__': JSON.stringify(new Date().toUTCString()),
     '__BUILD_ID__': JSON.stringify('boardly-' + Date.now().toString(36)),
   },
+  esbuild: {
+    drop: ['debugger'],
+    pure: ['console.log', 'console.debug'],
+  },
   build: {
-    target: 'esnext',
+    target: 'es2020',
+    minify: 'esbuild',
+    cssMinify: 'esbuild',
     cssCodeSplit: true,
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes('preload-helper')) return 'vendor-react';
           if (id.includes('node_modules')) {
-            if (id.includes('three')) return 'vendor-three';
-            if (id.includes('jspdf')) return 'vendor-pdf';
-            if (id.includes('katex')) return 'vendor-math';
-            if (id.includes('lucide-react')) return 'vendor-icons';
-            if (id.includes('framer-motion')) return 'vendor-motion';
-            if (id.includes('firebase')) return 'vendor-firebase';
-            if (id.includes('html2canvas')) return 'vendor-html2canvas';
-            if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
-            if (id.includes('@tanstack')) return 'vendor-query';
+            if (id.includes('/node_modules/three/')) return 'vendor-three';
+            if (id.includes('/node_modules/jspdf/') || id.includes('/node_modules/fflate/') || id.includes('/node_modules/canvg/')) return 'vendor-pdf';
+            if (id.includes('/node_modules/katex/')) return 'vendor-math';
+            if (id.includes('/node_modules/lucide-react/')) return 'vendor-icons';
+            if (id.includes('/node_modules/framer-motion/')) return 'vendor-motion';
+            if (id.includes('/node_modules/firebase/') || id.includes('/node_modules/@firebase/')) return 'vendor-firebase';
+            if (id.includes('/node_modules/html2canvas/')) return 'vendor-html2canvas';
+            if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/scheduler/')) return 'vendor-react';
+            if (id.includes('/node_modules/@tanstack/')) return 'vendor-query';
           }
         },
       },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { KobanIcon } from '../koban/KobanIcon';
 import { usePlansConfig } from '@/hooks/usePlansConfig';
@@ -12,7 +12,7 @@ const KOBAN_FEATURES = [
   'Purchased Kobans never expire in your student wallet',
 ];
 
-export function PricingSection() {
+export const PricingSection = React.memo(function PricingSection() {
   const { config: plansConfig } = usePlansConfig();
   const [isVisible, setIsVisible] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -328,6 +328,6 @@ export function PricingSection() {
       </div>
     </section>
   );
-}
+});
 
 export default PricingSection;

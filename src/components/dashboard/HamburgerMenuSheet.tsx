@@ -14,7 +14,12 @@ import {
 } from 'lucide-react';
 import { clearSecurityStatusCache } from '@/hooks/useSecurityStatus';
 import { clearCachedRewardsState } from '@/services/rewardsService';
-import { BoardlySettingsFlow, BOARDLY_APP_VERSION } from '@/components/settings/BoardlySettingsFlow';
+
+const LazyBoardlySettingsFlow = React.lazy(() =>
+  import('@/components/settings/BoardlySettingsFlow').then((m) => ({
+    default: m.BoardlySettingsFlow,
+  }))
+);
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -40,7 +45,7 @@ export interface DashboardMenuContentProps {
   showCoinBalanceInStore?: boolean;
 }
 
-export const APP_VERSION = BOARDLY_APP_VERSION;
+export const APP_VERSION = 'v1.0.0';
 
 export function clearCachedAuthAndAdminStorage() {
   clearSecurityStatusCache();
@@ -257,11 +262,13 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({ isOpen, 
       aria-modal="true"
       aria-label="Settings and more"
     >
-      <BoardlySettingsFlow
-        onClose={onClose}
-        onAfterNavigate={onClose}
-        scrollContainer="self"
-      />
+      <React.Suspense fallback={null}>
+        <LazyBoardlySettingsFlow
+          onClose={onClose}
+          onAfterNavigate={onClose}
+          scrollContainer="self"
+        />
+      </React.Suspense>
     </div>,
     document.body
   );

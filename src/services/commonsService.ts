@@ -32,7 +32,15 @@ import {
   invalidateSwrCache,
   consumeEarlyPostsFetch,
 } from '@/lib/swrCache';
-import seedPostsDataset from '../../data/cloudflare_d1_posts.json';
+let seedPostsDatasetPromise: Promise<{ posts?: Record<string, any>[] } | null> | null = null;
+async function loadSeedPostsDataset(): Promise<{ posts?: Record<string, any>[] } | null> {
+  if (!seedPostsDatasetPromise) {
+    seedPostsDatasetPromise = import('../../data/cloudflare_d1_posts.json')
+      .then((mod) => (mod.default || mod) as { posts?: Record<string, any>[] })
+      .catch(() => null);
+  }
+  return seedPostsDatasetPromise;
+}
 
 import {
   POST_LIMITS,
@@ -959,14 +967,19 @@ export async function fetchCommonsPosts(options: {
 
     // 3. Fallback to bundled canonical D1 seed posts if the remote endpoint returned 0 posts
     // on a public feed request ('all' or 'trending')
-    const canFallbackToSeed =
+    const shouldTrySeedFallback =
+      (!data || !Array.isArray(data.posts) || data.posts.length === 0) &&
       (!options.feedTab || options.feedTab === 'all' || options.feedTab === 'trending') &&
-      !options.searchQuery?.trim() &&
-      Array.isArray((seedPostsDataset as any)?.posts) &&
-      (seedPostsDataset as any).posts.length > 0;
+      !options.searchQuery?.trim();
 
-    if ((!data || !Array.isArray(data.posts) || data.posts.length === 0) && canFallbackToSeed) {
-      let seedRows = ((seedPostsDataset as any).posts as Record<string, any>[]).filter(
+    const seedPostsDataset = shouldTrySeedFallback ? await loadSeedPostsDataset() : null;
+    const canFallbackToSeed =
+      shouldTrySeedFallback &&
+      Array.isArray(seedPostsDataset?.posts) &&
+      seedPostsDataset.posts.length > 0;
+
+    if (canFallbackToSeed && seedPostsDataset?.posts) {
+      let seedRows = (seedPostsDataset.posts as Record<string, any>[]).filter(
         (p) => !Number(p.is_hidden || 0)
       );
       if (options.subject && options.subject !== 'all') {
@@ -1150,17 +1163,20 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
         // Fallback to seedPostsDataset below
       }
 
-      if (!rawPost && Array.isArray((seedPostsDataset as any)?.posts)) {
-        const cleanTarget = decodeURIComponent(postIdOrSlug).trim();
-        const seedMatch = ((seedPostsDataset as any).posts as Record<string, any>[]).find(
-          (sp) =>
-            sp.id === cleanTarget ||
-            sp.id === extractedId ||
-            sp.slug === cleanTarget ||
-            cleanTarget.startsWith(`${sp.id}-`)
-        );
-        if (seedMatch && !Number(seedMatch.is_hidden || 0)) {
-          rawPost = seedMatch;
+      if (!rawPost) {
+        const seedPostsDataset = await loadSeedPostsDataset();
+        if (Array.isArray(seedPostsDataset?.posts)) {
+          const cleanTarget = decodeURIComponent(postIdOrSlug).trim();
+          const seedMatch = (seedPostsDataset.posts as Record<string, any>[]).find(
+            (sp) =>
+              sp.id === cleanTarget ||
+              sp.id === extractedId ||
+              sp.slug === cleanTarget ||
+              cleanTarget.startsWith(`${sp.id}-`)
+          );
+          if (seedMatch && !Number(seedMatch.is_hidden || 0)) {
+            rawPost = seedMatch;
+          }
         }
       }
 

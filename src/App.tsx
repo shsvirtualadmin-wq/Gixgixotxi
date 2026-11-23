@@ -87,7 +87,9 @@ const AdminLayout = lazyWithRetry(() =>
 const RoleGuard = lazyWithRetry(() =>
   import('./components/auth/RoleGuard').then((m) => ({ default: m.RoleGuard }))
 );
-import { DashboardShell } from './components/dashboard/DashboardShell';
+const DashboardShell = lazyWithRetry(() =>
+  import('./components/dashboard/DashboardShell').then((m) => ({ default: m.DashboardShell }))
+);
 
 // Public Marketing, Knowledge & Community routes
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));

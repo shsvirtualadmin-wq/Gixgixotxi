@@ -4,32 +4,36 @@ import { Cpu, MessageSquare, Calculator, Users, Flame } from 'lucide-react';
 
 const LazyMathText = lazy(() => import('../ui/MathText'));
 
-export function FeaturesGrid() {
+export const FeaturesGrid = React.memo(function FeaturesGrid() {
   const [isVisible, setIsVisible] = useState(false);
+  const [isInView, setIsInView] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       setIsVisible(true);
+      setIsInView(true);
       return;
     }
 
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     if (mediaQuery.matches) {
       setIsVisible(true);
+      setIsInView(true);
       return;
     }
 
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            observer.disconnect();
-          }
-        });
+        const entry = entries[0];
+        if (!entry) return;
+        const intersecting = entry.isIntersecting;
+        setIsInView(intersecting);
+        if (intersecting) {
+          setIsVisible(true);
+        }
       },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+      { threshold: 0.01, rootMargin: '120px 0px' }
     );
 
     if (sectionRef.current) {
@@ -43,7 +47,9 @@ export function FeaturesGrid() {
     <section
       ref={sectionRef}
       id="features"
-      className="relative isolate py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
+      className={`relative isolate py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section ${
+        !isInView ? 'pause-animations-offscreen' : ''
+      }`}
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
@@ -315,6 +321,6 @@ export function FeaturesGrid() {
       </div>
     </section>
   );
-}
+});
 
 export default FeaturesGrid;

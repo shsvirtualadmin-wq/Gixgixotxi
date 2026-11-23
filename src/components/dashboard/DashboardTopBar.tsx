@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Sun, Moon, ArrowLeft, Sparkles } from 'lucide-react';
@@ -13,9 +13,12 @@ import { getDisplayName } from '@/utils/displayName';
 import { getEquippedLoadout } from '@/utils/userStateSource';
 import {
   DashboardMenuContent,
-  HamburgerMenuSheet,
   clearCachedAuthAndAdminStorage,
 } from './HamburgerMenuSheet';
+
+const LazyHamburgerMenuSheet = lazy(() =>
+  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
+);
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
@@ -374,11 +377,13 @@ export function DashboardTopBar({
       </header>
 
       {/* Mobile (<640px): Tapping avatar opens the unified Hamburger Bottom Sheet */}
-      {isMobileViewport && (
-        <HamburgerMenuSheet
-          isOpen={menuOpen}
-          onClose={() => setMenuOpen(false)}
-        />
+      {isMobileViewport && menuOpen && (
+        <Suspense fallback={null}>
+          <LazyHamburgerMenuSheet
+            isOpen={menuOpen}
+            onClose={() => setMenuOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Desktop (>=640px): Portal-mounted dimmed/blurred backdrop + Nothing OS Avatar Dropdown */}

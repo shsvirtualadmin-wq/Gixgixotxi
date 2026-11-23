@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Compass, Zap, TrendingUp } from 'lucide-react';
 
 const STEPS = [
@@ -28,22 +28,23 @@ const STEPS = [
   },
 ];
 
-export function HowItWorks() {
+export const HowItWorks = React.memo(function HowItWorks() {
   const [isVisible, setIsVisible] = useState(false);
+  const [isInView, setIsInView] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!sectionRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            observer.disconnect();
-          }
-        });
+        const entry = entries[0];
+        if (!entry) return;
+        setIsInView(entry.isIntersecting);
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
       },
-      { threshold: 0.15 }
+      { threshold: 0.01, rootMargin: '120px 0px' }
     );
     observer.observe(sectionRef.current);
     return () => observer.disconnect();
@@ -52,7 +53,9 @@ export function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className={`relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section ${
+        !isInView ? 'pause-animations-offscreen' : ''
+      }`}
     >
       <div className="boardly-container">
         {/* Centered Section Header */}
@@ -154,4 +157,4 @@ export function HowItWorks() {
       </div>
     </section>
   );
-}
+});

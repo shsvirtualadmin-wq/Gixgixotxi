@@ -56,7 +56,7 @@ const TABS: { id: 0 | 1 | 2 | 3; label: string }[] = [
   { id: 3, label: 'Arena' },
 ];
 
-export function ScrollDrivenPreview() {
+export const ScrollDrivenPreview = React.memo(function ScrollDrivenPreview() {
   const [activeScreen, setActiveScreen] = useState<0 | 1 | 2 | 3>(0);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -112,7 +112,7 @@ export function ScrollDrivenPreview() {
       (entries) => {
         setIsInView(Boolean(entries[0]?.isIntersecting));
       },
-      { threshold: 0.05 }
+      { threshold: 0.01, rootMargin: '120px 0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -626,6 +626,6 @@ export function ScrollDrivenPreview() {
       </div>
     </section>
   );
-}
+});
 
 export default ScrollDrivenPreview;

@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getSessionStatus } from '@/utils/homeUrl';
@@ -5,9 +6,12 @@ import { BackgroundCanvas } from '../BackgroundCanvas';
 import { Navbar } from './Navbar';
 import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
-import { AppLayout } from './AppLayout';
 import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
 import { RotatingBoardlyAd } from '@/components/BoardlyAd';
+
+const LazyAppLayout = lazy(() =>
+  import('./AppLayout').then((m) => ({ default: m.AppLayout }))
+);
 
 /**
  * PublicLayout:
@@ -32,7 +36,11 @@ export function PublicLayout() {
     if (isHomePage) {
       return <Navigate to="/dashboard/commons" replace />;
     }
-    return <AppLayout />;
+    return (
+      <BoardlySuspenseBoundary variant="page">
+        <LazyAppLayout />
+      </BoardlySuspenseBoundary>
+    );
   }
 
   // Signed-out session (or session still resolving) -> PublicLayout

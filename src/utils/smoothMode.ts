@@ -53,37 +53,6 @@ export function detectDefaultSmoothMode(): boolean {
 }
 
 let visibilityListenerRegistered = false;
-let scrollPauseListenerRegistered = false;
-
-function ensureScrollPauseObserver(): void {
-  if (scrollPauseListenerRegistered || typeof window === 'undefined' || typeof document === 'undefined') {
-    return;
-  }
-  scrollPauseListenerRegistered = true;
-
-  let scrollTimer: ReturnType<typeof setTimeout> | null = null;
-  let isScrollingActive = false;
-
-  const handleScroll = () => {
-    const root = document.documentElement;
-    if (!isScrollingActive) {
-      isScrollingActive = true;
-      root.classList.add('is-scrolling');
-      root.setAttribute('data-scrolling', 'true');
-    }
-    if (scrollTimer !== null) {
-      clearTimeout(scrollTimer);
-    }
-    scrollTimer = setTimeout(() => {
-      isScrollingActive = false;
-      root.classList.remove('is-scrolling');
-      root.removeAttribute('data-scrolling');
-      scrollTimer = null;
-    }, 150);
-  };
-
-  window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
-}
 
 function ensureTabVisibilityObserver(): void {
   if (visibilityListenerRegistered || typeof document === 'undefined') return;
@@ -102,12 +71,10 @@ function ensureTabVisibilityObserver(): void {
 
   updateVisibility();
   document.addEventListener('visibilitychange', updateVisibility, { passive: true });
-  ensureScrollPauseObserver();
 }
 
 if (typeof document !== 'undefined') {
   ensureTabVisibilityObserver();
-  ensureScrollPauseObserver();
 }
 
 /**
@@ -131,7 +98,6 @@ export function getSmoothMode(): boolean {
 export function applySmoothModeToDocument(enabled: boolean): void {
   if (typeof document === 'undefined') return;
   ensureTabVisibilityObserver();
-  ensureScrollPauseObserver();
   const root = document.documentElement;
   if (enabled) {
     root.classList.add('smooth-mode');

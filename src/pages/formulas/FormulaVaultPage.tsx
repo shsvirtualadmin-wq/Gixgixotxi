@@ -41,7 +41,6 @@ import {
 } from '../../services/formulaVaultService';
 import { MathText } from '../../components/ui/MathText';
 import { useEffectivePlan } from '../../hooks/useEffectivePlan';
-import { exportFormulaSheetToPdf } from '../../utils/formulaPdfExporter';
 import { useBodyScrollLock, safetyCleanupScrollLocks } from '../../utils/scrollLock';
 import { AdSlot } from '@/components/AdSlot';
 import { useAdsConfig } from '@/services/adsConfigService';
@@ -767,6 +766,7 @@ export const FormulaVaultPage: React.FC = () => {
       const studentDisplay =
         user?.displayName || user?.email?.split('@')[0] || 'Boardly Pro Student';
 
+      const { exportFormulaSheetToPdf } = await import('../../utils/formulaPdfExporter');
       await exportFormulaSheetToPdf({
         chapter,
         subjectName: subjectLabel,

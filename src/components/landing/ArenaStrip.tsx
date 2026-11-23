@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Trophy } from 'lucide-react';
 import { getGlobalGrandLineTopScorers } from '@/services/ambassadorTestService';
@@ -9,10 +9,11 @@ interface TopScorer {
   score: number;
 }
 
-export function ArenaStrip() {
+export const ArenaStrip = React.memo(function ArenaStrip() {
   const [topScorers, setTopScorers] = useState<TopScorer[]>([]);
   const [loading, setLoading] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
+  const [isInView, setIsInView] = useState(false);
   const sectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -33,14 +34,14 @@ export function ArenaStrip() {
     if (!sectionRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            observer.disconnect();
-          }
-        });
+        const entry = entries[0];
+        if (!entry) return;
+        setIsInView(entry.isIntersecting);
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
       },
-      { threshold: 0.15 }
+      { threshold: 0.01, rootMargin: '120px 0px' }
     );
     observer.observe(sectionRef.current);
     return () => observer.disconnect();
@@ -50,7 +51,9 @@ export function ArenaStrip() {
     <section
       id="grand-line"
       ref={sectionRef}
-      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className={`relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section ${
+        !isInView ? 'pause-animations-offscreen' : ''
+      }`}
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
@@ -181,4 +184,4 @@ export function ArenaStrip() {
       </div>
     </section>
   );
-}
+});

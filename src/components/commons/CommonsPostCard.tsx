@@ -399,7 +399,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   return (
     <article
       ref={cardRef}
-      className="boardly-post-card group relative glass-card rounded-[28px] p-4 sm:p-6 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-all duration-200 hover:border-[var(--glass-border-hover)]"
+      className={`boardly-post-card group relative glass-card rounded-[28px] p-4 sm:p-6 w-full max-w-full min-w-0 box-border overflow-x-hidden transition-all duration-200 hover:border-[var(--glass-border-hover)] ${
+        menuOpen ? '' : 'cv-auto-card'
+      }`}
     >
       {/* ── Pinned Post Indicator (Super Admin) ── */}
       {isPinned && (

@@ -35,7 +35,9 @@ import {
   useNavStore,
   type BottomNavTabId,
 } from '@/lib/navStore';
-import { HamburgerMenuSheet } from './HamburgerMenuSheet';
+const LazyHamburgerMenuSheet = React.lazy(() =>
+  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
+);
 
 interface DockTabItem {
   id: BottomNavTabId;
@@ -177,8 +179,18 @@ function DashboardBottomNavComponent() {
 
     runModalCheck();
 
-    const observer = new MutationObserver(scheduleModalCheck);
-    observer.observe(document.body, {
+    const MODAL_SELECTOR =
+      '[data-fullscreen-modal="true"], [data-modal-layer="true"], [role="dialog"], [aria-modal="true"]';
+
+    const nodeMayBeModal = (node: Node): boolean => {
+      if (node.nodeType !== 1) return false;
+      const el = node as Element;
+      if (el.matches?.(MODAL_SELECTOR)) return true;
+      return Boolean(el.querySelector?.(MODAL_SELECTOR));
+    };
+
+    const bodyAttrObserver = new MutationObserver(scheduleModalCheck);
+    bodyAttrObserver.observe(document.body, {
       attributes: true,
       attributeFilter: [
         'data-fullscreen-modal-open',
@@ -188,6 +200,27 @@ function DashboardBottomNavComponent() {
         'data-chat-open',
         'class',
       ],
+      subtree: false,
+    });
+
+    const modalChildObserver = new MutationObserver((mutations) => {
+      for (let i = 0; i < mutations.length; i++) {
+        const m = mutations[i];
+        for (let j = 0; j < m.addedNodes.length; j++) {
+          if (nodeMayBeModal(m.addedNodes[j])) {
+            scheduleModalCheck();
+            return;
+          }
+        }
+        for (let j = 0; j < m.removedNodes.length; j++) {
+          if (nodeMayBeModal(m.removedNodes[j])) {
+            scheduleModalCheck();
+            return;
+          }
+        }
+      }
+    });
+    modalChildObserver.observe(document.body, {
       childList: true,
       subtree: true,
     });
@@ -197,7 +230,8 @@ function DashboardBottomNavComponent() {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
-      observer.disconnect();
+      bodyAttrObserver.disconnect();
+      modalChildObserver.disconnect();
       window.removeEventListener('boardly:modal-change', scheduleModalCheck);
     };
   }, [location.pathname, location.search]);
@@ -817,10 +851,14 @@ function DashboardBottomNavComponent() {
         : navBarElement}
 
       {/* ─── FULL-SCREEN MENU PAGE (SLIDES IN FROM RIGHT) ───────────────── */}
-      <HamburgerMenuSheet
-        isOpen={isMenuOpen}
-        onClose={handleCloseMenu}
-      />
+      {isMenuOpen && (
+        <React.Suspense fallback={null}>
+          <LazyHamburgerMenuSheet
+            isOpen={isMenuOpen}
+            onClose={handleCloseMenu}
+          />
+        </React.Suspense>
+      )}
     </>
   );
 }

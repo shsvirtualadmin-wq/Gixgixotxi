@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useCallback } from 'react';
+import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type {
   D1UniversityAttemptRecord,
   D1WeakChapterItem,
@@ -43,6 +43,42 @@ function getTimeOfDayGreeting(): string {
   return 'Late night study session';
 }
 
+const CoPilotLiveClock = memo(function CoPilotLiveClock({ active }: { active: boolean }) {
+  const [clockText, setClockText] = useState<string>(() => formatClock(new Date()));
+
+  useEffect(() => {
+    if (!active) return;
+    setClockText(formatClock(new Date()));
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setClockText(formatClock(new Date()));
+    }, 1000);
+    const onVisibility = () => {
+      if (typeof document !== 'undefined' && !document.hidden) {
+        setClockText(formatClock(new Date()));
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility, { passive: true });
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [active]);
+
+  return (
+    <span
+      className="text-[10.5px] sm:text-[11px] font-bold tabular-nums shrink-0"
+      style={{
+        fontFamily: 'var(--font-mono)',
+        color: 'var(--text-muted)',
+      }}
+      data-testid="copilot-live-clock"
+    >
+      {clockText}
+    </span>
+  );
+});
+
 export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
   firstName,
   streak,
@@ -52,14 +88,20 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
 }: BoardlyCoPilotCardProps) {
   const { smoothMode } = useSmoothMode();
   const safeName = firstName || 'Student';
+  const cardRef = useRef<HTMLButtonElement | null>(null);
+  const [inViewport, setInViewport] = useState(true);
 
-  // Live ticking clock
-  const [clockText, setClockText] = useState<string>(() => formatClock(new Date()));
   useEffect(() => {
-    const id = setInterval(() => {
-      setClockText(formatClock(new Date()));
-    }, 1000);
-    return () => clearInterval(id);
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setInViewport(Boolean(entries[0]?.isIntersecting));
+      },
+      { threshold: 0.01 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   // Build messages strictly from real loaded data (never invent counts)
@@ -143,20 +185,22 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
     return () => clearTimeout(timer);
   }, [typedLen, activeMessage, smoothMode]);
 
-  // Rotate message every 9s
+  // Rotate message every 9s (paused while offscreen or tab hidden)
   useEffect(() => {
-    if (messages.length <= 1) return;
+    if (messages.length <= 1 || !inViewport) return;
     const rotateTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setMsgIndex((prev) => (prev + 1) % messages.length);
     }, 9000);
     return () => clearInterval(rotateTimer);
-  }, [messages.length]);
+  }, [messages.length, inViewport]);
 
-  // Periodic natural eye blink (transform/opacity only)
+  // Periodic natural eye blink (transform/opacity only; paused while offscreen or tab hidden)
   useEffect(() => {
-    if (smoothMode) return;
+    if (smoothMode || !inViewport) return;
     let blinkTimeout: ReturnType<typeof setTimeout> | null = null;
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       setIsBlinking(true);
       blinkTimeout = setTimeout(() => {
         setIsBlinking(false);
@@ -166,7 +210,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
       clearInterval(interval);
       if (blinkTimeout) clearTimeout(blinkTimeout);
     };
-  }, [smoothMode]);
+  }, [smoothMode, inViewport]);
 
   // Tap skips typing if currently typing, or rotates immediately to next message
   const handleCardTap = useCallback(() => {
@@ -182,6 +226,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       onClick={handleCardTap}
       aria-label="Boardly Co-Pilot live message — tap to skip"
@@ -313,16 +358,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
             </span>
           </div>
 
-          <span
-            className="text-[10.5px] sm:text-[11px] font-bold tabular-nums shrink-0"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--text-muted)',
-            }}
-            data-testid="copilot-live-clock"
-          >
-            {clockText}
-          </span>
+          <CoPilotLiveClock active={inViewport} />
         </div>
 
         <p

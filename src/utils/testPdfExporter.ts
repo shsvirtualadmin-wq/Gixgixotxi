@@ -1,4 +1,4 @@
-import { jsPDF } from 'jspdf';
+import type { jsPDF as JsPDFInstance } from 'jspdf';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getUniversityRulesSummary } from '@/constants/universityCriteria';
@@ -215,7 +215,7 @@ async function resolveQuestionKeys(questions: AttemptQuestion[]): Promise<Attemp
  *    drawn as pure vector circles at ~8% black opacity (RGB [233, 233, 233] on white paper)
  *    so it stays 100% sharp at any zoom level and repeats on EVERY page behind the content.
  */
-function stampPageBackgroundWatermarks(doc: jsPDF, pageWidth = 210): void {
+function stampPageBackgroundWatermarks(doc: JsPDFInstance, pageWidth = 210): void {
   // 1. Faint Diagonal Watermark Text: Boardly · boardly.cfd
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
@@ -366,7 +366,8 @@ export async function exportDrillResultToPdf(options: ExportDrillResultPdfOption
       /mock|mdcat|nums|etea|ecat/i.test(testTitle) || totalQuestions >= 60;
     const modePillText = isAdminAnswerKey ? 'OFFICIAL KEY' : isFullMock ? 'FULL MOCK' : 'CHAPTER DRILL';
 
-    // Initialize A4 PDF document
+    // Initialize A4 PDF document (lazy-loaded jsPDF)
+    const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -1086,6 +1087,7 @@ export async function exportTestToPdf(
   const OPT_LABELS = ['A', 'B', 'C', 'D'];
   const formattedDate = new Date().toLocaleDateString('en-GB');
 
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

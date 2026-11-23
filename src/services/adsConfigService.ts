@@ -289,23 +289,77 @@ interface MobileSlotEntry {
   id: string;
   el: HTMLElement;
   inViewport: boolean;
+  lastTop: number;
+  lastBottom: number;
+  lastHeight: number;
+  lastAllowed: boolean | null;
   notify: (allowed: boolean) => void;
 }
 
 const mobileSlots = new Map<string, MobileSlotEntry>();
+const elementToSlotId = new WeakMap<Element, string>();
 let currentWinnerId: string | null = null;
+let sharedIntersectionObserver: IntersectionObserver | null = null;
+let sharedResizeAttached = false;
+let sharedScrollAttached = false;
+let sharedRafId = 0;
 
-function recomputeMobileVisibleWinner(): void {
+function notifyIfChanged(entry: MobileSlotEntry, allowed: boolean): void {
+  if (entry.lastAllowed === allowed) return;
+  entry.lastAllowed = allowed;
+  entry.notify(allowed);
+}
+
+function updateSharedScrollListenerState(): void {
+  if (typeof window === 'undefined') return;
+  let visibleCount = 0;
+  if (window.innerWidth < 768) {
+    for (const entry of mobileSlots.values()) {
+      if (entry.inViewport) {
+        visibleCount++;
+        if (visibleCount >= 2) break;
+      }
+    }
+  }
+  const needScroll = visibleCount >= 2;
+  if (needScroll && !sharedScrollAttached) {
+    sharedScrollAttached = true;
+    window.addEventListener('scroll', scheduleSharedRecompute, { passive: true });
+  } else if (!needScroll && sharedScrollAttached) {
+    sharedScrollAttached = false;
+    window.removeEventListener('scroll', scheduleSharedRecompute);
+  }
+}
+
+function recomputeMobileVisibleWinner(measureLiveRects = false): void {
   if (typeof window === 'undefined') return;
   const isMobile = window.innerWidth < 768;
 
   if (!isMobile) {
     currentWinnerId = null;
-    mobileSlots.forEach((entry) => entry.notify(true));
+    mobileSlots.forEach((entry) => notifyIfChanged(entry, true));
+    updateSharedScrollListenerState();
+    return;
+  }
+
+  let visibleCount = 0;
+  for (const entry of mobileSlots.values()) {
+    if (entry.inViewport) visibleCount++;
+  }
+
+  // Fast path: 0 or 1 slot in viewport — zero layout reads needed!
+  if (visibleCount <= 1) {
+    currentWinnerId = null;
+    for (const entry of mobileSlots.values()) {
+      if (entry.inViewport) currentWinnerId = entry.id;
+      notifyIfChanged(entry, true);
+    }
+    updateSharedScrollListenerState();
     return;
   }
 
   // Among all slots currently intersecting the phone viewport, pick the top-most measurable one
+  const vh = window.innerHeight;
   let winner: MobileSlotEntry | null = null;
   let winnerTop = Infinity;
   let fallbackInViewport: MobileSlotEntry | null = null;
@@ -313,11 +367,15 @@ function recomputeMobileVisibleWinner(): void {
   for (const entry of mobileSlots.values()) {
     if (!entry.inViewport) continue;
     if (!fallbackInViewport) fallbackInViewport = entry;
-    const rect = entry.el.getBoundingClientRect();
-    // Skip elements completely outside the viewport
-    if (rect.height > 0 && (rect.bottom <= 0 || rect.top >= window.innerHeight)) continue;
-    if (rect.top < winnerTop) {
-      winnerTop = rect.top;
+    if (measureLiveRects) {
+      const rect = entry.el.getBoundingClientRect();
+      entry.lastTop = rect.top;
+      entry.lastBottom = rect.bottom;
+      entry.lastHeight = rect.height;
+    }
+    if (entry.lastHeight > 0 && (entry.lastBottom <= 0 || entry.lastTop >= vh)) continue;
+    if (entry.lastTop < winnerTop) {
+      winnerTop = entry.lastTop;
       winner = entry;
     }
   }
@@ -328,11 +386,44 @@ function recomputeMobileVisibleWinner(): void {
   // CRITICAL: Never hide a slot unless a DIFFERENT slot actually won the mobile viewport!
   for (const entry of mobileSlots.values()) {
     if (!entry.inViewport || !currentWinnerId) {
-      entry.notify(true);
+      notifyIfChanged(entry, true);
     } else {
-      entry.notify(entry.id === currentWinnerId);
+      notifyIfChanged(entry, entry.id === currentWinnerId);
     }
   }
+  updateSharedScrollListenerState();
+}
+
+function scheduleSharedRecompute(): void {
+  if (typeof window === 'undefined' || sharedRafId) return;
+  sharedRafId = window.requestAnimationFrame(() => {
+    sharedRafId = 0;
+    recomputeMobileVisibleWinner(true);
+  });
+}
+
+function ensureSharedObserver(): IntersectionObserver | null {
+  if (sharedIntersectionObserver || typeof IntersectionObserver === 'undefined') {
+    return sharedIntersectionObserver;
+  }
+  sharedIntersectionObserver = new IntersectionObserver(
+    (entries) => {
+      for (let i = 0; i < entries.length; i++) {
+        const hit = entries[i];
+        const slotId = elementToSlotId.get(hit.target);
+        if (!slotId) continue;
+        const slotEntry = mobileSlots.get(slotId);
+        if (!slotEntry) continue;
+        slotEntry.inViewport = Boolean(hit.isIntersecting);
+        slotEntry.lastTop = hit.boundingClientRect.top;
+        slotEntry.lastBottom = hit.boundingClientRect.bottom;
+        slotEntry.lastHeight = hit.boundingClientRect.height;
+      }
+      recomputeMobileVisibleWinner(false);
+    },
+    { threshold: 0.01 }
+  );
+  return sharedIntersectionObserver;
 }
 
 export function registerMobileAdSlot(
@@ -340,47 +431,55 @@ export function registerMobileAdSlot(
   el: HTMLElement,
   notify: (allowed: boolean) => void
 ): () => void {
-  const entry: MobileSlotEntry = { id, el, inViewport: false, notify };
-  mobileSlots.set(id, entry);
-
-  let observer: IntersectionObserver | null = null;
-  if (typeof IntersectionObserver !== 'undefined') {
-    observer = new IntersectionObserver(
-      (entries) => {
-        const hit = entries[0];
-        entry.inViewport = Boolean(hit && hit.isIntersecting);
-        recomputeMobileVisibleWinner();
-      },
-      { threshold: 0.01 }
-    );
-    observer.observe(el);
-  }
-
-  let rafId = 0;
-  const scheduleRecompute = () => {
-    if (rafId) return;
-    rafId = window.requestAnimationFrame(() => {
-      rafId = 0;
-      recomputeMobileVisibleWinner();
-    });
+  const entry: MobileSlotEntry = {
+    id,
+    el,
+    inViewport: false,
+    lastTop: Infinity,
+    lastBottom: 0,
+    lastHeight: 0,
+    lastAllowed: null,
+    notify,
   };
+  mobileSlots.set(id, entry);
+  elementToSlotId.set(el, id);
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', scheduleRecompute, { passive: true });
-    window.addEventListener('scroll', scheduleRecompute, { passive: true });
+  const observer = ensureSharedObserver();
+  observer?.observe(el);
+
+  if (typeof window !== 'undefined' && !sharedResizeAttached) {
+    sharedResizeAttached = true;
+    window.addEventListener('resize', scheduleSharedRecompute, { passive: true });
   }
 
   return () => {
-    if (observer) observer.disconnect();
-    if (rafId && typeof window !== 'undefined') {
-      window.cancelAnimationFrame(rafId);
-    }
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('resize', scheduleRecompute);
-      window.removeEventListener('scroll', scheduleRecompute);
-    }
+    sharedIntersectionObserver?.unobserve(el);
+    elementToSlotId.delete(el);
     mobileSlots.delete(id);
-    recomputeMobileVisibleWinner();
+
+    if (mobileSlots.size === 0) {
+      if (sharedIntersectionObserver) {
+        sharedIntersectionObserver.disconnect();
+        sharedIntersectionObserver = null;
+      }
+      if (sharedRafId && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(sharedRafId);
+        sharedRafId = 0;
+      }
+      if (typeof window !== 'undefined') {
+        if (sharedResizeAttached) {
+          sharedResizeAttached = false;
+          window.removeEventListener('resize', scheduleSharedRecompute);
+        }
+        if (sharedScrollAttached) {
+          sharedScrollAttached = false;
+          window.removeEventListener('scroll', scheduleSharedRecompute);
+        }
+      }
+      currentWinnerId = null;
+    } else {
+      recomputeMobileVisibleWinner(false);
+    }
   };
 }
 

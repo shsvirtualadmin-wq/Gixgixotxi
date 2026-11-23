@@ -1,11 +1,33 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HeartHandshake } from 'lucide-react';
 
-export function MissionSection() {
+export const MissionSection = React.memo(function MissionSection() {
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    const el = sectionRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setIsInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setIsInView(Boolean(entries[0]?.isIntersecting));
+      },
+      { threshold: 0.01, rootMargin: '120px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <section
+      ref={sectionRef}
       id="mission"
-      className="relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section"
+      className={`relative overflow-hidden isolate py-14 sm:py-20 lg:py-28 cv-auto-section ${
+        !isInView ? 'pause-animations-offscreen' : ''
+      }`}
       style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
     >
       <div className="boardly-container">
@@ -91,6 +113,6 @@ export function MissionSection() {
       </div>
     </section>
   );
-}
+});
 
 export default MissionSection;

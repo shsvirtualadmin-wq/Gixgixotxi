@@ -1,6 +1,7 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 
-export function TestCockpitCta() {
+export const TestCockpitCta = React.memo(function TestCockpitCta() {
   return (
     <section className="relative isolate py-12 sm:py-16 lg:py-20 overflow-hidden cv-auto-section">
       <div className="boardly-container relative z-10">
@@ -42,6 +43,6 @@ export function TestCockpitCta() {
       </div>
     </section>
   );
-}
+});
 
 export default TestCockpitCta;

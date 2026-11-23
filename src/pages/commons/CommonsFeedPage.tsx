@@ -315,12 +315,20 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
   const touchStartY = useRef(0);
 
   useEffect(() => {
+    let rafId = 0;
     const handleScroll = () => {
-      const over = window.scrollY > 380;
-      setShowBackToTop((prev) => (prev === over ? prev : over));
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        const over = window.scrollY > 380;
+        setShowBackToTop((prev) => (prev === over ? prev : over));
+      });
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, []);
 
   const scrollToTop = () => {
