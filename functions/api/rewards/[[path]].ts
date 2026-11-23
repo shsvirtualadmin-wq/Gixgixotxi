@@ -1687,18 +1687,23 @@ async function handleRewardsApiRequestInner(
       const prevAttempt = attempts[1];
       const latestClaim = claims[0];
 
-      const docLastActiveMs = Number(
-        uDoc?.lastPracticeAtMs || uDoc?.lastActiveAtMs || uDoc?.updatedAtMs || 0
+      const docLastActiveMs = Math.max(
+        0,
+        parseTimestampMs(uDoc?.lastPracticeAtMs) || 0,
+        parseTimestampMs(uDoc?.lastPracticeAt) || 0,
+        parseTimestampMs(uDoc?.lastActiveAtMs) || 0,
+        parseTimestampMs(uDoc?.lastActiveAt) || 0,
+        parseTimestampMs(uDoc?.updatedAtMs) || 0,
+        parseTimestampMs(uDoc?.updatedAt) || 0
       );
-      const latestActivityMs = Math.max(
-        Number(latestAttempt?.created_at || 0),
-        Number(latestClaim?.created_at || 0),
-        docLastActiveMs
-      );
+      const latestAttemptMs = parseTimestampMs(latestAttempt?.created_at) || 0;
+      const latestClaimMs = parseTimestampMs(latestClaim?.created_at) || 0;
+      const latestActivityMs = Math.max(latestAttemptMs, latestClaimMs, docLastActiveMs);
+      const hasRealActivity = latestActivityMs > 0;
 
       const pktToday = getPktDateString(nowMs);
       const practicedToday =
-        (latestActivityMs > 0 && getPktDateString(latestActivityMs) === pktToday) ||
+        (hasRealActivity && getPktDateString(latestActivityMs) === pktToday) ||
         claims.some((c) => c.pkt_date === pktToday);
 
       const streakCount = Math.max(
@@ -1706,9 +1711,9 @@ async function handleRewardsApiRequestInner(
         Number(uDoc?.streak ?? uDoc?.currentStreak ?? claims.length ?? 0)
       );
 
-      const msSinceLast =
-        latestActivityMs > 0 ? Math.max(0, nowMs - latestActivityMs) : 3 * 86_400_000;
-      const daysSinceLast = Math.floor(msSinceLast / 86_400_000);
+      const msSinceLast = hasRealActivity ? Math.max(0, nowMs - latestActivityMs) : null;
+      const daysSinceLast =
+        msSinceLast !== null ? Math.floor(msSinceLast / 86_400_000) : null;
 
       let statusType:
         | 'practicing_now'
@@ -1716,19 +1721,26 @@ async function handleRewardsApiRequestInner(
         | 'back_after_days'
         | 'streak_at_risk'
         | 'inactive' = 'inactive';
-      let statusText = `Hasn't practiced in ${Math.max(2, daysSinceLast)} days`;
+      let statusText =
+        daysSinceLast !== null
+          ? daysSinceLast === 1
+            ? "Hasn't practiced in 1 day"
+            : `Hasn't practiced in ${Math.max(1, daysSinceLast)} days`
+          : 'No practice recorded yet';
       let filterCategory: 'active' | 'at_risk' | 'inactive' = 'inactive';
       let actionType: 'nudge' | 'cheer' = 'nudge';
-      const eventAtMs = latestActivityMs > 0 ? latestActivityMs : nowMs - 2 * 86_400_000;
+      // Never fabricate a synthetic "2 days ago" timestamp when no real activity exists
+      const eventAtMs = hasRealActivity ? latestActivityMs : 0;
 
-      if (latestActivityMs > 0 && nowMs - latestActivityMs <= 20 * 60 * 1000) {
+      if (hasRealActivity && nowMs - latestActivityMs <= 20 * 60 * 1000) {
         statusType = 'practicing_now';
         statusText = 'Practicing now';
         filterCategory = 'active';
         actionType = 'cheer';
       } else if (
         latestAttempt &&
-        nowMs - Number(latestAttempt.created_at || 0) <= 24 * 60 * 60 * 1000
+        latestAttemptMs > 0 &&
+        nowMs - latestAttemptMs <= 24 * 60 * 60 * 1000
       ) {
         const totalQ = Math.max(1, Number(latestAttempt.total_questions || 20));
         const ansQ = Math.max(
@@ -1736,17 +1748,11 @@ async function handleRewardsApiRequestInner(
           Number(latestAttempt.answered_rows ?? uDoc?.lastTestScore ?? Math.round(totalQ * 0.8))
         );
         const pct = Math.max(0, Math.min(100, Math.round((ansQ / totalQ) * 100)));
-        if (
-          prevAttempt &&
-          Number(latestAttempt.created_at || 0) - Number(prevAttempt.created_at || 0) >=
-            2 * 86_400_000
-        ) {
+        const prevAttemptMs = parseTimestampMs(prevAttempt?.created_at) || 0;
+        if (prevAttemptMs > 0 && latestAttemptMs - prevAttemptMs >= 2 * 86_400_000) {
           const gapDays = Math.max(
             2,
-            Math.floor(
-              (Number(latestAttempt.created_at || 0) - Number(prevAttempt.created_at || 0)) /
-                86_400_000
-            )
+            Math.floor((latestAttemptMs - prevAttemptMs) / 86_400_000)
           );
           statusType = 'back_after_days';
           statusText = `Back after ${gapDays} days · ${pct}% score`;
@@ -1756,7 +1762,12 @@ async function handleRewardsApiRequestInner(
         }
         filterCategory = 'active';
         actionType = 'cheer';
-      } else if (!practicedToday && streakCount > 0 && daysSinceLast < 2) {
+      } else if (
+        !practicedToday &&
+        streakCount > 0 &&
+        daysSinceLast !== null &&
+        daysSinceLast < 2
+      ) {
         statusType = 'streak_at_risk';
         statusText = `Streak at risk (${streakCount}d streak)`;
         filterCategory = 'at_risk';
@@ -1766,10 +1777,18 @@ async function handleRewardsApiRequestInner(
         statusText = 'Practicing now';
         filterCategory = 'active';
         actionType = 'cheer';
-      } else {
-        const inactiveDays = Math.max(2, daysSinceLast);
+      } else if (daysSinceLast !== null) {
+        const inactiveDays = Math.max(1, daysSinceLast);
         statusType = 'inactive';
-        statusText = `Hasn't practiced in ${inactiveDays} days`;
+        statusText =
+          inactiveDays === 1
+            ? "Hasn't practiced in 1 day"
+            : `Hasn't practiced in ${inactiveDays} days`;
+        filterCategory = 'inactive';
+        actionType = 'nudge';
+      } else {
+        statusType = 'inactive';
+        statusText = 'No practice recorded yet';
         filterCategory = 'inactive';
         actionType = 'nudge';
       }

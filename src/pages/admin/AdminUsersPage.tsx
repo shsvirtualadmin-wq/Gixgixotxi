@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   RefreshCw,
@@ -12,6 +13,19 @@ import {
   Lock,
   Download,
   Sparkles,
+  MoreHorizontal,
+  ArrowUpDown,
+  RotateCcw,
+  X,
+  Clock,
+  Copy,
+  Check,
+  Crown,
+  UserCog,
+  FileBarChart2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Flame,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
@@ -28,10 +42,19 @@ import {
   cleanupOrphanUserProfiles,
   getUserDisplayName,
   bulkUpdateUsersPlan,
+  sortAdminUsers,
+  type AdminUserSortKey,
 } from '@/services/adminService';
 import { backfillAllPublicProfiles } from '@/services/publicProfileService';
 import { formatStudentId } from '@/utils/shortId';
 import { maskEmail } from '@/utils/privacy';
+import {
+  resolveUserJoinedAtMs,
+  resolveUserLastActiveAtMs,
+  formatPktJoinedDate,
+  formatPktExactTimestamp,
+  formatRelativeTimeHint,
+} from '@/utils/userDate';
 import type { UserProfile, UserTwoFactorBadgeLabel, UserTwoFactorSummary } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -50,190 +73,528 @@ type TwoFactorFilterValue =
   | 'Both'
   | 'Recovery pending';
 
+const SORT_OPTIONS: Array<{ value: AdminUserSortKey; label: string }> = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'questions', label: 'Most questions solved' },
+  { value: 'streak', label: 'Longest streak' },
+  { value: 'name', label: 'Name A–Z' },
+];
+
+function resolveEmailOrHandle(u: UserProfile, isGuestUser: boolean, isSuperAdmin: boolean): string {
+  if (isGuestUser) {
+    const cleanUser = String(u.username || '').trim().replace(/^@+/, '');
+    return cleanUser ? `@${cleanUser}` : '—';
+  }
+  const rawEmail = String(u.email || '').trim();
+  if (rawEmail) {
+    return isSuperAdmin ? rawEmail : maskEmail(rawEmail);
+  }
+  const cleanHandle = String(u.username || (u as any).handle || '')
+    .trim()
+    .replace(/^@+/, '');
+  return cleanHandle ? `@${cleanHandle}` : '—';
+}
+
+interface ActionMenuState {
+  user: UserProfile;
+  rect: DOMRect;
+}
+
+interface UserActionsMenuProps {
+  menuState: ActionMenuState | null;
+  onClose: () => void;
+  onSelect: (user: UserProfile, section?: UserOverrideSection) => void;
+  copiedUid: string | null;
+  onCopyId: (uid: string, value: string) => void;
+}
+
+interface AdminCheckboxProps {
+  checked: boolean;
+  indeterminate?: boolean;
+  ariaLabel: string;
+  onChange: () => void;
+}
+
+function AdminCheckbox({ checked, indeterminate = false, ariaLabel, onChange }: AdminCheckboxProps) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? 'mixed' : checked}
+      aria-label={ariaLabel}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange();
+      }}
+      className={`press-scale inline-flex items-center justify-center w-[17px] h-[17px] rounded-[5px] border transition-all cursor-pointer shrink-0 ${
+        checked || indeterminate
+          ? 'bg-[#D71921] border-[#D71921] text-white shadow-[0_2px_8px_rgba(215,25,33,0.4)]'
+          : 'bg-white/[0.04] border-white/25 hover:border-white/50 text-transparent'
+      }`}
+    >
+      {checked ? (
+        <Check size={11} strokeWidth={3} />
+      ) : indeterminate ? (
+        <span className="w-2 h-[2px] rounded-full bg-white" />
+      ) : null}
+    </button>
+  );
+}
+
+function UserActionsMenu({
+  menuState,
+  onClose,
+  onSelect,
+  copiedUid,
+  onCopyId,
+}: UserActionsMenuProps) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuState) return;
+    let scrollArmed = false;
+    const armTimer = window.setTimeout(() => {
+      scrollArmed = true;
+    }, 80);
+    const handlePointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const handleScroll = () => {
+      if (scrollArmed) onClose();
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      window.clearTimeout(armTimer);
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [menuState, onClose]);
+
+  if (!menuState || typeof document === 'undefined') return null;
+
+  const { user: u, rect } = menuState;
+  const isGuestUser = Boolean(
+    u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+  );
+  const studentId = formatStudentId(u);
+
+  const menuWidth = 216;
+  const estimatedHeight = isGuestUser ? 168 : 268;
+  const viewportW = window.innerWidth;
+  const viewportH = window.innerHeight;
+
+  let left = rect.right - menuWidth;
+  if (left < 12) left = 12;
+  if (left + menuWidth > viewportW - 12) left = viewportW - menuWidth - 12;
+
+  const openUpward = rect.bottom + estimatedHeight + 12 > viewportH && rect.top > estimatedHeight;
+  const top = openUpward ? Math.max(12, rect.top - estimatedHeight - 6) : rect.bottom + 6;
+
+  const triggerSection = (section: UserOverrideSection) => {
+    onClose();
+    onSelect(u, section);
+  };
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      aria-label={`Actions for ${getUserDisplayName(u)}`}
+      data-testid={`user-actions-menu-${u.uid}`}
+      style={{
+        position: 'fixed',
+        top: `${top}px`,
+        left: `${left}px`,
+        width: `${menuWidth}px`,
+        zIndex: 9999,
+      }}
+      className="rounded-[18px] bg-[#141418]/95 backdrop-blur-xl border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.65)] p-1.5 text-[12px] font-heading text-[var(--text)]"
+    >
+      <div className="px-2.5 py-1.5 border-b border-white/10 mb-1">
+        <p className="font-semibold text-[12px] text-[var(--text)] truncate">
+          {getUserDisplayName(u)}
+        </p>
+        <p className="font-mono text-[10px] text-[#D71921] font-bold">{studentId}</p>
+      </div>
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => triggerSection('top')}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+      >
+        <SlidersHorizontal size={13} className="text-[var(--muted)] shrink-0" />
+        <span>View / Edit Profile</span>
+      </button>
+
+      {!isGuestUser && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => triggerSection('plan')}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+          >
+            <Crown size={13} className="text-amber-400 shrink-0" />
+            <span>Manage Plan</span>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => triggerSection('role')}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+          >
+            <UserCog size={13} className="text-[var(--muted)] shrink-0" />
+            <span>Change Role</span>
+          </button>
+        </>
+      )}
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => triggerSection('attempts')}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+      >
+        <FileBarChart2 size={13} className="text-[var(--muted)] shrink-0" />
+        <span>Practice &amp; Attempts</span>
+      </button>
+
+      {!isGuestUser && (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => triggerSection('security')}
+          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+        >
+          <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
+          <span>2FA &amp; Security</span>
+        </button>
+      )}
+
+      <div className="my-1 border-t border-white/10" />
+
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => onCopyId(u.uid, u.uid)}
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+      >
+        {copiedUid === u.uid ? (
+          <Check size={13} className="text-emerald-400 shrink-0" />
+        ) : (
+          <Copy size={13} className="text-[var(--muted)] shrink-0" />
+        )}
+        <span>{copiedUid === u.uid ? 'Copied UID' : 'Copy User ID'}</span>
+      </button>
+    </div>,
+    document.body
+  );
+}
+
+interface JoinedTimestampDisplayProps {
+  joinedMs: number | null;
+  lastActiveMs: number | null;
+  nowMs: number;
+  compact?: boolean;
+}
+
+const JoinedTimestampDisplay = memo(function JoinedTimestampDisplay({
+  joinedMs,
+  lastActiveMs,
+  nowMs,
+  compact = false,
+}: JoinedTimestampDisplayProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  const formattedJoined = formatPktJoinedDate(joinedMs);
+  const exactJoined = formatPktExactTimestamp(joinedMs);
+  const relativeJoined = formatRelativeTimeHint(joinedMs, nowMs);
+
+  const exactLastActive = formatPktExactTimestamp(lastActiveMs);
+  const relativeLastActive = formatRelativeTimeHint(lastActiveMs, nowMs);
+
+  const tooltipLines: string[] = [];
+  if (exactJoined) tooltipLines.push(`Joined: ${exactJoined}`);
+  if (exactLastActive) tooltipLines.push(`Last active: ${exactLastActive}`);
+  const titleText = tooltipLines.length > 0 ? tooltipLines.join('\n') : 'Join timestamp unavailable';
+
+  if (!formattedJoined) {
+    return (
+      <div className="flex flex-col justify-center" title={titleText}>
+        <span className="font-mono text-[12px] text-[var(--text-faint)] whitespace-nowrap">
+          Unknown
+        </span>
+        {relativeLastActive && (
+          <span
+            className="text-[10px] font-mono text-[var(--muted)] whitespace-nowrap mt-0.5"
+            title={exactLastActive ? `Last active: ${exactLastActive}` : undefined}
+          >
+            Active {relativeLastActive}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-col justify-center min-w-0"
+      title={titleText}
+      onClick={(e) => {
+        e.stopPropagation();
+        setExpanded((v) => !v);
+      }}
+    >
+      <button
+        type="button"
+        className={`text-left group cursor-pointer focus:outline-none ${
+          compact ? 'inline-flex flex-col' : 'flex flex-col'
+        }`}
+        aria-label={titleText}
+      >
+        <span className="font-mono text-[12px] text-[var(--text)] whitespace-nowrap group-hover:text-white transition-colors">
+          {formattedJoined}
+        </span>
+        {relativeJoined && (
+          <span className="text-[11px] font-heading text-[var(--muted)] whitespace-nowrap leading-tight mt-0.5">
+            {relativeJoined}
+          </span>
+        )}
+        {relativeLastActive && (
+          <span
+            className="text-[10px] font-mono text-[var(--text-faint)] whitespace-nowrap leading-tight mt-0.5"
+            title={exactLastActive ? `Last active: ${exactLastActive}` : undefined}
+          >
+            Active {relativeLastActive}
+          </span>
+        )}
+      </button>
+
+      {expanded && exactJoined && (
+        <div className="mt-1.5 px-2 py-1 rounded-[10px] bg-black/55 border border-white/12 text-[10px] font-mono text-[var(--text)] space-y-0.5 shadow-md">
+          <div className="flex items-center gap-1 text-[var(--text)]">
+            <Clock size={10} className="text-[#D71921] shrink-0" />
+            <span className="whitespace-nowrap">{exactJoined}</span>
+          </div>
+          {exactLastActive && (
+            <div className="text-[var(--muted)] whitespace-nowrap">
+              Last active: {exactLastActive}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 interface UserRowProps {
   user: UserProfile;
   badge2fa: UserTwoFactorBadgeLabel;
   isSuperAdmin: boolean;
   isChecked?: boolean;
+  nowMs: number;
   onToggleCheck?: (uid: string) => void;
   onSelect: (user: UserProfile, section?: UserOverrideSection) => void;
-}
-
-function formatUserTimestamp(raw: any, fallback: string | null = 'Recent'): string | null {
-  if (!raw) return fallback;
-  if (typeof raw?.toDate === 'function') {
-    return raw.toDate().toLocaleDateString('en-GB');
-  }
-  if (typeof raw?.seconds === 'number') {
-    return new Date(raw.seconds * 1000).toLocaleDateString('en-GB');
-  }
-  if (typeof raw === 'number') {
-    return new Date(raw).toLocaleDateString('en-GB');
-  }
-  if (typeof raw === 'string') {
-    const parsed = Date.parse(raw);
-    if (!Number.isNaN(parsed)) {
-      return new Date(parsed).toLocaleDateString('en-GB');
-    }
-  }
-  return fallback;
+  onOpenMenu: (user: UserProfile, anchorEl: HTMLElement) => void;
 }
 
 const AdminUserMobileCard = memo(function AdminUserMobileCard({
   user: u,
   badge2fa,
   isSuperAdmin,
+  isChecked = false,
+  nowMs,
+  onToggleCheck,
   onSelect,
+  onOpenMenu,
 }: UserRowProps) {
   const name = getUserDisplayName(u);
   const isSuspended = !!(u.suspended || u.isSuspended);
-  const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+  const isGuestUser = Boolean(
+    u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+  );
   const resolvedTier = isGuestUser ? 'free' : getPlan(u);
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
   const rawBadgeDesign = (u as any).proBadgeDesign || (u as any).proBadge || 'ember';
   const badgeDesign = resolvedTier === 'plus' ? `plus:${rawBadgeDesign}` : rawBadgeDesign;
   const studentId = formatStudentId(u);
+  const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
-  const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
-  const lastActiveDate = formatUserTimestamp(u.lastActiveAt, null);
+  const joinedMs = resolveUserJoinedAtMs(u);
+  const lastActiveMs = resolveUserLastActiveAtMs(u);
+  const trackLabel = u.targetUniversity || 'General Prep';
 
   return (
     <div
       onClick={() => onSelect(u)}
+      data-pressable
       data-testid={`admin-user-card-${u.uid}`}
-      className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)]/40 transition-colors cursor-pointer flex flex-col gap-3.5"
+      className="press-scale p-4 rounded-[22px] bg-[var(--card)] border border-[var(--border)] hover:border-white/25 transition-all cursor-pointer flex flex-col gap-3"
     >
-      <div className="flex items-center justify-between gap-3 min-w-0">
-        <div className="flex items-center gap-3 min-w-0">
+      {/* Top row: Checkbox + Avatar + Name/Badge/Subtitle + Actions menu */}
+      <div className="flex items-start justify-between gap-2.5 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {isSuperAdmin && !isGuestUser && onToggleCheck && (
+            <AdminCheckbox
+              checked={isChecked}
+              ariaLabel={`Select ${name}`}
+              onChange={() => onToggleCheck(u.uid)}
+            />
+          )}
           <BoardlyAvatar
             uid={u.uid}
             equippedAvatar={u.equipped?.avatar || u.avatar}
             name={name}
-            size={40}
+            size={38}
             className="shrink-0"
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-heading font-semibold text-[14px] text-[var(--text)] truncate">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p
+                title={name}
+                className="font-heading font-semibold text-[14px] text-[var(--text)] truncate"
+              >
                 {name}
               </p>
+              {isPaidUser && (
+                <span className="inline-flex items-center shrink-0">
+                  <ProBadge design={badgeDesign} size="sm" listMode />
+                </span>
+              )}
               {isGuestUser && (
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
                   Guest
                 </span>
               )}
-              <span className="font-mono text-[11px] font-bold text-[var(--accent)] px-1.5 py-0.5 rounded bg-[var(--bg)] border border-[var(--border)]">
+            </div>
+            {isPaidUser && (
+              <p className="text-[10px] font-mono text-[var(--muted)] leading-tight mt-0.5">
+                {resolvedTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'}
+                {(u as any).proBadgeVisible === false ? ' (badge hidden)' : ''}
+              </p>
+            )}
+            <div className="flex items-center gap-2 mt-0.5 min-w-0">
+              <span className="font-mono text-[11px] font-bold text-[#D71921] shrink-0">
                 {studentId}
               </span>
+              <span
+                title={emailOrHandle !== '—' ? emailOrHandle : undefined}
+                className={`text-[11px] font-heading truncate ${
+                  emailOrHandle === '—' ? 'text-[var(--text-faint)]' : 'text-[var(--text-muted)]'
+                }`}
+              >
+                {emailOrHandle}
+              </span>
             </div>
-            <p className="font-heading text-[12px] text-[var(--text-muted)] truncate">
-              {isGuestUser
-                ? u.username
-                  ? `@${String(u.username).replace(/^@/, '')}`
-                  : 'Guest'
-                : isSuperAdmin
-                ? u.email
-                : maskEmail(u.email)}
-            </p>
           </div>
         </div>
 
-        <div
-          className="text-right shrink-0"
+        <button
+          type="button"
+          aria-label={`Actions for ${name}`}
+          data-testid={`user-card-menu-btn-${u.uid}`}
           onClick={(e) => {
             e.stopPropagation();
-            onSelect(u, 'attempts');
+            onOpenMenu(u, e.currentTarget);
           }}
+          className="press-scale w-8 h-8 rounded-full border border-[var(--border)] bg-[var(--card-2)]/70 hover:bg-white/10 flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] shrink-0 cursor-pointer transition-colors"
         >
-          <span className="font-mono font-bold text-xs text-[var(--text)] block">
-            {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '— MCQs'}
+          <MoreHorizontal size={15} />
+        </button>
+      </div>
+
+      {/* Middle row: Joined Date + Track + Streak/Solved */}
+      <div className="grid grid-cols-2 gap-2.5 pt-2.5 border-t border-[var(--border)]/70">
+        <div className="min-w-0">
+          <span className="block font-mono text-[10px] uppercase tracking-wider text-[var(--text-faint)] mb-0.5">
+            Joined
           </span>
-          <span className="text-[10px] text-[var(--text-faint)] font-mono">
-            🔥 {u.streak || 0}d streak
+          <JoinedTimestampDisplay
+            joinedMs={joinedMs}
+            lastActiveMs={lastActiveMs}
+            nowMs={nowMs}
+            compact
+          />
+        </div>
+
+        <div className="min-w-0 flex flex-col items-end text-right">
+          <span className="block font-mono text-[10px] uppercase tracking-wider text-[var(--text-faint)] mb-0.5">
+            Track &amp; Progress
           </span>
+          <span
+            title={trackLabel}
+            className="text-[12px] font-heading font-medium text-[var(--text)] truncate max-w-full"
+          >
+            {trackLabel}
+          </span>
+          <div className="flex items-center justify-end gap-2 mt-0.5 font-mono text-[11px] tabular-nums">
+            <span className="font-bold text-[var(--text)]">
+              {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '—'}
+            </span>
+            <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+              <Flame size={11} className="text-amber-400" />
+              {u.streak || 0}d
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border)]/60 text-xs">
-        <div className="flex items-center gap-2 text-[11px] text-[var(--muted)] flex-wrap">
-          <span className="font-medium text-[var(--text)] truncate max-w-[140px]">
-            {u.targetUniversity || 'General Prep'}
+      {/* Bottom status row */}
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border)]/50">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span
+            className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${
+              isSuspended
+                ? 'bg-red-500/12 text-red-400 border-red-500/30'
+                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isSuspended ? 'bg-red-400' : 'bg-emerald-400'
+              }`}
+            />
+            {isSuspended ? 'Suspended' : 'Active'}
           </span>
-          <span>·</span>
-          <span className="font-mono text-[var(--text-faint)]">Joined {joinedDate}</span>
-          {lastActiveDate && (
-            <>
-              <span>·</span>
-              <span className="font-mono text-[var(--text-faint)]">Active {lastActiveDate}</span>
-            </>
+
+          {!isGuestUser && (
+            <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
+              {u.role || 'Student'}
+            </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {isSuspended && (
-            <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
-              Suspended
-            </span>
-          )}
-          {isGuestUser ? (
-            <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold">
-              Guest
-            </span>
-          ) : (
-            <>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(u, 'role');
-                }}
-                className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize hover:border-[var(--text)]"
-              >
-                {u.role || 'Student'}
-              </span>
-              {isPaidUser ? (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelect(u, 'plan');
-                  }}
-                  className="inline-flex items-center gap-1"
-                >
-                  <ProBadge design={badgeDesign} size="sm" listMode />
-                  <span className="text-[10px] font-mono text-[var(--muted)]">
-                    {resolvedTier === 'plus' ? 'Plus' : 'Pro'}
-                    {(u as any).proBadgeVisible === false ? ' (hidden)' : ''}
-                  </span>
-                </span>
-              ) : (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelect(u, 'plan');
-                  }}
-                  className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] hover:border-[var(--text)]"
-                >
-                  Free
-                </span>
-              )}
-              <span
-                data-testid={`user-2fa-badge-${u.uid}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(u, 'security');
-                }}
-                className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
-                  badge2fa === 'Recovery pending'
-                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold'
-                    : badge2fa !== 'Off'
-                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold'
-                    : 'border-[var(--border)] text-[var(--text-muted)]'
-                }`}
-              >
-                2FA: {badge2fa}
-              </span>
-            </>
-          )}
-        </div>
+        {!isGuestUser && (
+          <span
+            data-testid={`user-2fa-badge-${u.uid}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(u, 'security');
+            }}
+            className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+              badge2fa === 'Recovery pending'
+                ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-semibold'
+                : badge2fa !== 'Off'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-semibold'
+                : 'border-[var(--border)] text-[var(--text-faint)]'
+            }`}
+          >
+            2FA: {badge2fa}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -244,63 +605,81 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
   badge2fa,
   isSuperAdmin,
   isChecked = false,
+  nowMs,
   onToggleCheck,
   onSelect,
+  onOpenMenu,
 }: UserRowProps) {
   const name = getUserDisplayName(u);
-  const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+  const isSuspended = !!(u.suspended || u.isSuspended);
+  const isGuestUser = Boolean(
+    u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+  );
   const resolvedTier = isGuestUser ? 'free' : getPlan(u);
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
-  const rawBadgeId = (u as any).proBadgeDesign || (u as any).proBadge || (isPaidUser ? 'ember' : null);
-  const badgeId =
-    resolvedTier === 'plus' ? `plus:${rawBadgeId || 'ember'}` : rawBadgeId;
+  const rawBadgeId =
+    (u as any).proBadgeDesign || (u as any).proBadge || (isPaidUser ? 'ember' : null);
+  const badgeId = resolvedTier === 'plus' ? `plus:${rawBadgeId || 'ember'}` : rawBadgeId;
   const studentId = formatStudentId(u);
+  const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
-  const joinedDate = formatUserTimestamp(u.createdAt, 'Recent') || 'Recent';
-  const lastActiveDate = formatUserTimestamp(u.lastActiveAt, null);
+  const joinedMs = resolveUserJoinedAtMs(u);
+  const lastActiveMs = resolveUserLastActiveAtMs(u);
+  const trackLabel = u.targetUniversity || 'General Prep';
 
   return (
     <tr
       onClick={() => onSelect(u)}
       data-testid={`admin-user-row-${u.uid}`}
-      className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
+      className="h-[68px] hover:bg-white/[0.04] active:scale-[0.998] cursor-pointer transition-all duration-150"
     >
-      {/* 1. Student Name */}
-      <td className="py-3.5 px-5">
-        <div className="flex items-center gap-2.5">
-          {!isGuestUser && onToggleCheck && (
-            <input
-              type="checkbox"
-              checked={isChecked}
-              aria-label={`Select ${name}`}
-              onClick={(e) => e.stopPropagation()}
-              onChange={() => onToggleCheck(u.uid)}
-              className="w-3.5 h-3.5 accent-[#D71921] cursor-pointer shrink-0"
-            />
-          )}
+      {/* 1. Checkbox */}
+      <td
+        className="w-[40px] pl-3.5 pr-1.5 py-2.5 align-middle text-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {!isGuestUser && onToggleCheck ? (
+          <AdminCheckbox
+            checked={isChecked}
+            ariaLabel={`Select ${name}`}
+            onChange={() => onToggleCheck(u.uid)}
+          />
+        ) : (
+          <span className="inline-block w-[17px] h-[17px]" aria-hidden="true" />
+        )}
+      </td>
+
+      {/* 2. Student (avatar + name + plan badge + plan subtitle) */}
+      <td className="py-2.5 px-2.5 align-middle min-w-[185px] max-w-[215px]">
+        <div className="flex items-center gap-2.5 min-w-0">
           <BoardlyAvatar
             uid={u.uid}
             equippedAvatar={u.equipped?.avatar || u.avatar}
             name={name}
-            size={32}
+            size={34}
             className="shrink-0"
           />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span
+                title={name}
+                className="font-heading font-semibold text-[13px] text-[var(--text)] truncate"
+              >
                 {name}
               </span>
               {isPaidUser && (
-                <ProBadge design={badgeId || 'ember'} size="sm" listMode />
+                <span className="inline-flex items-center shrink-0">
+                  <ProBadge design={badgeId || 'ember'} size="sm" listMode />
+                </span>
               )}
               {isGuestUser && (
-                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
                   Guest
                 </span>
               )}
             </div>
             {isPaidUser && (
-              <span className="text-[10px] font-mono text-[var(--muted)] block leading-tight mt-0.5">
+              <span className="text-[10px] font-mono text-[var(--muted)] block leading-tight mt-0.5 truncate">
                 {resolvedTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'}
                 {(u as any).proBadgeVisible === false ? ' (badge hidden)' : ''}
               </span>
@@ -309,84 +688,132 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
         </div>
       </td>
 
-      {/* 2. Short Student ID */}
-      <td className="py-3.5 px-4 font-mono font-bold text-[#D71921] text-xs">
+      {/* 3. Short ID */}
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono font-bold text-[#D71921] text-[12px] tabular-nums">
         {studentId}
       </td>
 
-      {/* 3. Email / Username */}
-      <td className="py-3.5 px-4 text-[12px] text-[var(--text-muted)]">
-        {isGuestUser
-          ? u.username
-            ? `@${String(u.username).replace(/^@/, '')}`
-            : 'Guest'
-          : isSuperAdmin
-          ? u.email
-          : maskEmail(u.email)}
+      {/* 4. Email / Handle */}
+      <td className="py-2.5 px-2.5 align-middle max-w-[165px]">
+        <span
+          title={emailOrHandle !== '—' ? emailOrHandle : undefined}
+          className={`block truncate text-[12px] font-heading ${
+            emailOrHandle === '—' ? 'text-[var(--text-faint)]' : 'text-[var(--text-muted)]'
+          }`}
+        >
+          {emailOrHandle}
+        </span>
       </td>
 
-      {/* 4. University Track */}
-      <td className="py-3.5 px-4 text-[12px] text-[var(--text)]">
-        {u.targetUniversity || 'General Prep'}
+      {/* 5. Joined (PKT date + relative hint + optional Last active) */}
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap">
+        <JoinedTimestampDisplay
+          joinedMs={joinedMs}
+          lastActiveMs={lastActiveMs}
+          nowMs={nowMs}
+        />
       </td>
 
-      {/* 5. Total Questions Solved */}
+      {/* 6. University Track */}
+      <td className="py-2.5 px-2.5 align-middle max-w-[118px]">
+        <span
+          title={trackLabel}
+          className="block truncate text-[12px] font-heading text-[var(--text)]"
+        >
+          {trackLabel}
+        </span>
+      </td>
+
+      {/* 7. Questions Solved */}
       <td
-        className="py-3.5 px-4 font-mono font-bold text-[13px] text-[var(--text)]"
+        className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono font-bold text-[12px] text-[var(--text)] tabular-nums"
         onClick={(e) => {
           e.stopPropagation();
           onSelect(u, 'attempts');
         }}
+        title="Click to inspect practice attempts"
       >
-        {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '—'}
-      </td>
-
-      {/* 6. Streak */}
-      <td className="py-3.5 px-4 font-mono text-[12px] text-[var(--text)]">
-        🔥 {u.streak || 0}d
-      </td>
-
-      {/* 6b. 2FA Status Badge (Off, Authenticator, Email code, Both, or Recovery pending) */}
-      <td
-        className="py-3.5 px-4 text-[12px]"
-        onClick={(e) => {
-          if (!isGuestUser) {
-            e.stopPropagation();
-            onSelect(u, 'security');
-          }
-        }}
-      >
-        {isGuestUser ? (
-          <span className="text-[11px] text-[var(--text-faint)]">—</span>
-        ) : (
-          <span
-            data-testid={`user-2fa-badge-desktop-${u.uid}`}
-            className={`text-[11px] font-mono px-2 py-0.5 rounded-full border whitespace-nowrap ${
-              badge2fa === 'Recovery pending'
-                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold'
-                : badge2fa !== 'Off'
-                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold'
-                : 'border-[var(--border)] text-[var(--text-muted)]'
-            }`}
-          >
-            {badge2fa}
+        {qSolved !== null ? (
+          <span>
+            {qSolved.toLocaleString()}{' '}
+            <span className="text-[10px] font-normal text-[var(--muted)]">MCQs</span>
           </span>
+        ) : (
+          <span className="text-[var(--text-faint)] font-normal">—</span>
         )}
       </td>
 
-      {/* 7. Created & Last Active Date */}
-      <td className="py-3.5 px-4 text-[12px] font-mono text-[var(--text-faint)]">
-        <div>{joinedDate}</div>
-        {lastActiveDate && (
-          <div className="text-[10px] text-[var(--muted)]">Active {lastActiveDate}</div>
-        )}
-      </td>
-
-      {/* 8. Action */}
-      <td className="py-3.5 px-5 text-right">
-        <span className="text-[12px] text-[var(--text)] hover:underline">
-          Edit
+      {/* 8. Streak */}
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono text-[12px] text-[var(--text)] tabular-nums">
+        <span className="inline-flex items-center gap-1">
+          <Flame size={12} className="text-amber-400 shrink-0" />
+          <span>{u.streak || 0}d</span>
         </span>
+      </td>
+
+      {/* 9. Status (Active/Suspended + Role + 2FA) */}
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap">
+        <div className="flex flex-col items-start gap-1">
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`inline-flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${
+                isSuspended
+                  ? 'bg-red-500/12 text-red-400 border-red-500/30'
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isSuspended ? 'bg-red-400' : 'bg-emerald-400'
+                }`}
+              />
+              {isSuspended ? 'Suspended' : 'Active'}
+            </span>
+            {!isGuestUser && u.role && u.role !== 'student' && (
+              <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/8 text-[var(--text)] border border-white/12">
+                {u.role}
+              </span>
+            )}
+          </div>
+          {!isGuestUser && (
+            <button
+              type="button"
+              data-testid={`user-2fa-badge-desktop-${u.uid}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(u, 'security');
+              }}
+              className={`text-[10px] font-mono leading-tight cursor-pointer hover:underline ${
+                badge2fa === 'Recovery pending'
+                  ? 'text-amber-400 font-semibold'
+                  : badge2fa !== 'Off'
+                  ? 'text-emerald-400 font-semibold'
+                  : 'text-[var(--text-faint)]'
+              }`}
+            >
+              2FA: {badge2fa}
+            </button>
+          )}
+        </div>
+      </td>
+
+      {/* 10. Actions (⋯ menu) */}
+      <td
+        className="w-[50px] py-2.5 pl-1 pr-3.5 align-middle text-right"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          aria-label={`Actions for ${name}`}
+          data-testid={`user-row-menu-btn-${u.uid}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenMenu(u, e.currentTarget);
+          }}
+          className="press-scale inline-flex items-center justify-center w-8 h-8 rounded-full border border-transparent hover:border-[var(--border)] hover:bg-white/10 text-[var(--muted)] hover:text-[var(--text)] cursor-pointer transition-all"
+        >
+          <MoreHorizontal size={16} />
+        </button>
       </td>
     </tr>
   );
@@ -409,6 +836,9 @@ export function AdminUsersPage() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>(() =>
     canViewUsers ? initialCache?.allDirectoryUsers ?? [] : []
   );
+  const [totalDirectoryCount, setTotalDirectoryCount] = useState<number>(() =>
+    canViewUsers ? initialCache?.totalCount ?? initialCache?.allDirectoryUsers.length ?? 0 : 0
+  );
   const [user2faMap, setUser2faMap] = useState<Record<string, UserTwoFactorSummary>>(
     () => (canViewUsers ? initialCache?.user2faMap ?? {} : {})
   );
@@ -417,6 +847,7 @@ export function AdminUsersPage() {
   );
   const [loading, setLoading] = useState<boolean>(() => !initialCache && canViewUsers);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchingServer, setSearchingServer] = useState(false);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(
     () => (canViewUsers ? initialCache?.lastDoc ?? null : null)
   );
@@ -425,8 +856,12 @@ export function AdminUsersPage() {
   );
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
-  // Filters
+  // Sort & Filters
+  const [sortBy, setSortBy] = useState<AdminUserSortKey>(
+    () => initialCache?.sortBy ?? 'newest'
+  );
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -439,6 +874,16 @@ export function AdminUsersPage() {
   const [selectedUids, setSelectedUids] = useState<Set<string>>(() => new Set());
   const [bulkApplying, setBulkApplying] = useState(false);
 
+  // Actions menu (⋯)
+  const [menuState, setMenuState] = useState<ActionMenuState | null>(null);
+  const [copiedUid, setCopiedUid] = useState<string | null>(null);
+
+  // Keep relative hints ("2 mins ago") fresh once per minute
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
@@ -449,7 +894,7 @@ export function AdminUsersPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [roleFilter, planFilter, statusFilter, accountTypeFilter, twoFactorFilter]);
+  }, [roleFilter, planFilter, statusFilter, accountTypeFilter, twoFactorFilter, sortBy]);
 
   // Selected user for drawer/sheet
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -458,6 +903,25 @@ export function AdminUsersPage() {
   const handleSelectUser = useCallback((u: UserProfile, section: UserOverrideSection = 'top') => {
     setSelectedUserSection(section);
     setSelectedUser(u);
+  }, []);
+
+  const handleOpenMenu = useCallback((u: UserProfile, anchorEl: HTMLElement) => {
+    const rect = anchorEl.getBoundingClientRect();
+    setMenuState((prev) => (prev && prev.user.uid === u.uid ? null : { user: u, rect }));
+  }, []);
+
+  const handleCloseMenu = useCallback(() => {
+    setMenuState(null);
+  }, []);
+
+  const handleCopyId = useCallback((uid: string, value: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(value).catch(() => {});
+    }
+    setCopiedUid(uid);
+    window.setTimeout(() => {
+      setCopiedUid((curr) => (curr === uid ? null : curr));
+    }, 1500);
   }, []);
 
   // Backfill names state
@@ -489,7 +953,8 @@ export function AdminUsersPage() {
     } catch (err: unknown) {
       console.error('Backfill public profiles error:', err);
       setBackfillProfilesMessage(
-        'Failed to backfill public profiles: ' + (err instanceof Error ? err.message : String(err))
+        'Failed to backfill public profiles: ' +
+          (err instanceof Error ? err.message : String(err))
       );
     } finally {
       setBackfillingProfiles(false);
@@ -497,12 +962,13 @@ export function AdminUsersPage() {
   };
 
   const loadUsers = useCallback(
-    async (options?: { force?: boolean }) => {
+    async (options?: { force?: boolean; sortOverride?: AdminUserSortKey }) => {
       if (!user || !isAdmin || !canViewUsers) return;
+      const targetSort = options?.sortOverride ?? sortBy;
       const currentCached = getCachedAdminUsersState();
-      if (!currentCached) {
+      if (!currentCached || options?.sortOverride) {
         setLoading(true);
-        setLoadState('loading');
+        if (!currentCached) setLoadState('loading');
       } else {
         setLoading(true);
       }
@@ -510,14 +976,15 @@ export function AdminUsersPage() {
       try {
         const res = await fetchUsersPaginated({
           limitCount: PAGE_SIZE,
+          sortBy: targetSort,
           force: options?.force,
         });
-        const latestCache = getCachedAdminUsersState();
-        const directoryList = latestCache?.allDirectoryUsers ?? res.users;
-        setAllUsers(directoryList);
+        setAllUsers(res.users);
+        setTotalDirectoryCount(res.totalCount);
         setUser2faMap((prev) => ({ ...prev, ...res.user2faMap }));
         setLastDoc(res.lastDoc);
         setHasMore(res.hasMore);
+        setCurrentPage(1);
         setLoadState('loaded');
       } catch (err: unknown) {
         console.error('[AdminUsersPage] Failed to load users:', err);
@@ -525,7 +992,8 @@ export function AdminUsersPage() {
         setError({
           code: e?.code || 'USERS_FETCH_FAILED',
           message:
-            e?.message || 'Failed to load users from database. Please verify Firestore permissions.',
+            e?.message ||
+            'Failed to load users from database. Please verify Firestore permissions.',
           collection: e?.collection || 'users',
           operation: e?.operation || 'fetchUsersPaginated',
         });
@@ -536,33 +1004,47 @@ export function AdminUsersPage() {
         setLoading(false);
       }
     },
-    [user, isAdmin, canViewUsers]
+    [user, isAdmin, canViewUsers, sortBy]
   );
 
-  // Wait for auth and admin-role check before firing fetch
+  // Initial load once auth and admin-role check settle
+  const initialLoadedRef = useRef(false);
   useEffect(() => {
-    if (!profileLoading && user && isAdmin && canViewUsers) {
-      const cached = getCachedAdminUsersState();
-      if (cached) {
-        setAllUsers(cached.allDirectoryUsers);
-        setUser2faMap(cached.user2faMap);
-        setLastDoc(cached.lastDoc);
-        setHasMore(cached.hasMore);
-        setLoadState('loaded');
+    if (profileLoading) return;
+    if (!user || !isAdmin || !canViewUsers) {
+      if (!canViewUsers) {
+        setAllUsers([]);
+        setUser2faMap({});
         setLoading(false);
-        // If cache is older than 30 seconds, refresh quietly in the background ONLY if user sheet is closed
-        if (Date.now() - cached.loadedAt > 30_000 && !selectedUser) {
-          void loadUsers();
-        }
-      } else {
-        void loadUsers();
       }
-    } else if (!canViewUsers) {
-      setAllUsers([]);
-      setUser2faMap({});
-      setLoading(false);
+      return;
     }
-  }, [profileLoading, user, isAdmin, canViewUsers, loadUsers, selectedUser]);
+    if (initialLoadedRef.current) return;
+    initialLoadedRef.current = true;
+
+    const cached = getCachedAdminUsersState();
+    if (cached && (cached.sortBy ?? 'newest') === sortBy) {
+      setAllUsers(cached.allDirectoryUsers);
+      setTotalDirectoryCount(cached.totalCount);
+      setUser2faMap(cached.user2faMap);
+      setLastDoc(cached.lastDoc);
+      setHasMore(cached.hasMore);
+      setLoadState('loaded');
+      setLoading(false);
+      if (Date.now() - cached.loadedAt > 30_000 && !selectedUser) {
+        void loadUsers({ sortOverride: sortBy });
+      }
+    } else {
+      void loadUsers({ sortOverride: sortBy });
+    }
+  }, [profileLoading, user, isAdmin, canViewUsers, sortBy, loadUsers, selectedUser]);
+
+  const handleSortChange = (nextSort: AdminUserSortKey) => {
+    if (nextSort === sortBy) return;
+    setSortBy(nextSort);
+    setSelectedUids(new Set());
+    void loadUsers({ sortOverride: nextSort, force: true });
+  };
 
   const handleLoadMore = async () => {
     if (!lastDoc || loadingMore) return;
@@ -570,15 +1052,18 @@ export function AdminUsersPage() {
     try {
       const res = await fetchUsersPaginated({
         limitCount: PAGE_SIZE,
-        role: roleFilter,
-        plan: planFilter,
+        sortBy,
         startAfterDoc: lastDoc,
       });
       setAllUsers((prev) => {
-        const existingUids = new Set(prev.map((u) => u.uid));
-        const added = res.users.filter((u) => !existingUids.has(u.uid));
-        return [...prev, ...added];
+        const byUid = new Map<string, UserProfile>();
+        for (const u of prev) byUid.set(u.uid, u);
+        for (const u of res.users) {
+          if (!byUid.has(u.uid)) byUid.set(u.uid, u);
+        }
+        return sortAdminUsers(Array.from(byUid.values()), sortBy);
       });
+      setTotalDirectoryCount((prev) => Math.max(prev, res.totalCount));
       setUser2faMap((prev) => ({ ...prev, ...res.user2faMap }));
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
@@ -593,6 +1078,35 @@ export function AdminUsersPage() {
       });
     } finally {
       setLoadingMore(false);
+    }
+  };
+
+  const handleServerSearch = async () => {
+    const q = search.trim();
+    if (q.length < 2 || searchingServer) return;
+    setSearchingServer(true);
+    setError(null);
+    try {
+      const res = await fetchUsersPaginated({
+        limitCount: PAGE_SIZE,
+        sortBy,
+        searchQuery: q,
+      });
+      setAllUsers((prev) => {
+        const byUid = new Map<string, UserProfile>();
+        for (const u of prev) byUid.set(u.uid, u);
+        for (const u of res.users) {
+          byUid.set(u.uid, { ...(byUid.get(u.uid) || {}), ...u } as UserProfile);
+        }
+        return sortAdminUsers(Array.from(byUid.values()), sortBy);
+      });
+      setUser2faMap((prev) => ({ ...prev, ...res.user2faMap }));
+      setDebouncedSearch(q);
+      setCurrentPage(1);
+    } catch (err: unknown) {
+      console.error('[AdminUsersPage] Directory search failed:', err);
+    } finally {
+      setSearchingServer(false);
     }
   };
 
@@ -611,7 +1125,9 @@ export function AdminUsersPage() {
     setAllUsers((prev) =>
       prev.map((u) => (u.uid === uid ? { ...u, twoFactorStatus: status } : u))
     );
-    setSelectedUser((prev) => (prev && prev.uid === uid ? { ...prev, twoFactorStatus: status } : prev));
+    setSelectedUser((prev) =>
+      prev && prev.uid === uid ? { ...prev, twoFactorStatus: status } : prev
+    );
   }, []);
 
   // Orphan profile cleanup state
@@ -662,21 +1178,51 @@ export function AdminUsersPage() {
     }
   };
 
-  // ── Client-side filtering in memory across all dimensions ──────────────────
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+      roleFilter !== 'all' ||
+      planFilter !== 'all' ||
+      statusFilter !== 'all' ||
+      accountTypeFilter !== 'all' ||
+      twoFactorFilter !== 'all'
+  );
+
+  const hasAnyModifier = hasActiveFilters || sortBy !== 'newest';
+
+  const handleResetFilters = () => {
+    const needSortReload = sortBy !== 'newest';
+    setSearch('');
+    setDebouncedSearch('');
+    setRoleFilter('all');
+    setPlanFilter('all');
+    setStatusFilter('all');
+    setAccountTypeFilter('all');
+    setTwoFactorFilter('all');
+    setCurrentPage(1);
+    if (needSortReload) {
+      setSortBy('newest');
+      void loadUsers({ sortOverride: 'newest', force: true });
+    }
+  };
+
+  // ── Filter + preserve deterministic active sort order (unknown join dates at bottom) ──
   const filteredUsers = useMemo(() => {
-    return allUsers.filter((u) => {
+    const matched = allUsers.filter((u) => {
       // 1. Role Filter
       if (roleFilter !== 'all') {
         const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
         const isUserAdmin = isSuper || u.role === 'admin' || u.role === 'superadmin';
         if (roleFilter === 'admin' && !isUserAdmin) return false;
-        if (roleFilter === 'student' && (isUserAdmin || (u.role && u.role !== 'student'))) return false;
+        if (roleFilter === 'student' && (isUserAdmin || (u.role && u.role !== 'student')))
+          return false;
         if (roleFilter === 'captain' && u.role !== 'captain') return false;
         if (roleFilter === 'crew' && u.role !== 'crew') return false;
       }
 
-      // 2. Plan & Account Type Filter (Guest / Registered / Pro / Plus)
-      const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+      // 2. Plan & Account Type Filter
+      const isGuestUser = Boolean(
+        u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+      );
       const resolvedTier = isGuestUser ? 'free' : getPlan(u);
       if (accountTypeFilter === 'guest' && !isGuestUser) return false;
       if (accountTypeFilter === 'registered' && isGuestUser) return false;
@@ -712,16 +1258,19 @@ export function AdminUsersPage() {
       // 5. Search Filter
       if (debouncedSearch.trim()) {
         const st = debouncedSearch.toLowerCase().trim();
+        const stNoHash = st.replace(/^#/, '');
         const name = getUserDisplayName(u).toLowerCase();
         const username = String(u.username || '').toLowerCase();
         const email = (u.email || '').toLowerCase();
         const uid = (u.uid || '').toLowerCase();
+        const shortId = formatStudentId(u).toLowerCase();
         const uni = (u.targetUniversity || '').toLowerCase();
         if (
           !name.includes(st) &&
-          !username.includes(st) &&
+          !username.includes(st.replace(/^@/, '')) &&
           !email.includes(st) &&
           !uid.includes(st) &&
+          !shortId.includes(stNoHash) &&
           !uni.includes(st)
         ) {
           return false;
@@ -730,6 +1279,8 @@ export function AdminUsersPage() {
 
       return true;
     });
+
+    return sortAdminUsers(matched, sortBy);
   }, [
     allUsers,
     roleFilter,
@@ -739,6 +1290,7 @@ export function AdminUsersPage() {
     twoFactorFilter,
     resolveUser2faBadge,
     debouncedSearch,
+    sortBy,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
@@ -747,6 +1299,32 @@ export function AdminUsersPage() {
     const startIdx = (safePage - 1) * PAGE_SIZE;
     return filteredUsers.slice(startIdx, startIdx + PAGE_SIZE);
   }, [filteredUsers, safePage]);
+
+  const selectablePageUids = useMemo(
+    () =>
+      paginatedUsers
+        .filter((u) => !(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')))
+        .map((u) => u.uid),
+    [paginatedUsers]
+  );
+
+  const allPageSelected =
+    selectablePageUids.length > 0 && selectablePageUids.every((uid) => selectedUids.has(uid));
+
+  const somePageSelected =
+    selectablePageUids.some((uid) => selectedUids.has(uid)) && !allPageSelected;
+
+  const handleToggleSelectAllPage = () => {
+    setSelectedUids((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const uid of selectablePageUids) next.delete(uid);
+      } else {
+        for (const uid of selectablePageUids) next.add(uid);
+      }
+      return next;
+    });
+  };
 
   const handleToggleSelectUid = useCallback((uid: string) => {
     setSelectedUids((prev) => {
@@ -783,21 +1361,35 @@ export function AdminUsersPage() {
   };
 
   const handleExportCsv = () => {
-    const headers = ['UID', 'Short ID', 'Name', 'Email', 'Role', 'Plan', 'Plan Expiry', 'Status'];
+    const headers = [
+      'UID',
+      'Short ID',
+      'Name',
+      'Email',
+      'Joined (PKT)',
+      'Role',
+      'Plan',
+      'Plan Expiry',
+      'Status',
+    ];
     const escapeCell = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
     const rows = filteredUsers.map((u) => {
-      const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+      const isGuestUser = Boolean(
+        u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+      );
       const tier = isGuestUser ? 'guest' : getPlan(u);
       const expMs = parsePlanExpiryMs(
         tier === 'plus'
           ? (u as any).plusUntil ?? u.planExpiresAt ?? u.premiumExpiresAt
           : (u as any).proUntil ?? u.planExpiresAt ?? u.premiumExpiresAt
       );
+      const joinedMs = resolveUserJoinedAtMs(u);
       return [
         u.uid,
         formatStudentId(u),
         getUserDisplayName(u),
         isSuperAdmin ? u.email || '' : maskEmail(u.email),
+        formatPktJoinedDate(joinedMs) || 'Unknown',
         u.role || 'student',
         tier,
         expMs ? new Date(expMs).toISOString().slice(0, 10) : '',
@@ -817,6 +1409,38 @@ export function AdminUsersPage() {
   };
 
   const isInitialLoading = (profileLoading || loadState === 'loading') && allUsers.length === 0;
+  const isTableBusy = isInitialLoading || (loading && allUsers.length === 0);
+  const effectiveTotalN = Math.max(totalDirectoryCount, allUsers.length);
+
+  const resultSummaryText = useMemo(() => {
+    if (isInitialLoading) return 'Loading users...';
+    const showingCount = paginatedUsers.length;
+    if (hasActiveFilters) {
+      if (filteredUsers.length === 0) {
+        return `Showing 0 of ${effectiveTotalN.toLocaleString()} users`;
+      }
+      if (totalPages > 1) {
+        const start = (safePage - 1) * PAGE_SIZE + 1;
+        const end = Math.min(safePage * PAGE_SIZE, filteredUsers.length);
+        return `Showing ${start}–${end} of ${filteredUsers.length.toLocaleString()} matching (${effectiveTotalN.toLocaleString()} total)`;
+      }
+      return `Showing ${showingCount.toLocaleString()} of ${effectiveTotalN.toLocaleString()} users`;
+    }
+    if (totalPages > 1) {
+      const start = (safePage - 1) * PAGE_SIZE + 1;
+      const end = Math.min(safePage * PAGE_SIZE, filteredUsers.length);
+      return `Showing ${start}–${end} of ${effectiveTotalN.toLocaleString()} users`;
+    }
+    return `Showing ${showingCount.toLocaleString()} of ${effectiveTotalN.toLocaleString()} users`;
+  }, [
+    isInitialLoading,
+    paginatedUsers.length,
+    hasActiveFilters,
+    filteredUsers.length,
+    effectiveTotalN,
+    totalPages,
+    safePage,
+  ]);
 
   if (!profileLoading && !canViewUsers) {
     return (
@@ -837,7 +1461,8 @@ export function AdminUsersPage() {
           <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
             As an <strong className="text-[var(--text)]">Admin</strong>, you can manage the MCQ
             question bank and moderate community content directly. Viewing the user directory,
-            student emails, IDs, plans, or roles requires <strong className="text-[var(--text)]">Super Admin</strong> approval.
+            student emails, IDs, plans, or roles requires{' '}
+            <strong className="text-[var(--text)]">Super Admin</strong> approval.
           </p>
         </div>
 
@@ -845,7 +1470,7 @@ export function AdminUsersPage() {
           type="button"
           data-testid="request-users-view-btn"
           onClick={() => setRequestUsersViewOpen(true)}
-          className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-lg shadow-[#D71921]/25 transition-all cursor-pointer"
+          className="press-scale min-h-[44px] px-6 py-2.5 rounded-xl bg-[#D71921] hover:bg-[#b8141b] text-white text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-lg shadow-[#D71921]/25 transition-all cursor-pointer"
         >
           <Lock size={15} />
           <span>Request Access to Users</span>
@@ -862,12 +1487,12 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div data-admin-page="users" className="flex flex-col gap-6 w-full max-w-full">
+    <div data-admin-page="users" className="flex flex-col gap-5 w-full max-w-full min-w-0">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
-            Users
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div className="min-w-0">
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight leading-tight">
+            All Users
           </h1>
           <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
             Manage student registrations, roles, subscription plans, and account status.
@@ -878,59 +1503,64 @@ export function AdminUsersPage() {
           {isSuperAdmin && (
             <button
               type="button"
+              data-pressable
               onClick={handleCleanupOrphans}
               disabled={cleaningOrphans}
-              className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/50 text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[180px]"
+              className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/45 text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
               title="Find and remove orphan database profiles with no matching active Firebase Auth user"
             >
-              <Trash2 size={14} className="text-[#D71921]" />
-              <span>{cleaningOrphans ? 'Cleaning orphan profiles...' : 'Clean Up Orphan Profiles'}</span>
+              <Trash2 size={13} className="text-[#D71921]" />
+              <span>{cleaningOrphans ? 'Cleaning...' : 'Clean Up Orphans'}</span>
               {cleaningOrphans && <ButtonLineLoader />}
             </button>
           )}
 
           <button
             type="button"
+            data-pressable
             onClick={handleBackfillPublicProfiles}
             disabled={backfillingProfiles}
-            className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[170px]"
+            className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Batch backfill student public profiles for privacy protection"
           >
-            <Shield size={14} className="text-[#D71921]" />
-            <span>{backfillingProfiles ? 'Syncing profiles...' : 'Backfill public profiles'}</span>
+            <Shield size={13} className="text-[#D71921]" />
+            <span>{backfillingProfiles ? 'Syncing...' : 'Backfill public profiles'}</span>
             {backfillingProfiles && <ButtonLineLoader />}
           </button>
 
           <button
             type="button"
+            data-pressable
             onClick={handleBackfillNames}
             disabled={backfilling}
-            className="relative overflow-hidden flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 min-w-[150px]"
+            className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Update missing display names for existing accounts"
           >
-            <UserCheck size={14} />
-            <span>{backfilling ? 'Filling names...' : 'Fill missing names'}</span>
+            <UserCheck size={13} />
+            <span>{backfilling ? 'Filling...' : 'Fill missing names'}</span>
             {backfilling && <ButtonLineLoader />}
           </button>
 
           <button
             type="button"
+            data-pressable
             onClick={handleExportCsv}
             disabled={filteredUsers.length === 0}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
-            title="Export filtered users including plan & expiry to CSV"
+            className="press-scale flex items-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+            title="Export filtered users including joined date, plan & expiry to CSV"
           >
-            <Download size={14} />
+            <Download size={13} />
             <span>Export CSV</span>
           </button>
 
           <button
             type="button"
+            data-pressable
             onClick={() => loadUsers({ force: true })}
             disabled={loading}
-            className="relative overflow-hidden flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+            className="press-scale relative overflow-hidden flex items-center gap-1.5 h-9 px-3.5 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading font-semibold text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin text-[#D71921]' : ''} />
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             {loading && <ButtonLineLoader />}
           </button>
@@ -945,7 +1575,7 @@ export function AdminUsersPage() {
       />
 
       {backfillProfilesMessage && (
-        <div className="p-3 rounded-[16px] bg-[rgba(215,25,33,0.08)] border border-[var(--red)]/40 text-[13px] font-heading text-[var(--text)] flex items-center justify-between">
+        <div className="p-3 rounded-[16px] bg-[rgba(215,25,33,0.08)] border border-[var(--red)]/40 text-[13px] font-heading text-[var(--text)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Shield size={15} className="text-[#D71921] shrink-0" />
             <span>{backfillProfilesMessage}</span>
@@ -953,7 +1583,7 @@ export function AdminUsersPage() {
           <button
             type="button"
             onClick={() => setBackfillProfilesMessage(null)}
-            className="text-[var(--muted)] hover:text-[var(--text)] text-[12px] cursor-pointer"
+            className="text-[var(--muted)] hover:text-[var(--text)] text-[12px] cursor-pointer shrink-0"
           >
             Dismiss
           </button>
@@ -961,48 +1591,50 @@ export function AdminUsersPage() {
       )}
 
       {backfillMessage && (
-        <div className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] flex items-center justify-between">
+        <div className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] flex items-center justify-between gap-3">
           <span>{backfillMessage}</span>
           <button
             type="button"
             onClick={() => setBackfillMessage(null)}
-            className="text-[var(--muted)] hover:text-[var(--text)] text-[12px]"
+            className="text-[var(--muted)] hover:text-[var(--text)] text-[12px] cursor-pointer shrink-0"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* ─── TAB NAVIGATION (Users Directory vs Name Requests) ─── */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2">
+      {/* ─── TAB NAVIGATION (All Users vs Name Requests) ────────────────────── */}
+      <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2.5">
         <button
           type="button"
+          data-pressable
           onClick={() => setAdminTab('users')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-heading font-semibold transition-colors cursor-pointer ${
+          className={`press-scale flex items-center gap-2 px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all cursor-pointer ${
             adminTab === 'users'
-              ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
-              : 'text-[var(--muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.3)]'
+              : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5'
           }`}
         >
-          <UsersIcon size={14} className={adminTab === 'users' ? 'text-[var(--red)]' : ''} />
+          <UsersIcon size={14} />
           <span data-testid="admin-users-tab-count">
-            All Users ({isInitialLoading ? '—' : allUsers.length})
+            All Users ({isInitialLoading ? '—' : effectiveTotalN.toLocaleString()})
           </span>
         </button>
 
         <button
           type="button"
+          data-pressable
           onClick={() => setAdminTab('nameRequests')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-heading font-semibold transition-colors cursor-pointer ${
+          className={`press-scale flex items-center gap-2 px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all cursor-pointer ${
             adminTab === 'nameRequests'
-              ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
-              : 'text-[var(--muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.3)]'
+              : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5'
           }`}
         >
-          <Tag size={14} className={adminTab === 'nameRequests' ? 'text-amber-400' : ''} />
+          <Tag size={14} className={adminTab === 'nameRequests' ? 'text-white' : 'text-amber-400'} />
           <span>Name Requests</span>
           {pendingNameRequestsCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
+            <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
               {pendingNameRequestsCount}
             </span>
           )}
@@ -1016,147 +1648,231 @@ export function AdminUsersPage() {
         />
       ) : (
         <>
-          {/* ─── SEARCH & FILTER CHIPS TOOLBAR ──────────────────────────────────── */}
-          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
-            {/* Search input */}
-            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
-              <Search size={16} className="text-[var(--muted)] shrink-0" />
-              <input
-                type="text"
-                placeholder="Search by name, email, or user ID..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
-              />
+          {/* ─── SEARCH, SORT & FILTER CHIPS TOOLBAR ────────────────────────── */}
+          <div className="p-4 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
+            {/* Search + Sort Row */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <div
+                data-users-search-wrap
+                className="flex-1 flex items-center gap-2 px-3.5 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] focus-within:border-[#D71921]/70 transition-colors min-w-0"
+              >
+                <Search size={15} className="text-[var(--muted)] shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search by name, email, @handle, #ID, or track..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && search.trim().length >= 2) {
+                      void handleServerSearch();
+                    }
+                  }}
+                  className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none min-w-0"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    aria-label="Clear search"
+                    onClick={() => setSearch('')}
+                    className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/10 cursor-pointer shrink-0"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+                {hasMore && search.trim().length >= 2 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleServerSearch()}
+                    disabled={searchingServer}
+                    className="press-scale text-[11px] font-mono font-semibold px-2.5 py-1 rounded-full bg-[#D71921]/15 text-[#D71921] border border-[#D71921]/35 hover:bg-[#D71921]/25 whitespace-nowrap cursor-pointer disabled:opacity-50 shrink-0"
+                  >
+                    {searchingServer ? 'Searching...' : 'Search all'}
+                  </button>
+                )}
+              </div>
+
+              {/* Sort dropdown */}
+              <div
+                data-users-sort-wrap
+                className="flex items-center gap-2 h-10 px-3.5 rounded-full bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+              >
+                <ArrowUpDown size={14} className="text-[#D71921] shrink-0" />
+                <label
+                  htmlFor="admin-users-sort"
+                  className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] whitespace-nowrap"
+                >
+                  Sort
+                </label>
+                <select
+                  id="admin-users-sort"
+                  data-testid="admin-users-sort-select"
+                  value={sortBy}
+                  onChange={(e) => handleSortChange(e.target.value as AdminUserSortKey)}
+                  className="bg-transparent text-[12px] font-heading font-semibold text-[var(--text)] focus:outline-none cursor-pointer pr-1"
+                >
+                  {SORT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} className="bg-[#121216] text-white">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Filter chips */}
-            <div data-users-filter-groups className="flex flex-col gap-2 pt-1">
-              {/* Role Filter Chips */}
-              <div data-users-filter-row="role" className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
-                  Role:
+            {/* Tidy Wrapped Filter Chip Groups (2-column grid on xl desktop, stacked on mobile) */}
+            <div data-users-filter-groups className="grid grid-cols-1 xl:grid-cols-2 gap-y-2 gap-x-5 pt-0.5">
+              {/* Role */}
+              <div data-users-filter-row="role" className="flex items-start flex-wrap gap-y-1.5 gap-x-2.5">
+                <span className="w-[62px] shrink-0 text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] leading-[30px]">
+                  Role
                 </span>
-                <div data-users-filter-chips className="contents">
+                <div data-users-filter-chips className="flex items-center flex-wrap gap-1.5 flex-1 min-w-0">
                   {[
                     { id: 'all', label: 'All' },
                     { id: 'student', label: 'Students' },
                     { id: 'admin', label: 'Admins' },
                     { id: 'captain', label: 'Captains' },
                     { id: 'crew', label: 'Crew' },
-                  ].map(({ id, label }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setRoleFilter(id)}
-                      className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                        roleFilter === id
-                          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                          : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  ].map(({ id, label }) => {
+                    const active = roleFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pressable
+                        data-active={active ? 'true' : 'false'}
+                        onClick={() => setRoleFilter(id)}
+                        className={`press-scale h-8 px-3 rounded-full border text-[12px] font-heading transition-all cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                          active
+                            ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-[0_4px_12px_rgba(215,25,33,0.28)]'
+                            : 'border-[var(--border)] bg-white/[0.02] text-[var(--muted)] hover:text-[var(--text)] hover:border-white/25'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Account Type, Plan & Status Filter Chips */}
-              <div data-users-filter-compound className="flex items-center gap-1.5 flex-wrap">
-                <div data-users-filter-row="account" className="contents">
-                  <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
-                    Account:
-                  </span>
-                  <div data-users-filter-chips className="contents">
-                    {[
-                      { id: 'all', label: 'All' },
-                      { id: 'registered', label: 'Registered' },
-                      { id: 'guest', label: 'Guest' },
-                      { id: 'pro', label: 'Pro' },
-                      { id: 'plus', label: 'Plus' },
-                    ].map(({ id, label }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          setAccountTypeFilter(id as 'all' | 'guest' | 'registered' | 'pro' | 'plus')
-                        }
-                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                          accountTypeFilter === id
-                            ? id === 'plus'
-                              ? 'border-amber-500 bg-amber-500 text-black font-semibold'
-                              : 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div data-users-filter-row="plan" className="contents">
-                  <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
-                    Plan:
-                  </span>
-                  <div data-users-filter-chips className="contents">
-                    {[
-                      { id: 'all', label: 'All plans' },
-                      { id: 'free', label: 'Free' },
-                      { id: 'pro', label: 'Pro' },
-                      { id: 'plus', label: 'Plus' },
-                    ].map(({ id, label }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setPlanFilter(id)}
-                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                          planFilter === id
-                            ? id === 'plus'
-                              ? 'border-amber-500 bg-amber-500 text-black font-semibold'
-                              : 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div data-users-filter-row="status" className="contents">
-                  <span className="text-[11px] font-heading text-[var(--muted)] mx-1 shrink-0">
-                    Status:
-                  </span>
-                  <div data-users-filter-chips className="contents">
-                    {[
-                      { id: 'all', label: 'All' },
-                      { id: 'active', label: 'Active' },
-                      { id: 'suspended', label: 'Suspended' },
-                    ].map(({ id, label }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setStatusFilter(id)}
-                        className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                          statusFilter === id
-                            ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                            : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 2FA Filter */}
-              <div data-users-filter-row="2fa" className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] mr-1">
-                  2FA:
+              {/* Account */}
+              <div
+                data-users-filter-row="account"
+                className="flex items-start flex-wrap gap-y-2 gap-x-3"
+              >
+                <span className="w-[68px] shrink-0 text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] leading-8">
+                  Account
                 </span>
-                <div data-users-filter-chips className="contents">
+                <div data-users-filter-chips className="flex items-center flex-wrap gap-1.5 flex-1 min-w-0">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'registered', label: 'Registered' },
+                    { id: 'guest', label: 'Guest' },
+                    { id: 'pro', label: 'Pro' },
+                    { id: 'plus', label: 'Plus' },
+                  ].map(({ id, label }) => {
+                    const active = accountTypeFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pressable
+                        data-active={active ? 'true' : 'false'}
+                        onClick={() =>
+                          setAccountTypeFilter(
+                            id as 'all' | 'guest' | 'registered' | 'pro' | 'plus'
+                          )
+                        }
+                        className={`press-scale h-8 px-3 rounded-full border text-[12px] font-heading transition-all cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                          active
+                            ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-[0_4px_12px_rgba(215,25,33,0.28)]'
+                            : 'border-[var(--border)] bg-white/[0.02] text-[var(--muted)] hover:text-[var(--text)] hover:border-white/25'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Plan */}
+              <div data-users-filter-row="plan" className="flex items-start flex-wrap gap-y-2 gap-x-3">
+                <span className="w-[68px] shrink-0 text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] leading-8">
+                  Plan
+                </span>
+                <div data-users-filter-chips className="flex items-center flex-wrap gap-1.5 flex-1 min-w-0">
+                  {[
+                    { id: 'all', label: 'All plans' },
+                    { id: 'free', label: 'Free' },
+                    { id: 'pro', label: 'Pro' },
+                    { id: 'plus', label: 'Plus' },
+                  ].map(({ id, label }) => {
+                    const active = planFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pressable
+                        data-active={active ? 'true' : 'false'}
+                        onClick={() => setPlanFilter(id)}
+                        className={`press-scale h-8 px-3 rounded-full border text-[12px] font-heading transition-all cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                          active
+                            ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-[0_4px_12px_rgba(215,25,33,0.28)]'
+                            : 'border-[var(--border)] bg-white/[0.02] text-[var(--muted)] hover:text-[var(--text)] hover:border-white/25'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div
+                data-users-filter-row="status"
+                className="flex items-start flex-wrap gap-y-2 gap-x-3"
+              >
+                <span className="w-[68px] shrink-0 text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] leading-8">
+                  Status
+                </span>
+                <div data-users-filter-chips className="flex items-center flex-wrap gap-1.5 flex-1 min-w-0">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'active', label: 'Active' },
+                    { id: 'suspended', label: 'Suspended' },
+                  ].map(({ id, label }) => {
+                    const active = statusFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pressable
+                        data-active={active ? 'true' : 'false'}
+                        onClick={() => setStatusFilter(id)}
+                        className={`press-scale h-8 px-3 rounded-full border text-[12px] font-heading transition-all cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                          active
+                            ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-[0_4px_12px_rgba(215,25,33,0.28)]'
+                            : 'border-[var(--border)] bg-white/[0.02] text-[var(--muted)] hover:text-[var(--text)] hover:border-white/25'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2FA */}
+              <div
+                data-users-filter-row="2fa"
+                className="flex items-start flex-wrap gap-y-1.5 gap-x-2.5 xl:col-span-2"
+              >
+                <span className="w-[62px] shrink-0 text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] leading-[30px]">
+                  2FA
+                </span>
+                <div data-users-filter-chips className="flex items-center flex-wrap gap-1.5 flex-1 min-w-0">
                   {(
                     [
                       ['all', 'All'],
@@ -1166,61 +1882,112 @@ export function AdminUsersPage() {
                       ['Both', 'Both'],
                       ['Recovery pending', 'Recovery pending'],
                     ] as const
-                  ).map(([id, label]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setTwoFactorFilter(id)}
-                      className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
-                        twoFactorFilter === id
-                          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
-                          : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  ).map(([id, label]) => {
+                    const active = twoFactorFilter === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pressable
+                        data-active={active ? 'true' : 'false'}
+                        onClick={() => setTwoFactorFilter(id)}
+                        className={`press-scale h-8 px-3 rounded-full border text-[12px] font-heading transition-all cursor-pointer inline-flex items-center justify-center whitespace-nowrap ${
+                          active
+                            ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-[0_4px_12px_rgba(215,25,33,0.28)]'
+                            : 'border-[var(--border)] bg-white/[0.02] text-[var(--muted)] hover:text-[var(--text)] hover:border-white/25'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
+
+            {/* Result Count & Reset Filters Footer */}
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-[var(--border)]/70">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span
+                  data-testid="users-result-count"
+                  className="font-mono text-[12px] text-[var(--text)] font-medium tabular-nums"
+                >
+                  {resultSummaryText}
+                </span>
+                {loading && !isInitialLoading && (
+                  <span className="text-[11px] font-mono text-[#D71921] animate-pulse">
+                    Updating…
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                data-pressable
+                data-testid="users-reset-filters-btn"
+                disabled={!hasAnyModifier}
+                onClick={handleResetFilters}
+                className={`press-scale inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-heading font-medium border transition-all ${
+                  hasAnyModifier
+                    ? 'border-[#D71921]/50 bg-[#D71921]/10 text-[var(--text)] hover:bg-[#D71921]/20 cursor-pointer'
+                    : 'border-[var(--border)] text-[var(--text-faint)] opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <RotateCcw size={12} />
+                <span>Reset filters</span>
+              </button>
+            </div>
           </div>
 
+          {/* ─── BULK ACTIONS BAR (appears when checkboxes selected) ────────── */}
           {selectedUids.size > 0 && isSuperAdmin && (
-            <div className="p-3.5 rounded-[20px] bg-[var(--card)] border border-amber-500/40 flex items-center justify-between flex-wrap gap-3">
-              <span className="text-xs font-mono font-bold text-[var(--text)]">
-                {selectedUids.size} user{selectedUids.size === 1 ? '' : 's'} selected
-              </span>
+            <div
+              data-testid="users-bulk-actions-bar"
+              className="p-3.5 rounded-[20px] bg-[var(--card)] border border-[#D71921]/45 shadow-[0_8px_28px_rgba(215,25,33,0.12)] flex items-center justify-between flex-wrap gap-3"
+            >
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-[#D71921] text-white font-mono text-[11px] font-bold">
+                  {selectedUids.size}
+                </span>
+                <span className="text-xs font-heading font-semibold text-[var(--text)]">
+                  user{selectedUids.size === 1 ? '' : 's'} selected
+                </span>
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
+                  data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('pro')}
-                  className="px-3 py-1.5 rounded-full bg-[#D71921] text-white text-xs font-heading font-semibold disabled:opacity-50 cursor-pointer"
+                  className="press-scale h-8 px-3.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-semibold disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   Grant Pro (30d)
                 </button>
                 <button
                   type="button"
+                  data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('plus')}
-                  className="px-3 py-1.5 rounded-full bg-amber-500 text-black text-xs font-heading font-semibold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                  className="press-scale h-8 px-3.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-xs font-heading font-semibold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   <Sparkles size={12} />
                   <span>Grant Plus (30d)</span>
                 </button>
                 <button
                   type="button"
+                  data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('free')}
-                  className="px-3 py-1.5 rounded-full border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:border-[var(--text)] disabled:opacity-50 cursor-pointer"
+                  className="press-scale h-8 px-3.5 rounded-full border border-[var(--border)] bg-white/[0.03] text-xs font-heading font-semibold text-[var(--text)] hover:border-white/40 disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   Revoke to Free
                 </button>
                 <button
                   type="button"
+                  data-pressable
                   disabled={bulkApplying}
                   onClick={() => setSelectedUids(new Set())}
-                  className="px-2.5 py-1.5 text-xs font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                  className="press-scale h-8 px-2.5 text-xs font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   Clear
                 </button>
@@ -1228,25 +1995,35 @@ export function AdminUsersPage() {
             </div>
           )}
 
-          {/* ─── USERS LIST: MOBILE CARDS (block md:hidden) ─────────────────────── */}
-          <div className="block md:hidden space-y-3">
-            {isInitialLoading ? (
+          {/* ─── MOBILE CARDS (< 768px) ─────────────────────────────────────── */}
+          <div className="block md:hidden space-y-3" data-testid="admin-users-mobile-list">
+            {isTableBusy ? (
               <div className="space-y-3">
                 <LineLoader context="admin" message="Loading registered users..." />
-                {Array.from({ length: 4 }).map((_, idx) => (
+                {Array.from({ length: 5 }).map((_, idx) => (
                   <div
                     key={idx}
-                    className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] animate-pulse flex flex-col gap-3"
+                    className="p-4 rounded-[22px] bg-[var(--card)] border border-[var(--border)] animate-pulse flex flex-col gap-3"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[var(--surface-hover)]" />
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-full bg-[var(--surface-hover)]" />
                         <div className="space-y-2">
                           <div className="h-4 w-32 rounded bg-[var(--surface-hover)]" />
                           <div className="h-3 w-24 rounded bg-[var(--surface-hover)]" />
                         </div>
                       </div>
-                      <div className="h-5 w-16 rounded bg-[var(--surface-hover)]" />
+                      <div className="w-8 h-8 rounded-full bg-[var(--surface-hover)]" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-[var(--border)]/60">
+                      <div className="space-y-1.5">
+                        <div className="h-3 w-28 rounded bg-[var(--surface-hover)]" />
+                        <div className="h-2.5 w-16 rounded bg-[var(--surface-hover)]" />
+                      </div>
+                      <div className="space-y-1.5 flex flex-col items-end">
+                        <div className="h-3 w-24 rounded bg-[var(--surface-hover)]" />
+                        <div className="h-2.5 w-20 rounded bg-[var(--surface-hover)]" />
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1258,35 +2035,45 @@ export function AdminUsersPage() {
                 </p>
               </div>
             ) : paginatedUsers.length === 0 ? (
-              <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center space-y-3">
-                <p className="font-heading text-[14px] text-[var(--muted)]">
-                  No users match your filters or search criteria.
-                </p>
-                {(search ||
-                  roleFilter !== 'all' ||
-                  planFilter !== 'all' ||
-                  statusFilter !== 'all' ||
-                  accountTypeFilter !== 'all' ||
-                  twoFactorFilter !== 'all') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearch('');
-                      setRoleFilter('all');
-                      setPlanFilter('all');
-                      setStatusFilter('all');
-                      setAccountTypeFilter('all');
-                      setTwoFactorFilter('all');
-                    }}
-                    className="text-[12px] font-heading px-3 py-1.5 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
-                  >
-                    Reset all filters
-                  </button>
-                )}
+              <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-[var(--border)] flex items-center justify-center text-[var(--muted)]">
+                  <UsersIcon size={20} />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-heading font-semibold text-[14px] text-[var(--text)]">
+                    No users match your current filters
+                  </p>
+                  <p className="font-heading text-[12px] text-[var(--muted)]">
+                    Try adjusting or clearing your filters{hasMore ? ', or load the next 50 users' : ''}.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-center pt-1">
+                  {hasAnyModifier && (
+                    <button
+                      type="button"
+                      onClick={handleResetFilters}
+                      className="press-scale h-9 px-4 rounded-full bg-[#D71921] text-white text-[12px] font-heading font-semibold cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
+                  )}
+                  {hasMore && (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoadMore()}
+                      disabled={loadingMore}
+                      className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] cursor-pointer disabled:opacity-50"
+                    >
+                      {loadingMore ? 'Loading...' : 'Load next 50'}
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
               paginatedUsers.map((u) => {
-                const isGuestUser = Boolean(u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_'));
+                const isGuestUser = Boolean(
+                  u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+                );
                 const badge2fa = isGuestUser ? 'Off' : resolveUser2faBadge(u);
                 return (
                   <AdminUserMobileCard
@@ -1294,180 +2081,238 @@ export function AdminUsersPage() {
                     user={u}
                     badge2fa={badge2fa}
                     isSuperAdmin={isSuperAdmin}
+                    isChecked={selectedUids.has(u.uid)}
+                    nowMs={nowMs}
+                    onToggleCheck={isSuperAdmin ? handleToggleSelectUid : undefined}
                     onSelect={handleSelectUser}
+                    onOpenMenu={handleOpenMenu}
                   />
                 );
               })
             )}
           </div>
 
-          {/* ─── USERS LIST: DESKTOP TABLE (hidden md:block) ────────────────────── */}
-          <div className="hidden md:block p-0 rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--card-2)]/50 text-[12px] font-heading text-[var(--muted)]">
-                  <th className="py-3 px-5 font-medium">Student</th>
-                  <th className="py-3 px-4 font-medium">Short ID</th>
-                  <th className="py-3 px-4 font-medium">Email / Handle</th>
-                  <th className="py-3 px-4 font-medium">University Track</th>
-                  <th className="py-3 px-4 font-medium">Questions Solved</th>
-                  <th className="py-3 px-4 font-medium">Streak</th>
-                  <th className="py-3 px-4 font-medium">2FA</th>
-                  <th className="py-3 px-4 font-medium">Created / Active</th>
-                  <th className="py-3 px-5 text-right font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)] text-[13px] font-heading">
-                {isInitialLoading ? (
-                  <>
-                    <tr>
-                      <td colSpan={9} className="py-4 px-5">
-                        <LineLoader context="admin" message="Loading registered users..." />
-                      </td>
-                    </tr>
-                    {Array.from({ length: 5 }).map((_, idx) => (
-                      <tr key={idx} className="animate-pulse">
-                        <td className="py-3.5 px-5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-[var(--surface-hover)]" />
-                            <div className="h-4 w-28 rounded bg-[var(--surface-hover)]" />
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-16 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-36 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-24 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-16 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-12 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-5 w-20 rounded-full bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="h-4 w-20 rounded bg-[var(--surface-hover)]" />
-                        </td>
-                        <td className="py-3.5 px-5 text-right">
-                          <div className="h-4 w-10 ml-auto rounded bg-[var(--surface-hover)]" />
+          {/* ─── DESKTOP TABLE (>= 768px) — STICKY HEADER, INNER SCROLL ONLY ── */}
+          <div className="hidden md:block rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden w-full min-w-0">
+            <div
+              data-testid="admin-users-table-scroll"
+              className="w-full overflow-x-auto max-h-[68vh] overflow-y-auto relative"
+            >
+              <table className="w-full min-w-[1000px] text-left border-collapse">
+                <thead className="sticky top-0 z-10 bg-[var(--card-2)]/95 backdrop-blur-md border-b border-[var(--border)]">
+                  <tr className="text-[10.5px] font-mono uppercase tracking-wider text-[var(--muted)]">
+                    <th className="w-[40px] pl-3.5 pr-1.5 py-3 text-center font-medium">
+                      {isSuperAdmin && selectablePageUids.length > 0 ? (
+                        <AdminCheckbox
+                          checked={allPageSelected}
+                          indeterminate={somePageSelected}
+                          ariaLabel="Select all users on this page"
+                          onChange={handleToggleSelectAllPage}
+                        />
+                      ) : (
+                        <span className="sr-only">Select</span>
+                      )}
+                    </th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Student</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Short ID</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Email / Handle</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Joined</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">University Track</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Solved</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Streak</th>
+                    <th className="py-3 px-2.5 font-medium whitespace-nowrap">Status</th>
+                    <th className="w-[50px] py-3 pl-1 pr-3.5 text-right font-medium whitespace-nowrap">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]/80 text-[13px] font-heading">
+                  {isTableBusy ? (
+                    <>
+                      <tr>
+                        <td colSpan={10} className="py-3 px-5">
+                          <LineLoader context="admin" message="Loading registered users..." />
                         </td>
                       </tr>
-                    ))}
-                  </>
-                ) : loadState === 'error' && allUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-12 px-5 text-center text-[var(--muted)]">
-                      Could not load users right now. Please use the Retry button above.
-                    </td>
-                  </tr>
-                ) : paginatedUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-12 px-5 text-center text-[var(--muted)]">
-                      <p className="font-heading text-[14px] mb-2">
-                        No users match your filters or search criteria.
-                      </p>
-                      {(search ||
-                        roleFilter !== 'all' ||
-                        planFilter !== 'all' ||
-                        statusFilter !== 'all' ||
-                        accountTypeFilter !== 'all' ||
-                        twoFactorFilter !== 'all') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearch('');
-                            setRoleFilter('all');
-                            setPlanFilter('all');
-                            setStatusFilter('all');
-                            setAccountTypeFilter('all');
-                            setTwoFactorFilter('all');
-                          }}
-                          className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
-                        >
-                          Reset all filters
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedUsers.map((u) => {
-                    const isGuestUser = Boolean(
-                      u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
-                    );
-                    const badge2fa = isGuestUser ? 'Off' : resolveUser2faBadge(u);
-                    return (
-                      <AdminUserTableRow
-                        key={u.uid}
-                        user={u}
-                        badge2fa={badge2fa}
-                        isSuperAdmin={isSuperAdmin}
-                        isChecked={selectedUids.has(u.uid)}
-                        onToggleCheck={isSuperAdmin ? handleToggleSelectUid : undefined}
-                        onSelect={handleSelectUser}
-                      />
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                      {Array.from({ length: 8 }).map((_, idx) => (
+                        <tr key={idx} className="h-[68px] animate-pulse">
+                          <td className="pl-4 pr-2 py-3 align-middle text-center">
+                            <div className="w-4 h-4 mx-auto rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-[var(--surface-hover)] shrink-0" />
+                              <div className="space-y-1.5">
+                                <div className="h-3.5 w-28 rounded bg-[var(--surface-hover)]" />
+                                <div className="h-2.5 w-16 rounded bg-[var(--surface-hover)]" />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-3.5 w-16 rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-3.5 w-36 rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="space-y-1.5">
+                              <div className="h-3.5 w-32 rounded bg-[var(--surface-hover)]" />
+                              <div className="h-2.5 w-16 rounded bg-[var(--surface-hover)]" />
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-3.5 w-24 rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-3.5 w-16 rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-3.5 w-10 rounded bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 px-3.5 align-middle">
+                            <div className="h-5 w-20 rounded-full bg-[var(--surface-hover)]" />
+                          </td>
+                          <td className="py-3 pl-2 pr-4 align-middle text-right">
+                            <div className="w-7 h-7 ml-auto rounded-full bg-[var(--surface-hover)]" />
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  ) : loadState === 'error' && allUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-14 px-5 text-center text-[var(--muted)]">
+                        Could not load users right now. Please use the Retry button above.
+                      </td>
+                    </tr>
+                  ) : paginatedUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-14 px-5 text-center">
+                        <div className="flex flex-col items-center gap-3 max-w-sm mx-auto">
+                          <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-[var(--border)] flex items-center justify-center text-[var(--muted)]">
+                            <UsersIcon size={20} />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="font-heading font-semibold text-[14px] text-[var(--text)]">
+                              No users match your current filters
+                            </p>
+                            <p className="font-heading text-[12px] text-[var(--muted)]">
+                              Adjust or reset your filters to view the directory
+                              {hasMore ? ', or load the next 50 users from the database' : ''}.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 pt-1">
+                            {hasAnyModifier && (
+                              <button
+                                type="button"
+                                onClick={handleResetFilters}
+                                className="press-scale h-9 px-4 rounded-full bg-[#D71921] text-white text-[12px] font-heading font-semibold cursor-pointer"
+                              >
+                                Reset filters
+                              </button>
+                            )}
+                            {hasMore && (
+                              <button
+                                type="button"
+                                onClick={() => void handleLoadMore()}
+                                disabled={loadingMore}
+                                className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] hover:border-white/35 cursor-pointer disabled:opacity-50"
+                              >
+                                {loadingMore ? 'Loading...' : 'Load next 50 users'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedUsers.map((u) => {
+                      const isGuestUser = Boolean(
+                        u.isGuest || u.accountType === 'guest' || u.uid?.startsWith('guest_')
+                      );
+                      const badge2fa = isGuestUser ? 'Off' : resolveUser2faBadge(u);
+                      return (
+                        <AdminUserTableRow
+                          key={u.uid}
+                          user={u}
+                          badge2fa={badge2fa}
+                          isSuperAdmin={isSuperAdmin}
+                          isChecked={selectedUids.has(u.uid)}
+                          nowMs={nowMs}
+                          onToggleCheck={isSuperAdmin ? handleToggleSelectUid : undefined}
+                          onSelect={handleSelectUser}
+                          onOpenMenu={handleOpenMenu}
+                        />
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* ─── PAGINATION BAR (50 PER PAGE + TOTAL COUNT) ─────────────────────── */}
-          {!isInitialLoading && filteredUsers.length > 0 && (
-            <div className="flex items-center justify-between flex-wrap gap-3 px-2 pt-1 pb-2 text-xs font-mono text-[var(--muted)]">
+          {/* ─── PAGINATION & LOAD MORE FOOTER (50 PER PAGE) ────────────────── */}
+          {!isTableBusy && (filteredUsers.length > 0 || hasMore) && (
+            <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-4 text-xs font-mono text-[var(--muted)]">
               <span>
-                Showing {(safePage - 1) * PAGE_SIZE + 1}–
-                {Math.min(safePage * PAGE_SIZE, filteredUsers.length)} of {filteredUsers.length} users (50 per page)
+                {resultSummaryText} &middot; 50 per page
               </span>
-              {totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={safePage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                  >
-                    <ChevronLeft size={13} />
-                    Prev
-                  </button>
-                  <span>
-                    Page {safePage} of {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                  >
-                    Next
-                    <ChevronRight size={13} />
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
 
-          {hasMore && (
-            <div className="flex justify-center pt-2 pb-4">
-              <button
-                type="button"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
-                className="relative overflow-hidden flex items-center justify-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50 min-w-[160px]"
-              >
-                <span>{loadingMore ? 'Loading more users...' : 'Load More Users'}</span>
-                {loadingMore && <ButtonLineLoader />}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {totalPages > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      data-pressable
+                      disabled={safePage <= 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                    >
+                      <ChevronLeft size={14} />
+                      <span>Prev</span>
+                    </button>
+                    <span className="px-2 text-[var(--text)]">
+                      Page {safePage} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      data-pressable
+                      disabled={safePage >= totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </>
+                )}
+
+                {hasMore && (
+                  <button
+                    type="button"
+                    data-pressable
+                    data-testid="users-load-more-btn"
+                    onClick={() => void handleLoadMore()}
+                    disabled={loadingMore}
+                    className="press-scale relative overflow-hidden inline-flex items-center justify-center gap-2 h-9 px-4 rounded-[12px] border border-[#D71921]/45 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[12px] font-heading font-semibold text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[140px]"
+                  >
+                    <span>{loadingMore ? 'Loading next 50...' : 'Load more (50)'}</span>
+                    {loadingMore && <ButtonLineLoader />}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </>
       )}
+
+      {/* ─── PORTALED ACTIONS DROPDOWN MENU (⋯) ─────────────────────────────── */}
+      <UserActionsMenu
+        menuState={menuState}
+        onClose={handleCloseMenu}
+        onSelect={handleSelectUser}
+        copiedUid={copiedUid}
+        onCopyId={handleCopyId}
+      />
 
       {/* ─── USER OVERRIDE DRAWER (Side Drawer on Desktop / Bottom Sheet on Mobile) ─── */}
       {selectedUser && (

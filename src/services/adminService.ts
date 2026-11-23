@@ -28,6 +28,7 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '@/lib/firebase';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { getDisplayName } from '@/utils/displayName';
+import { resolveUserJoinedAtMs } from '@/utils/userDate';
 import type {
   UserProfile,
   UserTwoFactorSummary,
@@ -258,12 +259,67 @@ export function normalizeTwoFactorSummary(raw?: Partial<UserTwoFactorSummary> | 
   };
 }
 
+export type AdminUserSortKey = 'newest' | 'oldest' | 'questions' | 'streak' | 'name';
+
+export function sortAdminUsers(
+  users: UserProfile[],
+  sortBy: AdminUserSortKey = 'newest'
+): UserProfile[] {
+  const list = [...users];
+  list.sort((a, b) => {
+    if (sortBy === 'newest' || sortBy === 'oldest') {
+      const aMs = resolveUserJoinedAtMs(a);
+      const bMs = resolveUserJoinedAtMs(b);
+      // Users with unknown/missing join date ALWAYS go to the very bottom
+      if (aMs === null && bMs === null) {
+        return String(a.uid || '').localeCompare(String(b.uid || ''));
+      }
+      if (aMs === null) return 1;
+      if (bMs === null) return -1;
+      if (aMs !== bMs) {
+        return sortBy === 'newest' ? bMs - aMs : aMs - bMs;
+      }
+      return String(a.uid || '').localeCompare(String(b.uid || ''));
+    }
+
+    if (sortBy === 'questions') {
+      const aQ = typeof a.totalQuestionsSolved === 'number' ? a.totalQuestionsSolved : -1;
+      const bQ = typeof b.totalQuestionsSolved === 'number' ? b.totalQuestionsSolved : -1;
+      if (bQ !== aQ) return bQ - aQ;
+      const aMs = resolveUserJoinedAtMs(a) ?? -1;
+      const bMs = resolveUserJoinedAtMs(b) ?? -1;
+      if (bMs !== aMs) return bMs - aMs;
+      return String(a.uid || '').localeCompare(String(b.uid || ''));
+    }
+
+    if (sortBy === 'streak') {
+      const aS = typeof a.streak === 'number' ? a.streak : -1;
+      const bS = typeof b.streak === 'number' ? b.streak : -1;
+      if (bS !== aS) return bS - aS;
+      const aMs = resolveUserJoinedAtMs(a) ?? -1;
+      const bMs = resolveUserJoinedAtMs(b) ?? -1;
+      if (bMs !== aMs) return bMs - aMs;
+      return String(a.uid || '').localeCompare(String(b.uid || ''));
+    }
+
+    // sortBy === 'name'
+    const aName = getUserDisplayName(a);
+    const bName = getUserDisplayName(b);
+    const cmp = aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+    return String(a.uid || '').localeCompare(String(b.uid || ''));
+  });
+  return list;
+}
+
 export interface CachedAdminUsersDirectory {
   users: UserProfile[];
   allDirectoryUsers: UserProfile[];
   user2faMap: Record<string, UserTwoFactorSummary>;
+  proBadgesByUid?: Record<string, { design: string; visible: boolean }>;
   securityLogs: any[];
   totalCount: number;
+  firestoreTotalCount?: number;
   studentCount: number;
   captainCount: number;
   freeCount?: number;
@@ -273,6 +329,7 @@ export interface CachedAdminUsersDirectory {
   guestCount: number;
   adminCount: number;
   twoFactorEnabledCount: number;
+  sortBy?: AdminUserSortKey;
   lastDoc: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
   loadedAt: number;
@@ -284,6 +341,7 @@ let inFlightAdminStatsPromise: Promise<AdminStats> | null = null;
 
 let cachedAdminUsersDirectory: CachedAdminUsersDirectory | null = null;
 let inFlightUsersFirstPagePromise: Promise<PaginatedUsersResult> | null = null;
+let cachedUsersCollectionCount: { count: number; fetchedAt: number } | null = null;
 
 export function getCachedAdminStats(): AdminStats | null {
   return cachedAdminStats;
@@ -1102,6 +1160,25 @@ export interface PaginatedUsersResult {
   lastDoc: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
   queryTimeMs: number;
+  sortBy: AdminUserSortKey;
+}
+
+function getFirestoreOrderForSort(
+  sortBy: AdminUserSortKey
+): [string, 'asc' | 'desc'] {
+  switch (sortBy) {
+    case 'oldest':
+      return ['createdAt', 'asc'];
+    case 'questions':
+      return ['totalQuestionsSolved', 'desc'];
+    case 'streak':
+      return ['streak', 'desc'];
+    case 'name':
+      return ['displayName', 'asc'];
+    case 'newest':
+    default:
+      return ['createdAt', 'desc'];
+  }
 }
 
 export async function fetchUsersPaginated(options?: {
@@ -1110,13 +1187,17 @@ export async function fetchUsersPaginated(options?: {
   role?: string;
   plan?: string;
   searchQuery?: string;
+  sortBy?: AdminUserSortKey;
   force?: boolean;
 }): Promise<PaginatedUsersResult> {
-  const count = options?.limitCount ?? 50;
+  const count = Math.min(Math.max(1, options?.limitCount ?? 50), 100);
+  const sortBy: AdminUserSortKey = options?.sortBy ?? 'newest';
   const hasSearch = Boolean(options?.searchQuery && options.searchQuery.trim());
+  const isFirstPage = !options?.startAfterDoc;
   const isDefaultFirstPage =
     !hasSearch &&
-    !options?.startAfterDoc &&
+    isFirstPage &&
+    sortBy === 'newest' &&
     (!options?.role || options.role === 'all') &&
     (!options?.plan || options.plan === 'all') &&
     count === 50;
@@ -1130,22 +1211,38 @@ export async function fetchUsersPaginated(options?: {
     await ensureAdminAuthToken(false);
 
     const ref = collection(db, 'users');
-    const queryConstraints: QueryConstraint[] = [];
+    const [orderField, orderDir] = getFirestoreOrderForSort(sortBy);
 
-    if (options?.role && options.role !== 'all') {
-      queryConstraints.push(where('role', '==', options.role));
-    } else if (options?.plan && options.plan !== 'all') {
-      queryConstraints.push(where('plan', '==', options.plan));
-    }
-
+    // Strictly paginate at `count` (50/page) using Firestore orderBy + startAfter + limit(count + 1).
+    // Never load the entire users collection at once (free-tier read quota), and never combine
+    // where(role/plan) with orderBy(differentField) since no composite index exists on `users`.
+    const queryConstraints: QueryConstraint[] = [orderBy(orderField, orderDir)];
     if (options?.startAfterDoc && !hasSearch) {
       queryConstraints.push(startAfter(options.startAfterDoc));
     }
+    queryConstraints.push(limit(count + 1));
 
-    // Fetch up to 1000 when searching or building full directory count, paginated to `count` (default 50)
-    queryConstraints.push(limit(hasSearch ? 1000 : Math.max(count, 100)));
+    const fetchFirestoreTotalCount = async (): Promise<number | null> => {
+      if (
+        !options?.force &&
+        cachedUsersCollectionCount &&
+        Date.now() - cachedUsersCollectionCount.fetchedAt < 60_000
+      ) {
+        return cachedUsersCollectionCount.count;
+      }
+      try {
+        const countSnap = await getCountFromServer(ref);
+        const total = Number(countSnap.data().count || 0);
+        cachedUsersCollectionCount = { count: total, fetchedAt: Date.now() };
+        return total;
+      } catch (err) {
+        console.warn('[AdminService] getCountFromServer(users) warning:', err);
+        return cachedUsersCollectionCount?.count ?? null;
+      }
+    };
 
     const fetchGuestAccounts = async (): Promise<UserProfile[]> => {
+      if (!isFirstPage) return [];
       const res = await fetchAdminJsonWithRetry<{ ok?: boolean; guests?: any[] }>('/api/auth/guests');
       if (!res.ok || !res.data?.guests || !Array.isArray(res.data.guests)) return [];
       return res.data.guests
@@ -1164,8 +1261,9 @@ export async function fetchUsersPaginated(options?: {
           testsCompleted: Number(g.testsCompleted || 0),
           totalQuestionsSolved: Number(g.questionsSolved || 0),
           streak: Number(g.streak || 0),
-          createdAt: g.createdAt,
-          lastActiveAt: g.lastActiveAt || g.createdAt,
+          createdAt: g.createdAt ?? null,
+          // Never fabricate lastActiveAt from createdAt; only keep real stored lastActiveAt
+          lastActiveAt: g.lastActiveAt ?? null,
         } as unknown as UserProfile));
     };
 
@@ -1175,6 +1273,21 @@ export async function fetchUsersPaginated(options?: {
       d1Users: UserProfile[];
       securityLogs: any[];
     }> => {
+      // On Load More pages, reuse fresh cached 2FA/proBadge metadata to avoid redundant calls
+      if (
+        !isFirstPage &&
+        !options?.force &&
+        cachedAdminUsersDirectory &&
+        Date.now() - cachedAdminUsersDirectory.loadedAt < 120_000
+      ) {
+        return {
+          user2faMap: { ...cachedAdminUsersDirectory.user2faMap },
+          proBadgesByUid: { ...(cachedAdminUsersDirectory.proBadgesByUid || {}) },
+          d1Users: [],
+          securityLogs: cachedAdminUsersDirectory.securityLogs || [],
+        };
+      }
+
       const res = await fetchAdminJsonWithRetry<{
         ok?: boolean;
         users?: Record<string, Partial<UserTwoFactorSummary>>;
@@ -1216,15 +1329,15 @@ export async function fetchUsersPaginated(options?: {
           const pbEntry = proBadgesByUid[row.uid];
           const d1Plan = getPlan(row);
           const d1ExpMs = Number(row.planExpiresAt || row.plan_expires_at || 0);
-          const d1ExpTimestamp =
-            d1ExpMs > 0
-              ? Timestamp.fromMillis(d1ExpMs)
-              : null;
+          const d1ExpTimestamp = d1ExpMs > 0 ? Timestamp.fromMillis(d1ExpMs) : null;
           d1UsersList.push({
             uid: String(row.uid),
             email: String(row.email || ''),
             username: row.username || null,
-            displayName: row.displayName || row.username || (row.email ? String(row.email).split('@')[0] : 'Student'),
+            displayName:
+              row.displayName ||
+              row.username ||
+              (row.email ? String(row.email).split('@')[0] : 'Student'),
             name: row.displayName || row.username || '',
             role: row.role || 'student',
             plan: d1Plan,
@@ -1237,7 +1350,8 @@ export async function fetchUsersPaginated(options?: {
             isGuest: Boolean(row.isGuest || row.accountType === 'guest'),
             accountType: row.accountType === 'guest' ? 'guest' : 'registered',
             onboardingCompleted: true,
-            createdAt: row.createdAt,
+            createdAt: row.createdAt ?? null,
+            lastActiveAt: row.lastActiveAt ?? null,
             twoFactorStatus: summary,
             proBadgeDesign: row.proBadgeDesign || pbEntry?.design || 'ember',
             proBadgeVisible: row.proBadgeVisible ?? pbEntry?.visible ?? true,
@@ -1262,23 +1376,30 @@ export async function fetchUsersPaginated(options?: {
             setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
           ),
         ]);
-      } catch (firstErr) {
+      } catch (_firstErr) {
         await ensureAdminAuthToken(true);
         return await Promise.race([
           getDocs(q),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Users list query timed out after 8 seconds (retry)')), 8000)
+            setTimeout(
+              () => reject(new Error('Users list query timed out after 8 seconds (retry)')),
+              8000
+            )
           ),
         ]);
       }
     };
 
     try {
-      const [snapResult, guestUsers, d1Bundle] = await Promise.all([
+      const [snapResult, firestoreCount, guestUsers, d1Bundle] = await Promise.all([
         fetchFirestoreUsersWithRetry().catch((err) => {
-          console.warn('[AdminService] Firestore users query warning, falling back to D1/guest directory:', err);
+          console.warn(
+            '[AdminService] Firestore ordered users query warning, falling back to D1/guest directory:',
+            err
+          );
           return null;
         }),
+        fetchFirestoreTotalCount(),
         fetchGuestAccounts(),
         fetchD1TwoFactorAndUsers(),
       ]);
@@ -1289,24 +1410,37 @@ export async function fetchUsersPaginated(options?: {
         throw new Error('Failed to load users from Firestore and D1.');
       }
 
-      const firestoreUsers = snapResult
-        ? snapResult.docs
-            .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
-            .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot')
-        : [];
+      const rawSnapDocs = snapResult ? snapResult.docs : [];
+      const firestoreHasMore = rawSnapDocs.length > count;
+      const pageSnapDocs = firestoreHasMore ? rawSnapDocs.slice(0, count) : rawSnapDocs;
+      const lastDoc = pageSnapDocs.length > 0 ? pageSnapDocs[pageSnapDocs.length - 1] : null;
+
+      const firestoreUsers = pageSnapDocs
+        .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+        .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
 
       const byUid = new Map<string, UserProfile>();
       for (const u of firestoreUsers) {
         byUid.set(u.uid, u);
       }
 
-      // Merge D1 registered users so any user in D1 (including 2FA-enabled accounts) is guaranteed to appear and have full metadata
+      // Compute oldest real createdAt on the current Firestore page (for safe D1 newest-window merge)
+      let pageOldestCreatedMs: number | null = null;
+      if (sortBy === 'newest' && firestoreUsers.length > 0) {
+        for (const u of firestoreUsers) {
+          const ms = resolveUserJoinedAtMs(u);
+          if (ms !== null && (pageOldestCreatedMs === null || ms < pageOldestCreatedMs)) {
+            pageOldestCreatedMs = ms;
+          }
+        }
+      }
+
+      // Enrich fetched Firestore users with D1 metadata (2FA, plan/role overrides, proBadge).
+      // Only add D1-only users that aren't in Firestore when Firestore failed, when we've reached
+      // the end of Firestore pagination, or (on newest-first page 1) when a D1-only user is newer
+      // than the page boundary so we never dump older Firestore page-2+ users into page 1.
       for (const d1u of d1Users) {
-        if (options?.role && options.role !== 'all' && d1u.role !== options.role) continue;
-        if (options?.plan && options.plan !== 'all' && d1u.plan !== options.plan) continue;
-        if (!byUid.has(d1u.uid)) {
-          byUid.set(d1u.uid, d1u);
-        } else {
+        if (byUid.has(d1u.uid)) {
           const existing = byUid.get(d1u.uid)!;
           const existingTier = getPlan(existing);
           const d1Tier = getPlan(d1u);
@@ -1315,6 +1449,7 @@ export async function fetchUsersPaginated(options?: {
             d1u.role && d1u.role !== 'student'
               ? d1u.role
               : existing.role || d1u.role || 'student';
+          const existingCreatedMs = resolveUserJoinedAtMs(existing);
           byUid.set(d1u.uid, {
             ...existing,
             username: existing.username || d1u.username,
@@ -1329,18 +1464,29 @@ export async function fetchUsersPaginated(options?: {
             isPlus: mergedPlan === 'plus',
             planExpiresAt: existing.planExpiresAt || d1u.planExpiresAt || null,
             suspended: existing.suspended ?? d1u.suspended ?? false,
+            // Only fall back to D1 createdAt in display if Firestore document has no real timestamp
+            createdAt: existingCreatedMs !== null ? existing.createdAt : d1u.createdAt ?? null,
             proBadgeDesign: (existing as any).proBadgeDesign || (d1u as any).proBadgeDesign,
             proBadgeVisible: (existing as any).proBadgeVisible ?? (d1u as any).proBadgeVisible,
           });
+        } else {
+          const d1CreatedMs = resolveUserJoinedAtMs(d1u);
+          const shouldIncludeD1Only =
+            !snapResult ||
+            !firestoreHasMore ||
+            (isFirstPage &&
+              sortBy === 'newest' &&
+              pageOldestCreatedMs !== null &&
+              d1CreatedMs !== null &&
+              d1CreatedMs > pageOldestCreatedMs);
+          if (shouldIncludeD1Only) {
+            byUid.set(d1u.uid, d1u);
+          }
         }
       }
 
-      // Merge Guest users when allowed by role/plan filter
-      if (
-        guestUsers.length > 0 &&
-        (!options?.plan || options.plan === 'all' || options.plan === 'free') &&
-        (!options?.role || options.role === 'all' || options.role === 'student')
-      ) {
+      // Merge active Guest accounts on page 1 (guests are stored in D1, not Firestore)
+      if (isFirstPage && guestUsers.length > 0) {
         for (const gu of guestUsers) {
           if (!byUid.has(gu.uid)) {
             byUid.set(gu.uid, gu);
@@ -1348,8 +1494,7 @@ export async function fetchUsersPaginated(options?: {
         }
       }
 
-      // Attach normalized twoFactorStatus and proBadge info to EVERY user in the list
-      let allMatchingUsers = Array.from(byUid.values()).map((u) => {
+      const enrichUser = (u: UserProfile): UserProfile => {
         const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
         user2faMap[u.uid] = resolved2fa;
         const pbEntry = proBadgesByUid[u.uid];
@@ -1364,7 +1509,9 @@ export async function fetchUsersPaginated(options?: {
           proBadgeVisible: pbVisible,
           proBadge: isPaidUser && pbVisible ? (tier === 'plus' ? `plus:${pbDesign}` : pbDesign) : null,
         };
-      });
+      };
+
+      let allMatchingUsers = Array.from(byUid.values()).map(enrichUser);
 
       if (hasSearch && options?.searchQuery) {
         const qLower = options.searchQuery.toLowerCase().trim();
@@ -1402,36 +1549,27 @@ export async function fetchUsersPaginated(options?: {
                   email: existing.email || su.email,
                   displayName: existing.displayName || su.displayName || su.name,
                   twoFactorStatus: existing.twoFactorStatus || resolved2fa,
-                  ...((typeof (existing as any).kobans === 'number' || typeof su.kobans === 'number')
-                    ? { kobans: typeof (existing as any).kobans === 'number' ? (existing as any).kobans : su.kobans }
+                  ...(typeof (existing as any).kobans === 'number' || typeof su.kobans === 'number'
+                    ? {
+                        kobans:
+                          typeof (existing as any).kobans === 'number'
+                            ? (existing as any).kobans
+                            : su.kobans,
+                      }
                     : {}),
                 });
               }
             }
-            allMatchingUsers = Array.from(byUid.values()).map((u) => {
-              const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
-              user2faMap[u.uid] = resolved2fa;
-              const pbEntry = proBadgesByUid[u.uid];
-              const tier = u.isGuest || u.accountType === 'guest' ? 'free' : getPlan(u);
-              const isPaidUser = tier === 'pro' || tier === 'plus';
-              const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
-              const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
-              return {
-                ...u,
-                twoFactorStatus: resolved2fa,
-                proBadgeDesign: pbDesign,
-                proBadgeVisible: pbVisible,
-                proBadge: isPaidUser && pbVisible ? (tier === 'plus' ? `plus:${pbDesign}` : pbDesign) : null,
-              };
-            });
+            allMatchingUsers = Array.from(byUid.values()).map(enrichUser);
           } catch (sharedErr) {
-            console.warn('[AdminService] Shared user search fallback in fetchUsersPaginated:', sharedErr);
+            console.warn(
+              '[AdminService] Shared user search fallback in fetchUsersPaginated:',
+              sharedErr
+            );
           }
         }
 
         allMatchingUsers = allMatchingUsers.filter((u) => {
-          if (options?.role && options.role !== 'all' && u.role !== options.role) return false;
-          if (options?.plan && options.plan !== 'all' && u.plan !== options.plan) return false;
           const email = (u.email || '').toLowerCase().trim();
           const displayName = (u.displayName || '').toLowerCase().trim();
           const name = (u.name || '').toLowerCase().trim();
@@ -1452,23 +1590,39 @@ export async function fetchUsersPaginated(options?: {
         });
       }
 
-      const totalCount = allMatchingUsers.length;
-      const pagedUsers = allMatchingUsers.slice(0, count);
-      const lastDoc =
-        snapResult && snapResult.docs.length > 0
-          ? snapResult.docs[Math.min(snapResult.docs.length - 1, count - 1)]
-          : null;
-      const hasMore = allMatchingUsers.length > count || Boolean(snapResult && snapResult.docs.length > count);
+      // Apply optional role/plan filter when explicitly passed by callers
+      if (options?.role && options.role !== 'all') {
+        allMatchingUsers = allMatchingUsers.filter((u) => u.role === options.role);
+      }
+      if (options?.plan && options.plan !== 'all') {
+        allMatchingUsers = allMatchingUsers.filter((u) => getPlan(u) === options.plan);
+      }
+
+      // Sort deterministically according to sortBy (unknown join dates ALWAYS at the very bottom)
+      const sortedUsers = sortAdminUsers(allMatchingUsers, sortBy);
+
+      const estimatedTotal = hasSearch
+        ? sortedUsers.length
+        : Math.max(
+            (firestoreCount ?? 0) + (isFirstPage ? guestUsers.length : 0),
+            sortedUsers.length
+          );
+
+      const hasMore = !hasSearch && firestoreHasMore;
       const queryTimeMs = Math.round(performance.now() - startTime);
 
       if (isDefaultFirstPage) {
-        const breakdown = computeUserDirectoryBreakdown(allMatchingUsers, user2faMap);
+        const breakdown = computeUserDirectoryBreakdown(sortedUsers, user2faMap);
         cachedAdminUsersDirectory = {
-          users: pagedUsers,
-          allDirectoryUsers: allMatchingUsers,
+          users: sortedUsers,
+          allDirectoryUsers: sortedUsers,
           user2faMap,
+          proBadgesByUid,
           securityLogs,
           ...breakdown,
+          totalCount: estimatedTotal,
+          firestoreTotalCount: firestoreCount ?? undefined,
+          sortBy,
           lastDoc,
           hasMore,
           loadedAt: Date.now(),
@@ -1478,18 +1632,19 @@ export async function fetchUsersPaginated(options?: {
       }
 
       console.log(
-        `%c[AdminService] fetchUsersPaginated (${pagedUsers.length}/${totalCount} users, 2FA map=${Object.keys(user2faMap).length}) in ${queryTimeMs}ms`,
+        `%c[AdminService] fetchUsersPaginated [sort=${sortBy}] (${sortedUsers.length} loaded / ${estimatedTotal} total, hasMore=${hasMore}) in ${queryTimeMs}ms`,
         'color: #10b981;'
       );
 
       return {
-        users: pagedUsers,
-        totalCount,
+        users: sortedUsers,
+        totalCount: estimatedTotal,
         user2faMap,
         securityLogs,
         lastDoc,
         hasMore,
         queryTimeMs,
+        sortBy,
       };
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string };

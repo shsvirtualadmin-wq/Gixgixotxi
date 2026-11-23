@@ -760,38 +760,70 @@ html.ui-glass [data-admin-page="pricing"] div.rounded-xl:has(> button) > button.
 
 /* ==========================================================================
    A6 — USERS FILTERS
-   Each group (Role, Account, Plan, Status, 2FA) is its own row with a
-   fixed-width label on the left and a horizontally scrolling chip row.
-   Chips at least 40px tall. Hide scrollbars.
+   Clean labeled groups with tidy wrapping, uniform chip size, and clear
+   #D71921 active state with press/bubble feedback.
    ========================================================================== */
-html.ui-glass [data-admin-page="users"] [data-users-filter-groups] {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 8px !important;
+html.ui-glass [data-admin-page="users"] [data-users-search-wrap] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+html.ui-glass [data-admin-page="users"] [data-users-search-wrap] input,
+html.ui-glass [data-admin-page="users"] [data-users-sort-wrap] select {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-html.ui-glass [data-admin-page="users"] [data-users-filter-compound] {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: stretch !important;
-  gap: 8px !important;
-  width: 100%;
+html.ui-glass [data-admin-page="users"] [data-users-search-wrap] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus,
+html.ui-glass [data-admin-page="users"] [data-users-search-wrap] input:focus,
+html.ui-glass [data-admin-page="users"] [data-users-sort-wrap] select:focus {
+  border-color: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+html.ui-glass [data-admin-page="users"] button[role="checkbox"] {
+  width: 17px !important;
+  height: 17px !important;
+  min-width: 17px !important;
+  min-height: 17px !important;
+  padding: 0 !important;
+  border-radius: 5px !important;
+}
+
+html.ui-glass [data-admin-page="users"] button[data-testid^="user-row-menu-btn-"],
+html.ui-glass [data-admin-page="users"] button[data-testid^="user-card-menu-btn-"] {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  padding: 0 !important;
+}
+
+html.ui-glass [data-admin-page="users"] [data-users-filter-groups] {
+  gap: 8px 20px !important;
 }
 
 html.ui-glass [data-admin-page="users"] [data-users-filter-row] {
   display: flex !important;
-  align-items: center !important;
-  flex-wrap: nowrap !important;
-  gap: 10px !important;
-  width: 100%;
+  align-items: flex-start !important;
+  flex-wrap: wrap !important;
+  gap: 6px 10px !important;
   min-width: 0;
 }
 
 html.ui-glass [data-admin-page="users"] [data-users-filter-row] > span:first-child {
-  width: 64px !important;
-  min-width: 64px !important;
-  flex: 0 0 64px !important;
+  width: 62px !important;
+  min-width: 62px !important;
+  flex: 0 0 62px !important;
   margin: 0 !important;
+  line-height: 30px !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   color: var(--mute) !important;
@@ -800,24 +832,17 @@ html.ui-glass [data-admin-page="users"] [data-users-filter-row] > span:first-chi
 html.ui-glass [data-admin-page="users"] [data-users-filter-chips] {
   display: flex !important;
   align-items: center !important;
-  flex-wrap: nowrap !important;
-  overflow-x: auto !important;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  gap: 8px !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
   flex: 1 1 0% !important;
   min-width: 0;
-  padding: 2px 0;
-}
-
-html.ui-glass [data-admin-page="users"] [data-users-filter-chips]::-webkit-scrollbar {
-  display: none;
 }
 
 html.ui-glass [data-admin-page="users"] [data-users-filter-chips] > button {
   flex: 0 0 auto !important;
-  min-height: 40px !important;
-  padding: 0 14px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 11px !important;
   border-radius: var(--r-pill) !important;
   white-space: nowrap !important;
   display: inline-flex !important;
@@ -825,13 +850,13 @@ html.ui-glass [data-admin-page="users"] [data-users-filter-chips] > button {
   justify-content: center !important;
 }
 
-html.ui-glass [data-admin-page="users"] [data-users-filter-chips] > button.bg-\[var\(--text\)\] {
+html.ui-glass [data-admin-page="users"] [data-users-filter-chips] > button[data-active="true"] {
   background: #D71921 !important;
   border-color: #D71921 !important;
   color: #ffffff !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    0 4px 12px rgba(215, 25, 33, 0.28) !important;
+    0 4px 12px rgba(215, 25, 33, 0.30) !important;
 }
 
 /* ==========================================================================

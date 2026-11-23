@@ -1052,8 +1052,8 @@ export async function fetchCommonsPosts(options: {
     } else if (isTrending && posts.length > 1) {
       const now = Date.now();
       posts = [...posts].sort((a, b) => {
-        const aCreated = getPostCreatedAtMs(a.createdAt);
-        const bCreated = getPostCreatedAtMs(b.createdAt);
+        const aCreated = resolveCreatedAtMs(a).ms ?? 0;
+        const bCreated = resolveCreatedAtMs(b).ms ?? 0;
         const aAgeDays = Math.max(0, (now - aCreated) / (24 * 60 * 60 * 1000));
         const bAgeDays = Math.max(0, (now - bCreated) / (24 * 60 * 60 * 1000));
         const aScore =
