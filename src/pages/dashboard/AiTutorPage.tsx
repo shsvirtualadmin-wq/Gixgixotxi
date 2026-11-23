@@ -6,8 +6,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
-import { Bot, Send, Sparkles, Zap, RotateCcw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Bot, Send, Sparkles, RotateCcw } from 'lucide-react';
+import { BoardlyAd } from '@/components/BoardlyAd';
 
 interface Message {
   id: string;
@@ -391,32 +391,17 @@ export function AiTutorPage() {
 
       {/* Input Bar or Upgrade Warning */}
       {isOverLimit ? (
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: 24,
-            padding: '1rem 1.5rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            border: '1px solid var(--warning)',
-          }}
-        >
-          <div>
-            <p className="font-dot" style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)' }}>
-              Daily Free Limit Reached (5 of 5 prompts used)
-            </p>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              Your quota resets at midnight PKT. Upgrade to Boardly Pro for unlimited derivations.
-            </p>
-          </div>
-          <Link to="/dashboard/plans">
-            <Button variant="primary" size="sm" style={{ gap: 6 }}>
-              <Zap size={14} />
-              Upgrade to Pro
-            </Button>
-          </Link>
+        <div className="my-4">
+          <BoardlyAd
+            variant="banner"
+            chip="AI TUTOR · PRO"
+            headline={`Daily Free Limit Reached (${FREE_DAILY_TOKEN_LIMIT} of ${FREE_DAILY_TOKEN_LIMIT} prompts used)`}
+            description="Your quota resets at midnight PKT. Upgrade to Boardly Pro for unlimited derivations."
+            ctaLabel="Upgrade to Pro"
+            href="/dashboard/plans"
+            dismissible={false}
+            infoText="Boardly upgrade prompt shown when your free daily AI Tutor prompt quota is reached."
+          />
         </div>
       ) : (
         <form

@@ -196,7 +196,7 @@ export function FeaturesPage() {
               </div>
               </div>
               {idx === 1 && (
-                <div className="md:col-span-2 my-1">
+                <div className="md:col-span-2 my-6 sm:my-8">
                   <AdSlot slotId="features_mid" />
                 </div>
               )}

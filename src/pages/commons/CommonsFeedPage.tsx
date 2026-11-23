@@ -1217,7 +1217,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 onAuthorClick={handleAuthorClick}
               />
               {(postIdx + 1) % commonsFeedEveryN === 0 && (
-                <div className="my-2">
+                <div className="my-5 sm:my-6">
                   <AdSlot slotId="commons_feed" instanceKey={`commons-${postIdx}`} />
                 </div>
               )}

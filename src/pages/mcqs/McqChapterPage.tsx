@@ -875,7 +875,7 @@ export const McqChapterPage: React.FC = () => {
                 )}
               </div>
               {(qIdx + 1) % mcqFeedEveryN === 0 && qIdx < sampleQuestions.length - 1 && (
-                <div className="my-2">
+                <div className="my-6 sm:my-8">
                   <AdSlot slotId={AD_SLOTS.mcq_chapter_feed} instanceKey={`mcq-${qIdx}`} />
                 </div>
               )}
@@ -885,7 +885,7 @@ export const McqChapterPage: React.FC = () => {
         </section>
 
         {/* Ad Slot at end of MCQ chapter */}
-        <div className="mb-10">
+        <div className="my-6 sm:my-8 mb-10">
           <AdSlot slotId={AD_SLOTS.mcq_chapter_end} />
         </div>
 

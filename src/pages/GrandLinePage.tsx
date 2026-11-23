@@ -573,7 +573,7 @@ export function GrandLinePage() {
           )}
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto my-6 sm:my-8">
           <AdSlot slotId="grandline_mid" />
         </div>
 

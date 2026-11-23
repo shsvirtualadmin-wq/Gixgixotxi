@@ -8,6 +8,7 @@ import {
 import type { AiPlan } from '@/utils/aiMentorsLogic';
 import type { SavedAiChat } from '@/services/aiMentorsService';
 import { MentorAvatar } from './MentorAvatar';
+import { BoardlyAd } from '@/components/BoardlyAd';
 
 interface AiHistorySidebarProps {
   chats: SavedAiChat[];
@@ -287,55 +288,56 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
         </div>
       </div>
 
-      {/* Bottom Plan Badge */}
+      {/* Bottom Plan Badge / Upgrade Promo */}
       <div
-        className="shrink-0 px-3.5 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:pb-3"
+        className="shrink-0 px-3.5 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:pb-3 space-y-2.5"
         style={{ borderTop: '1px solid var(--border)' }}
       >
-        <div
-          className="flex items-center justify-between gap-2 rounded-full px-3.5 py-2"
-          style={{
-            backgroundColor: 'var(--card)',
-            border: '1px solid var(--border)',
-          }}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <Crown
-              className="h-4 w-4 shrink-0"
-              style={{
-                color:
-                  resolvedPlan === 'plus'
-                    ? '#d97706'
-                    : resolvedPlan === 'pro'
-                    ? 'var(--accent)'
-                    : 'var(--text-muted)',
-              }}
-            />
-            <span className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--text)' }}>
-              {planBadgeLabel}
-            </span>
+        {!isSuperAdmin && (resolvedPlan === 'free' || resolvedPlan === 'pro') ? (
+          <BoardlyAd
+            variant="inline"
+            chip={resolvedPlan === 'pro' ? 'BOARDLY PLUS' : 'AI MENTOR PRO'}
+            headline={
+              resolvedPlan === 'pro'
+                ? 'Double your daily AI credits'
+                : 'Unlock Deep & Max AI Mentor'
+            }
+            description={
+              resolvedPlan === 'pro'
+                ? `${planBadgeLabel} · Upgrade to Plus for 2× daily credits.`
+                : `${planBadgeLabel} · Upgrade to Pro for 50 credits/day.`
+            }
+            ctaLabel={resolvedPlan === 'pro' ? 'Upgrade to Plus' : 'Upgrade to Pro'}
+            onAction={onUpgradeClick}
+            dismissible
+            infoText="Boardly promotion inside AI Mentors. Plus members see no upgrade prompts."
+          />
+        ) : (
+          <div
+            className="flex items-center justify-between gap-2 rounded-full px-3.5 py-2"
+            style={{
+              backgroundColor: 'var(--card)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Crown
+                className="h-4 w-4 shrink-0"
+                style={{
+                  color:
+                    resolvedPlan === 'plus'
+                      ? '#d97706'
+                      : resolvedPlan === 'pro'
+                      ? 'var(--accent)'
+                      : 'var(--text-muted)',
+                }}
+              />
+              <span className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--text)' }}>
+                {planBadgeLabel}
+              </span>
+            </div>
           </div>
-          {!isSuperAdmin && resolvedPlan === 'free' && (
-            <button
-              type="button"
-              onClick={onUpgradeClick}
-              className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white cursor-pointer"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              Upgrade
-            </button>
-          )}
-          {!isSuperAdmin && resolvedPlan === 'pro' && (
-            <button
-              type="button"
-              onClick={onUpgradeClick}
-              className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white cursor-pointer"
-              style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' }}
-            >
-              Plus
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

@@ -298,7 +298,7 @@ export function CrewPage() {
           </div>
         </section>
 
-        <div className="py-2">
+        <div className="my-6 sm:my-8">
           <AdSlot slotId="crew_mid" />
         </div>
 

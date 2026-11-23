@@ -364,7 +364,9 @@ export function TestResultPage() {
       </div>
 
       {/* Ad Slot below score summary */}
-      <AdSlot slotId={AD_SLOTS.result_below} />
+      <div className="my-6 sm:my-8">
+        <AdSlot slotId={AD_SLOTS.result_below} />
+      </div>
 
       {/* Review Section */}
       <div className="min-w-0 max-w-full">

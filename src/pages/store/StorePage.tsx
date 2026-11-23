@@ -1874,7 +1874,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         onEnterSelectionMode={handleEnterSelectionMode}
                       />
                       {showRowDividerAfter && (
-                        <div className="col-span-full my-2">
+                        <div className="col-span-full my-6 sm:my-8">
                           <AdSlot slotId="store_rows" instanceKey={`store-${itemIdx}`} />
                         </div>
                       )}

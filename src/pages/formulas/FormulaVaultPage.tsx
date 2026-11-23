@@ -1612,7 +1612,7 @@ export const FormulaVaultPage: React.FC = () => {
                                         'Formula Library',
                                     })}
                                     {(fIdx + 1) % formulaFeedEveryN === 0 && (
-                                      <div className="col-span-full my-1">
+                                      <div className="col-span-full my-5 sm:my-6">
                                         <AdSlot
                                           slotId="formula_feed"
                                           instanceKey={`formula-${chapter.id}-${fIdx}`}

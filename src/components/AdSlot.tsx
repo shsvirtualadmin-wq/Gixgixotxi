@@ -521,6 +521,7 @@ export function AdSlot({
     }
 
     const previewOffer = resolvedOffer || pickPreviewOffer();
+    const activePromoEndDate = config.promoCode?.active ? config.promoCode.endDate : null;
 
     if (effectiveMode === 'boardly') {
       return previewOffer ? (
@@ -529,6 +530,7 @@ export function AdSlot({
           slotId={slotConfig.id}
           className={className}
           compact={compact}
+          promoEndDate={activePromoEndDate}
           isPreview
         />
       ) : (
@@ -563,6 +565,7 @@ export function AdSlot({
                 offer={previewOffer}
                 slotId={slotConfig.id}
                 compact={compact}
+                promoEndDate={activePromoEndDate}
                 isPreview
               />
             </div>
@@ -578,6 +581,7 @@ export function AdSlot({
           slotId={slotConfig.id}
           className={className}
           compact={compact}
+          promoEndDate={activePromoEndDate}
           isPreview
         />
       );
@@ -629,6 +633,8 @@ export function AdSlot({
     ? 'google_unfilled -> fallback'
     : 'visible';
 
+  const activePromoEndDate = config.promoCode?.active ? config.promoCode.endDate : null;
+
   const innerContent = isWaitingForPlan ? (
     <AdSpacePlaceholder
       slotId={slotConfig.id}
@@ -664,6 +670,7 @@ export function AdSlot({
       offer={resolvedOffer}
       slotId={slotConfig.id}
       compact={compact || Boolean(slotConfig.desktopOnly)}
+      promoEndDate={activePromoEndDate}
     />
   ) : (
     <AdSpacePlaceholder
