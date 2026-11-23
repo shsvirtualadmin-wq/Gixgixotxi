@@ -232,6 +232,9 @@ const AdminApplicationsPage = lazyWithRetry(() =>
 const AdminPaymentsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage }))
 );
+const AdminCouponStudioPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCouponStudioPage').then(m => ({ default: m.AdminCouponStudioPage }))
+);
 const AdminCaptainsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCaptainsPage').then(m => ({ default: m.AdminCaptainsPage }))
 );
@@ -343,6 +346,7 @@ function AppInner() {
           <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
+          <Route path="coupons" element={<AdminCouponStudioPage />} />
           <Route path="ads" element={<AdminAdsPage />} />
 
           {/* SuperAdmin-only pages */}
@@ -388,6 +392,7 @@ function AppInner() {
           <Route path="certificates" element={<AdminCertificatesPage />} />
           <Route path="access-requests" element={<AdminAccessRequestsPage />} />
           <Route path="ads" element={<AdminAdsPage />} />
+          <Route path="coupons" element={<AdminCouponStudioPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<AdminUsersPage />} />
         </Route>

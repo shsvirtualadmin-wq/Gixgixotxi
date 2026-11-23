@@ -73,6 +73,7 @@ import {
   notifyProActivated,
   notifyProRequestRejected,
 } from './emailNotificationService';
+import { adminAdjustKobans } from './kobanService';
 import {
   ENABLE_MULTI_SOURCE_BANK,
   USE_FIRESTORE_QUESTION_READER,
@@ -3925,10 +3926,27 @@ export async function approvePaymentRequest(
 
   await setDoc(userRef, userPlanPayload, { merge: true });
 
+  // 2b. If a Kobans bonus coupon was redeemed on this payment, credit via normal Kobans path
+  const bonusKobans = Math.max(0, Math.floor(Number((req as any).bonusKobans) || 0));
+  const couponCodeLabel = String((req as any).couponCode || '').trim().toUpperCase();
+  if (bonusKobans > 0) {
+    await adminAdjustKobans(
+      adminEmail,
+      req.userId,
+      bonusKobans,
+      `Coupon bonus (${couponCodeLabel || 'COUPON'}) on ${planName}`,
+      req.userEmail || userData?.email
+    );
+  }
+
   const tierTitle = getPlanDisplayName(targetTier);
   const creditNote =
     proCreditDays > 0
       ? ` Includes +${proCreditDays} bonus days credited from your remaining Pro pass.`
+      : '';
+  const bonusKobanNote =
+    bonusKobans > 0
+      ? ` +${bonusKobans.toLocaleString()} bonus Kobans credited to your wallet.`
       : '';
 
   // 3. Send in-app notification
@@ -3942,7 +3960,7 @@ export async function approvePaymentRequest(
         : `${tierTitle} Activated!`,
       message: `Your payment of PKR ${pkrAmount.toLocaleString()} via ${methodDisplay} (TID: ${
         req.TID || req.transactionId
-      }) was verified. Your ${planName} is active until ${extension.newExpiryLabel}.${creditNote}`,
+      }) was verified. Your ${planName} is active until ${extension.newExpiryLabel}.${creditNote}${bonusKobanNote}`,
       link: '/dashboard/plan',
       read: false,
       createdAt: serverTimestamp(),

@@ -26,6 +26,7 @@ import {
   MessageSquare,
   BookOpen,
   Sparkles,
+  Ticket,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDisplayInitial, getDisplayName } from '@/utils/displayName';
@@ -64,6 +65,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete' },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
+  { to: '/admin/coupons', label: 'Coupon Studio', icon: Ticket, permission: 'users.plan' },
   { to: '/admin/ads', label: 'Ads', icon: Megaphone },
   { to: '/superadmin', label: 'Superadmin Area', icon: ShieldAlert, superAdminOnly: true, end: true },
   { to: '/admin/users', label: 'Users', icon: Users, permission: 'users.view', superAdminOnly: true },

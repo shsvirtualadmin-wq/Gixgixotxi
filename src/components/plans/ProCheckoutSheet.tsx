@@ -190,12 +190,13 @@ export function ProCheckoutSheet({
           code: appliedCoupon.code,
           planId: nextPlanId,
           amount: nextPlan.price_pkr,
+          uid,
         });
         setAppliedCoupon(revalidated);
         setCouponError(null);
       } catch (err: any) {
         setAppliedCoupon(null);
-        setCouponError(err?.message || 'Coupon is not valid for the selected plan.');
+        setCouponError(err?.message || 'Not valid for this item');
       } finally {
         setCouponLoading(false);
       }
@@ -205,7 +206,7 @@ export function ProCheckoutSheet({
   const handleApplyCoupon = async () => {
     const clean = couponInput.trim().toUpperCase();
     if (!clean) {
-      setCouponError('Please enter a coupon code.');
+      setCouponError('Invalid coupon');
       return;
     }
     setCouponLoading(true);
@@ -217,6 +218,7 @@ export function ProCheckoutSheet({
         code: clean,
         planId: selectedPlanId,
         amount: currentPlan.price_pkr,
+        uid,
       });
       setAppliedCoupon(validated);
       setCouponInput(validated.code);
@@ -232,7 +234,7 @@ export function ProCheckoutSheet({
       }
     } catch (err: any) {
       setAppliedCoupon(null);
-      setCouponError(err?.message || 'Invalid or expired coupon code.');
+      setCouponError(err?.message || 'Invalid coupon');
     } finally {
       setCouponLoading(false);
     }
@@ -342,6 +344,8 @@ export function ProCheckoutSheet({
       try {
         const res = await redeemProCoupon({
           uid,
+          userEmail: userEmail || undefined,
+          userName: userName || undefined,
           code: appliedCoupon.code,
           planId: plan.id,
         });
@@ -476,7 +480,7 @@ export function ProCheckoutSheet({
         type="button"
         disabled={isSubmitDisabled}
         onClick={() => void handlePrimarySubmit()}
-        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white transition-opacity disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold text-white transition-[transform,opacity] duration-150 active:scale-[0.985] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
         style={{ backgroundColor: 'var(--accent)' }}
       >
         {submitting ? (
@@ -500,7 +504,9 @@ export function ProCheckoutSheet({
         ) : (
           <>
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>Submit payment for verification</span>
+            <span className="tabular-nums">
+              Submit payment · PKR {effectivePkr.toLocaleString()}
+            </span>
           </>
         )}
       </button>
@@ -712,6 +718,14 @@ export function ProCheckoutSheet({
                   </span>
                 )}
                 PKR {effectivePkr.toLocaleString()} ·{' '}
+                {appliedCoupon && effectiveKobans < plan.price_kobans && (
+                  <span
+                    className="mr-1 text-[12px] font-normal line-through"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {plan.price_kobans.toLocaleString()}
+                  </span>
+                )}
                 <span style={{ color: 'var(--koban)' }}>
                   {effectiveKobans.toLocaleString()} Kobans
                 </span>
@@ -751,13 +765,12 @@ export function ProCheckoutSheet({
                   <Tag className="h-3.5 w-3.5" />
                   Coupon ({appliedCoupon.code})
                 </span>
-                <span className="text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  {appliedCoupon.discountType === 'fixed_pkr' && appliedCoupon.amountOffPkr > 0
-                    ? `−PKR ${appliedCoupon.amountOffPkr.toLocaleString()}`
-                    : appliedCoupon.discountType === 'fixed_kobans' &&
-                        appliedCoupon.amountOffKobans > 0
-                      ? `−${appliedCoupon.amountOffKobans.toLocaleString()} Kobans`
-                      : `−${appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0}%`}
+                <span className="text-[13px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {appliedCoupon.couponType === 'kob' && appliedCoupon.bonusKobans > 0
+                    ? `+${appliedCoupon.bonusKobans.toLocaleString()} Kobans bonus`
+                    : appliedCoupon.couponType === 'flat' && appliedCoupon.discountPkr > 0
+                      ? `−PKR ${appliedCoupon.discountPkr.toLocaleString()}`
+                      : `−${appliedCoupon.percentOff}% (−PKR ${appliedCoupon.discountPkr.toLocaleString()})`}
                 </span>
               </div>
             )}
@@ -805,7 +818,7 @@ export function ProCheckoutSheet({
                 value={couponInput}
                 disabled={Boolean(appliedCoupon) || couponLoading || submitting}
                 onChange={(e) => {
-                  setCouponInput(e.target.value.toUpperCase());
+                  setCouponInput(e.target.value);
                   if (couponError) setCouponError(null);
                 }}
                 onKeyDown={(e) => {
@@ -815,7 +828,7 @@ export function ProCheckoutSheet({
                   }
                 }}
                 placeholder="Enter promo code"
-                className="h-[48px] min-w-0 flex-1 rounded-full px-4 text-[14px] uppercase outline-none placeholder:text-[var(--placeholder)] disabled:opacity-65"
+                className="h-[48px] min-w-0 flex-1 rounded-full px-4 text-[14px] uppercase outline-none placeholder:normal-case placeholder:text-[var(--placeholder)] disabled:opacity-65"
                 style={{
                   backgroundColor: 'var(--bg)',
                   border: `1px solid ${couponError ? 'var(--danger-border)' : 'var(--border)'}`,
@@ -827,7 +840,7 @@ export function ProCheckoutSheet({
                   type="button"
                   onClick={() => void handleApplyCoupon()}
                   disabled={couponLoading || submitting || !couponInput.trim()}
-                  className="h-[48px] shrink-0 rounded-full px-5 text-[14px] font-semibold cursor-pointer disabled:opacity-45"
+                  className="h-[48px] shrink-0 rounded-full px-5 text-[14px] font-semibold transition-[transform,opacity] duration-150 active:scale-[0.97] cursor-pointer disabled:opacity-45"
                   style={{
                     backgroundColor: 'var(--bg)',
                     border: '1px solid var(--border)',
@@ -852,7 +865,11 @@ export function ProCheckoutSheet({
                 className="flex items-center gap-1.5 px-2 text-[12px] font-medium text-emerald-600 dark:text-emerald-400"
               >
                 <Check className="h-3.5 w-3.5 shrink-0" />
-                <span>Coupon applied</span>
+                <span>
+                  {appliedCoupon.couponType === 'kob' && appliedCoupon.bonusKobans > 0
+                    ? `Coupon applied · +${appliedCoupon.bonusKobans.toLocaleString()} Kobans credited on approval`
+                    : `Coupon applied · ${appliedCoupon.label}`}
+                </span>
               </p>
             )}
             {couponError && (

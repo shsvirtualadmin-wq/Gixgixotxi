@@ -265,6 +265,37 @@
         "reviewedBy": { "type": "string" }
       },
       "required": ["userId", "amountKobans", "amountPkr", "transactionId", "status"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Single-use-per-account promo coupon definition.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 3, "maxLength": 20 },
+        "type": { "type": "string", "enum": ["pct", "flat", "kob"] },
+        "value": { "type": "number" },
+        "appliesTo": { "type": "string" },
+        "maxRedemptions": { "type": ["number", "null"] },
+        "redeemedCount": { "type": "number" },
+        "expiresAt": { "type": ["string", "null"] },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["code", "type", "value", "appliesTo", "redeemedCount", "active", "createdAt", "createdBy"]
+    },
+    "CouponRedemption": {
+      "title": "CouponRedemption",
+      "description": "Immutable per-account redemption receipt keyed by account UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "redeemedAt": { "type": "string" },
+        "usedOn": { "type": "string" },
+        "paymentId": { "type": "string" },
+        "discountApplied": { "type": "number" }
+      },
+      "required": ["uid", "redeemedAt", "usedOn", "paymentId", "discountApplied"]
     }
   },
   "firestore": {
@@ -331,6 +362,14 @@
     },
     "/conversations/{conversationId}": {
       "description": "One-to-one direct message conversations between students."
+    },
+    "/coupons/{couponCode}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Promo coupon definitions managed in Admin Coupon Studio."
+    },
+    "/coupons/{couponCode}/redemptions/{uid}": {
+      "schema": { "$ref": "#/entities/CouponRedemption" },
+      "description": "Single-use redemption records keyed by account UID."
     }
   }
 }

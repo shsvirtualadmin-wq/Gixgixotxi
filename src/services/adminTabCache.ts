@@ -644,6 +644,7 @@ const ADMIN_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   '/admin/kobans': () => import('@/pages/admin/AdminKobansPage'),
   '/admin/applications': () => import('@/pages/admin/AdminApplicationsPage'),
   '/admin/payments': () => import('@/pages/admin/AdminPaymentsPage'),
+  '/admin/coupons': () => import('@/pages/admin/AdminCouponStudioPage'),
   '/admin/audit-logs': () => import('@/pages/admin/AdminAuditLogsPage'),
   '/admin/health': () => import('@/pages/admin/AdminHealthPage'),
 };
