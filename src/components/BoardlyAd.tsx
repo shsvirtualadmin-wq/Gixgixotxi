@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
 import {
   StudentIllustration,
+  getStudentImageSrc,
+  preloadAndDecodeStudentImage,
   type StudentIllustrationId,
 } from '@/components/ads/StudentIllustration';
 import {
@@ -366,6 +368,29 @@ function HeroPosterCarousel({
     setActiveIndex((prev) => (prev - 1 + visibleSlides.length) % visibleSlides.length);
   }, [visibleSlides.length]);
 
+  // Preload slide 0 with high priority (<link rel="preload">) and decode the next 1–2 slides ahead of rotation
+  useEffect(() => {
+    if (visibleSlides.length === 0) return;
+    const firstSlide = visibleSlides[0];
+    if (firstSlide) {
+      void preloadAndDecodeStudentImage(
+        getStudentImageSrc(firstSlide.illustrationId, firstSlide.imageUrl),
+        true
+      );
+    }
+    const len = visibleSlides.length;
+    const upcomingOffsets = len > 2 ? [1, 2] : len > 1 ? [1] : [];
+    for (const offset of upcomingOffsets) {
+      const nextSlide = visibleSlides[(safeIndex + offset) % len];
+      if (nextSlide) {
+        void preloadAndDecodeStudentImage(
+          getStudentImageSrc(nextSlide.illustrationId, nextSlide.imageUrl),
+          false
+        );
+      }
+    }
+  }, [visibleSlides, safeIndex]);
+
   // Auto-rotate every 5 seconds while visible & not paused
   useEffect(() => {
     if (isPreview || paused || infoOpen || visibleSlides.length <= 1) return;
@@ -537,118 +562,137 @@ function HeroPosterCarousel({
           </div>
         )}
 
-        {/* Poster Hero Content (vertical tall poster on mobile, 2-column showcase on sm+) */}
-        <div
-          key={activeSlide.id}
-          className="grid grid-cols-1 sm:grid-cols-[1.25fr_0.75fr] items-center gap-4 sm:gap-6 flex-1 animate-in fade-in duration-300"
-        >
-          {/* Copy & CTA */}
-          <div className="min-w-0 flex flex-col items-center sm:items-start text-center sm:text-left gap-2.5">
-            <h3
-              className="text-[24px] sm:text-[30px] md:text-[34px] font-black leading-[1.12] tracking-tight text-white text-balance drop-shadow-[0_2px_10px_rgba(18,6,38,0.28)]"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              {activeSlide.headline}
-            </h3>
+        {/* Poster Hero Content: all slides stay mounted with stable keys (opacity/translate only, never remounted) */}
+        <div className="relative grid flex-1 items-center">
+          {visibleSlides.map((slide, idx) => {
+            const isSlideActive = idx === safeIndex;
+            const slideAccent =
+              BOARDLY_AD_ACCENTS[slide.accent] || BOARDLY_AD_ACCENTS['purple-pink'];
+            const showSlideCountdown = Boolean(slide.requiresPromoActive && countdown);
 
-            <p className="text-[13.5px] sm:text-[15px] leading-relaxed text-white/92 max-w-lg break-words">
-              {activeSlide.description}
-            </p>
-
-            {/* Real Countdown (only if active EARLY21 slide has a real endDate) */}
-            {countdown && (
+            return (
               <div
-                className="grid grid-cols-4 gap-1.5 w-full max-w-[260px] pt-0.5"
-                aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours`}
+                key={slide.id}
+                aria-hidden={!isSlideActive}
+                className={`col-start-1 row-start-1 grid grid-cols-1 sm:grid-cols-[1.25fr_0.75fr] items-center gap-4 sm:gap-6 transition-[opacity,transform] duration-300 ease-out ${
+                  isSlideActive
+                    ? 'opacity-100 translate-x-0 pointer-events-auto z-10'
+                    : 'opacity-0 translate-x-2 pointer-events-none z-0'
+                }`}
               >
-                {[
-                  { label: 'Days', value: pad2(countdown.days) },
-                  { label: 'Hrs', value: pad2(countdown.hours) },
-                  { label: 'Min', value: pad2(countdown.minutes) },
-                  { label: 'Sec', value: pad2(countdown.seconds) },
-                ].map((u) => (
-                  <div
-                    key={u.label}
-                    className="rounded-[8px] border border-white/30 bg-black/20 px-1.5 py-1 text-center"
+                {/* Copy & CTA */}
+                <div className="min-w-0 flex flex-col items-center sm:items-start text-center sm:text-left gap-2.5">
+                  <h3
+                    className="text-[24px] sm:text-[30px] md:text-[34px] font-black leading-[1.12] tracking-tight text-white text-balance"
+                    style={{ fontFamily: 'var(--font-heading)' }}
                   >
+                    {slide.headline}
+                  </h3>
+
+                  <p className="text-[13.5px] sm:text-[15px] leading-relaxed text-white/92 max-w-lg break-words">
+                    {slide.description}
+                  </p>
+
+                  {/* Real Countdown (only if active EARLY21 slide has a real endDate) */}
+                  {showSlideCountdown && countdown && (
                     <div
-                      className="text-sm font-extrabold tabular-nums text-white leading-none"
-                      style={{ fontFamily: 'var(--font-mono)' }}
+                      className="grid grid-cols-4 gap-1.5 w-full max-w-[260px] pt-0.5"
+                      aria-label={`Offer ends in ${countdown.days} days ${countdown.hours} hours`}
                     >
-                      {u.value}
+                      {[
+                        { label: 'Days', value: pad2(countdown.days) },
+                        { label: 'Hrs', value: pad2(countdown.hours) },
+                        { label: 'Min', value: pad2(countdown.minutes) },
+                        { label: 'Sec', value: pad2(countdown.seconds) },
+                      ].map((u) => (
+                        <div
+                          key={u.label}
+                          className="rounded-[8px] border border-white/30 bg-black/20 px-1.5 py-1 text-center"
+                        >
+                          <div
+                            className="text-sm font-extrabold tabular-nums text-white leading-none"
+                            style={{ fontFamily: 'var(--font-mono)' }}
+                          >
+                            {u.value}
+                          </div>
+                          <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
+                            {u.label}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-white/80 leading-none">
-                      {u.label}
+                  )}
+
+                  {/* Desktop CTA button (shown inline on sm+, moved below illustration on mobile) */}
+                  <div className="hidden sm:flex pt-2 w-full max-w-[260px]">
+                    {isPreview ? (
+                      <span
+                        className="w-full min-h-[46px] rounded-full bg-white font-extrabold text-sm px-6 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] inline-flex items-center justify-center gap-2"
+                        style={{ color: slideAccent.ctaText }}
+                      >
+                        <span>{slide.ctaLabel}</span>
+                        <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <Link
+                        to={slide.link}
+                        tabIndex={isSlideActive ? 0 : -1}
+                        className="w-full min-h-[46px] rounded-full bg-white hover:bg-[#f7f2ff] active:scale-[0.99] font-extrabold text-sm px-6 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] transition-all duration-150 inline-flex items-center justify-center gap-2 no-underline"
+                        style={{ color: slideAccent.ctaText }}
+                      >
+                        <span className="truncate">{slide.ctaLabel}</span>
+                        <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {/* Student Illustration + Tilted Circular Seal Badge */}
+                <div className="relative flex flex-col items-center justify-center">
+                  <div className="relative inline-flex items-center justify-center">
+                    <StudentIllustration
+                      illustrationId={slide.illustrationId}
+                      imageUrl={slide.imageUrl}
+                      size="lg"
+                      priority={idx === 0}
+                    />
+                    {/* Circular tilted seal badge */}
+                    <div
+                      aria-hidden="true"
+                      className="absolute -top-2 -right-3 sm:-top-3 sm:-right-4 h-[62px] w-[62px] sm:h-[70px] sm:w-[70px] rounded-full bg-[#ffd23f] text-[#1a0b2e] border-[2.5px] border-white shadow-[0_8px_18px_rgba(18,6,38,0.35)] -rotate-12 flex items-center justify-center p-1.5 text-center"
+                    >
+                      <span className="text-[9.5px] sm:text-[10.5px] font-black uppercase leading-[1.08] tracking-tight">
+                        {slide.posterSeal || slide.chip}
+                      </span>
                     </div>
                   </div>
-                ))}
+
+                  {/* Mobile full-width white pill CTA below illustration */}
+                  <div className="sm:hidden w-full pt-3">
+                    {isPreview ? (
+                      <span
+                        className="w-full min-h-[46px] rounded-full bg-white font-extrabold text-[14px] px-5 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] inline-flex items-center justify-center gap-2"
+                        style={{ color: slideAccent.ctaText }}
+                      >
+                        <span>{slide.ctaLabel}</span>
+                        <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                      </span>
+                    ) : (
+                      <Link
+                        to={slide.link}
+                        tabIndex={isSlideActive ? 0 : -1}
+                        className="w-full min-h-[46px] rounded-full bg-white hover:bg-[#f7f2ff] active:scale-[0.99] font-extrabold text-[14px] px-5 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] transition-all duration-150 inline-flex items-center justify-center gap-2 no-underline"
+                        style={{ color: slideAccent.ctaText }}
+                      >
+                        <span className="truncate">{slide.ctaLabel}</span>
+                        <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                      </Link>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-
-            {/* Desktop CTA button (shown inline on sm+, moved below illustration on mobile) */}
-            <div className="hidden sm:flex pt-2 w-full max-w-[260px]">
-              {isPreview ? (
-                <span
-                  className="w-full min-h-[46px] rounded-full bg-white font-extrabold text-sm px-6 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] inline-flex items-center justify-center gap-2"
-                  style={{ color: accentStyle.ctaText }}
-                >
-                  <span>{activeSlide.ctaLabel}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
-                </span>
-              ) : (
-                <Link
-                  to={activeSlide.link}
-                  className="w-full min-h-[46px] rounded-full bg-white hover:bg-[#f7f2ff] active:scale-[0.99] font-extrabold text-sm px-6 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] transition-all duration-150 inline-flex items-center justify-center gap-2 no-underline"
-                  style={{ color: accentStyle.ctaText }}
-                >
-                  <span className="truncate">{activeSlide.ctaLabel}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
-                </Link>
-              )}
-            </div>
-          </div>
-
-          {/* Student Illustration + Tilted Circular Seal Badge */}
-          <div className="relative flex flex-col items-center justify-center">
-            <div className="relative inline-flex items-center justify-center">
-              <StudentIllustration
-                illustrationId={activeSlide.illustrationId}
-                imageUrl={activeSlide.imageUrl}
-                size="lg"
-              />
-              {/* Circular tilted seal badge */}
-              <div
-                aria-hidden="true"
-                className="absolute -top-2 -right-3 sm:-top-3 sm:-right-4 h-[62px] w-[62px] sm:h-[70px] sm:w-[70px] rounded-full bg-[#ffd23f] text-[#1a0b2e] border-[2.5px] border-white shadow-[0_8px_18px_rgba(18,6,38,0.35)] -rotate-12 flex items-center justify-center p-1.5 text-center"
-              >
-                <span className="text-[9.5px] sm:text-[10.5px] font-black uppercase leading-[1.08] tracking-tight">
-                  {activeSlide.posterSeal || activeSlide.chip}
-                </span>
-              </div>
-            </div>
-
-            {/* Mobile full-width white pill CTA below illustration */}
-            <div className="sm:hidden w-full pt-3">
-              {isPreview ? (
-                <span
-                  className="w-full min-h-[46px] rounded-full bg-white font-extrabold text-[14px] px-5 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] inline-flex items-center justify-center gap-2"
-                  style={{ color: accentStyle.ctaText }}
-                >
-                  <span>{activeSlide.ctaLabel}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
-                </span>
-              ) : (
-                <Link
-                  to={activeSlide.link}
-                  className="w-full min-h-[46px] rounded-full bg-white hover:bg-[#f7f2ff] active:scale-[0.99] font-extrabold text-[14px] px-5 py-2.5 shadow-[0_10px_24px_-4px_rgba(24,8,48,0.36)] transition-all duration-150 inline-flex items-center justify-center gap-2 no-underline"
-                  style={{ color: accentStyle.ctaText }}
-                >
-                  <span className="truncate">{activeSlide.ctaLabel}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
-                </Link>
-              )}
-            </div>
-          </div>
+            );
+          })}
         </div>
 
         {/* Bottom Carousel Controls: pagination dots + subtle desktop prev/next */}
