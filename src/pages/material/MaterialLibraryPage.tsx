@@ -32,6 +32,8 @@ import { uploadCommonsAttachment, extractR2KeyFromUrl } from '@/services/commons
 import { buildEntitySlug } from '@/utils/privacy';
 import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
 import type { CommonsFileAttachment, CommonsPostType } from '@/types/commons';
+import { AdSlot } from '@/components/AdSlot';
+import { useAdsConfig } from '@/services/adsConfigService';
 
 interface SubjectSiloItem {
   slug: string;
@@ -289,6 +291,8 @@ export const MaterialLibraryPage: React.FC = () => {
     selectedType !== 'all' ||
     searchQuery.trim().length > 0;
 
+  const { config: adsConfig } = useAdsConfig();
+  const materialFeedEveryN = Math.max(2, adsConfig.slots.material_feed?.everyN || 5);
   const filteredMaterials = useMemo(() => {
     return materials.filter((item) => {
       if (activeSilo) {
@@ -705,11 +709,11 @@ export const MaterialLibraryPage: React.FC = () => {
               const sizeStr = formatFileSize(firstFile?.size);
 
               return (
-                <article
-                  key={item.id}
-                  style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
-                  className="boardly-glass-card rounded-[26px] p-5 flex flex-col justify-between gap-4 transition-all hover:border-[var(--border-strong)]"
-                >
+                <React.Fragment key={item.id}>
+                  <article
+                    style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
+                    className="boardly-glass-card rounded-[26px] p-5 flex flex-col justify-between gap-4 transition-all hover:border-[var(--border-strong)]"
+                  >
                   <div className="space-y-3">
                     {/* Top Row: Type Icon Tile + Title + Subject Chip */}
                     <div className="flex items-start gap-3.5">
@@ -778,7 +782,13 @@ export const MaterialLibraryPage: React.FC = () => {
                       </Link>
                     )}
                   </div>
-                </article>
+                  </article>
+                  {(idx === 3 || (idx > 3 && (idx - 3) % materialFeedEveryN === 0)) && (
+                    <div className="md:col-span-2 my-1">
+                      <AdSlot slotId="material_feed" instanceKey={`mat-${idx}`} />
+                    </div>
+                  )}
+                </React.Fragment>
               );
             })}
           </div>

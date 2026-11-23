@@ -124,13 +124,8 @@ export class DashboardErrorBoundary extends Component<Props, State> {
                 {this.props.fallbackTitle || 'Something went wrong'}
               </h2>
               <p className="text-xs text-[var(--muted)] leading-relaxed">
-                An unexpected issue occurred while loading this page. Please reload or return home.
+                Something went wrong. Please try again.
               </p>
-              {this.state.error?.message && (
-                <div className="text-[11px] font-mono text-[var(--muted)] bg-[var(--surface-2)] p-2.5 rounded-xl border border-[var(--border)] text-left break-words max-h-24 overflow-y-auto">
-                  {this.state.error.message}
-                </div>
-              )}
               <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <button
                   type="button"

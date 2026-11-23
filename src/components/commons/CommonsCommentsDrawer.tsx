@@ -13,6 +13,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { getPublicProfiles } from '@/services/publicProfileService';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -122,7 +123,8 @@ export function CommonsCommentsDrawer({
       setNewText('');
       setIsAnonymous(false);
     } catch (err: any) {
-      setError(err?.message || 'Could not post comment.');
+      console.error('[CommonsCommentsDrawer] add comment failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

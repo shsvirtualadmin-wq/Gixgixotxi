@@ -11639,6 +11639,68 @@ ${postSitemaps}
   app.patch('/api/admin/coupons', requireCouponsGrantAndDelegate);
   app.put('/api/admin/coupons', requireCouponsGrantAndDelegate);
 
+  // Ads config, anonymous offer stats, and Admin Ads management routes
+  const delegateToAdsWorker = async (req: Request, res: Response, isAdminEndpoint: boolean) => {
+    try {
+      const authHeader = String(req.headers.authorization || '').trim();
+      const targetUrl = req.originalUrl || req.path || '/api/ads/config';
+      const fullUrl = targetUrl.startsWith('http')
+        ? targetUrl
+        : `http://localhost:3000${targetUrl.startsWith('/') ? '' : '/'}${targetUrl}`;
+      const method = String(req.method || 'GET').toUpperCase();
+      const webReq = new Request(fullUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body:
+          method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS'
+            ? JSON.stringify(req.body || {})
+            : undefined,
+      });
+      const adsEnv = {
+        ...process.env,
+        OWNER_EMAIL: process.env.OWNER_EMAIL || 'shsvirtualadmin@gmail.com',
+        FIREBASE_PROJECT_ID,
+        FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
+        DB: getSharedLocalD1Database(),
+      };
+      let webRes: globalThis.Response;
+      if (isAdminEndpoint) {
+        const { handleAdminAdsApiRequest } = await import('../../functions/api/admin/ads/[[path]]');
+        webRes = await handleAdminAdsApiRequest({
+          request: webReq,
+          env: adsEnv as any,
+        });
+      } else {
+        const { handlePublicAdsApiRequest } = await import('../../functions/api/ads/[[path]]');
+        webRes = await handlePublicAdsApiRequest({
+          request: webReq,
+          env: adsEnv as any,
+        });
+      }
+      const payload = await webRes.json().catch(() => ({ ok: false }));
+      const cacheHdr = webRes.headers.get('Cache-Control');
+      if (cacheHdr && !res.headersSent) {
+        res.setHeader('Cache-Control', cacheHdr);
+      }
+      return res.status(webRes.status).json(payload);
+    } catch (err) {
+      console.error('[AdsRoute] Handler error:', err);
+      return res.status(500).json({ ok: false, error: 'Something went wrong. Please try again.' });
+    }
+  };
+
+  app.get('/api/ads/config', (req, res) => delegateToAdsWorker(req, res, false));
+  app.post('/api/ads/event', (req, res) => delegateToAdsWorker(req, res, false));
+  app.post('/api/ads/stats', (req, res) => delegateToAdsWorker(req, res, false));
+  app.get('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));
+  app.put('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));
+  app.post('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));
+  app.post('/api/admin/ads/reset', (req, res) => delegateToAdsWorker(req, res, true));
+  app.get('/api/admin/ads/stats', (req, res) => delegateToAdsWorker(req, res, true));
+
   // ===========================================================================
   // ADMIN USER OVERRIDE PERSISTENCE (BUG 3 + PART 2 ROLE / PLAN / SUSPEND)
   // ===========================================================================
@@ -13087,6 +13149,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/tests') ||
         pathname.startsWith('/api/usage') ||
         pathname.startsWith('/api/signatures') ||
+        pathname.startsWith('/api/ads') ||
         pathname.startsWith('/api/announcements'))
     ) {
       res.writeHead(204, {
@@ -13329,8 +13392,9 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     try {
       await matchedRoute.handler(req, res);
     } catch (err: any) {
+      console.error('[ExpressRouter] Unhandled route error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Something went wrong. Please try again.' });
       }
     }
   };

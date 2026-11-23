@@ -1789,7 +1789,7 @@ export function OverviewPage() {
                           </div>
                         </div>
 
-                        <AdSlot slotId={AD_SLOTS.resultsBelowSummary} />
+                        <AdSlot slotId={AD_SLOTS.result_below} />
 
                         <div className="space-y-3">
                           {testMcqs.map((q, idx) => {

@@ -5072,7 +5072,19 @@ export default {
     } catch (err) {
       const status = err.status || 500;
       const code = err.code || (status === 401 ? 'UNAUTHENTICATED' : status === 403 ? 'FORBIDDEN' : 'INTERNAL_ERROR');
-      return errorResponse(request, env, err.message || 'Internal server error', code, status);
+      const rawMsg = String(err?.message || '');
+      const isInfraLeak =
+        status >= 500 ||
+        /d1|r2|sqlite|sql|firestore|firebase|cloudflare|quota|read\s+limit|free\s+tier|resource[-_\s]?exhausted|no\s+such\s+table|constraint\s+failed/i.test(
+          rawMsg
+        );
+      if (isInfraLeak) {
+        console.error('[CloudflareWorker] Request error:', { path, method, status, code, message: rawMsg });
+      }
+      const safeMsg = isInfraLeak
+        ? 'Something went wrong. Please try again.'
+        : rawMsg || 'Something went wrong. Please try again.';
+      return errorResponse(request, env, safeMsg, code, status);
     }
   },
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Flag, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { CommonsPost } from '@/types/commons';
 import { reportCommonsPost } from '@/services/commonsService';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface CommonsReportModalProps {
   post: CommonsPost | null;
@@ -47,7 +48,8 @@ export function CommonsReportModal({
         onClose();
       }, 1800);
     } catch (err: any) {
-      setError(err?.message || 'Failed to submit report.');
+      console.error('[CommonsReportModal] report failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

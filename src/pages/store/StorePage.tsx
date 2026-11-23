@@ -43,6 +43,8 @@ import {
   type CosmeticRarity,
   getCosmeticById,
 } from '@/data/cosmeticsCatalog';
+import { AdSlot } from '@/components/AdSlot';
+import { useAdsConfig } from '@/services/adsConfigService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { getDisplayName } from '@/utils/displayName';
 import { CoinBurstEffect } from '@/components/koban/CoinBurstEffect';
@@ -505,6 +507,24 @@ export const StorePage: React.FC<StorePageProps> = ({
   }, [priceCeiling]);
 
   // Filtered and sorted items
+  const { config: adsConfig } = useAdsConfig();
+  const storeRowsEveryN = Math.max(2, adsConfig.slots.store_rows?.everyN || 4);
+  const [storeGridCols, setStoreGridCols] = useState<number>(() => {
+    if (typeof window === 'undefined') return 4;
+    if (window.innerWidth >= 1024) return 4;
+    if (window.innerWidth >= 768) return 3;
+    return 2;
+  });
+  useEffect(() => {
+    const updateCols = () => {
+      if (window.innerWidth >= 1024) setStoreGridCols(4);
+      else if (window.innerWidth >= 768) setStoreGridCols(3);
+      else setStoreGridCols(2);
+    };
+    window.addEventListener('resize', updateCols, { passive: true });
+    return () => window.removeEventListener('resize', updateCols);
+  }, []);
+
   const filteredItems = useMemo(() => {
     let list = [...liveCatalog];
 
@@ -1798,7 +1818,7 @@ export const StorePage: React.FC<StorePageProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                {filteredItems.map((item) => {
+                {filteredItems.map((item, itemIdx) => {
                   const itemOwned = isItemOwned(item.id);
                   const itemEquipped = isItemEquipped(item);
                   const itemInCart = isInCart(item.id);
@@ -1807,46 +1827,58 @@ export const StorePage: React.FC<StorePageProps> = ({
                   const itemPurchasing =
                     purchasingSingle && confirmBuyItem?.id === item.id;
 
+                  const itemsPerBlock = storeRowsEveryN * storeGridCols;
+                  const showRowDividerAfter =
+                    itemsPerBlock > 0 &&
+                    (itemIdx + 1) % itemsPerBlock === 0 &&
+                    itemIdx < filteredItems.length - 1;
+
                   return (
-                    <StoreCard
-                      key={item.id}
-                      item={item}
-                      userDisplayName={displayName}
-                      userUid={user?.uid}
-                      isOwned={itemOwned}
-                      isEquipped={itemEquipped}
-                      isInCart={itemInCart}
-                      selectionMode={selectionMode}
-                      isSelected={itemSelected}
-                      disabled={purchasingSingle || cartProcessing}
-                      isPurchasing={itemPurchasing}
-                      onOpenDetail={(clicked) => {
-                        if (purchasingSingleLockRef.current) return;
-                        setConfirmBuyItem(null);
-                        setCartOpen(false);
-                        setDetailItemId(clicked.id);
-                      }}
-                      onToggleCart={(clicked) => {
-                        if (purchasingSingleLockRef.current) return;
-                        const res = toggleCartItem(clicked.id);
-                        if (res === 'added') {
-                          showToast('success', `Added ${clicked.name} to cart`);
-                        }
-                      }}
-                      onBuyNow={() => {
-                        if (purchasingSingleLockRef.current || cartProcessing) {
-                          return;
-                        }
-                        if (isInCart(item.id)) {
-                          handleOpenCart();
-                        } else {
-                          openSinglePurchaseConfirm(item);
-                        }
-                      }}
-                      onEquipToggle={(clicked) => handleEquipToggle(clicked)}
-                      onToggleSelect={handleToggleSelectCard}
-                      onEnterSelectionMode={handleEnterSelectionMode}
-                    />
+                    <React.Fragment key={item.id}>
+                      <StoreCard
+                        item={item}
+                        userDisplayName={displayName}
+                        userUid={user?.uid}
+                        isOwned={itemOwned}
+                        isEquipped={itemEquipped}
+                        isInCart={itemInCart}
+                        selectionMode={selectionMode}
+                        isSelected={itemSelected}
+                        disabled={purchasingSingle || cartProcessing}
+                        isPurchasing={itemPurchasing}
+                        onOpenDetail={(clicked) => {
+                          if (purchasingSingleLockRef.current) return;
+                          setConfirmBuyItem(null);
+                          setCartOpen(false);
+                          setDetailItemId(clicked.id);
+                        }}
+                        onToggleCart={(clicked) => {
+                          if (purchasingSingleLockRef.current) return;
+                          const res = toggleCartItem(clicked.id);
+                          if (res === 'added') {
+                            showToast('success', `Added ${clicked.name} to cart`);
+                          }
+                        }}
+                        onBuyNow={() => {
+                          if (purchasingSingleLockRef.current || cartProcessing) {
+                            return;
+                          }
+                          if (isInCart(item.id)) {
+                            handleOpenCart();
+                          } else {
+                            openSinglePurchaseConfirm(item);
+                          }
+                        }}
+                        onEquipToggle={(clicked) => handleEquipToggle(clicked)}
+                        onToggleSelect={handleToggleSelectCard}
+                        onEnterSelectionMode={handleEnterSelectionMode}
+                      />
+                      {showRowDividerAfter && (
+                        <div className="col-span-full my-2">
+                          <AdSlot slotId="store_rows" instanceKey={`store-${itemIdx}`} />
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </div>

@@ -44,6 +44,8 @@ import {
   GrandLineAdminRowControls,
   useServerSyncedClock,
 } from '@/components/admin/GrandLineScheduleSheet';
+import { AdSlot } from '@/components/AdSlot';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 function formatTimeTaken(seconds?: number): string {
   const sec = Math.max(0, Math.round(Number(seconds || 0)));
@@ -95,9 +97,14 @@ export function GrandLinePage() {
           setActiveLeaderboardTestId((prev) => prev || data[0].id);
         }
       } catch (err: any) {
-        console.warn('Error loading Grand Line tests:', err);
         if (active) {
-          setLoadError(err?.rawMessage || err?.message || 'Could not load Grand Line drills.');
+          setLoadError(
+            sanitizeUserErrorMessage(
+              err,
+              'Something went wrong. Please try again.',
+              'GrandLinePage.load'
+            )
+          );
         }
       } finally {
         if (active) setLoading(false);
@@ -564,6 +571,10 @@ export function GrandLinePage() {
               })}
             </div>
           )}
+        </div>
+
+        <div className="max-w-4xl mx-auto">
+          <AdSlot slotId="grandline_mid" />
         </div>
 
         {/* ── Test Leaderboard Section ── */}

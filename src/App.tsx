@@ -260,6 +260,9 @@ const AdminCertificatesPage = lazyWithRetry(() =>
 const AdminAccessRequestsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminAccessRequestsPage').then(m => ({ default: m.AdminAccessRequestsPage }))
 );
+const AdminAdsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminAdsPage').then(m => ({ default: m.AdminAdsPage }))
+);
 const AiMentorsPage = lazyWithRetry(() =>
   import('./pages/dashboard/AiMentorsPage').then(m => ({ default: m.AiMentorsPage }))
 );
@@ -338,6 +341,7 @@ function AppInner() {
           <Route path="reviews" element={<AdminCommonsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
+          <Route path="ads" element={<AdminAdsPage />} />
 
           {/* SuperAdmin-only pages */}
           <Route path="users" element={<AdminGuard requireSuperAdmin><AdminUsersPage /></AdminGuard>} />
@@ -381,6 +385,7 @@ function AppInner() {
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="certificates" element={<AdminCertificatesPage />} />
           <Route path="access-requests" element={<AdminAccessRequestsPage />} />
+          <Route path="ads" element={<AdminAdsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<AdminUsersPage />} />
         </Route>

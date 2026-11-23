@@ -416,6 +416,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Ad slots, Boardly offers & promo settings (public read for client slots; admin-only write)
+    match /config/ads {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Anonymous daily Boardly offer stats (admin read only; written by server API)
+    match /adStats/{dayId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /config/{docId} {
       allow read, write: if isSuperAdmin();
     }

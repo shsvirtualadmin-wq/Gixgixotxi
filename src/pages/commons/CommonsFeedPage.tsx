@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Search,
   BookOpen,
@@ -38,6 +38,8 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { buildEntitySlug } from '@/utils/privacy';
+import { AdSlot } from '@/components/AdSlot';
+import { useAdsConfig } from '@/services/adsConfigService';
 
 // Per-tab feed keys for isolated All / Trending / Following state
 type FeedTabKey = 'all' | 'trending' | 'following';
@@ -583,6 +585,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     }
   }, [feedTab, lastDocByTab, loadingMoreByTab, followingIds, user?.uid, subjectFilter]);
 
+  const { config: adsConfig } = useAdsConfig();
+  const commonsFeedEveryN = Math.max(2, adsConfig.slots.commons_feed?.everyN || 5);
   const displayedPosts = useMemo(() => {
     // Strictly read only the active tab's own list; never show another tab's posts
     if (feedTab === 'following') {
@@ -1201,17 +1205,23 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           </div>
         ) : (
           /* Real Firestore posts */
-          displayedPosts.map((post) => (
-            <CommonsPostCard
-              key={post.id}
-              post={post}
-              currentUserId={user?.uid}
-              isAdmin={isAdmin}
-              onOpenComments={handleOpenComments}
-              onOpenReport={handleOpenReport}
-              onDeletePost={handleDeletePost}
-              onAuthorClick={handleAuthorClick}
-            />
+          displayedPosts.map((post, postIdx) => (
+            <Fragment key={post.id}>
+              <CommonsPostCard
+                post={post}
+                currentUserId={user?.uid}
+                isAdmin={isAdmin}
+                onOpenComments={handleOpenComments}
+                onOpenReport={handleOpenReport}
+                onDeletePost={handleDeletePost}
+                onAuthorClick={handleAuthorClick}
+              />
+              {(postIdx + 1) % commonsFeedEveryN === 0 && (
+                <div className="my-2">
+                  <AdSlot slotId="commons_feed" instanceKey={`commons-${postIdx}`} />
+                </div>
+              )}
+            </Fragment>
           ))
         )}
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Trophy,
@@ -101,7 +102,13 @@ export const GrandLineTestInfoPage: React.FC = () => {
         if (err?.status === 404 || err?.code === 'NOT_FOUND') {
           setTest(null);
         } else {
-          setLoadError(err?.rawMessage || err?.message || 'Could not load test details.');
+          setLoadError(
+            sanitizeUserErrorMessage(
+              err,
+              'Something went wrong. Please try again.',
+              'GrandLineTestInfoPage.load'
+            )
+          );
         }
       })
       .finally(() => {

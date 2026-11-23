@@ -1,6 +1,8 @@
+import { Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { MathText } from '@/components/ui/MathText';
+import { AdSlot } from '@/components/AdSlot';
 import {
   Calculator,
   Target,
@@ -118,10 +120,10 @@ export function FeaturesPage() {
 
         {/* Features List (8 Equal-Height Glass Cards in 2-Column Grid) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-          {REAL_FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className={`glass-card glass-card-interactive rounded-[28px] p-6 sm:p-8 h-full flex flex-col justify-between ${
+          {REAL_FEATURES.map((f, idx) => (
+            <Fragment key={f.title}>
+              <div
+                className={`glass-card glass-card-interactive rounded-[28px] p-6 sm:p-8 h-full flex flex-col justify-between ${
                 f.highlight
                   ? 'glass-card-highlight'
                   : ''
@@ -192,7 +194,13 @@ export function FeaturesPage() {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
+              {idx === 1 && (
+                <div className="md:col-span-2 my-1">
+                  <AdSlot slotId="features_mid" />
+                </div>
+              )}
+            </Fragment>
           ))}
         </div>
 

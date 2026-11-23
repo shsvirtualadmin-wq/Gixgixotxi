@@ -26,6 +26,7 @@ import {
   PLUS_ALREADY_INCLUDES_PRO_MSG,
   type PlansConfigDoc,
 } from '../../../src/lib/planTier';
+import { loadAdsConfigServer } from '../ads/[[path]]';
 
 const ALL_KNOWN_COSMETICS = [...COSMETICS_CATALOG, ...LEGACY_COSMETICS_CATALOG];
 const inFlightEconomyPurchases = new Set<string>();
@@ -62,6 +63,7 @@ export interface NormalizedCoupon {
   type: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   discountType: '1_year_free_pro' | 'percent' | 'fixed_pkr' | 'fixed_kobans' | 'free_pro';
   appliesTo: CouponAppliesTo;
+  appliesToPlans?: Array<'pro' | 'plus'>;
   percentOff: number;
   discountPercent: number;
   amountOffPkr: number;
@@ -242,6 +244,22 @@ let edgePromoCodesStore: Array<Record<string, any>> = [
     percent_off: 20,
     duration_months: 1,
     max_redemptions: 1000,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: '2026-09-15T00:00:00.000Z',
+    expires_at: null,
+    updated_at: '2026-09-15T00:00:00.000Z',
+  },
+  {
+    id: 'promo_early21_default',
+    code: 'EARLY21',
+    label: 'Early offer: 20% off Pro and Plus',
+    discount_type: 'percent',
+    percent_off: 20,
+    appliesToPlans: ['pro', 'plus'],
+    duration_months: 1,
+    max_redemptions: 100000,
     redemption_count: 0,
     is_active: true,
     created_by: 'shsvirtualadmin@gmail.com',
@@ -430,6 +448,12 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
       ? rawAppliesTo
       : 'all';
 
+  const rawAppliesToPlans = Array.isArray(raw.appliesToPlans)
+    ? raw.appliesToPlans
+        .map((p: unknown) => String(p || '').toLowerCase())
+        .filter((p: string): p is 'pro' | 'plus' => p === 'pro' || p === 'plus')
+    : undefined;
+
   return {
     id: String(raw.id || `promo_${code.toLowerCase()}`),
     code,
@@ -437,6 +461,7 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
     type: discountType,
     discountType,
     appliesTo,
+    ...(rawAppliesToPlans && rawAppliesToPlans.length > 0 ? { appliesToPlans: rawAppliesToPlans } : {}),
     percentOff: normalizedPct,
     discountPercent: normalizedPct,
     amountOffPkr,
@@ -572,6 +597,10 @@ class HybridFirestoreHelper {
 
   get adapter(): FirestoreRestAdapter | null {
     return this.adminAdapter;
+  }
+
+  getEnv(): EconomyEnv {
+    return this.env;
   }
 
   private get baseUrl(): string {
@@ -786,6 +815,33 @@ async function getAllCoupons(fsHelper: HybridFirestoreHelper): Promise<Normalize
     }
   }
 
+  // 3. Merge live promo code configured in Admin -> Ads (/admin/ads -> Promo code tab)
+  try {
+    const adsConfig = await loadAdsConfigServer(fsHelper.getEnv());
+    if (adsConfig?.promoCode?.code) {
+      const p = adsConfig.promoCode;
+      const cleanPromoCode = String(p.code).trim().toUpperCase();
+      const existing = byCode.get(cleanPromoCode);
+      const livePromo = normalizeCouponRecord({
+        id: 'ads_promo_active',
+        code: cleanPromoCode,
+        label: `${p.percentOff}% Off ${p.plans.map((pl) => (pl === 'plus' ? 'Plus' : 'Pro')).join(' & ')}`,
+        discount_type: 'percent',
+        percent_off: p.percentOff,
+        appliesToPlans: p.plans,
+        max_redemptions: 100000,
+        redemption_count: existing ? existing.redemptionCount : 0,
+        is_active: p.active,
+        active: p.active,
+        expires_at: p.endDate ? `${p.endDate}T23:59:59.999Z` : null,
+        updated_at: adsConfig.updatedAt,
+      });
+      byCode.set(livePromo.code, livePromo);
+    }
+  } catch {
+    // Keep defaults/Firestore coupons on error
+  }
+
   return Array.from(byCode.values());
 }
 
@@ -892,6 +948,21 @@ async function validateCouponForUser(
       valid: false,
       code: 'COUPON_PLAN_MISMATCH',
       error: `Coupon code "${cleanCode}" applies only to ${coupon.appliesTo.replace('_', ' ')}.`,
+    };
+  }
+
+  if (
+    Array.isArray(coupon.appliesToPlans) &&
+    coupon.appliesToPlans.length > 0 &&
+    !coupon.appliesToPlans.includes(targetPlan.tier as 'pro' | 'plus')
+  ) {
+    const allowedLabels = coupon.appliesToPlans
+      .map((t) => (t === 'plus' ? 'Boardly Plus' : 'Boardly Pro'))
+      .join(' and ');
+    return {
+      valid: false,
+      code: 'COUPON_PLAN_MISMATCH',
+      error: `Coupon code "${cleanCode}" applies only to ${allowedLabels}.`,
     };
   }
 

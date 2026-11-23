@@ -10,6 +10,7 @@ import { validateDisplayName } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import type { PublicProfile } from '@/types';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface EditProfileSheetProps {
   isOpen: boolean;
@@ -70,7 +71,8 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
       });
       setRequestSentMessage(`Request for "${displayName.trim()}" submitted! Admin will review your requested name.`);
     } catch (err: any) {
-      setError(err?.message || 'Failed to submit name request to admin.');
+      console.error('[EditProfileSheet] name request failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setIsSendingRequest(false);
     }
@@ -113,8 +115,8 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
         onClose();
       }, 350);
     } catch (err: any) {
-      console.warn('[EditProfileSheet] failed to save profile:', err);
-      setError(err?.message || 'Failed to save changes. Please try again.');
+      console.error('[EditProfileSheet] failed to save profile:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setIsSaving(false);
     }

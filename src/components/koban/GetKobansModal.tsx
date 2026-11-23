@@ -23,6 +23,7 @@ import { submitKobanRequest } from '@/services/kobanService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import type { KobanRequest } from '@/types';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface GetKobansModalProps {
   isOpen: boolean;
@@ -127,7 +128,8 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
 
       setSuccessRequestId(docId);
     } catch (err: unknown) {
-      setError((err as Error).message || 'Failed to submit request');
+      console.error('[GetKobansModal] submit failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

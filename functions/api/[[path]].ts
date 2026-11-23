@@ -8,6 +8,8 @@ import {
 } from '../_utils/adminRoleGate';
 import { getSharedLocalD1Database } from '../_utils/firestoreRestAdmin';
 import { handleAiMentorsRequest } from './ai.js';
+import { onRequest as handlePublicAdsRequest } from './ads/[[path]]';
+import { onRequest as handleAdminAdsRequest } from './admin/ads/[[path]]';
 
 export interface PagesApiContext {
   request: Request;
@@ -32,6 +34,18 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
 
   if (path === '/api/ai') {
     return handleAiMentorsRequest(request, env);
+  }
+
+  if (path === '/api/ads' || path.startsWith('/api/ads/')) {
+    return handlePublicAdsRequest({ request, env });
+  }
+
+  if (path === '/api/admin/ads' || path.startsWith('/api/admin/ads/')) {
+    return handleAdminAdsRequest({
+      request,
+      env,
+      tokenVerifierOverride: context.tokenVerifierOverride,
+    });
   }
 
   // Serve R2 objects from R2_BUCKET (e.g. university logos) or D1 university_logo_assets fallback

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Loader2, User, X } from 'lucide-react';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface ChooseUsernameModalProps {
   isOpen: boolean;
@@ -84,11 +85,14 @@ export const ChooseUsernameModal: React.FC<ChooseUsernameModalProps> = ({
     try {
       const res = await onSaveUsername(localCheck.clean);
       if (!res.ok) {
-        setSubmitError(res.error || 'Could not save username. Please try another.');
+        setSubmitError(
+          sanitizeUserErrorMessage(res.error, 'Could not save username. Please try another.')
+        );
         setStatus('taken');
       }
     } catch (err: any) {
-      setSubmitError(err?.message || 'Could not save username.');
+      console.error('[ChooseUsernameModal] save username failed:', err);
+      setSubmitError(sanitizeUserErrorMessage(err));
     } finally {
       setSaving(false);
     }

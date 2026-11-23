@@ -118,16 +118,19 @@ export function LandingPage() {
       />
       <main className="w-full">
         <HeroSection />
-        <section className="boardly-container py-6 sm:py-8" aria-label="Sponsored">
-          <AdSlot slotId={AD_SLOTS.homeHeroBelow} />
-        </section>
         <MissionSection />
         <FeaturesGrid />
         <ScrollDrivenPreview />
         <ArenaStrip />
         <HowItWorks />
+        <section className="boardly-container py-6 sm:py-8">
+          <AdSlot slotId={AD_SLOTS.home_mid} />
+        </section>
         <PricingSection />
         <FaqSection />
+        <section className="boardly-container py-6 sm:py-8">
+          <AdSlot slotId={AD_SLOTS.home_faq} />
+        </section>
         <TestCockpitCta />
       </main>
     </>

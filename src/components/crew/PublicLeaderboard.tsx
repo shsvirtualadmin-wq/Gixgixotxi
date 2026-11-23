@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -90,11 +91,16 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
           setTotalCount(result.total);
         }
       } catch (err: any) {
-        console.warn('[PublicLeaderboard] Load error:', err);
         if (active && !settled) {
           settled = true;
           window.clearTimeout(timeoutId);
-          setLoadError(err?.message || 'Could not load squads.');
+          setLoadError(
+            sanitizeUserErrorMessage(
+              err,
+              'Something went wrong. Please try again.',
+              'PublicLeaderboard.load'
+            )
+          );
         }
       } finally {
         if (active) setLoading(false);

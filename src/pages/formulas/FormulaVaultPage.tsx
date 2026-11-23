@@ -43,6 +43,8 @@ import { MathText } from '../../components/ui/MathText';
 import { useEffectivePlan } from '../../hooks/useEffectivePlan';
 import { exportFormulaSheetToPdf } from '../../utils/formulaPdfExporter';
 import { useBodyScrollLock, safetyCleanupScrollLocks } from '../../utils/scrollLock';
+import { AdSlot } from '@/components/AdSlot';
+import { useAdsConfig } from '@/services/adsConfigService';
 
 /**
  * Highlights all space-separated search tokens inside `text` (case-insensitive).
@@ -201,6 +203,8 @@ export const FormulaVaultPage: React.FC = () => {
 
   const [openChapterId, setOpenChapterId] = useState<string | null>(null);
   const [openChapterFormulas, setOpenChapterFormulas] = useState<D1FormulaItemRow[]>([]);
+  const { config: adsConfig } = useAdsConfig();
+  const formulaFeedEveryN = Math.max(2, adsConfig.slots.formula_feed?.everyN || 6);
   const [loadingChapterId, setLoadingChapterId] = useState<string | null>(null);
 
   // PDF generation state (Grand Line PDF design)
@@ -1597,16 +1601,26 @@ export const FormulaVaultPage: React.FC = () => {
                               </div>
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                                {openChapterFormulas.map((formula) =>
-                                  renderFormulaCard(formula, openChapterFormulas, {
-                                    chapterTitle: chapter.title,
-                                    chapterNo: chapter.chapter_no,
-                                    categoryName:
-                                      chapterSubject?.name ||
-                                      activeCategory?.name ||
-                                      'Formula Library',
-                                  })
-                                )}
+                                {openChapterFormulas.map((formula, fIdx) => (
+                                  <React.Fragment key={formula.id}>
+                                    {renderFormulaCard(formula, openChapterFormulas, {
+                                      chapterTitle: chapter.title,
+                                      chapterNo: chapter.chapter_no,
+                                      categoryName:
+                                        chapterSubject?.name ||
+                                        activeCategory?.name ||
+                                        'Formula Library',
+                                    })}
+                                    {(fIdx + 1) % formulaFeedEveryN === 0 && (
+                                      <div className="col-span-full my-1">
+                                        <AdSlot
+                                          slotId="formula_feed"
+                                          instanceKey={`formula-${chapter.id}-${fIdx}`}
+                                        />
+                                      </div>
+                                    )}
+                                  </React.Fragment>
+                                ))}
                               </div>
                             )}
                           </div>

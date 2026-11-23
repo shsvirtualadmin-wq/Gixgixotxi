@@ -288,7 +288,7 @@ export function DashboardSidebar() {
         )}
         {/* Desktop-only sticky ad slot */}
         <div className="hidden md:block sticky bottom-0 pt-3 mt-auto">
-          <AdSlot slotId={AD_SLOTS.desktopSidebar} format="vertical" />
+          <AdSlot slotId={AD_SLOTS.sidebar_desktop} format="vertical" compact />
         </div>
       </nav>
 

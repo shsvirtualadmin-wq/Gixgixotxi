@@ -9,6 +9,7 @@ import { validateDisplayName } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
 import { AlertCircle, Send, CheckCircle2 } from 'lucide-react';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -57,7 +58,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       });
       setRequestSentMessage(`Request for "${displayName.trim()}" submitted! Admin will review your requested name.`);
     } catch (err: any) {
-      setError(err?.message || 'Failed to submit name request to admin.');
+      console.error('[EditProfileModal] name request failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setIsSendingRequest(false);
     }
@@ -87,7 +89,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Failed to update profile');
+      console.error('[EditProfileModal] update failed:', err);
+      setError(sanitizeUserErrorMessage(err));
     } finally {
       setIsSaving(false);
     }

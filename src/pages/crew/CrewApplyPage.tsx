@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 import { useAuth } from '@/contexts/AuthContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -67,9 +68,13 @@ export function CrewApplyPage() {
 
       setSubmitted(true);
     } catch (err: unknown) {
-      const e = err as { message?: string };
-      console.error('[CrewApply] Submit error:', err);
-      setError(e.message ?? 'Failed to submit application. Please try again.');
+      setError(
+        sanitizeUserErrorMessage(
+          err,
+          'Something went wrong. Please try again.',
+          'CrewApply.submit'
+        )
+      );
     } finally {
       setSubmitting(false);
     }

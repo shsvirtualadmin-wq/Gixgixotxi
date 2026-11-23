@@ -8280,7 +8280,7 @@ ${urls
         );
       }
       return jsonResponse(
-        { error: err?.message || 'Upload failed, try again' },
+        { error: 'Something went wrong. Please try again.' },
         500,
         cors
       );

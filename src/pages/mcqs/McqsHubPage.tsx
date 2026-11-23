@@ -14,6 +14,7 @@ import {
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { SYLLABUS_MAP, TOPIC_LISTS } from '@/constants/syllabusMap';
+import { AdSlot } from '@/components/AdSlot';
 
 interface SubjectCardDef {
   slug: string;
@@ -307,11 +308,11 @@ export const McqsHubPage: React.FC = () => {
 
         {/* Subject Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {SUBJECT_DEFS.map((subj) => (
-            <article
-              key={subj.slug}
-              className="glass-panel p-6 sm:p-8 flex flex-col justify-between gap-6 transition-all hover:border-white/25"
-            >
+          {SUBJECT_DEFS.map((subj, idx) => (
+            <React.Fragment key={subj.slug}>
+              <article
+                className="glass-panel p-6 sm:p-8 flex flex-col justify-between gap-6 transition-all hover:border-white/25"
+              >
               <div>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-3">
@@ -373,7 +374,13 @@ export const McqsHubPage: React.FC = () => {
                   <ArrowRight size={14} />
                 </Link>
               </div>
-            </article>
+              </article>
+              {idx === 1 && (
+                <div className="md:col-span-2 my-1">
+                  <AdSlot slotId="mcq_hub" />
+                </div>
+              )}
+            </React.Fragment>
           ))}
         </div>
       </div>

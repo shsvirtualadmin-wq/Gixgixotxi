@@ -169,9 +169,8 @@ export function formatRoleChipLabel(
 }
 
 function formatFirestoreError(collectionName: string, err: any): string {
-  const code = err?.code ? String(err.code) : 'unknown-error';
-  const msg = err?.message ? String(err.message) : 'Query failed.';
-  return `Firestore error on "${collectionName}" (${code}): ${msg}`;
+  console.error(`[Boardly Chat] Firestore error on "${collectionName}":`, err);
+  return 'Something went wrong. Please try again.';
 }
 
 export function useOutgoingChatRequests(

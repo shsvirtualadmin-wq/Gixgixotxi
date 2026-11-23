@@ -5,6 +5,7 @@ import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { PublicLeaderboard } from '@/components/crew/PublicLeaderboard';
+import { AdSlot } from '@/components/AdSlot';
 import {
   CrewBottomDock,
   getCrewBtnHandlers,
@@ -296,6 +297,10 @@ export function CrewPage() {
             ))}
           </div>
         </section>
+
+        <div className="py-2">
+          <AdSlot slotId="crew_mid" />
+        </div>
 
         {/* ── 5. Roles in the Boardly Network ── */}
         <section className="space-y-4 pt-2">

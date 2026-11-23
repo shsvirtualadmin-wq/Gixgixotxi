@@ -15,7 +15,7 @@ import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { useNavStore } from '@/lib/navStore';
 import { UserPlus, X } from 'lucide-react';
 import { AdSlot } from '@/components/AdSlot';
-import { AD_SLOTS } from '@/config/ads';
+import { AD_SLOTS, isAdBlockedRoute } from '@/config/ads';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
@@ -73,7 +73,11 @@ export function DashboardShell() {
     location.pathname.startsWith('/dashboard/formulas') ||
     location.pathname.startsWith('/dashboard/formula-vault');
   const showDesktopSidebarAd =
-    !isSettingsRoute && !isProfileRoute && !isAiRoute && !isFormulaRoute;
+    !isSettingsRoute &&
+    !isProfileRoute &&
+    !isAiRoute &&
+    !isFormulaRoute &&
+    !isAdBlockedRoute(location.pathname);
 
   useEffect(() => {
     if (user?.uid && isSessionVerified && !isGuest) {
@@ -238,7 +242,7 @@ export function DashboardShell() {
                   <KeepAliveTabsOutlet />
                 </div>
                 <div className="hidden xl:block w-[260px] shrink-0 sticky top-24 self-start">
-                  <AdSlot slotId={AD_SLOTS.desktopSidebar} format="vertical" />
+                  <AdSlot slotId={AD_SLOTS.sidebar_desktop} format="vertical" compact />
                 </div>
               </div>
             ) : (

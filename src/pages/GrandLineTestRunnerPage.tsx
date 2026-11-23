@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 import { useParams, useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom';
 import {
   Clock,
@@ -262,7 +263,13 @@ export function GrandLineTestRunnerPage() {
           if (err?.status === 404) {
             setNotFound(true);
           } else {
-            setLoadError(err?.rawMessage || err?.message || 'Failed to load drill result.');
+            setLoadError(
+              sanitizeUserErrorMessage(
+                err,
+                'Something went wrong. Please try again.',
+                'GrandLineTestRunnerPage.loadResult'
+              )
+            );
           }
         })
         .finally(() => {
@@ -324,7 +331,13 @@ export function GrandLineTestRunnerPage() {
         } else if (err?.status === 404 || errCode === 'NOT_FOUND') {
           setNotFound(true);
         } else {
-          setLoadError(err?.rawMessage || err?.message || 'Failed to load this drill.');
+          setLoadError(
+            sanitizeUserErrorMessage(
+              err,
+              'Something went wrong. Please try again.',
+              'GrandLineTestRunnerPage.loadDrill'
+            )
+          );
         }
       })
       .finally(() => {

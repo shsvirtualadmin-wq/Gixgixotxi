@@ -24,6 +24,7 @@ import { useDailyPostQuota } from '@/hooks/useDailyPostQuota';
 import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
 import { formatPostLimitReachedMessage } from '@/config/postLimits';
 import type { CommonsPost, CommonsPostType, CommonsFileAttachment } from '@/types/commons';
+import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 
 export type WizardPostType =
   | 'notes'
@@ -432,10 +433,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         onClose();
       }, 1100);
     } catch (err: any) {
+      console.error('[PostingWizardModal] publish failed:', err);
       if (err instanceof PostQuotaError && err.quota) {
         applyServerQuota(err.quota);
+        setError(formatPostLimitReachedMessage(err.quota));
+      } else {
+        setError(sanitizeUserErrorMessage(err));
       }
-      setError(err?.message || 'Failed to publish resource. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

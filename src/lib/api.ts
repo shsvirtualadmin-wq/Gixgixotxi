@@ -1,4 +1,8 @@
 import { auth } from './firebase';
+import {
+  FRIENDLY_ERROR_MESSAGE,
+  isTechnicalErrorMessage,
+} from '@/utils/safeErrorMessage';
 
 export interface ApiError extends Error {
   status?: number;
@@ -12,13 +16,17 @@ export interface ApiError extends Error {
 export type ToastKind = 'error' | 'success' | 'info';
 
 /**
- * Lightweight, zero-dependency DOM toast notification so real API error
- * messages ({ error, code }) are always shown clearly in the UI.
+ * Lightweight, zero-dependency DOM toast notification so API messages
+ * are shown clearly without leaking raw infrastructure or database errors.
  */
 export function showApiToast(message: string, kind: ToastKind = 'error'): void {
   if (typeof document === 'undefined' || !message) return;
 
-  const normalizedMessage = message.trim();
+  const trimmed = message.trim();
+  const normalizedMessage =
+    kind === 'error' && isTechnicalErrorMessage(trimmed)
+      ? FRIENDLY_ERROR_MESSAGE
+      : trimmed;
   if (!normalizedMessage) return;
 
   let container = document.getElementById('boardly-api-toast-container');
@@ -273,13 +281,15 @@ export async function apiRequest<T = any>(
       controller.signal.aborted ||
       String(networkErr?.message || '').toLowerCase().includes('abort') ||
       String(networkErr?.message || '').toLowerCase().includes('timed out');
-    const msg = isAbort
-      ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}). Please retry.`
+    const rawMsg = isAbort
+      ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}).`
       : networkErr?.message || 'Network error while contacting server.';
-    console.error(`[API Network Error] ${method} ${url}:`, msg, networkErr);
-    const wrappedErr: ApiError = new Error(msg);
+    console.error(`[API Network Error] ${method} ${url}:`, rawMsg, networkErr);
+    const safeMsg = FRIENDLY_ERROR_MESSAGE;
+    const wrappedErr: ApiError = new Error(safeMsg);
     wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
-    if (!silentErrorToast) showApiToast(msg, 'error');
+    wrappedErr.rawMessage = safeMsg;
+    if (!silentErrorToast) showApiToast(safeMsg, 'error');
     throw wrappedErr;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
@@ -338,14 +348,16 @@ export async function apiRequest<T = any>(
       serverError = 'Please verify your email to continue.';
     }
 
-    const fullMessage =
-      serverCode && serverCode !== 'EMAIL_VERIFICATION_REQUIRED' && !isGuestExpiredOrInvalid
-        ? `${serverError} (${serverCode})`
-        : serverError;
-    const err: ApiError = new Error(fullMessage);
+    const isInternalOrTechnical =
+      response.status >= 500 || isTechnicalErrorMessage(serverError);
+    const safeUserMessage = isInternalOrTechnical
+      ? FRIENDLY_ERROR_MESSAGE
+      : serverError;
+
+    const err: ApiError = new Error(safeUserMessage);
     err.status = response.status;
     err.code = serverCode || `HTTP_${response.status}`;
-    err.rawMessage = serverError;
+    err.rawMessage = safeUserMessage;
     err.attemptId = data?.attemptId;
     err.attempt = data?.attempt;
     err.data = data;
@@ -355,7 +367,7 @@ export async function apiRequest<T = any>(
       !isGuestExpiredOrInvalid &&
       serverCode !== 'EMAIL_VERIFICATION_REQUIRED'
     ) {
-      showApiToast(fullMessage, 'error');
+      showApiToast(safeUserMessage, 'error');
     }
     throw err;
   }

@@ -27,6 +27,7 @@ import { McqSubjectPage } from './McqSubjectPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { AdSlot } from '@/components/AdSlot';
 import { AD_SLOTS } from '@/config/ads';
+import { useAdsConfig } from '@/services/adsConfigService';
 
 const VALID_SUBJECT_KEYS = new Set([
   'physics',
@@ -343,6 +344,8 @@ export const McqChapterPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { config: adsConfig } = useAdsConfig();
+  const mcqFeedEveryN = Math.max(2, adsConfig.slots.mcq_chapter_feed?.everyN || 6);
 
   const rawUniParam = (params.university || '').toLowerCase().trim();
   const rawSubjParam = (params.subject || params.subjectId || 'physics').toLowerCase().trim();
@@ -740,7 +743,8 @@ export const McqChapterPage: React.FC = () => {
             const isCorrect = chosenIdx === mcq.correctIndex;
 
             return (
-              <div key={mcq.id} className="glass-card p-6 sm:p-7">
+              <React.Fragment key={mcq.id}>
+                <div className="glass-card p-6 sm:p-7">
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <span className="font-dot text-sm font-bold text-[#D71921]">
                     Question {String(qIdx + 1).padStart(2, '0')}
@@ -870,13 +874,19 @@ export const McqChapterPage: React.FC = () => {
                   </div>
                 )}
               </div>
+              {(qIdx + 1) % mcqFeedEveryN === 0 && qIdx < sampleQuestions.length - 1 && (
+                <div className="my-2">
+                  <AdSlot slotId={AD_SLOTS.mcq_chapter_feed} instanceKey={`mcq-${qIdx}`} />
+                </div>
+              )}
+              </React.Fragment>
             );
           })}
         </section>
 
-        {/* Ad Slot below MCQ question cards (never between question and options) */}
+        {/* Ad Slot at end of MCQ chapter */}
         <div className="mb-10">
-          <AdSlot slotId={AD_SLOTS.quizBelowQuestion} />
+          <AdSlot slotId={AD_SLOTS.mcq_chapter_end} />
         </div>
 
         {/* Sign in to Practice & Save Progress Banner */}
