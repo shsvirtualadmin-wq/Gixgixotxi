@@ -47,6 +47,7 @@ import {
 } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
+import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 import { isQuotaExhaustedError } from '@/utils/quota';
 
 import {
@@ -919,6 +920,11 @@ export function PracticePage() {
               )}
             </button>
           </Card>
+        </div>
+
+        {/* Rotating Boardly Ad in bottom gap below Practice options (hidden for Pro/Plus with ad-free ON) */}
+        <div className="pt-1">
+          <RotatingBoardlyAd variant="card" slotKey="practice_bottom" />
         </div>
 
         {/* ── TARGET TRACK PICKER BOTTOM-SHEET / POPUP MODAL ── */}

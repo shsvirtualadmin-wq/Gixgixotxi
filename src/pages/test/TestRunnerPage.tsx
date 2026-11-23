@@ -788,6 +788,8 @@ export function TestRunnerPage() {
           >
             <BoardlyAd
               variant="popup"
+              accent="indigo-blue"
+              illustrationId="boy-books"
               chip="BOARDLY PRO EXCLUSIVE"
               headline="Unlock PDF Exam Exports"
               description="Download complete, printable entrance test papers with full question stems, 4-choice options, and official answer keys for offline paper practice."

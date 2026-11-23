@@ -53,6 +53,7 @@ import type { GradedAttemptQuestion } from '@/services/ambassadorTestService';
 
 import { MyCertificatesSection } from '@/pages/dashboard/MyCertificatesPage';
 import { AdSlot } from '@/components/AdSlot';
+import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 import { AD_SLOTS } from '@/config/ads';
 import {
   UniversityLogoBox,
@@ -1178,6 +1179,11 @@ export function OverviewPage() {
           chapters={d1Stats.weakChapters}
           onDrillChapter={(item) => void handleDrillWeakChapter(item)}
         />
+      </div>
+
+      {/* Rotating Boardly Ad in dashboard gap (hidden for Pro/Plus with ad-free ON) */}
+      <div className="cv-auto py-1">
+        <RotatingBoardlyAd variant="card" slotKey="dashboard_overview_mid" />
       </div>
 
       {/* g) Recent Attempts */}

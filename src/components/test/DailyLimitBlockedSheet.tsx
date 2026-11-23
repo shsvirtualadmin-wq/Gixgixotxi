@@ -63,6 +63,8 @@ export function DailyLimitBlockedSheet({
       >
         <BoardlyAd
           variant="popup"
+          accent="magenta-orange"
+          illustrationId="boy-laptop"
           chip="DAILY STARTER LIMIT"
           headline={`You've used all ${FREE_DAILY_TESTS} daily attempts`}
           description={`Free starter accounts include ${FREE_DAILY_TESTS} test attempts per day (PKT). Upgrade to Pro for unlimited practice tests.`}

@@ -9,6 +9,7 @@ import { PricingSection } from '../components/landing/PricingSection';
 import { FaqSection } from '../components/landing/FaqSection';
 import { TestCockpitCta } from '../components/landing/TestCockpitCta';
 import { AdSlot } from '@/components/AdSlot';
+import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 import { AD_SLOTS } from '@/config/ads';
 
 export function LandingPage() {
@@ -118,9 +119,21 @@ export function LandingPage() {
       />
       <main className="w-full">
         <HeroSection />
+        {/* Gap before "Why We Built Boardly / Our Mission" */}
+        <section className="boardly-container py-4 sm:py-6">
+          <RotatingBoardlyAd variant="card" slotKey="home_before_mission" />
+        </section>
         <MissionSection />
+        {/* Gap before "Platform Capabilities" */}
+        <section className="boardly-container py-4 sm:py-6">
+          <RotatingBoardlyAd variant="card" slotKey="home_before_capabilities" />
+        </section>
         <FeaturesGrid />
         <ScrollDrivenPreview />
+        {/* Blank space directly under Crew tabs and "Sample preview" */}
+        <section className="boardly-container py-4 sm:py-6">
+          <RotatingBoardlyAd variant="card" slotKey="home_after_preview" />
+        </section>
         <ArenaStrip />
         <HowItWorks />
         <section className="boardly-container py-6 sm:py-8">
@@ -128,10 +141,15 @@ export function LandingPage() {
         </section>
         <PricingSection />
         <FaqSection />
+        {/* Big Hero Poster Carousel directly above "Test Cockpit" */}
+        <section className="boardly-container py-6 sm:py-8">
+          <RotatingBoardlyAd variant="poster" slotKey="home_hero_poster" slideCount={5} />
+        </section>
+        <TestCockpitCta />
+        {/* Google-priority AdSlot cleanly placed between Test Cockpit and Footer (never back to back) */}
         <section className="boardly-container py-6 sm:py-8">
           <AdSlot slotId={AD_SLOTS.home_faq} />
         </section>
-        <TestCockpitCta />
       </main>
     </>
   );

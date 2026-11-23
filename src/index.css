@@ -5601,7 +5601,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 .boardly-top-nav-pill,
 .public-header-glass-bar {
   position: fixed !important;
-  top: calc(env(safe-area-inset-top, 0px) + 8px) !important;
+  top: calc(env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px) + 8px) !important;
   left: 12px !important;
   right: 12px !important;
   max-width: 1200px;
@@ -5630,6 +5630,32 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   user-select: none;
   pointer-events: auto;
   transition: none !important;
+}
+
+@keyframes boardly-strip-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.boardly-strip-track {
+  width: max-content;
+  will-change: transform;
+  animation: boardly-strip-marquee 68s linear infinite;
+}
+
+.boardly-strip-track:hover,
+.boardly-strip-track:focus-within {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boardly-strip-track {
+    animation: none;
+  }
 }
 
 :is(.light, [data-theme="light"]) :is(.boardly-top-nav-pill, .public-header-glass-bar) {

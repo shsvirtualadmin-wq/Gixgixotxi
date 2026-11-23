@@ -296,6 +296,8 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
         {!isSuperAdmin && (resolvedPlan === 'free' || resolvedPlan === 'pro') ? (
           <BoardlyAd
             variant="inline"
+            accent={resolvedPlan === 'pro' ? 'indigo-blue' : 'purple-pink'}
+            illustrationId={resolvedPlan === 'pro' ? 'girl-trophy' : 'girl-laptop'}
             chip={resolvedPlan === 'pro' ? 'BOARDLY PLUS' : 'AI MENTOR PRO'}
             headline={
               resolvedPlan === 'pro'

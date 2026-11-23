@@ -78,6 +78,8 @@ export const AiUpgradeSheet: React.FC<AiUpgradeSheetProps> = ({
       <div className="relative z-10 w-full max-w-[440px] max-h-[88dvh] overflow-y-auto overscroll-contain rounded-[12px]">
         <BoardlyAd
           variant="popup"
+          accent={isTargetPlus ? 'indigo-blue' : 'purple-pink'}
+          illustrationId={isTargetPlus ? 'girl-celebrating' : 'girl-laptop'}
           chip={isTargetPlus ? 'BOARDLY PLUS' : 'AI MENTOR · PRO'}
           headline={
             isTargetPlus

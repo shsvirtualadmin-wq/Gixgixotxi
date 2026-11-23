@@ -79,6 +79,8 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
       <div role="alert" className={`my-2 ${className}`}>
         <BoardlyAd
           variant="banner"
+          accent={upgradeTarget === 'plus' ? 'indigo-blue' : 'teal-purple'}
+          illustrationId="crew-together"
           chip={upgradeTarget === 'plus' ? 'BOARDLY PLUS' : 'DAILY POST LIMIT'}
           headline={`Daily post limit reached (${quota.usedToday}/${limit} · ${planLabel})`}
           description={

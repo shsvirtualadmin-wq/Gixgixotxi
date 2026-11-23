@@ -7,6 +7,7 @@ import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
 import { AppLayout } from './AppLayout';
 import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
+import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 
 /**
  * PublicLayout:
@@ -52,7 +53,11 @@ export function PublicLayout() {
         style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
       >
         <BackgroundCanvas />
-        <main className="flex-1 w-full flex flex-col">
+        <RotatingBoardlyAd variant="strip" slotKey="public_top_strip" />
+        <main
+          className="flex-1 w-full flex flex-col"
+          style={{ paddingTop: 'var(--boardly-top-strip-h, 0px)' }}
+        >
           <BoardlySuspenseBoundary variant="page">
             <Outlet />
           </BoardlySuspenseBoundary>
@@ -68,6 +73,7 @@ export function PublicLayout() {
       style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
     >
       <BackgroundCanvas />
+      <RotatingBoardlyAd variant="strip" slotKey="public_top_strip" />
       {isHomePage ? <Navbar /> : <PublicPageHeader />}
       {isHomePage ? (
         <div className="flex-1 flex flex-col">
@@ -79,7 +85,7 @@ export function PublicLayout() {
         <main
           className="flex-1 flex flex-col pb-12"
           style={{
-            paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
+            paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px))',
           }}
         >
           <BoardlySuspenseBoundary variant="page">

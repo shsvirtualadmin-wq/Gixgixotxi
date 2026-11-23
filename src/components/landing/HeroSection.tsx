@@ -7,7 +7,8 @@ export function HeroSection() {
     <section
       className="relative overflow-hidden isolate"
       style={{
-        paddingTop: 'calc(64px + 24px + env(safe-area-inset-top, 0px))',
+        paddingTop:
+          'calc(64px + 24px + env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px))',
         paddingBottom: '64px',
       }}
     >

@@ -394,6 +394,8 @@ export function AiTutorPage() {
         <div className="my-4">
           <BoardlyAd
             variant="banner"
+            accent="purple-pink"
+            illustrationId="boy-notes"
             chip="AI TUTOR · PRO"
             headline={`Daily Free Limit Reached (${FREE_DAILY_TOKEN_LIMIT} of ${FREE_DAILY_TOKEN_LIMIT} prompts used)`}
             description="Your quota resets at midnight PKT. Upgrade to Boardly Pro for unlimited derivations."

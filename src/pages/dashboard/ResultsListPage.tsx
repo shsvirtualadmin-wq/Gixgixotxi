@@ -13,6 +13,7 @@ import type { AttemptDoc } from '@/types/index';
 import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambassadorTestService';
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
+import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 
 function getTimestampSeconds(val: unknown): number {
   if (!val || typeof val !== 'object') return 0;
@@ -524,6 +525,11 @@ export function ResultsListPage() {
           )}
         </div>
       )}
+
+      {/* Rotating Boardly Ad in bottom gap (hidden for Pro/Plus with ad-free ON) */}
+      <div className="pt-2 pb-4">
+        <RotatingBoardlyAd variant="card" slotKey="results_list_bottom" />
+      </div>
     </div>
   );
 }
