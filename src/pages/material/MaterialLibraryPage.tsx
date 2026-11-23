@@ -784,9 +784,11 @@ export const MaterialLibraryPage: React.FC = () => {
                   </div>
                   </article>
                   {(idx === 3 || (idx > 3 && (idx - 3) % materialFeedEveryN === 0)) && (
-                    <div className="md:col-span-2 my-5 sm:my-6">
-                      <AdSlot slotId="material_feed" instanceKey={`mat-${idx}`} />
-                    </div>
+                    <AdSlot
+                      slotId="material_feed"
+                      instanceKey={`mat-${idx}`}
+                      wrapperClassName="md:col-span-2 my-5 sm:my-6"
+                    />
                   )}
                 </React.Fragment>
               );

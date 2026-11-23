@@ -923,9 +923,7 @@ export function PracticePage() {
         </div>
 
         {/* Rotating Boardly Ad in bottom gap below Practice options (hidden for Pro/Plus with ad-free ON) */}
-        <div className="pt-1">
-          <RotatingBoardlyAd variant="card" slotKey="practice_bottom" />
-        </div>
+        <RotatingBoardlyAd variant="card" slotKey="practice_bottom" wrapperClassName="pt-1" />
 
         {/* ── TARGET TRACK PICKER BOTTOM-SHEET / POPUP MODAL ── */}
         {trackPickerOpen && (

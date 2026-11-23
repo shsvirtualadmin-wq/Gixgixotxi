@@ -573,9 +573,7 @@ export function GrandLinePage() {
           )}
         </div>
 
-        <div className="max-w-4xl mx-auto my-6 sm:my-8">
-          <AdSlot slotId="grandline_mid" />
-        </div>
+        <AdSlot slotId="grandline_mid" wrapperClassName="max-w-4xl mx-auto my-6 sm:my-8" />
 
         {/* ── Test Leaderboard Section ── */}
         <div className="max-w-4xl mx-auto pt-8 border-t border-white/10 space-y-6">

@@ -376,9 +376,7 @@ export const McqsHubPage: React.FC = () => {
               </div>
               </article>
               {idx === 1 && (
-                <div className="md:col-span-2 my-6 sm:my-8">
-                  <AdSlot slotId="mcq_hub" />
-                </div>
+                <AdSlot slotId="mcq_hub" wrapperClassName="md:col-span-2 my-6 sm:my-8" />
               )}
             </React.Fragment>
           ))}

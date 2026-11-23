@@ -1182,9 +1182,11 @@ export function OverviewPage() {
       </div>
 
       {/* Rotating Boardly Ad in dashboard gap (hidden for Pro/Plus with ad-free ON) */}
-      <div className="cv-auto py-1">
-        <RotatingBoardlyAd variant="card" slotKey="dashboard_overview_mid" />
-      </div>
+      <RotatingBoardlyAd
+        variant="card"
+        slotKey="dashboard_overview_mid"
+        wrapperClassName="cv-auto py-1"
+      />
 
       {/* g) Recent Attempts */}
       <div className="cv-auto">
@@ -1795,9 +1797,7 @@ export function OverviewPage() {
                           </div>
                         </div>
 
-                        <div className="my-6 sm:my-8">
-                          <AdSlot slotId={AD_SLOTS.result_below} />
-                        </div>
+                        <AdSlot slotId={AD_SLOTS.result_below} wrapperClassName="my-6 sm:my-8" />
 
                         <div className="space-y-3">
                           {testMcqs.map((q, idx) => {

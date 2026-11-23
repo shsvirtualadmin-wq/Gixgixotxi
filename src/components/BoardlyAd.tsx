@@ -20,6 +20,7 @@ import {
   type BoardlyCatalogAd,
 } from '@/config/boardlyAdsCatalog';
 import { useBoardlyAdVisibility } from '@/hooks/useBoardlyAdVisibility';
+import { useShowAds } from '@/hooks/useShowAds';
 
 export type BoardlyAdVariant = 'card' | 'banner' | 'popup' | 'inline' | 'strip' | 'poster';
 
@@ -784,6 +785,7 @@ export function BoardlyAd({
   containerRef,
   className = '',
 }: BoardlyAdProps) {
+  const { showAds } = useShowAds();
   const [dismissed, setDismissed] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -791,15 +793,21 @@ export function BoardlyAd({
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!isPreview && !showAds) return;
     if (!targetEndMs) return;
     if (targetEndMs <= Date.now()) return;
     const id = window.setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
     return () => window.clearInterval(id);
-  }, [targetEndMs]);
+  }, [targetEndMs, isPreview, showAds]);
 
   const countdown = useMemo(() => computeCountdown(targetEndMs, nowMs), [targetEndMs, nowMs]);
+
+  // Strictly honor Pro/Plus ad-free setting (and wait while plan/setting loads) across EVERY BoardlyAd variant
+  if (!isPreview && !showAds) {
+    return null;
+  }
 
   // ── TOP YELLOW ANNOUNCEMENT STRIP VARIANT ──
   if (variant === 'strip') {
@@ -1181,6 +1189,8 @@ export interface RotatingBoardlyAdProps {
   slotKey: string;
   slideCount?: number;
   className?: string;
+  /** Optional outer layout wrapper classes applied ONLY when the ad renders (prevents empty gaps when hidden) */
+  wrapperClassName?: string;
 }
 
 export function RotatingBoardlyAd({
@@ -1188,6 +1198,7 @@ export function RotatingBoardlyAd({
   slotKey,
   slideCount = 5,
   className = '',
+  wrapperClassName = '',
 }: RotatingBoardlyAdProps) {
   const reactId = useId();
   const { canShow, isPromoActive, promoEndDate, pathname } = useBoardlyAdVisibility();
@@ -1266,6 +1277,9 @@ export function RotatingBoardlyAd({
 
   if (!canShow || slotClosed) return null;
 
+  const wrapIfNeeded = (node: React.ReactNode) =>
+    wrapperClassName ? <div className={wrapperClassName}>{node}</div> : node;
+
   if (variant === 'strip') {
     if (stripSlides.length === 0) return null;
     return (
@@ -1282,7 +1296,7 @@ export function RotatingBoardlyAd({
 
   if (variant === 'poster') {
     if (posterSlides.length === 0) return null;
-    return (
+    return wrapIfNeeded(
       <BoardlyAd
         variant="poster"
         slides={posterSlides}
@@ -1299,7 +1313,7 @@ export function RotatingBoardlyAd({
 
   if (!singleAd) return null;
 
-  return (
+  return wrapIfNeeded(
     <BoardlyAd
       variant={variant}
       accent={singleAd.accent}

@@ -448,7 +448,7 @@ export function useUserProfile(): UserProfileHookResult {
     };
   }, [user?.uid]);
 
-  // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role/name/username
+  // Keep AuthContext profile synchronized whenever Firestore user doc updates plan/expiry/role/name/username/adFreeEnabled
   useEffect(() => {
     if (!user?.uid || isGuest) return;
     const live = sharedState.profile;
@@ -460,6 +460,8 @@ export function useUserProfile(): UserProfileHookResult {
         authProfile.planExpiresAt !== live.planExpiresAt ||
         authProfile.premiumExpiresAt !== live.premiumExpiresAt ||
         authProfile.proPlanId !== live.proPlanId ||
+        (typeof live.adFreeEnabled === 'boolean' &&
+          authProfile.adFreeEnabled !== live.adFreeEnabled) ||
         (live.displayName && authProfile.displayName !== live.displayName) ||
         (live.username && authProfile.username !== live.username) ||
         (live.bio !== undefined && authProfile.bio !== live.bio) ||
@@ -471,6 +473,7 @@ export function useUserProfile(): UserProfileHookResult {
         planExpiresAt: live.planExpiresAt,
         premiumExpiresAt: live.premiumExpiresAt,
         proPlanId: live.proPlanId,
+        ...(typeof live.adFreeEnabled === 'boolean' ? { adFreeEnabled: live.adFreeEnabled } : {}),
         ...(live.displayName ? { displayName: live.displayName, display_name: live.displayName } : {}),
         ...(live.username ? { username: live.username } : {}),
         ...(live.bio !== undefined ? { bio: live.bio } : {}),

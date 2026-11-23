@@ -34,6 +34,7 @@ import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useShowAds, setUserAdFreePreference } from '@/hooks/useShowAds';
 import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useWallet } from '@/hooks/useWallet';
 import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
@@ -250,59 +251,28 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     }
   });
 
-  // Ad-free experience preference (ON by default for active Pro/Plus; synced to user profile across devices)
-  const [adFreeEnabled, setAdFreeEnabled] = useState<boolean>(() => {
-    if (typeof profile?.adFreeEnabled === 'boolean') {
-      return profile.adFreeEnabled;
-    }
-    try {
-      if (user?.uid) {
-        const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
-        if (cached === '1') return true;
-        if (cached === '0') return false;
-      }
-    } catch {
-      // Ignore
-    }
-    return true;
-  });
-
-  useEffect(() => {
-    if (typeof profile?.adFreeEnabled === 'boolean') {
-      setAdFreeEnabled(profile.adFreeEnabled);
-    }
-  }, [profile?.adFreeEnabled]);
+  // Ad-free experience preference (single reactive source of truth shared with every ad component)
+  const { adFreeEnabled: effectiveAdFreeEnabled, isPaidMember: isAdFreeEligible } = useShowAds();
+  const adFreeEnabled = isPaid ? effectiveAdFreeEnabled : false;
 
   const handleToggleAdFree = useCallback(
     async (nextVal: boolean) => {
-      if (!isPaid) return;
-      setAdFreeEnabled(nextVal);
-      try {
-        if (user?.uid) {
-          localStorage.setItem(`boardly_ad_free_${user.uid}`, nextVal ? '1' : '0');
-        }
-        window.dispatchEvent(
-          new CustomEvent('boardly:ad-free-changed', {
-            detail: { adFreeEnabled: nextVal },
-          })
-        );
-      } catch {
-        // Ignore
-      }
+      if (!isPaid || !user?.uid || isGuest) return;
+      // 1. Immediately update shared reactive store + localStorage so every ad hides/shows synchronously
+      setUserAdFreePreference(user.uid, nextVal);
+      // 2. Persist to AuthContext, shared profile cache, and Firestore users/{uid} across reloads/devices
       try {
         await updateProfile({ adFreeEnabled: nextVal });
-        if (user?.uid && !isGuest) {
-          await setDoc(
-            doc(db, 'users', user.uid),
-            {
-              adFreeEnabled: nextVal,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
-        }
-      } catch {
-        // Non-fatal
+        await setDoc(
+          doc(db, 'users', user.uid),
+          {
+            adFreeEnabled: nextVal,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('[Boardly Settings] Failed to save adFreeEnabled to Firestore:', err);
       }
     },
     [isPaid, user?.uid, isGuest, updateProfile]
@@ -790,10 +760,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             label="Ad-free experience"
             subtitle={
               isPaid
-                ? 'Ads are hidden because you are on Pro/Plus'
+                ? adFreeEnabled
+                  ? 'Ads are hidden across all pages'
+                  : 'Ads are currently shown — turn ON to hide ads'
                 : 'Locked on Free tier'
             }
-            checked={isPaid ? adFreeEnabled : false}
+            checked={isPaid && isAdFreeEligible ? adFreeEnabled : false}
             disabled={!isPaid}
             isLast={isPaid}
             onChange={(val) => {
@@ -1034,10 +1006,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             label="Ad-free experience"
             subtitle={
               isPaid
-                ? 'Ads are hidden because you are on Pro/Plus'
+                ? adFreeEnabled
+                  ? 'Ads are hidden across all pages'
+                  : 'Ads are currently shown — turn ON to hide ads'
                 : 'Locked on Free tier'
             }
-            checked={isPaid ? adFreeEnabled : false}
+            checked={isPaid && isAdFreeEligible ? adFreeEnabled : false}
             disabled={!isPaid}
             isLast={isPaid}
             onChange={(val) => {
@@ -1665,10 +1639,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
                 label="Ad-free experience"
                 subtitle={
                   isPaid
-                    ? 'Ads are hidden because you are on Pro/Plus'
+                    ? adFreeEnabled
+                      ? 'Ads are hidden across all pages'
+                      : 'Ads are currently shown — turn ON to hide ads'
                     : 'Locked on Free tier'
                 }
-                checked={isPaid ? adFreeEnabled : false}
+                checked={isPaid && isAdFreeEligible ? adFreeEnabled : false}
                 disabled={!isPaid}
                 isLast={isPaid}
                 onChange={(val) => {

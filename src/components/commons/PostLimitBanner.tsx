@@ -6,6 +6,7 @@ import {
   type DailyPostQuotaStatus,
 } from '@/config/postLimits';
 import { BoardlyAd } from '@/components/BoardlyAd';
+import { useShowAds } from '@/hooks/useShowAds';
 
 interface PostLimitBannerProps {
   quota: DailyPostQuotaStatus;
@@ -23,6 +24,7 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
   className = '',
 }) => {
   const navigate = useNavigate();
+  const { showAds } = useShowAds();
 
   const handleUpgrade = (target: 'pro' | 'plus') => {
     onBeforeNavigate?.();
@@ -68,8 +70,24 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
   const planLabel = quota.plan === 'pro' ? 'Pro' : 'Free';
   const upgradeTarget: 'pro' | 'plus' = quota.upgradeTarget ?? 'pro';
 
-  // Limit Reached: show clear plan-aware cap, exact midnight PKT reset time, and BoardlyAd Upgrade CTA
+  // Limit Reached: show clear plan-aware cap, exact midnight PKT reset time, and BoardlyAd (only when ads are enabled)
   if (quota.limitReached) {
+    if (!showAds) {
+      return (
+        <div
+          role="alert"
+          className={`my-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--text)] space-y-1 ${className}`}
+        >
+          <div className="font-bold">
+            Daily post limit reached ({quota.usedToday}/{limit} · {planLabel})
+          </div>
+          <div className="text-[var(--text-muted)]">
+            Resets in {quota.resetCountdown} ({quota.resetTimeLabel})
+          </div>
+        </div>
+      );
+    }
+
     const upgradeLabel =
       upgradeTarget === 'plus'
         ? 'Upgrade to Plus (Unlimited)'

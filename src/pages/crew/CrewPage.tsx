@@ -298,9 +298,7 @@ export function CrewPage() {
           </div>
         </section>
 
-        <div className="my-6 sm:my-8">
-          <AdSlot slotId="crew_mid" />
-        </div>
+        <AdSlot slotId="crew_mid" wrapperClassName="my-6 sm:my-8" />
 
         {/* ── 5. Roles in the Boardly Network ── */}
         <section className="space-y-4 pt-2">

@@ -120,36 +120,41 @@ export function LandingPage() {
       <main className="w-full">
         <HeroSection />
         {/* Gap before "Why We Built Boardly / Our Mission" */}
-        <section className="boardly-container py-4 sm:py-6">
-          <RotatingBoardlyAd variant="card" slotKey="home_before_mission" />
-        </section>
+        <RotatingBoardlyAd
+          variant="card"
+          slotKey="home_before_mission"
+          wrapperClassName="boardly-container py-4 sm:py-6"
+        />
         <MissionSection />
         {/* Gap before "Platform Capabilities" */}
-        <section className="boardly-container py-4 sm:py-6">
-          <RotatingBoardlyAd variant="card" slotKey="home_before_capabilities" />
-        </section>
+        <RotatingBoardlyAd
+          variant="card"
+          slotKey="home_before_capabilities"
+          wrapperClassName="boardly-container py-4 sm:py-6"
+        />
         <FeaturesGrid />
         <ScrollDrivenPreview />
         {/* Blank space directly under Crew tabs and "Sample preview" */}
-        <section className="boardly-container py-4 sm:py-6">
-          <RotatingBoardlyAd variant="card" slotKey="home_after_preview" />
-        </section>
+        <RotatingBoardlyAd
+          variant="card"
+          slotKey="home_after_preview"
+          wrapperClassName="boardly-container py-4 sm:py-6"
+        />
         <ArenaStrip />
         <HowItWorks />
-        <section className="boardly-container py-6 sm:py-8">
-          <AdSlot slotId={AD_SLOTS.home_mid} />
-        </section>
+        <AdSlot slotId={AD_SLOTS.home_mid} wrapperClassName="boardly-container py-6 sm:py-8" />
         <PricingSection />
         <FaqSection />
         {/* Big Hero Poster Carousel directly above "Test Cockpit" */}
-        <section className="boardly-container py-6 sm:py-8">
-          <RotatingBoardlyAd variant="poster" slotKey="home_hero_poster" slideCount={5} />
-        </section>
+        <RotatingBoardlyAd
+          variant="poster"
+          slotKey="home_hero_poster"
+          slideCount={5}
+          wrapperClassName="boardly-container py-6 sm:py-8"
+        />
         <TestCockpitCta />
         {/* Google-priority AdSlot cleanly placed between Test Cockpit and Footer (never back to back) */}
-        <section className="boardly-container py-6 sm:py-8">
-          <AdSlot slotId={AD_SLOTS.home_faq} />
-        </section>
+        <AdSlot slotId={AD_SLOTS.home_faq} wrapperClassName="boardly-container py-6 sm:py-8" />
       </main>
     </>
   );

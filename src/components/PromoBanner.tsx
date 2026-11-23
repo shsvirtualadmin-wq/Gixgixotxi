@@ -18,6 +18,7 @@ import {
   type BoardlyCatalogAd,
 } from '@/config/boardlyAdsCatalog';
 import { recordBoardlyOfferEvent, useAdsConfig } from '@/services/adsConfigService';
+import { useShowAds } from '@/hooks/useShowAds';
 import { BoardlyAd } from '@/components/BoardlyAd';
 
 export interface PromoBannerProps {
@@ -86,6 +87,7 @@ export function PromoBanner({
 }: PromoBannerProps) {
   const location = useLocation();
   const reactId = useId();
+  const { showAds } = useShowAds();
   const { config } = useAdsConfig();
   const bannerRef = useRef<HTMLDivElement | null>(null);
   const impressionSentRef = useRef<string | null>(null);
@@ -144,8 +146,18 @@ export function PromoBanner({
 
   const activeOfferId = catalogAd ? catalogAd.id : offer.id;
 
+  const isAdAllowed = isPreview || showAds;
+
   useEffect(() => {
-    if (isPreview || isBlocked || !isActive || slotDismissed || isCustomDismissed || !activeOfferId) {
+    if (
+      isPreview ||
+      !isAdAllowed ||
+      isBlocked ||
+      !isActive ||
+      slotDismissed ||
+      isCustomDismissed ||
+      !activeOfferId
+    ) {
       return;
     }
     const key = `${slotId}::${activeOfferId}::${location.pathname}`;
@@ -172,6 +184,7 @@ export function PromoBanner({
     return () => observer.disconnect();
   }, [
     isPreview,
+    isAdAllowed,
     isBlocked,
     isActive,
     slotDismissed,
@@ -182,7 +195,7 @@ export function PromoBanner({
     location.pathname,
   ]);
 
-  if (!isPreview && (isBlocked || !isActive || slotDismissed || isCustomDismissed)) {
+  if (!isPreview && (!isAdAllowed || isBlocked || !isActive || slotDismissed || isCustomDismissed)) {
     return null;
   }
 

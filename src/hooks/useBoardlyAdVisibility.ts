@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAdsConfig } from '@/services/adsConfigService';
+import { useShowAds } from '@/hooks/useShowAds';
 
 /**
  * Routes where NO Boardly promos/strips/cards should appear
@@ -67,74 +65,16 @@ export interface BoardlyAdVisibilityState {
 
 /**
  * Shared visibility hook for Boardly-owned ads (strip, poster, compact cards).
- * Mirrors AdSlot's exact Pro/Plus ad-free rules:
+ * Delegates all viewer plan, loading, and Ad-free checks to `useShowAds()`:
  * - Active Pro/Plus members with Ad-free ON NEVER see ads.
- * - While a signed-in non-guest user's plan is still loading, waits cleanly so ads never flash to Pro/Plus.
- * - Logged-out visitors, guests ("Continue without an account"), and free users see ads when enabled.
+ * - While auth, profile, or plan is loading, hides ads cleanly so nothing flashes to Pro/Plus users.
+ * - Active Pro/Plus members with Ad-free OFF, free users, guests, and logged-out visitors see ads normally.
  * - Respects global admin `config.adsEnabled` master switch and `config.promoCode.active` (EARLY21).
  */
 export function useBoardlyAdVisibility(): BoardlyAdVisibilityState {
   const location = useLocation();
-  const { user, profile, isGuest } = useAuth();
-  const { isPaid, loading: planLoading, plan } = useEffectivePlan();
+  const { showAds } = useShowAds();
   const { config } = useAdsConfig();
-
-  const [localAdFreeOverride, setLocalAdFreeOverride] = useState<boolean | null>(() => {
-    try {
-      if (user?.uid && !isGuest && !user.uid.startsWith('guest_')) {
-        const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
-        if (cached === '1') return true;
-        if (cached === '0') return false;
-      }
-    } catch {
-      // Ignore storage errors
-    }
-    return null;
-  });
-
-  useEffect(() => {
-    if (!user?.uid || isGuest || user.uid.startsWith('guest_')) {
-      setLocalAdFreeOverride(null);
-      return;
-    }
-    if (typeof profile?.adFreeEnabled === 'boolean') {
-      setLocalAdFreeOverride(profile.adFreeEnabled);
-      return;
-    }
-    try {
-      const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
-      if (cached === '1') setLocalAdFreeOverride(true);
-      else if (cached === '0') setLocalAdFreeOverride(false);
-      else setLocalAdFreeOverride(null);
-    } catch {
-      setLocalAdFreeOverride(null);
-    }
-  }, [user?.uid, isGuest, profile?.adFreeEnabled]);
-
-  useEffect(() => {
-    const onAdFreeChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ adFreeEnabled?: boolean }>).detail;
-      if (typeof detail?.adFreeEnabled === 'boolean') {
-        setLocalAdFreeOverride(detail.adFreeEnabled);
-      }
-    };
-    window.addEventListener('boardly:ad-free-changed', onAdFreeChanged);
-    return () => window.removeEventListener('boardly:ad-free-changed', onAdFreeChanged);
-  }, []);
-
-  const adFreeToggleOn =
-    typeof profile?.adFreeEnabled === 'boolean'
-      ? profile.adFreeEnabled
-      : localAdFreeOverride !== null
-      ? localAdFreeOverride
-      : true;
-
-  const isSignedInNonGuest = Boolean(user?.uid && !isGuest && !user.uid.startsWith('guest_'));
-  const isWaitingForPlan = isSignedInNonGuest && planLoading;
-  const isActivePaidMember = Boolean(
-    isSignedInNonGuest && !planLoading && isPaid && (plan === 'pro' || plan === 'plus')
-  );
-  const isPaidAdFree = isActivePaidMember && adFreeToggleOn;
 
   const promoEndDate = config.promoCode?.active ? config.promoCode.endDate : null;
   const isPromoExpired = Boolean(
@@ -145,9 +85,8 @@ export function useBoardlyAdVisibility(): BoardlyAdVisibilityState {
   const isPromoActive = Boolean(config.promoCode?.active && !isPromoExpired);
 
   const canShow =
+    showAds &&
     Boolean(config.adsEnabled) &&
-    !isWaitingForPlan &&
-    !isPaidAdFree &&
     !isSensitiveNoAdRoute(location.pathname);
 
   return {

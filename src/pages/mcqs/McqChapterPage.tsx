@@ -875,9 +875,11 @@ export const McqChapterPage: React.FC = () => {
                 )}
               </div>
               {(qIdx + 1) % mcqFeedEveryN === 0 && qIdx < sampleQuestions.length - 1 && (
-                <div className="my-6 sm:my-8">
-                  <AdSlot slotId={AD_SLOTS.mcq_chapter_feed} instanceKey={`mcq-${qIdx}`} />
-                </div>
+                <AdSlot
+                  slotId={AD_SLOTS.mcq_chapter_feed}
+                  instanceKey={`mcq-${qIdx}`}
+                  wrapperClassName="my-6 sm:my-8"
+                />
               )}
               </React.Fragment>
             );
@@ -885,9 +887,7 @@ export const McqChapterPage: React.FC = () => {
         </section>
 
         {/* Ad Slot at end of MCQ chapter */}
-        <div className="my-6 sm:my-8 mb-10">
-          <AdSlot slotId={AD_SLOTS.mcq_chapter_end} />
-        </div>
+        <AdSlot slotId={AD_SLOTS.mcq_chapter_end} wrapperClassName="my-6 sm:my-8 mb-10" />
 
         {/* Sign in to Practice & Save Progress Banner */}
         <section className="glass-panel p-8 text-center mb-8">

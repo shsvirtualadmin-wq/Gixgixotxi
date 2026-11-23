@@ -527,9 +527,11 @@ export function ResultsListPage() {
       )}
 
       {/* Rotating Boardly Ad in bottom gap (hidden for Pro/Plus with ad-free ON) */}
-      <div className="pt-2 pb-4">
-        <RotatingBoardlyAd variant="card" slotKey="results_list_bottom" />
-      </div>
+      <RotatingBoardlyAd
+        variant="card"
+        slotKey="results_list_bottom"
+        wrapperClassName="pt-2 pb-4"
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type { AiPlan } from '@/utils/aiMentorsLogic';
 import type { SavedAiChat } from '@/services/aiMentorsService';
 import { MentorAvatar } from './MentorAvatar';
 import { BoardlyAd } from '@/components/BoardlyAd';
+import { useShowAds } from '@/hooks/useShowAds';
 
 interface AiHistorySidebarProps {
   chats: SavedAiChat[];
@@ -45,6 +46,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
   onUpgradeClick,
   onCloseMobileDrawer,
 }) => {
+  const { showAds } = useShowAds();
   const [search, setSearch] = useState('');
 
   const filteredChats = useMemo(() => {
@@ -293,7 +295,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
         className="shrink-0 px-3.5 py-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] lg:pb-3 space-y-2.5"
         style={{ borderTop: '1px solid var(--border)' }}
       >
-        {!isSuperAdmin && (resolvedPlan === 'free' || resolvedPlan === 'pro') ? (
+        {showAds && !isSuperAdmin && (resolvedPlan === 'free' || resolvedPlan === 'pro') ? (
           <BoardlyAd
             variant="inline"
             accent={resolvedPlan === 'pro' ? 'indigo-blue' : 'purple-pink'}

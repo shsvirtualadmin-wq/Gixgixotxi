@@ -13,7 +13,7 @@ import {
   type BoardlyOffer,
 } from '@/config/ads';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useShowAds } from '@/hooks/useShowAds';
 import {
   claimUniqueOfferForPage,
   registerMobileAdSlot,
@@ -35,6 +35,8 @@ export interface AdSlotProps {
   instanceKey?: string;
   format?: string;
   className?: string;
+  /** Optional outer wrapper classes applied ONLY when the slot actually renders (zero empty gap when hidden) */
+  wrapperClassName?: string;
   /** Compact vertical card layout (used in sticky sidebar or phone preview) */
   compact?: boolean;
   /** Optional preview config override used by /admin/ads phone preview */
@@ -156,6 +158,7 @@ export function AdSlot({
   instanceKey = 'main',
   format = 'auto',
   className = '',
+  wrapperClassName = '',
   compact = false,
   previewConfig,
   previewSlotOverride,
@@ -164,8 +167,14 @@ export function AdSlot({
 }: AdSlotProps) {
   const location = useLocation();
   const reactId = useId();
-  const { user, profile, isGuest } = useAuth();
-  const { isPaid, loading: planLoading, plan, source: planSource } = useEffectivePlan();
+  const { user, isGuest } = useAuth();
+  const {
+    showAds,
+    loading: planLoading,
+    isPaidAdFree: rawIsPaidAdFree,
+    plan,
+    planSource,
+  } = useShowAds();
   const { config: liveConfig } = useAdsConfig();
 
   const isDebugMode = useMemo(() => {
@@ -194,69 +203,8 @@ export function AdSlot({
   // Track Google AdSense fill state: 'idle' | 'pending' | 'filled' | 'unfilled'
   const [googleState, setGoogleState] = useState<'idle' | 'pending' | 'filled' | 'unfilled'>('idle');
 
-  // Read cached or profile-synced adFreeEnabled preference (scoped strictly to current user UID)
-  const [localAdFreeOverride, setLocalAdFreeOverride] = useState<boolean | null>(() => {
-    try {
-      if (user?.uid && !isGuest && !user.uid.startsWith('guest_')) {
-        const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
-        if (cached === '1') return true;
-        if (cached === '0') return false;
-      }
-    } catch {
-      // Ignore storage errors
-    }
-    return null;
-  });
-
-  // Reset adFree override whenever the active user changes (login / logout / guest switch)
-  useEffect(() => {
-    if (!user?.uid || isGuest || user.uid.startsWith('guest_')) {
-      setLocalAdFreeOverride(null);
-      return;
-    }
-    if (typeof profile?.adFreeEnabled === 'boolean') {
-      setLocalAdFreeOverride(profile.adFreeEnabled);
-      return;
-    }
-    try {
-      const cached = localStorage.getItem(`boardly_ad_free_${user.uid}`);
-      if (cached === '1') {
-        setLocalAdFreeOverride(true);
-      } else if (cached === '0') {
-        setLocalAdFreeOverride(false);
-      } else {
-        setLocalAdFreeOverride(null);
-      }
-    } catch {
-      setLocalAdFreeOverride(null);
-    }
-  }, [user?.uid, isGuest, profile?.adFreeEnabled]);
-
-  useEffect(() => {
-    const onAdFreeChanged = (e: Event) => {
-      const detail = (e as CustomEvent<{ adFreeEnabled?: boolean }>).detail;
-      if (typeof detail?.adFreeEnabled === 'boolean') {
-        setLocalAdFreeOverride(detail.adFreeEnabled);
-      }
-    };
-    window.addEventListener('boardly:ad-free-changed', onAdFreeChanged);
-    return () => window.removeEventListener('boardly:ad-free-changed', onAdFreeChanged);
-  }, []);
-
-  const adFreeToggleOn =
-    typeof profile?.adFreeEnabled === 'boolean'
-      ? profile.adFreeEnabled
-      : localAdFreeOverride !== null
-      ? localAdFreeOverride
-      : true;
-
-  const isSignedInNonGuest = Boolean(user?.uid && !isGuest && !user.uid.startsWith('guest_'));
-  const isWaitingForPlan = !isPreview && isSignedInNonGuest && planLoading;
-  // Strictly ONLY active Pro or Plus members (never logged-out, never guest, never loading, never free)
-  const isActivePaidMember = Boolean(
-    isSignedInNonGuest && !planLoading && isPaid && (plan === 'pro' || plan === 'plus')
-  );
-  const isPaidAdFree = !isPreview && isActivePaidMember && adFreeToggleOn;
+  const isWaitingForPlan = !isPreview && planLoading;
+  const isPaidAdFree = !isPreview && rawIsPaidAdFree;
 
   const isRouteBlocked = !isPreview && isAdBlockedRoute(location.pathname);
   const isGloballyEnabled = isPreview || config.adsEnabled;
@@ -268,7 +216,9 @@ export function AdSlot({
     hiddenReason = `unknown_slot_id (${slotId})`;
   } else if (isRouteBlocked) {
     hiddenReason = `route_blocked (${location.pathname})`;
-  } else if (isPaidAdFree) {
+  } else if (isWaitingForPlan) {
+    hiddenReason = 'loading_plan_and_ad_free_setting';
+  } else if (isPaidAdFree || !showAds) {
     hiddenReason = `paid_ad_free (plan=${plan}, source=${planSource}, adFree=ON)`;
   } else if (!isGloballyEnabled) {
     hiddenReason = 'global_ads_off';
@@ -285,6 +235,7 @@ export function AdSlot({
   const cleanPublisherId = sanitizePublisherId(config.publisherId);
 
   const canAttemptGoogle =
+    showAds &&
     !shouldHideCompletely &&
     !isWaitingForPlan &&
     !isPreview &&
@@ -680,7 +631,7 @@ export function AdSlot({
   );
 
   // Outer containerRef NEVER receives display:none so IntersectionObserver always measures cleanly on mobile
-  return (
+  const renderedSlot = (
     <div
       ref={containerRef}
       data-boardly-slot={slotConfig.id}
@@ -705,6 +656,8 @@ export function AdSlot({
       <div className={!mobileAllowed && !isDebugMode ? 'max-md:hidden' : ''}>{innerContent}</div>
     </div>
   );
+
+  return wrapperClassName ? <div className={wrapperClassName}>{renderedSlot}</div> : renderedSlot;
 }
 
 export default AdSlot;
