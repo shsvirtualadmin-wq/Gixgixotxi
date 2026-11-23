@@ -241,7 +241,7 @@ export function DashboardShell() {
                 <div className="flex-1 min-w-0 max-w-5xl mx-auto">
                   <KeepAliveTabsOutlet />
                 </div>
-                <div className="hidden xl:block w-[260px] shrink-0 sticky top-24 self-start">
+                <div className="hidden lg:block w-[260px] shrink-0 sticky top-24 self-start">
                   <AdSlot slotId={AD_SLOTS.sidebar_desktop} format="vertical" compact />
                 </div>
               </div>

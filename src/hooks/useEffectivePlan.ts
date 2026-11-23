@@ -584,16 +584,6 @@ export function useEffectivePlan(): EffectivePlanResult {
 
   const isLoading = profileLoading || (inCrew && crewLoading && !crewData);
 
-  if (isLoading && currentUid && planMemoryCache.has(currentUid)) {
-    const cached = planMemoryCache.get(currentUid)!;
-    return {
-      ...cached,
-      loading: true,
-      status: 'loading',
-      refreshPlanStatus,
-    };
-  }
-
   if (isLoading) {
     return {
       ...withRefresh,

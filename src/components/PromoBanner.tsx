@@ -66,7 +66,7 @@ export function PromoBanner({
     return () => observer.disconnect();
   }, [isPreview, isBlocked, isActive, offer?.id, slotId, location.pathname]);
 
-  if (isBlocked || !isActive) {
+  if (!isPreview && (isBlocked || !isActive)) {
     return null;
   }
 

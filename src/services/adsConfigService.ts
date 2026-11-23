@@ -301,25 +301,29 @@ function recomputeMobileVisibleWinner(): void {
     return;
   }
 
-  // Among all slots currently intersecting the phone viewport, only the top-most one wins
+  // Among all slots currently intersecting the phone viewport, pick the top-most measurable one
   let winner: MobileSlotEntry | null = null;
   let winnerTop = Infinity;
+  let fallbackInViewport: MobileSlotEntry | null = null;
 
   for (const entry of mobileSlots.values()) {
     if (!entry.inViewport) continue;
+    if (!fallbackInViewport) fallbackInViewport = entry;
     const rect = entry.el.getBoundingClientRect();
-    if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
+    // Skip elements completely outside the viewport
+    if (rect.height > 0 && (rect.bottom <= 0 || rect.top >= window.innerHeight)) continue;
     if (rect.top < winnerTop) {
       winnerTop = rect.top;
       winner = entry;
     }
   }
 
-  currentWinnerId = winner ? winner.id : null;
+  const chosenWinner = winner || fallbackInViewport;
+  currentWinnerId = chosenWinner ? chosenWinner.id : null;
 
+  // CRITICAL: Never hide a slot unless a DIFFERENT slot actually won the mobile viewport!
   for (const entry of mobileSlots.values()) {
-    if (!entry.inViewport) {
-      // Allow off-screen slots to stay mounted so their height/observer remains measurable
+    if (!entry.inViewport || !currentWinnerId) {
       entry.notify(true);
     } else {
       entry.notify(entry.id === currentWinnerId);
@@ -343,20 +347,33 @@ export function registerMobileAdSlot(
         entry.inViewport = Boolean(hit && hit.isIntersecting);
         recomputeMobileVisibleWinner();
       },
-      { threshold: 0.05 }
+      { threshold: 0.01 }
     );
     observer.observe(el);
   }
 
-  const onResize = () => recomputeMobileVisibleWinner();
+  let rafId = 0;
+  const scheduleRecompute = () => {
+    if (rafId) return;
+    rafId = window.requestAnimationFrame(() => {
+      rafId = 0;
+      recomputeMobileVisibleWinner();
+    });
+  };
+
   if (typeof window !== 'undefined') {
-    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('resize', scheduleRecompute, { passive: true });
+    window.addEventListener('scroll', scheduleRecompute, { passive: true });
   }
 
   return () => {
     if (observer) observer.disconnect();
+    if (rafId && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(rafId);
+    }
     if (typeof window !== 'undefined') {
-      window.removeEventListener('resize', onResize);
+      window.removeEventListener('resize', scheduleRecompute);
+      window.removeEventListener('scroll', scheduleRecompute);
     }
     mobileSlots.delete(id);
     recomputeMobileVisibleWinner();

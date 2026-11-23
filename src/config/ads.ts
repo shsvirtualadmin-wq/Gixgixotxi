@@ -430,18 +430,40 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
   const defaults = createDefaultAdsConfig();
   if (!raw || typeof raw !== 'object') return defaults;
 
-  const adsEnabled = typeof raw.adsEnabled === 'boolean' ? raw.adsEnabled : defaults.adsEnabled;
-  const publisherId =
+  const rawAdsEnabled =
+    typeof raw.adsEnabled === 'boolean'
+      ? raw.adsEnabled
+      : typeof raw.enabled === 'boolean'
+      ? raw.enabled
+      : undefined;
+  const adsEnabled = typeof rawAdsEnabled === 'boolean' ? rawAdsEnabled : defaults.adsEnabled;
+
+  const rawPublisherId =
     typeof raw.publisherId === 'string'
-      ? sanitizePublisherId(raw.publisherId)
+      ? raw.publisherId
+      : typeof raw.adsenseClientId === 'string'
+      ? raw.adsenseClientId
+      : undefined;
+  const publisherId =
+    typeof rawPublisherId === 'string' && rawPublisherId.trim()
+      ? sanitizePublisherId(rawPublisherId)
       : defaults.publisherId;
-  const fallbackToBoardly =
+
+  const rawFallback =
     typeof raw.fallbackToBoardly === 'boolean'
       ? raw.fallbackToBoardly
-      : defaults.fallbackToBoardly;
+      : typeof raw.fallback === 'boolean'
+      ? raw.fallback
+      : undefined;
+  const fallbackToBoardly =
+    typeof rawFallback === 'boolean' ? rawFallback : defaults.fallbackToBoardly;
 
-  // Normalize offers
-  const rawOffers = Array.isArray(raw.offers) ? raw.offers : null;
+  // Normalize offers (accept `offers` or legacy `boardlyOffers`)
+  const rawOffers = Array.isArray(raw.offers)
+    ? raw.offers
+    : Array.isArray(raw.boardlyOffers)
+    ? raw.boardlyOffers
+    : null;
   const offers: BoardlyOffer[] = [];
   const seenOfferIds = new Set<string>();
 
@@ -456,15 +478,17 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
       if (seenOfferIds.has(id)) continue;
       seenOfferIds.add(id);
       const title = String(item.title || '').trim().slice(0, 140);
-      const text = String(item.text || '').trim().slice(0, 260);
-      const buttonLabel = String(item.buttonLabel || 'Learn more').trim().slice(0, 48);
+      const text = String(item.text || item.description || '').trim().slice(0, 260);
+      const buttonLabel = String(item.buttonLabel || item.ctaLabel || 'Learn more')
+        .trim()
+        .slice(0, 48);
       if (!title) continue;
       offers.push({
         id,
         title,
         text,
         buttonLabel,
-        link: sanitizeSafeOfferUrl(item.link),
+        link: sanitizeSafeOfferUrl(item.link || item.url),
         active: typeof item.active === 'boolean' ? item.active : true,
         startDate: normalizeOptionalDate(item.startDate),
         endDate: normalizeOptionalDate(item.endDate),
@@ -476,8 +500,13 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
   const validOfferIds = new Set(finalOffers.map((o) => o.id));
   const fallbackFirstOfferId = finalOffers[0]?.id || 'early';
 
-  // Normalize slots
-  const rawSlots = raw.slots && typeof raw.slots === 'object' ? raw.slots : {};
+  // Normalize slots (accept `slots` or legacy `adSlots`)
+  const rawSlots =
+    raw.slots && typeof raw.slots === 'object'
+      ? raw.slots
+      : raw.adSlots && typeof raw.adSlots === 'object'
+      ? raw.adSlots
+      : {};
   const slots = {} as Record<AdSlotId, AdSlotConfig>;
 
   for (const slotId of AD_SLOT_ORDER) {
@@ -528,8 +557,13 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
     };
   }
 
-  // Normalize promo code
-  const rawPromo = raw.promoCode && typeof raw.promoCode === 'object' ? raw.promoCode : {};
+  // Normalize promo code (accept `promoCode` or legacy `promo`)
+  const rawPromo =
+    raw.promoCode && typeof raw.promoCode === 'object'
+      ? raw.promoCode
+      : raw.promo && typeof raw.promo === 'object'
+      ? raw.promo
+      : {};
   const cleanCode = String(rawPromo.code || defaults.promoCode.code)
     .trim()
     .toUpperCase()
