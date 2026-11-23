@@ -6,25 +6,29 @@ import {
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
 } from '@/lib/proBadgeDesigns';
+import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 
 export type ProBadgeSize = 'lg' | 'md' | 'sm' | 'icon';
 
 export interface ProBadgeProps {
   design?: ProBadgeDesignId | string | null;
+  /** Optional explicit 1..50 PLUS badge ID (when set, renders PlusBadge directly). */
+  plusBadgeId?: number | null;
   tier?: 'pro' | 'plus';
   size?: ProBadgeSize;
   /**
    * Whether animation is allowed on this badge.
-   * Defaults to true. Static designs (#9 mono, #13 chevron, #17 ribbon) never animate.
+   * Defaults to true. Static designs never animate.
    */
   animated?: boolean;
   /**
    * When true (default for `sm` and `icon` badges in lists unless `priority` is set),
-   * uses the shared IntersectionObserver that animates at most 8 visible list badges at once.
+   * uses the shared IntersectionObserver that animates only visible list badges.
    */
   listMode?: boolean;
   /**
-   * When true (e.g. Header, Profile hero, or Settings picker previews), bypasses the 8-badge list cap.
+   * When true (e.g. Header, Profile hero, or Settings picker previews), bypasses list throttling.
    */
   priority?: boolean;
   className?: string;
@@ -247,6 +251,7 @@ function renderDesignIcon(design: ProBadgeDesignId): React.ReactNode {
 
 export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
   design = DEFAULT_PRO_BADGE_DESIGN,
+  plusBadgeId,
   tier,
   size = 'sm',
   animated = true,
@@ -257,9 +262,20 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
   onClick,
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const rawDesignStr = String(design || '').trim().toLowerCase();
+  const rawDesignStr = String(design ?? '').trim().toLowerCase();
   const isPlusBadge =
-    tier === 'plus' || rawDesignStr === 'plus' || rawDesignStr.startsWith('plus:');
+    tier === 'plus' ||
+    plusBadgeId !== undefined ||
+    rawDesignStr === 'plus' ||
+    rawDesignStr.startsWith('plus:') ||
+    /^\d+$/.test(rawDesignStr);
+
+  const resolvedPlusId = isPlusBadge
+    ? plusBadgeId !== undefined
+      ? resolvePlusBadgeId(plusBadgeId)
+      : resolvePlusBadgeId(rawDesignStr)
+    : null;
+
   const innerDesignRaw = rawDesignStr.startsWith('plus:')
     ? rawDesignStr.slice('plus:'.length)
     : rawDesignStr === 'plus'
@@ -271,18 +287,21 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
   const isPixelFont = PIXEL_FONT_PRO_BADGE_IDS.has(safeDesign);
 
   const shouldObserveInList =
+    !isPlusBadge &&
     !isStaticDesign &&
     animated &&
     !priority &&
     (listMode !== undefined ? listMode : size === 'sm' || size === 'icon');
 
   const animateDirectly =
+    !isPlusBadge &&
     !isStaticDesign &&
     animated &&
     !shouldObserveInList &&
     !isReducedMotionOrSmoothMode();
 
   useEffect(() => {
+    if (isPlusBadge) return;
     const el = ref.current;
     if (!el) return;
 
@@ -310,45 +329,47 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
         rebalanceAnimatedListBadges();
       }
     };
-  }, [shouldObserveInList, animateDirectly, safeDesign]);
+  }, [isPlusBadge, shouldObserveInList, animateDirectly, safeDesign]);
+
+  // Delegate all PLUS badges to the exact 50-design PlusBadge component
+  if (isPlusBadge) {
+    if (resolvedPlusId === null) {
+      return null;
+    }
+    return (
+      <PlusBadge
+        id={resolvedPlusId}
+        size={size}
+        animated={animated}
+        listMode={listMode}
+        priority={priority}
+        className={className}
+        title={title}
+        onClick={onClick}
+      />
+    );
+  }
 
   const fontClass = isPixelFont ? 'pb-badge--font-doto' : 'pb-badge--font-space';
   const sizeClass = `pb-badge--${size}`;
-  const designClass = isPlusBadge ? '' : `pb-badge--${safeDesign}`;
+  const designClass = `pb-badge--${safeDesign}`;
   const directAnimClass = animateDirectly ? 'animated' : '';
-  const badgeText = isPlusBadge ? 'PLUS' : 'PRO';
-
-  const iconNode = isPlusBadge ? (
-    <span className="pb-badge--icon-svg">
-      <SparkleSvg />
-    </span>
-  ) : (
-    renderDesignIcon(safeDesign)
-  );
-
-  const plusInlineStyle: React.CSSProperties | undefined = isPlusBadge
-    ? {
-        background: 'linear-gradient(135deg, #B45309 0%, #D97706 45%, #F59E0B 100%)',
-        color: '#FFFFFF',
-        border: '1px solid rgba(251, 191, 36, 0.72)',
-        boxShadow: '0 2px 8px rgba(217, 119, 6, 0.35)',
-      }
-    : undefined;
+  const badgeText = 'PRO';
+  const iconNode = renderDesignIcon(safeDesign);
 
   return (
     <span
       ref={ref}
       role="img"
-      aria-label={isPlusBadge ? 'Plus member' : 'Pro member'}
-      title={title || (isPlusBadge ? 'Boardly Plus Member' : 'Boardly Pro Member')}
-      data-pro-badge={isPlusBadge ? 'plus' : safeDesign}
-      data-pro-badge-tier={isPlusBadge ? 'plus' : 'pro'}
+      aria-label="Pro member"
+      title={title || 'Boardly Pro Member'}
+      data-pro-badge={safeDesign}
+      data-pro-badge-tier="pro"
       data-pro-badge-size={size}
       onClick={onClick}
-      style={plusInlineStyle}
       className={`pb-badge dark-surface-preserve ${sizeClass} ${designClass} ${fontClass} ${directAnimClass} ${className}`.trim()}
     >
-      {!isPlusBadge && safeDesign === 'split' ? (
+      {safeDesign === 'split' ? (
         size === 'icon' ? (
           <span className="pb-badge--icon-svg">
             <CrownSvg />

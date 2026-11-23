@@ -1060,9 +1060,10 @@ export function CrewDashboardPage() {
                               )}
 
                               {/* PRO / PLUS BADGE RULE */}
-                              {crewHasActivePro && (m.proBadge || m.isPro || m.isPlus) && (
+                              {crewHasActivePro && (m.proBadge || (m as any).plus_badge_id || m.isPro || m.isPlus) && (
                                 <ProBadge
-                                  design={m.proBadge || 'ember'}
+                                  design={m.proBadge || (m.isPlus || m.plan === 'plus' ? null : 'ember')}
+                                  plusBadgeId={m.isPlus || m.plan === 'plus' ? (m as any).plus_badge_id : undefined}
                                   tier={m.isPlus || m.plan === 'plus' ? 'plus' : 'pro'}
                                   size="sm"
                                   listMode

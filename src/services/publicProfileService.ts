@@ -23,6 +23,7 @@ import {
   isValidProBadgeDesign,
   normalizeProBadgeDesign,
 } from '@/lib/proBadgeDesigns';
+import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
 import { getDisplayName, getRawUsername } from '@/utils/displayName';
 import type { PublicProfile as BasePublicProfile } from '@/types';
 
@@ -40,6 +41,7 @@ export interface PublicProfile extends BasePublicProfile {
   equippedEffect?: string | null;
   equippedStreakBadges?: string[];
   proBadge?: string | null;
+  plus_badge_id?: number | null;
 }
 
 export type PublicUserProfile = PublicProfile;
@@ -183,10 +185,21 @@ export function broadcastPublicProfileUpdate(
   if (partial.bio !== undefined) merged.bio = String(partial.bio ?? '');
   if (partial.status !== undefined) merged.status = String(partial.status ?? '');
   if (partial.accent !== undefined) merged.accent = String(partial.accent || '#D71921');
+  if ('plus_badge_id' in partial) {
+    merged.plus_badge_id =
+      partial.plus_badge_id === null ? null : resolvePlusBadgeId(partial.plus_badge_id);
+  }
   if ('proBadge' in partial) {
-    merged.proBadge = partial.proBadge && isValidProBadgeDesign(partial.proBadge)
-      ? normalizeProBadgeDesign(partial.proBadge)
-      : null;
+    if (!partial.proBadge) {
+      merged.proBadge = null;
+    } else if (typeof partial.proBadge === 'string' && partial.proBadge.toLowerCase().startsWith('plus:')) {
+      const pid = resolvePlusBadgeId(partial.proBadge);
+      merged.proBadge = pid !== null ? `plus:${pid}` : null;
+    } else if (isValidProBadgeDesign(partial.proBadge)) {
+      merged.proBadge = normalizeProBadgeDesign(partial.proBadge);
+    } else {
+      merged.proBadge = null;
+    }
   }
   if ('banner' in partial || (partial.equipped && 'banner' in partial.equipped)) {
     const nextBanner = partial.banner !== undefined ? partial.banner : partial.equipped?.banner ?? null;
@@ -563,6 +576,17 @@ export function normalizePublicProfileDoc(
       });
       return unified.planTier;
     })(),
+    plus_badge_id: (() => {
+      if (uid.startsWith('guest_') || botMatch) return null;
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')) {
+        return u.plus_badge_id === null ? null : resolvePlusBadgeId(u.plus_badge_id);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')) {
+        return p.plus_badge_id === null ? null : resolvePlusBadgeId(p.plus_badge_id);
+      }
+      const rawCandidate = p.proBadge ?? u.proBadgeDesign ?? p.proBadgeDesign ?? u.proBadge;
+      return resolvePlusBadgeId(rawCandidate);
+    })(),
     proBadge: (() => {
       if (uid.startsWith('guest_') || botMatch) return null;
       const unified = resolveUnifiedPlanStatus({
@@ -586,19 +610,10 @@ export function normalizePublicProfileDoc(
         isSuperAdmin,
       });
       const isPlusMember = unified.planTier === 'plus' || Boolean(unified.isPlus);
-      // If server D1 explicitly resolved proBadge (string or null), respect it if active paid
-      if (p.proBadge !== undefined) {
-        if (p.proBadge === null) {
-          if (u.proBadgeVisible === false || p.proBadgeVisible === false) return null;
-        } else if (typeof p.proBadge === 'string' && p.proBadge.startsWith('plus:')) {
-          return p.proBadge;
-        } else if (isValidProBadgeDesign(p.proBadge)) {
-          const norm = normalizeProBadgeDesign(p.proBadge);
-          return isPlusMember ? `plus:${norm}` : norm;
-        }
-      }
       const isActivePaid = unified.state === 'active' || Boolean(unified.isPro) || isPlusMember;
+      // If plan expired or free, never show any badge (saved plus_badge_id remains preserved on doc)
       if (!isActivePaid) return null;
+
       const isVisible =
         u.proBadgeVisible !== undefined
           ? Boolean(u.proBadgeVisible)
@@ -606,11 +621,26 @@ export function normalizePublicProfileDoc(
           ? Boolean(p.proBadgeVisible)
           : true;
       if (!isVisible) return null;
-      const candidateDesign = u.proBadgeDesign || p.proBadgeDesign || p.proBadge || u.proBadge;
+
+      if (isPlusMember) {
+        const explicitPlusId = Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')
+          ? u.plus_badge_id === null
+            ? null
+            : resolvePlusBadgeId(u.plus_badge_id)
+          : Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')
+          ? p.plus_badge_id === null
+            ? null
+            : resolvePlusBadgeId(p.plus_badge_id)
+          : resolvePlusBadgeId(p.proBadge ?? u.proBadgeDesign ?? p.proBadgeDesign ?? u.proBadge);
+        return explicitPlusId !== null ? `plus:${explicitPlusId}` : null;
+      }
+
+      // Standard Boardly Pro member
+      const candidateDesign = p.proBadge || u.proBadgeDesign || p.proBadgeDesign || u.proBadge;
       const baseDesign = isValidProBadgeDesign(candidateDesign)
         ? normalizeProBadgeDesign(candidateDesign)
         : DEFAULT_PRO_BADGE_DESIGN;
-      return isPlusMember ? `plus:${baseDesign}` : baseDesign;
+      return baseDesign;
     })(),
     updatedAt: u.updatedAt || p.updatedAt || null,
   };
@@ -684,6 +714,7 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
             ...(d1Data.accent ? { accent: d1Data.accent } : {}),
             ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
+            ...(d1Data.plus_badge_id !== undefined ? { plus_badge_id: d1Data.plus_badge_id } : {}),
           }
         : {}),
     };

@@ -195,6 +195,23 @@ service cloud.firestore {
         (!('equipped' in data) || !(data.equipped is map) || !('avatar' in data.equipped) || isAllowedUserAvatar(uid, data.equipped.avatar));
     }
 
+    // Validates plus_badge_id (nullable integer 1..50): only active PLUS members can equip a non-null PLUS badge.
+    // On create, new user docs cannot self-grant a non-null PLUS badge.
+    function validPlusBadgeCreateForUser(data) {
+      return !('plus_badge_id' in data) || data.plus_badge_id == null;
+    }
+
+    function validPlusBadgeUpdateForUser(uid, newData, oldData) {
+      return !newData.diff(oldData).affectedKeys().hasAny(['plus_badge_id']) ||
+        newData.plus_badge_id == null ||
+        (
+          newData.plus_badge_id is int &&
+          newData.plus_badge_id >= 1 &&
+          newData.plus_badge_id <= 50 &&
+          isPlusPlan(uid)
+        );
+    }
+
     // =========================================================================
     // 1. USERS & USER SUBCOLLECTIONS
     //    Users cannot write role, isAdmin, superAdmin, plan, or pro on their own docs.
@@ -205,12 +222,12 @@ service cloud.firestore {
       allow create: if clientDoesNotGrantSuperAdmin() && (
         isSuperAdmin() ||
         (isAdmin() && !('role' in request.resource.data)) ||
-        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data))
+        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data) && validPlusBadgeCreateForUser(request.resource.data))
       );
       allow update: if clientDoesNotGrantSuperAdmin() && (
         isSuperAdmin() ||
         (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin', 'superAdmin', 'isSuperAdmin'])) ||
-        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data)) ||
+        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data) && validPlusBadgeUpdateForUser(userId, request.resource.data, resource.data)) ||
         (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']))
       );
       allow delete: if isSuperAdmin();
@@ -1019,11 +1036,11 @@ service cloud.firestore {
       allow read: if true;
       allow create: if clientDoesNotGrantSuperAdmin() && (
         isSuperAdmin() ||
-        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data))
+        (isOwner(userId) && ownerCreatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data) && validPlusBadgeCreateForUser(request.resource.data))
       );
       allow update: if clientDoesNotGrantSuperAdmin() && (
         isSuperAdmin() ||
-        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data)) ||
+        (isOwner(userId) && ownerUpdatesOnlySafeUserFields() && validAvatarFieldsForUser(userId, request.resource.data) && validPlusBadgeUpdateForUser(userId, request.resource.data, resource.data)) ||
         (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'followingCount', 'updatedAt']))
       );
       allow delete: if isSuperAdmin();

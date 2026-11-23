@@ -9,7 +9,8 @@
       "account_type": "registered",
       "email": "superadmin@boardly.cfd",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "superadmin_2",
@@ -20,7 +21,8 @@
       "account_type": "registered",
       "email": "superadmin2@boardly.cfd",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "regular_admin",
@@ -31,7 +33,8 @@
       "account_type": "registered",
       "email": "regularadmin@boardly.cfd",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "student_totp",
@@ -42,7 +45,8 @@
       "account_type": "registered",
       "email": "student_totp@example.com",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "student_off",
@@ -53,7 +57,8 @@
       "account_type": "registered",
       "email": "student_off@example.com",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "student_rec",
@@ -64,7 +69,8 @@
       "account_type": "registered",
       "email": "student_rec@example.com",
       "created_at": 1775000000000,
-      "updated_at": 1775000000000
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_493262",
@@ -75,7 +81,8 @@
       "account_type": "registered",
       "email": "super1_493262@boardly.cfd",
       "created_at": 1794261493331,
-      "updated_at": 1794261493331
+      "updated_at": 1794261493331,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_493262",
@@ -86,7 +93,8 @@
       "account_type": "registered",
       "email": "super2_493262@boardly.cfd",
       "created_at": 1794261493332,
-      "updated_at": 1794261493332
+      "updated_at": 1794261493332,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_493262",
@@ -97,7 +105,8 @@
       "account_type": "registered",
       "email": "mod_493262@boardly.cfd",
       "created_at": 1794261493332,
-      "updated_at": 1794261493332
+      "updated_at": 1794261493332,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_493262",
@@ -108,7 +117,8 @@
       "account_type": "registered",
       "email": "student.totp.493262@example.com",
       "created_at": 1794261493333,
-      "updated_at": 1794261493333
+      "updated_at": 1794261493333,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_493262",
@@ -119,7 +129,8 @@
       "account_type": "registered",
       "email": "student.off.493262@example.com",
       "created_at": 1794261493334,
-      "updated_at": 1794261493334
+      "updated_at": 1794261493334,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_493262",
@@ -130,7 +141,8 @@
       "account_type": "registered",
       "email": "student.rec.493262@example.com",
       "created_at": 1794261493334,
-      "updated_at": 1794261493334
+      "updated_at": 1794261493334,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_525204",
@@ -141,7 +153,8 @@
       "account_type": "registered",
       "email": "super1_525204@boardly.cfd",
       "created_at": 1794261525272,
-      "updated_at": 1794261525272
+      "updated_at": 1794261525272,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_525204",
@@ -152,7 +165,8 @@
       "account_type": "registered",
       "email": "super2_525204@boardly.cfd",
       "created_at": 1794261525273,
-      "updated_at": 1794261525273
+      "updated_at": 1794261525273,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_525204",
@@ -163,7 +177,8 @@
       "account_type": "registered",
       "email": "mod_525204@boardly.cfd",
       "created_at": 1794261525274,
-      "updated_at": 1794261525274
+      "updated_at": 1794261525274,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_525204",
@@ -174,7 +189,8 @@
       "account_type": "registered",
       "email": "student.totp.525204@example.com",
       "created_at": 1794261525275,
-      "updated_at": 1794261525275
+      "updated_at": 1794261525275,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_525204",
@@ -185,7 +201,8 @@
       "account_type": "registered",
       "email": "student.off.525204@example.com",
       "created_at": 1794261525276,
-      "updated_at": 1794261525276
+      "updated_at": 1794261525276,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_525204",
@@ -196,7 +213,8 @@
       "account_type": "registered",
       "email": "student.rec.525204@example.com",
       "created_at": 1794261525278,
-      "updated_at": 1794261525278
+      "updated_at": 1794261525278,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_559646",
@@ -207,7 +225,8 @@
       "account_type": "registered",
       "email": "super1_559646@boardly.cfd",
       "created_at": 1794261559709,
-      "updated_at": 1794261559709
+      "updated_at": 1794261559709,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_559646",
@@ -218,7 +237,8 @@
       "account_type": "registered",
       "email": "super2_559646@boardly.cfd",
       "created_at": 1794261559710,
-      "updated_at": 1794261559710
+      "updated_at": 1794261559710,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_559646",
@@ -229,7 +249,8 @@
       "account_type": "registered",
       "email": "mod_559646@boardly.cfd",
       "created_at": 1794261559710,
-      "updated_at": 1794261559710
+      "updated_at": 1794261559710,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_559646",
@@ -240,7 +261,8 @@
       "account_type": "registered",
       "email": "student.totp.559646@example.com",
       "created_at": 1794261559711,
-      "updated_at": 1794261559711
+      "updated_at": 1794261559711,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_559646",
@@ -251,7 +273,8 @@
       "account_type": "registered",
       "email": "student.off.559646@example.com",
       "created_at": 1794261559711,
-      "updated_at": 1794261559711
+      "updated_at": 1794261559711,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_559646",
@@ -262,7 +285,8 @@
       "account_type": "registered",
       "email": "student.rec.559646@example.com",
       "created_at": 1794261559712,
-      "updated_at": 1794261559712
+      "updated_at": 1794261559712,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_586418",
@@ -273,7 +297,8 @@
       "account_type": "registered",
       "email": "super1_586418@boardly.cfd",
       "created_at": 1794261586471,
-      "updated_at": 1794261586471
+      "updated_at": 1794261586471,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_586418",
@@ -284,7 +309,8 @@
       "account_type": "registered",
       "email": "super2_586418@boardly.cfd",
       "created_at": 1794261586471,
-      "updated_at": 1794261586471
+      "updated_at": 1794261586471,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_586418",
@@ -295,7 +321,8 @@
       "account_type": "registered",
       "email": "mod_586418@boardly.cfd",
       "created_at": 1794261586472,
-      "updated_at": 1794261586472
+      "updated_at": 1794261586472,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_586418",
@@ -306,7 +333,8 @@
       "account_type": "registered",
       "email": "student.totp.586418@example.com",
       "created_at": 1794261586473,
-      "updated_at": 1794261586473
+      "updated_at": 1794261586473,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_586418",
@@ -317,7 +345,8 @@
       "account_type": "registered",
       "email": "student.off.586418@example.com",
       "created_at": 1794261586473,
-      "updated_at": 1794261586473
+      "updated_at": 1794261586473,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_586418",
@@ -328,7 +357,8 @@
       "account_type": "registered",
       "email": "student.rec.586418@example.com",
       "created_at": 1794261586474,
-      "updated_at": 1794261586474
+      "updated_at": 1794261586474,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_632608",
@@ -339,7 +369,8 @@
       "account_type": "registered",
       "email": "super1_632608@boardly.cfd",
       "created_at": 1794261632664,
-      "updated_at": 1794261632664
+      "updated_at": 1794261632664,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_632608",
@@ -350,7 +381,8 @@
       "account_type": "registered",
       "email": "super2_632608@boardly.cfd",
       "created_at": 1794261632665,
-      "updated_at": 1794261632665
+      "updated_at": 1794261632665,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_632608",
@@ -361,7 +393,8 @@
       "account_type": "registered",
       "email": "mod_632608@boardly.cfd",
       "created_at": 1794261632666,
-      "updated_at": 1794261632666
+      "updated_at": 1794261632666,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_632608",
@@ -372,7 +405,8 @@
       "account_type": "registered",
       "email": "student.totp.632608@example.com",
       "created_at": 1794261632666,
-      "updated_at": 1794261632666
+      "updated_at": 1794261632666,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_632608",
@@ -383,7 +417,8 @@
       "account_type": "registered",
       "email": "student.off.632608@example.com",
       "created_at": 1794261632667,
-      "updated_at": 1794261632667
+      "updated_at": 1794261632667,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_632608",
@@ -394,7 +429,8 @@
       "account_type": "registered",
       "email": "student.rec.632608@example.com",
       "created_at": 1794261632667,
-      "updated_at": 1794261632667
+      "updated_at": 1794261632667,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_754140",
@@ -405,7 +441,8 @@
       "account_type": "registered",
       "email": "super1_754140@boardly.cfd",
       "created_at": 1794261754204,
-      "updated_at": 1794261754204
+      "updated_at": 1794261754204,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_754140",
@@ -416,7 +453,8 @@
       "account_type": "registered",
       "email": "super2_754140@boardly.cfd",
       "created_at": 1794261754205,
-      "updated_at": 1794261754205
+      "updated_at": 1794261754205,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_754140",
@@ -427,7 +465,8 @@
       "account_type": "registered",
       "email": "mod_754140@boardly.cfd",
       "created_at": 1794261754206,
-      "updated_at": 1794261754206
+      "updated_at": 1794261754206,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_754140",
@@ -438,7 +477,8 @@
       "account_type": "registered",
       "email": "student.totp.754140@example.com",
       "created_at": 1794261754206,
-      "updated_at": 1794261754206
+      "updated_at": 1794261754206,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_754140",
@@ -449,7 +489,8 @@
       "account_type": "registered",
       "email": "student.off.754140@example.com",
       "created_at": 1794261754208,
-      "updated_at": 1794261754208
+      "updated_at": 1794261754208,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_754140",
@@ -460,7 +501,8 @@
       "account_type": "registered",
       "email": "student.rec.754140@example.com",
       "created_at": 1794261754209,
-      "updated_at": 1794261754209
+      "updated_at": 1794261754209,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_790038",
@@ -471,7 +513,8 @@
       "account_type": "registered",
       "email": "super1_790038@boardly.cfd",
       "created_at": 1794261790097,
-      "updated_at": 1794261790097
+      "updated_at": 1794261790097,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_790038",
@@ -482,7 +525,8 @@
       "account_type": "registered",
       "email": "super2_790038@boardly.cfd",
       "created_at": 1794261790098,
-      "updated_at": 1794261790098
+      "updated_at": 1794261790098,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_790038",
@@ -493,7 +537,8 @@
       "account_type": "registered",
       "email": "mod_790038@boardly.cfd",
       "created_at": 1794261790098,
-      "updated_at": 1794261790098
+      "updated_at": 1794261790098,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_790038",
@@ -504,7 +549,8 @@
       "account_type": "registered",
       "email": "student.totp.790038@example.com",
       "created_at": 1794261790099,
-      "updated_at": 1794261790099
+      "updated_at": 1794261790099,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_790038",
@@ -515,7 +561,8 @@
       "account_type": "registered",
       "email": "student.off.790038@example.com",
       "created_at": 1794261790101,
-      "updated_at": 1794261790101
+      "updated_at": 1794261790101,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_790038",
@@ -526,7 +573,8 @@
       "account_type": "registered",
       "email": "student.rec.790038@example.com",
       "created_at": 1794261790102,
-      "updated_at": 1794261790102
+      "updated_at": 1794261790102,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_851276",
@@ -537,7 +585,8 @@
       "account_type": "registered",
       "email": "super1_851276@boardly.cfd",
       "created_at": 1794261851332,
-      "updated_at": 1794261851332
+      "updated_at": 1794261851332,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_851276",
@@ -548,7 +597,8 @@
       "account_type": "registered",
       "email": "super2_851276@boardly.cfd",
       "created_at": 1794261851334,
-      "updated_at": 1794261851334
+      "updated_at": 1794261851334,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_851276",
@@ -559,7 +609,8 @@
       "account_type": "registered",
       "email": "mod_851276@boardly.cfd",
       "created_at": 1794261851335,
-      "updated_at": 1794261851335
+      "updated_at": 1794261851335,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_851276",
@@ -570,7 +621,8 @@
       "account_type": "registered",
       "email": "student.totp.851276@example.com",
       "created_at": 1794261851336,
-      "updated_at": 1794261851336
+      "updated_at": 1794261851336,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_851276",
@@ -581,7 +633,8 @@
       "account_type": "registered",
       "email": "student.off.851276@example.com",
       "created_at": 1794261851337,
-      "updated_at": 1794261851337
+      "updated_at": 1794261851337,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_851276",
@@ -592,7 +645,8 @@
       "account_type": "registered",
       "email": "student.rec.851276@example.com",
       "created_at": 1794261851339,
-      "updated_at": 1794261851339
+      "updated_at": 1794261851339,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_899628",
@@ -603,7 +657,8 @@
       "account_type": "registered",
       "email": "super1_899628@boardly.cfd",
       "created_at": 1794261899688,
-      "updated_at": 1794261899688
+      "updated_at": 1794261899688,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_899628",
@@ -614,7 +669,8 @@
       "account_type": "registered",
       "email": "super2_899628@boardly.cfd",
       "created_at": 1794261899689,
-      "updated_at": 1794261899689
+      "updated_at": 1794261899689,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_899628",
@@ -625,7 +681,8 @@
       "account_type": "registered",
       "email": "mod_899628@boardly.cfd",
       "created_at": 1794261899690,
-      "updated_at": 1794261899690
+      "updated_at": 1794261899690,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_899628",
@@ -636,7 +693,8 @@
       "account_type": "registered",
       "email": "student.totp.899628@example.com",
       "created_at": 1794261899692,
-      "updated_at": 1794261899692
+      "updated_at": 1794261899692,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_899628",
@@ -647,7 +705,8 @@
       "account_type": "registered",
       "email": "student.off.899628@example.com",
       "created_at": 1794261899693,
-      "updated_at": 1794261899693
+      "updated_at": 1794261899693,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_899628",
@@ -658,7 +717,8 @@
       "account_type": "registered",
       "email": "student.rec.899628@example.com",
       "created_at": 1794261899694,
-      "updated_at": 1794261899694
+      "updated_at": 1794261899694,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_962397",
@@ -669,7 +729,8 @@
       "account_type": "registered",
       "email": "super1_962397@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_962397",
@@ -680,7 +741,8 @@
       "account_type": "registered",
       "email": "super2_962397@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_962397",
@@ -691,7 +753,8 @@
       "account_type": "registered",
       "email": "mod_962397@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_962397",
@@ -702,7 +765,8 @@
       "account_type": "registered",
       "email": "student.totp.962397@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_962397",
@@ -713,7 +777,8 @@
       "account_type": "registered",
       "email": "student.off.962397@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_962397",
@@ -724,7 +789,8 @@
       "account_type": "registered",
       "email": "student.rec.962397@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_024472",
@@ -735,7 +801,8 @@
       "account_type": "registered",
       "email": "super1_024472@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_024472",
@@ -746,7 +813,8 @@
       "account_type": "registered",
       "email": "super2_024472@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_024472",
@@ -757,7 +825,8 @@
       "account_type": "registered",
       "email": "mod_024472@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_024472",
@@ -768,7 +837,8 @@
       "account_type": "registered",
       "email": "student.totp.024472@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_024472",
@@ -779,7 +849,8 @@
       "account_type": "registered",
       "email": "student.off.024472@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_024472",
@@ -790,7 +861,8 @@
       "account_type": "registered",
       "email": "student.rec.024472@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa1_058169",
@@ -801,7 +873,8 @@
       "account_type": "registered",
       "email": "super1_058169@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "sa2_058169",
@@ -812,7 +885,8 @@
       "account_type": "registered",
       "email": "super2_058169@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "reg_058169",
@@ -823,7 +897,8 @@
       "account_type": "registered",
       "email": "mod_058169@boardly.cfd",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "utotp_058169",
@@ -834,7 +909,8 @@
       "account_type": "registered",
       "email": "student.totp.058169@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "uoff_058169",
@@ -845,7 +921,8 @@
       "account_type": "registered",
       "email": "student.off.058169@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     },
     {
       "username_lower": "urec_058169",
@@ -856,9 +933,11 @@
       "account_type": "registered",
       "email": "student.rec.058169@example.com",
       "created_at": 1760000000000,
-      "updated_at": 1760000000000
+      "updated_at": 1760000000000,
+      "profile_layout": "game-card"
     }
   ],
+  "username_history": [],
   "guest_accounts": [],
   "guest_sessions": [],
   "email_verification_sessions": [
@@ -1536,6 +1615,14 @@
     }
   ],
   "user_koban_style": [],
+  "user_pro_badge": [
+    {
+      "user_id": "test_plus_uid_1",
+      "design": "plus:27",
+      "visible": 1,
+      "updated_at": 1002000
+    }
+  ],
   "user_2fa": [
     {
       "user_id": "uid_student_totp",
@@ -1879,5 +1966,8 @@
   "user_2fa_backup_codes": [],
   "trusted_devices": [],
   "security_audit_logs": [],
-  "user_roles": []
+  "user_roles": [],
+  "passkeys": [],
+  "sessions": [],
+  "security_events": []
 }

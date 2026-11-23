@@ -24,7 +24,7 @@ function getComparisonRows(freeAi: number, proAi: number, plusAi: number) {
     { feature: 'Study Crew Squad Membership (up to 30)', free: true, pro: true, plus: true },
     { feature: 'Complete Subject Question Bank Access', free: 'Core Sets', pro: 'Full Access', plus: 'Full Access' },
     { feature: 'Weak Chapter Analytics & Mistake Tracking', free: 'Basic', pro: 'Comprehensive', plus: 'Comprehensive' },
-    { feature: 'Exclusive Profile Badge', free: false, pro: 'Pro Badge', plus: 'Plus Badge' },
+    { feature: 'Profile Badge', free: false, pro: 'Pro badge', plus: 'PLUS badge (50 designs)' },
     { feature: 'Ad-free experience', free: false, pro: true, plus: true },
   ];
 }
@@ -195,7 +195,7 @@ export function PricingPage() {
                     'Deep & Max AI thinking unlocked',
                     'Complete subject question banks unlocked',
                     'Advanced weak chapter diagnostics & mistake curves',
-                    'Pro badge next to your name',
+                    'Pro badge',
                     'Ad-free experience',
                   ].map((item) => (
                     <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
@@ -262,7 +262,7 @@ export function PricingPage() {
                     'Everything in Boardly Pro',
                     `${plansConfig.plus.aiCreditsPerDay} AI Mentor credits per day (2x Pro)`,
                     'Deep & Max AI thinking unlocked',
-                    'Plus badge next to your name',
+                    'PLUS badge: choose from 50 unique animated designs and show it everywhere',
                     'Unused Pro days credited automatically on upgrade',
                     'Share Plus benefits with your Nakama Crew',
                     'Ad-free experience',

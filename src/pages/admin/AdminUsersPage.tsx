@@ -429,7 +429,14 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
   const resolvedTier = isGuestUser ? 'free' : getPlan(u);
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
   const rawBadgeDesign = (u as any).proBadgeDesign || (u as any).proBadge || 'ember';
-  const badgeDesign = resolvedTier === 'plus' ? `plus:${rawBadgeDesign}` : rawBadgeDesign;
+  const badgeDesign =
+    resolvedTier === 'plus'
+      ? (u as any).plus_badge_id != null
+        ? `plus:${(u as any).plus_badge_id}`
+        : (u as any).proBadge && String((u as any).proBadge).startsWith('plus:')
+        ? (u as any).proBadge
+        : null
+      : rawBadgeDesign;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
@@ -469,7 +476,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
               >
                 {name}
               </p>
-              {isPaidUser && (
+              {isPaidUser && badgeDesign && (
                 <span className="inline-flex items-center shrink-0">
                   <ProBadge design={badgeDesign} size="sm" listMode />
                 </span>
@@ -619,7 +626,14 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
   const rawBadgeId =
     (u as any).proBadgeDesign || (u as any).proBadge || (isPaidUser ? 'ember' : null);
-  const badgeId = resolvedTier === 'plus' ? `plus:${rawBadgeId || 'ember'}` : rawBadgeId;
+  const badgeId =
+    resolvedTier === 'plus'
+      ? (u as any).plus_badge_id != null
+        ? `plus:${(u as any).plus_badge_id}`
+        : (u as any).proBadge && String((u as any).proBadge).startsWith('plus:')
+        ? (u as any).proBadge
+        : null
+      : rawBadgeId;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
@@ -667,9 +681,9 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
               >
                 {name}
               </span>
-              {isPaidUser && (
+              {isPaidUser && badgeId && (
                 <span className="inline-flex items-center shrink-0">
-                  <ProBadge design={badgeId || 'ember'} size="sm" listMode />
+                  <ProBadge design={badgeId} size="sm" listMode />
                 </span>
               )}
               {isGuestUser && (

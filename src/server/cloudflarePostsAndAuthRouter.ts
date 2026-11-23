@@ -53,6 +53,7 @@ import {
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
 } from '../lib/proBadgeDesigns';
+import { resolvePlusBadgeId } from '../lib/plusBadgeDesigns';
 import { registerFormulaVaultRoutes } from './formulaVaultRouter';
 import { setCachedUserProStatusAndBadge } from '../../functions/api/pro-badge';
 import {
@@ -965,7 +966,8 @@ export interface LiveAuthorResolved {
   frame: string | null;
   role: string | null;
   customRole: string | null;
-  proBadge: ProBadgeDesignId | null;
+  proBadge: string | null;
+  plus_badge_id?: number | null;
   isDeleted?: boolean;
 }
 
@@ -1056,7 +1058,8 @@ export function resolveLiveAuthorsBatchSync(
     const liveCustomRole = rRow?.custom_role || uRow?.custom_role || null;
 
     const isGuest = Boolean(gRow || uid.startsWith('guest_') || uRow?.account_type === 'guest');
-    let liveProBadge: ProBadgeDesignId | null = null;
+    let liveProBadge: string | null = null;
+    let livePlusBadgeId: number | null = null;
     if (!isGuest) {
       const hasActiveLock =
         proLock && proLock.state === 'active' && Number(proLock.expires_at || 0) > nowMs;
@@ -1065,17 +1068,25 @@ export function resolveLiveAuthorsBatchSync(
         email: uRow?.email || rRow?.email || null,
         role: liveRole || 'student',
         isGuest: false,
-        plan: hasActiveLock ? 'pro' : (uRow as any)?.plan ?? null,
+        plan: hasActiveLock ? (proLock.planTier || 'pro') : (uRow as any)?.plan ?? null,
+        planTier: (uRow as any)?.plan_tier ?? (uRow as any)?.planTier ?? null,
         isPremium: hasActiveLock ? true : (uRow as any)?.is_pro ?? (uRow as any)?.isPremium ?? null,
+        isPlus: (uRow as any)?.is_plus ?? (uRow as any)?.isPlus ?? null,
         planExpiresAt: hasActiveLock ? Number(proLock.expires_at) : (uRow as any)?.planExpiresAt ?? null,
         nowMs,
       });
-      const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+      const isActivePro = unified.state === 'active' || Boolean(unified.isPro) || Boolean(unified.isPlus);
+      const isPlus = Boolean(unified.isPlus);
       const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
+      livePlusBadgeId = badgeRow ? resolvePlusBadgeId(badgeRow.design) : null;
       if (isActivePro && isVisible) {
-        liveProBadge = badgeRow
-          ? normalizeProBadgeDesign(badgeRow.design)
-          : DEFAULT_PRO_BADGE_DESIGN;
+        if (isPlus) {
+          liveProBadge = livePlusBadgeId !== null ? `plus:${livePlusBadgeId}` : null;
+        } else {
+          liveProBadge = badgeRow
+            ? normalizeProBadgeDesign(badgeRow.design)
+            : DEFAULT_PRO_BADGE_DESIGN;
+        }
       }
     }
 
@@ -1086,7 +1097,8 @@ export function resolveLiveAuthorsBatchSync(
       liveFrame ||
       liveRole ||
       liveCustomRole ||
-      liveProBadge
+      liveProBadge ||
+      livePlusBadgeId !== null
     ) {
       result.set(uid, {
         uid,
@@ -1097,6 +1109,7 @@ export function resolveLiveAuthorsBatchSync(
         role: liveRole,
         customRole: liveCustomRole,
         proBadge: liveProBadge,
+        plus_badge_id: livePlusBadgeId,
       });
     }
   }
@@ -4261,6 +4274,7 @@ ${postSitemaps}
         const savedDesign = badgeRow
           ? normalizeProBadgeDesign(badgeRow.design)
           : DEFAULT_PRO_BADGE_DESIGN;
+        const savedPlusId = badgeRow ? resolvePlusBadgeId(badgeRow.design) : null;
         const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
         const unified = resolveUnifiedPlanStatus({
           uid: item.uid,
@@ -4268,14 +4282,25 @@ ${postSitemaps}
           role: item.role,
           isGuest: item.uid.startsWith('guest_'),
           plan: item.plan,
-          isPremium: item.plan === 'pro',
+          isPremium: item.plan === 'pro' || item.plan === 'plus',
+          isPlus: item.plan === 'plus',
           nowMs: nowSearchMs,
         });
-        const activePro = unified.state === 'active' || Boolean(unified.isPro);
+        const activePro = unified.state === 'active' || Boolean(unified.isPro) || Boolean(unified.isPlus);
+        const isPlus = Boolean(unified.isPlus);
+        const resolvedBadge =
+          activePro && isVisible
+            ? isPlus
+              ? savedPlusId !== null
+                ? `plus:${savedPlusId}`
+                : null
+              : savedDesign
+            : null;
         return {
           ...item,
-          proBadge: activePro && isVisible ? savedDesign : null,
+          proBadge: resolvedBadge,
           proBadgeDesign: activePro ? savedDesign : badgeRow ? savedDesign : null,
+          plus_badge_id: savedPlusId,
           proBadgeVisible: isVisible,
         };
       });

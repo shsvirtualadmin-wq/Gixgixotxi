@@ -29,6 +29,7 @@ import { auth, db, functions } from '@/lib/firebase';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { getDisplayName } from '@/utils/displayName';
 import { resolveUserJoinedAtMs } from '@/utils/userDate';
+import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
 import type {
   UserProfile,
   UserTwoFactorSummary,
@@ -1356,6 +1357,10 @@ export async function fetchUsersPaginated(options?: {
             twoFactorStatus: summary,
             proBadgeDesign: row.proBadgeDesign || pbEntry?.design || 'ember',
             proBadgeVisible: row.proBadgeVisible ?? pbEntry?.visible ?? true,
+            plus_badge_id:
+              row.plus_badge_id !== undefined
+                ? resolvePlusBadgeId(row.plus_badge_id)
+                : resolvePlusBadgeId(pbEntry?.design ?? row.proBadgeDesign),
           } as unknown as UserProfile);
         }
       }
@@ -1503,12 +1508,26 @@ export async function fetchUsersPaginated(options?: {
         const isPaidUser = tier === 'pro' || tier === 'plus';
         const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
         const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
+        const plusId = Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')
+          ? u.plus_badge_id === null
+            ? null
+            : resolvePlusBadgeId(u.plus_badge_id)
+          : resolvePlusBadgeId(pbEntry?.design ?? (u as any).proBadgeDesign ?? (u as any).proBadge);
+        const resolvedBadge =
+          isPaidUser && pbVisible
+            ? tier === 'plus'
+              ? plusId !== null
+                ? `plus:${plusId}`
+                : null
+              : pbDesign
+            : null;
         return {
           ...u,
           twoFactorStatus: resolved2fa,
           proBadgeDesign: pbDesign,
           proBadgeVisible: pbVisible,
-          proBadge: isPaidUser && pbVisible ? (tier === 'plus' ? `plus:${pbDesign}` : pbDesign) : null,
+          plus_badge_id: plusId,
+          proBadge: resolvedBadge,
         };
       };
 

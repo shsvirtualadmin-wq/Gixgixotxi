@@ -832,7 +832,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   if (section === 'customize-pro-badge') {
     return (
       <SettingsPage
-        title="Pro badge"
+        title={isPlus ? 'PLUS badge' : 'Pro badge'}
         onBack={() => setSection('customize')}
         scrollContainer={scrollContainer}
       >
@@ -868,8 +868,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           {isPaid && (
             <SettingsRow
               icon={<Crown />}
-              label={isPlus ? 'Plus & Pro badge' : 'Pro badge'}
-              subtitle={`Customize how your ${isPlus ? 'Plus' : 'Pro'} badge looks`}
+              label={isPlus ? 'PLUS badge' : 'Pro badge'}
+              subtitle={
+                isPlus
+                  ? 'Choose from 50 animated PLUS badge designs'
+                  : 'Upgrade to Plus to unlock 50 animated badges'
+              }
               onClick={() => setSection('customize-pro-badge')}
             />
           )}

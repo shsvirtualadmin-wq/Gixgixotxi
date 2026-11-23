@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Info, X } from 'lucide-react';
@@ -257,39 +257,101 @@ const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
     }
   });
   const [infoOpen, setInfoOpen] = useState(false);
+  const stripRef = useRef<HTMLDivElement | null>(null);
 
   const visible = !dismissed && slides.length > 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isPreview || typeof document === 'undefined') return;
     const root = document.documentElement;
-    if (visible) {
-      root.style.setProperty('--boardly-top-strip-h', '36px');
-    } else {
-      root.style.setProperty('--boardly-top-strip-h', '0px');
-    }
-    return () => {
-      root.style.setProperty('--boardly-top-strip-h', '0px');
+
+    const writeAdHeight = (height: number) => {
+      const px = `${Math.max(0, Math.round(height))}px`;
+      root.style.setProperty('--ad-h', px);
+      root.style.setProperty('--boardly-top-strip-h', px);
     };
-  }, [visible, isPreview]);
+
+    if (!visible) {
+      writeAdHeight(0);
+      return;
+    }
+
+    const measure = () => {
+      const el = stripRef.current;
+      if (!el) {
+        writeAdHeight(0);
+        return;
+      }
+      writeAdHeight(el.getBoundingClientRect().height);
+    };
+
+    measure();
+    const rafId = window.requestAnimationFrame(measure);
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && stripRef.current) {
+      ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) {
+          measure();
+          return;
+        }
+        const borderBox = entry.borderBoxSize
+          ? Array.isArray(entry.borderBoxSize)
+            ? entry.borderBoxSize[0]
+            : (entry.borderBoxSize as unknown as ResizeObserverSize)
+          : null;
+        const measuredHeight =
+          borderBox && typeof borderBox.blockSize === 'number' && borderBox.blockSize > 0
+            ? borderBox.blockSize
+            : entry.target.getBoundingClientRect().height;
+        writeAdHeight(measuredHeight);
+      });
+      ro.observe(stripRef.current);
+    }
+
+    window.addEventListener('resize', measure, { passive: true });
+    window.addEventListener('orientationchange', measure, { passive: true });
+
+    let cancelled = false;
+    if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+      document.fonts.ready.then(() => {
+        if (!cancelled) measure();
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(rafId);
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      writeAdHeight(0);
+    };
+  }, [visible, isPreview, slides]);
 
   const marqueeItems = useMemo(() => [...slides, ...slides], [slides]);
 
   const handleClose = useCallback(() => {
     setInfoOpen(false);
     setDismissed(true);
+    if (!isPreview && typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--ad-h', '0px');
+      document.documentElement.style.setProperty('--boardly-top-strip-h', '0px');
+    }
     try {
       sessionStorage.setItem(TOP_STRIP_DISMISSED_KEY, '1');
     } catch {
       // Ignore storage errors
     }
     onDismiss?.();
-  }, [onDismiss]);
+  }, [isPreview, onDismiss]);
 
   if (!visible) return null;
 
   const stripElement = (
     <div
+      ref={stripRef}
       role="region"
       aria-label="Boardly announcement advertisement"
       data-boardly-ad="true"
@@ -297,12 +359,12 @@ const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
       data-boardly-slot={slotId || 'top_strip'}
       className={`boardly-strip-shell ${
         isPreview ? 'relative' : 'fixed left-0 right-0 z-[1010]'
-      } w-full h-[36px] bg-[#ffd23f] text-[#1a0b2e] border-b border-black/15 shadow-[0_1px_6px_rgba(26,11,46,0.14)] select-none ${
+      } w-full min-h-[36px] bg-[#ffd23f] text-[#1a0b2e] border-b border-black/15 shadow-[0_1px_6px_rgba(26,11,46,0.14)] select-none ${
         className || ''
       }`}
       style={isPreview ? undefined : { top: 'env(safe-area-inset-top, 0px)' }}
     >
-      <div className="h-full w-full flex items-center gap-2 px-2 sm:px-3 overflow-hidden">
+      <div className="min-h-[35px] w-full flex items-center gap-2 px-2 sm:px-3 py-0.5 overflow-hidden">
         {/* Left pinned "Ad" badge */}
         <span
           className="inline-flex items-center rounded-full border border-[#1a0b2e]/45 bg-[#1a0b2e]/10 px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase tracking-[0.12em] text-[#1a0b2e] leading-none shrink-0"
@@ -312,7 +374,7 @@ const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
         </span>
 
         {/* Scrolling headlines ticker (isolated GPU compositor layer) */}
-        <div className="boardly-strip-viewport relative flex-1 min-w-0 h-full flex items-center">
+        <div className="boardly-strip-viewport relative flex-1 min-w-0 min-h-[28px] flex items-center">
           <div
             className="boardly-strip-track flex items-center whitespace-nowrap"
             onAnimationIteration={onLoopComplete}
@@ -374,7 +436,7 @@ const TopAnnouncementStrip = memo(function TopAnnouncementStrip({
       {infoOpen && (
         <div
           role="note"
-          className="absolute right-2 top-[38px] z-[1020] w-[min(320px,calc(100vw-16px))] rounded-[12px] border border-white/25 bg-[#1c0933] px-3 py-2.5 text-[11.5px] leading-snug text-white shadow-xl flex items-start justify-between gap-2"
+          className="absolute right-2 top-[calc(100%+2px)] z-[1020] w-[min(320px,calc(100vw-16px))] rounded-[12px] border border-white/25 bg-[#1c0933] px-3 py-2.5 text-[11.5px] leading-snug text-white shadow-xl flex items-start justify-between gap-2"
         >
           <span>{infoText}</span>
           <button

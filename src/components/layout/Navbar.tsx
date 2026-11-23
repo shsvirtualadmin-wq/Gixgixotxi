@@ -62,6 +62,21 @@ export function Navbar() {
     };
   }, [location.pathname, location.hash]);
 
+  // Close mobile menu cleanly if viewport expands to desktop (xl >= 1280px)
+  useEffect(() => {
+    if (!isMounted || typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(min-width: 1280px)');
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) handleClose();
+    };
+    if (mq.matches) {
+      handleClose();
+      return;
+    }
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [isMounted]);
+
   // Lock page scroll while mobile menu is open
   useBodyScrollLock(isMounted && isOpen, 'public-navbar-drawer');
 
@@ -155,36 +170,34 @@ export function Navbar() {
     </header>
   );
 
-  return (
-    <>
-      {typeof document !== 'undefined'
-        ? createPortal(pillElement, document.body)
-        : pillElement}
+  const shellElement = (
+    <div
+      className={`boardly-nav-shell ${isMounted ? 'boardly-nav-shell--open' : ''}`}
+      data-boardly-mobile-menu={isMounted ? (isOpen ? 'open' : 'closing') : 'closed'}
+    >
+      {/* Header pill stays mounted in the same container as the mobile menu overlay */}
+      {pillElement}
 
-      {/* Separate Mobile Menu Overlay (Portaled to body, outside the pill) */}
-      {isMounted &&
-        typeof document !== 'undefined' &&
-        createPortal(
+      {/* Mobile Menu Overlay inside the same fixed container anchored at top: var(--ad-h) */}
+      {isMounted && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mobile Navigation"
+          className="absolute inset-0 xl:hidden select-none"
+        >
+          {/* Dimmed backdrop covers only below the ad banner so the top ad stays visible & clickable */}
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Mobile Navigation"
-            className="fixed inset-0 z-[999] xl:hidden w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none flex flex-col justify-start p-4 sm:p-6"
-            style={{
-              paddingTop: 'calc(84px + env(safe-area-inset-top, 0px))',
-            }}
-          >
-            {/* Dimmed backdrop without backdrop-filter so the top pill's blur stays clean */}
-            <div
-              onClick={handleClose}
-              className="fixed inset-0 z-0 bg-black/55 transition-opacity duration-200 ease-out cursor-pointer"
-              style={{ opacity: isOpen ? 1 : 0 }}
-              aria-hidden="true"
-            />
+            onClick={handleClose}
+            className="absolute inset-0 z-0 bg-black/55 transition-opacity duration-200 ease-out cursor-pointer"
+            style={{ opacity: isOpen ? 1 : 0 }}
+            aria-hidden="true"
+          />
 
+          <div className="boardly-mobile-menu-panel-slot">
             <div
               onClick={(e) => e.stopPropagation()}
-              className="relative z-10 w-full max-w-lg mx-auto rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 flex flex-col gap-5 glass allow-backdrop-blur transition-all duration-250 max-h-[calc(100dvh-104px)] overflow-y-auto"
+              className="pointer-events-auto relative w-full max-w-lg mx-auto rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 flex flex-col gap-5 glass allow-backdrop-blur transition-all duration-250 max-h-full overflow-y-auto overscroll-contain"
               style={{
                 opacity: isOpen ? 1 : 0,
                 transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(-10px) scale(0.98)',
@@ -308,11 +321,15 @@ export function Navbar() {
                 </div>
               </div>
             </div>
-          </div>,
-          document.body
-        )}
-    </>
+          </div>
+        </div>
+      )}
+    </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(shellElement, document.body)
+    : shellElement;
 }
 
 export default Navbar;

@@ -10,11 +10,11 @@ import {
 import {
   DEFAULT_PRO_BADGE_DESIGN,
   DEFAULT_PRO_BADGE_SETTINGS,
-  isValidProBadgeDesign,
   normalizeProBadgeDesign,
   validateProBadgePayload,
   type ProBadgeDesignId,
 } from '../../src/lib/proBadgeDesigns';
+import { isValidPlusBadgeId, resolvePlusBadgeId } from '../../src/lib/plusBadgeDesigns';
 import { resolveUnifiedPlanStatus } from '../../src/config/plans';
 import type { PlanTier } from '../../src/lib/planTier';
 
@@ -46,7 +46,15 @@ const RATE_LIMIT_MIN_INTERVAL_MS = 300;
 const PRO_BADGE_CACHE_TTL_MS = 15_000;
 const resolvedProBadgeCache = new Map<
   string,
-  { proBadge: ProBadgeDesignId | null; activePro: boolean; design: ProBadgeDesignId; visible: boolean; expiresAt: number }
+  {
+    proBadge: string | null;
+    plusBadgeId: number | null;
+    activePro: boolean;
+    isPlus: boolean;
+    design: ProBadgeDesignId;
+    visible: boolean;
+    expiresAt: number;
+  }
 >();
 
 export function invalidateProBadgeCache(uid?: string): void {
@@ -80,6 +88,13 @@ function checkPutRateLimit(userId: string, nowMs: number): { allowed: boolean; r
   return { allowed: true };
 }
 
+function extractStoredPlusBadgeId(rawDesign: unknown): number | null {
+  if (rawDesign === null || rawDesign === undefined) return null;
+  const str = String(rawDesign).trim();
+  if (!str || str === 'plus:none' || str === 'none') return null;
+  return resolvePlusBadgeId(str);
+}
+
 /**
  * Server-authoritative check using the shared `resolveUnifiedPlanStatus` function.
  * Never trusts client-provided flags.
@@ -96,10 +111,22 @@ export async function checkUserActiveProServer(
   env?: RewardsEnv,
   nowMs = Date.now(),
   bearerToken?: string | null
-): Promise<{ isActivePro: boolean; isPlus: boolean; planTier: PlanTier; isPendingPayment: boolean }> {
+): Promise<{
+  isActivePro: boolean;
+  isPlus: boolean;
+  planTier: PlanTier;
+  isPendingPayment: boolean;
+  firestorePlusBadgeId: number | null | undefined;
+}> {
   const uid = String(user.uid || '').trim();
   if (!uid || user.isGuest || uid.startsWith('guest_')) {
-    return { isActivePro: false, isPlus: false, planTier: 'free', isPendingPayment: false };
+    return {
+      isActivePro: false,
+      isPlus: false,
+      planTier: 'free',
+      isPendingPayment: false,
+      firestorePlusBadgeId: undefined,
+    };
   }
 
   let fsDoc: Record<string, any> | null = null;
@@ -129,6 +156,7 @@ export async function checkUserActiveProServer(
               else if ('integerValue' in v) parsed[k] = Number(v.integerValue);
               else if ('doubleValue' in v) parsed[k] = Number(v.doubleValue);
               else if ('timestampValue' in v) parsed[k] = v.timestampValue;
+              else if ('nullValue' in v) parsed[k] = null;
             }
             fsDoc = parsed;
           }
@@ -160,28 +188,34 @@ export async function checkUserActiveProServer(
     nowMs,
   });
 
+  const firestorePlusBadgeId: number | null | undefined =
+    fsDoc && Object.prototype.hasOwnProperty.call(fsDoc, 'plus_badge_id')
+      ? fsDoc.plus_badge_id === null
+        ? null
+        : resolvePlusBadgeId(fsDoc.plus_badge_id)
+      : undefined;
+
   return {
     isActivePro: unified.state === 'active' || Boolean(unified.isPaid || unified.isPro),
     isPlus: Boolean(unified.isPlus),
     planTier: unified.planTier,
     isPendingPayment: unified.state === 'pending',
+    firestorePlusBadgeId,
   };
 }
 
 /**
  * Batched resolution of `proBadge` for multiple users in ONE query.
- * Returns a Map<uid, ProBadgeDesignId | null>.
- * - Only returns a badge ID if the user has an active (not expired) Pro plan AND `visible` is true.
- * - Defaults to `'ember'` for active Pro users who have not customized their badge yet.
- * - Never returns plan details, dates, or payment info.
+ * Returns a Map<uid, string | null> where active PLUS users get `'plus:<1..50>'` (or null if unequipped/expired)
+ * and active Pro users get their Pro design.
  */
 export async function resolveProBadgesBatch(
   uids: (string | null | undefined)[],
   db?: RewardsD1Database,
   env?: RewardsEnv,
   nowMs = Date.now()
-): Promise<Map<string, ProBadgeDesignId | null>> {
-  const result = new Map<string, ProBadgeDesignId | null>();
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>();
   const uniqueUids = Array.from(
     new Set(
       uids
@@ -234,11 +268,17 @@ export async function resolveProBadgesBatch(
       .catch(() => ({ results: [] })),
   ]);
 
-  const badgeByUid = new Map<string, { design: ProBadgeDesignId; visible: boolean }>();
+  const badgeByUid = new Map<
+    string,
+    { rawDesign: string; design: ProBadgeDesignId; plusBadgeId: number | null; visible: boolean }
+  >();
   for (const r of badgeRowsRes.results || []) {
     if (r?.user_id) {
+      const raw = String(r.design || '');
       badgeByUid.set(String(r.user_id), {
-        design: normalizeProBadgeDesign(r.design),
+        rawDesign: raw,
+        design: normalizeProBadgeDesign(raw),
+        plusBadgeId: extractStoredPlusBadgeId(raw),
         visible: Number(r.visible ?? 1) !== 0,
       });
     }
@@ -277,17 +317,28 @@ export async function resolveProBadgesBatch(
     });
 
     const isActivePro = unified.state === 'active' || Boolean(unified.isPaid || unified.isPro);
-    const pref = badgeByUid.get(uid) || DEFAULT_PRO_BADGE_SETTINGS;
-    const resolvedBadge: ProBadgeDesignId | null =
-      isActivePro && pref.visible
-        ? ((unified.isPlus ? `plus:${pref.design}` : pref.design) as ProBadgeDesignId)
-        : null;
+    const isPlus = Boolean(unified.isPlus);
+    const pref = badgeByUid.get(uid);
+    const visible = pref ? pref.visible : DEFAULT_PRO_BADGE_SETTINGS.visible;
+    const plusBadgeId = pref ? pref.plusBadgeId : null;
+    const proDesign = pref ? pref.design : DEFAULT_PRO_BADGE_DESIGN;
+
+    let resolvedBadge: string | null = null;
+    if (isActivePro && visible) {
+      if (isPlus) {
+        resolvedBadge = plusBadgeId !== null ? `plus:${plusBadgeId}` : null;
+      } else {
+        resolvedBadge = proDesign;
+      }
+    }
 
     resolvedProBadgeCache.set(uid, {
       proBadge: resolvedBadge,
+      plusBadgeId,
       activePro: isActivePro,
-      design: pref.design,
-      visible: pref.visible,
+      isPlus,
+      design: proDesign,
+      visible,
       expiresAt: nowMs + PRO_BADGE_CACHE_TTL_MS,
     });
     result.set(uid, resolvedBadge);
@@ -300,11 +351,13 @@ export function setCachedUserProStatusAndBadge(
   uid: string,
   opts: {
     activePro: boolean;
+    isPlus?: boolean;
     design?: string | null;
+    plusBadgeId?: number | null;
     visible?: boolean;
     nowMs?: number;
   }
-): ProBadgeDesignId | null {
+): string | null {
   const cleanUid = String(uid || '').trim();
   if (!cleanUid) return null;
   const nowMs = opts.nowMs ?? Date.now();
@@ -315,17 +368,34 @@ export function setCachedUserProStatusAndBadge(
   const design = normalizeProBadgeDesign(
     opts.design ?? d1Row?.design ?? existing?.design ?? DEFAULT_PRO_BADGE_DESIGN
   );
+  const plusBadgeId =
+    opts.plusBadgeId !== undefined
+      ? opts.plusBadgeId
+      : d1Row !== undefined
+      ? extractStoredPlusBadgeId(d1Row.design)
+      : existing?.plusBadgeId ?? null;
   const visible =
     opts.visible !== undefined
       ? Boolean(opts.visible)
       : d1Row !== undefined
       ? Number(d1Row.visible ?? 1) !== 0
       : existing?.visible ?? true;
+  const isPlus = Boolean(opts.isPlus ?? existing?.isPlus);
 
-  const proBadge: ProBadgeDesignId | null = opts.activePro && visible ? design : null;
+  let proBadge: string | null = null;
+  if (opts.activePro && visible) {
+    if (isPlus) {
+      proBadge = plusBadgeId !== null ? `plus:${plusBadgeId}` : null;
+    } else {
+      proBadge = design;
+    }
+  }
+
   resolvedProBadgeCache.set(cleanUid, {
     proBadge,
+    plusBadgeId,
     activePro: opts.activePro,
+    isPlus,
     design,
     visible,
     expiresAt: nowMs + PRO_BADGE_CACHE_TTL_MS,
@@ -339,6 +409,7 @@ export interface HandleProBadgeOptions {
   dbOverride?: RewardsD1Database;
   nowMs?: number;
   activeProOverride?: boolean;
+  activePlusOverride?: boolean;
   tokenVerifierOverride?: (
     authHeader: string | null | undefined
   ) => Promise<VerifiedFirebaseToken | null>;
@@ -370,7 +441,7 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
 
   if (!currentUser || !currentUser.uid) {
     return jsonResponse(
-      { ok: false, error: 'Authentication required to access Pro badge settings.' },
+      { ok: false, error: 'Authentication required to access badge settings.' },
       401
     );
   }
@@ -379,12 +450,17 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
   const isGuest = Boolean(currentUser.isGuest || userId.startsWith('guest_'));
 
   const proCheck =
-    typeof opts.activeProOverride === 'boolean'
+    typeof opts.activeProOverride === 'boolean' || typeof opts.activePlusOverride === 'boolean'
       ? {
-          isActivePro: opts.activeProOverride,
-          isPlus: false,
-          planTier: (opts.activeProOverride ? 'pro' : 'free') as PlanTier,
+          isActivePro: Boolean(opts.activeProOverride || opts.activePlusOverride),
+          isPlus: Boolean(opts.activePlusOverride),
+          planTier: (opts.activePlusOverride
+            ? 'plus'
+            : opts.activeProOverride
+            ? 'pro'
+            : 'free') as PlanTier,
           isPendingPayment: false,
+          firestorePlusBadgeId: undefined as number | null | undefined,
         }
       : await checkUserActiveProServer(currentUser, env, nowMs, authHeader);
 
@@ -393,6 +469,7 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
       return jsonResponse({
         ok: true,
         design: DEFAULT_PRO_BADGE_DESIGN,
+        plus_badge_id: null,
         visible: true,
         activePro: false,
         isPlus: false,
@@ -415,33 +492,45 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
           updated_at: number;
         }>();
 
-      if (row && isValidProBadgeDesign(row.design)) {
+      if (row) {
         const design = normalizeProBadgeDesign(row.design);
+        // Saved plus_badge_id is preserved even when PLUS expires, and auto-migrated from legacy names
+        const plusBadgeId =
+          proCheck.firestorePlusBadgeId !== undefined
+            ? proCheck.firestorePlusBadgeId
+            : extractStoredPlusBadgeId(row.design);
         const visible = Number(row.visible ?? 1) !== 0;
         const proBadge = setCachedUserProStatusAndBadge(userId, {
           activePro: proCheck.isActivePro,
+          isPlus: proCheck.isPlus,
           design,
+          plusBadgeId,
           visible,
           nowMs,
         });
         return jsonResponse({
           ok: true,
           design,
+          plus_badge_id: plusBadgeId,
           visible,
           activePro: proCheck.isActivePro,
           isPlus: proCheck.isPlus,
           planTier: proCheck.planTier,
-          proBadge: proCheck.isPlus && proBadge ? `plus:${proBadge}` : proBadge,
+          proBadge,
           updatedAt: Number(row.updated_at || 0),
         });
       }
     } catch {
-      // If table is not yet created on production D1, return default gracefully
+      // If table is not yet created on production D1, return gracefully
     }
 
+    const fallbackPlusId =
+      proCheck.firestorePlusBadgeId !== undefined ? proCheck.firestorePlusBadgeId : null;
     const proBadge = setCachedUserProStatusAndBadge(userId, {
       activePro: proCheck.isActivePro,
+      isPlus: proCheck.isPlus,
       design: DEFAULT_PRO_BADGE_DESIGN,
+      plusBadgeId: fallbackPlusId,
       visible: true,
       nowMs,
     });
@@ -449,11 +538,12 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
     return jsonResponse({
       ok: true,
       design: DEFAULT_PRO_BADGE_DESIGN,
+      plus_badge_id: fallbackPlusId,
       visible: true,
       activePro: proCheck.isActivePro,
       isPlus: proCheck.isPlus,
       planTier: proCheck.planTier,
-      proBadge: proCheck.isPlus && proBadge ? `plus:${proBadge}` : proBadge,
+      proBadge,
       updatedAt: null,
     });
   }
@@ -463,7 +553,7 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
     return jsonResponse(
       {
         ok: false,
-        error: 'Guest accounts cannot customize Pro badges. Please sign in and upgrade to Pro.',
+        error: 'Guest accounts cannot customize badges. Please sign in and upgrade to Plus.',
         code: 'GUEST_FORBIDDEN',
       },
       403
@@ -493,13 +583,29 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
   const validation = validateProBadgePayload(rawBody);
   if (!validation.valid || !validation.value) {
     return jsonResponse(
-      { ok: false, error: validation.error || 'Invalid Pro badge settings.' },
+      { ok: false, error: validation.error || 'Invalid badge settings.' },
       400
     );
   }
 
-  // Enforce active Pro or Plus plan check on PUT (rejected with 403 if Free)
-  if (!proCheck.isActivePro) {
+  const { design, visible } = validation.value;
+  const nextPlusBadgeId =
+    validation.value.plusBadgeId !== undefined ? validation.value.plusBadgeId : null;
+
+  // Enforce active PLUS plan when equipping a PLUS badge (1..50).
+  // Unequipping (null) is allowed; legacy Pro saves require active Pro.
+  if (validation.hasExplicitPlusBadgeId) {
+    if (nextPlusBadgeId !== null && !proCheck.isPlus) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: 'An active Boardly Plus plan is required to equip a PLUS badge.',
+          code: 'PLUS_REQUIRED',
+        },
+        403
+      );
+    }
+  } else if (!proCheck.isActivePro) {
     return jsonResponse(
       {
         ok: false,
@@ -510,7 +616,12 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
     );
   }
 
-  const { design, visible } = validation.value;
+  // Encode stored value in user_pro_badge.design without requiring a destructive D1 schema migration
+  const storedDesignValue = validation.hasExplicitPlusBadgeId
+    ? isValidPlusBadgeId(nextPlusBadgeId)
+      ? `plus:${nextPlusBadgeId}`
+      : 'plus:none'
+    : design;
 
   try {
     await db
@@ -522,21 +633,23 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
            visible = excluded.visible,
            updated_at = excluded.updated_at`
       )
-      .bind(userId, design, visible ? 1 : 0, nowMs)
+      .bind(userId, storedDesignValue, visible ? 1 : 0, nowMs)
       .run();
   } catch (err: any) {
     return jsonResponse(
       {
         ok: false,
-        error: err?.message || 'Failed to save Pro badge choice.',
+        error: err?.message || 'Failed to save badge choice.',
       },
       500
     );
   }
 
   const effectiveProBadge = setCachedUserProStatusAndBadge(userId, {
-    activePro: true,
+    activePro: proCheck.isActivePro,
+    isPlus: proCheck.isPlus,
     design,
+    plusBadgeId: nextPlusBadgeId,
     visible,
     nowMs,
   });
@@ -544,11 +657,12 @@ export async function handleProBadgeRequest(opts: HandleProBadgeOptions): Promis
   return jsonResponse({
     ok: true,
     design,
+    plus_badge_id: nextPlusBadgeId,
     visible,
-    activePro: true,
+    activePro: proCheck.isActivePro,
     isPlus: proCheck.isPlus,
     planTier: proCheck.planTier,
-    proBadge: proCheck.isPlus && effectiveProBadge ? `plus:${effectiveProBadge}` : effectiveProBadge,
+    proBadge: effectiveProBadge,
     updatedAt: nowMs,
   });
 }

@@ -81,6 +81,10 @@
 
 /* ===== SEMANTIC DESIGN TOKENS (SINGLE SOURCE OF TRUTH) ===== */
 :root {
+  /* Dynamic top ad banner height (measured via ResizeObserver in TopAnnouncementStrip) */
+  --ad-h: 0px;
+  --boardly-top-strip-h: 0px;
+
   /* LIGHT THEME (Default) */
   --bg: #f6f6f8;
   --background: #f6f6f8;
@@ -5602,7 +5606,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 .boardly-top-nav-pill,
 .public-header-glass-bar {
   position: fixed !important;
-  top: calc(env(safe-area-inset-top, 0px) + var(--boardly-top-strip-h, 0px) + 8px) !important;
+  top: calc(env(safe-area-inset-top, 0px) + var(--ad-h, var(--boardly-top-strip-h, 0px)) + 8px) !important;
   left: 12px !important;
   right: 12px !important;
   max-width: 1200px;
@@ -5633,6 +5637,63 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   user-select: none;
   pointer-events: auto;
   transition: none !important;
+}
+
+/* Single container for public Navbar pill + mobile hamburger menu overlay,
+   anchored right below the top ad strip (--ad-h) so both move together as one block. */
+.boardly-nav-shell {
+  position: fixed;
+  top: calc(var(--ad-h, 0px) + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  height: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.boardly-nav-shell.boardly-nav-shell--open {
+  bottom: 0;
+  height: calc(100dvh - var(--ad-h, 0px) - env(safe-area-inset-top, 0px));
+  max-height: calc(100dvh - var(--ad-h, 0px) - env(safe-area-inset-top, 0px));
+  pointer-events: auto;
+}
+
+@media (min-width: 1280px) {
+  .boardly-nav-shell.boardly-nav-shell--open {
+    bottom: auto;
+    height: 0;
+    max-height: none;
+    pointer-events: none;
+  }
+}
+
+.boardly-nav-shell > .boardly-top-nav-pill {
+  position: absolute !important;
+  top: 8px !important;
+  left: 12px !important;
+  right: 12px !important;
+  z-index: 20 !important;
+}
+
+.boardly-mobile-menu-panel-slot {
+  position: absolute;
+  top: 84px;
+  left: 0;
+  right: 0;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index: 10;
+  padding-inline: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  pointer-events: none;
+}
+
+@media (min-width: 640px) {
+  .boardly-mobile-menu-panel-slot {
+    padding-inline: 24px;
+  }
 }
 
 .boardly-strip-shell {
@@ -13291,4 +13352,541 @@ input[type="search"],
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================================
+ * 50 PLUS BADGES — EXACT CSS, @keyframes, AND @property --a (from plus-badges.html)
+ * Scoped under .plus-badge to avoid Tailwind utility class collisions
+ * ============================================================================ */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.plus-badge.pb {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 11px/1 "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: 0.09em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  user-select: none;
+  text-transform: uppercase;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.plus-badge.pb i {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+}
+.plus-badge.pb.l {
+  font-size: 14px;
+  padding: 7px 14px;
+}
+.plus-badge.pb.l i {
+  font-size: 14px;
+}
+.plus-badge.pb.plus-badge--sm {
+  font-size: 9.5px;
+  gap: 4px;
+  padding: 4px 8px;
+}
+.plus-badge.pb.plus-badge--sm i {
+  font-size: 9.5px;
+}
+.plus-badge.pb.plus-badge--sm.halo {
+  margin-top: 7px;
+}
+.plus-badge.pb.plus-badge--sm.halo::before {
+  top: -7px;
+  width: 20px;
+  height: 6px;
+  margin-left: -10px;
+}
+.plus-badge.pb.plus-badge--icon {
+  font-size: 9px;
+  padding: 4px 6px;
+  gap: 0;
+}
+.plus-badge.pb.px {
+  font-family: "DotGothic16", monospace;
+}
+.plus-badge.pb.spl i {
+  color: #1b1400;
+  margin-right: 6px;
+}
+.plus-badge.pb.flow {
+  background-size: 300% 100% !important;
+  animation: fl 4s linear infinite;
+}
+@keyframes fl {
+  to {
+    background-position: -300% 0;
+  }
+}
+.plus-badge.pb.shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: sh 3s ease-in-out infinite;
+}
+@keyframes sh {
+  60%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+.plus-badge.pb.glitch {
+  animation: gl 2.4s steps(1) infinite;
+}
+@keyframes gl {
+  0%,
+  90%,
+  100% {
+    transform: none;
+  }
+  92% {
+    transform: translateX(-1px);
+  }
+  95% {
+    transform: translateX(1px);
+  }
+}
+.plus-badge.pb.pulse i,
+.plus-badge.pb.twk i {
+  animation: pu 1.5s ease-in-out infinite;
+}
+@keyframes pu {
+  50% {
+    opacity: 0.25;
+  }
+}
+.plus-badge.pb.scan::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  animation: sc 2s linear infinite;
+}
+@keyframes sc {
+  to {
+    left: 100%;
+  }
+}
+.plus-badge.pb.bar {
+  animation: bp 1s linear infinite;
+}
+@keyframes bp {
+  to {
+    background-position: var(--t, 17px) 0;
+  }
+}
+.plus-badge.pb.mo {
+  animation: mo 3s ease-in-out infinite;
+}
+@keyframes mo {
+  50% {
+    border-radius: 40% 60% 45% 55% / 60% 40% 60% 40%;
+  }
+}
+.plus-badge.pb.hp {
+  animation: hp 1.2s steps(1) infinite;
+}
+@keyframes hp {
+  50% {
+    filter: brightness(1.6);
+  }
+}
+.plus-badge.pb.fill::before {
+  content: "";
+  position: absolute;
+  left: -50%;
+  width: 200%;
+  height: 100%;
+  bottom: -60%;
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 42%;
+  animation: fi 4s ease-in-out infinite;
+}
+@keyframes fi {
+  0% {
+    transform: translateY(60%) rotate(0);
+  }
+  50% {
+    transform: translateY(-20%) rotate(180deg);
+  }
+  100% {
+    transform: translateY(60%) rotate(360deg);
+  }
+}
+.plus-badge.pb.fp {
+  animation: fp 4s ease-in-out infinite;
+}
+@keyframes fp {
+  0%,
+  86%,
+  100% {
+    transform: rotateX(0);
+  }
+  93% {
+    transform: rotateX(90deg);
+  }
+}
+.plus-badge.pb.typ i {
+  animation: ty 1.2s ease-in-out infinite;
+  letter-spacing: 0.15em;
+}
+@keyframes ty {
+  50% {
+    opacity: 0.3;
+  }
+}
+.plus-badge.pb.cur::after {
+  content: "_";
+  animation: bl 1s steps(1) infinite;
+}
+.plus-badge.pb.cur i {
+  color: #f59e0b;
+}
+@keyframes bl {
+  50% {
+    opacity: 0;
+  }
+}
+.plus-badge.pb.ul {
+  animation: fu 3s linear infinite;
+}
+@keyframes fu {
+  to {
+    background-position: -300% 100%;
+  }
+}
+.plus-badge.pb.hue {
+  animation: hu 6s linear infinite;
+}
+.plus-badge.pb.stk::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(135deg, var(--card) 50%, #e8e8ee 50%);
+}
+@keyframes hu {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+.plus-badge.pb.ember {
+  background-size: 100% 300% !important;
+  animation: fv 3s ease-in-out infinite;
+}
+@keyframes fv {
+  50% {
+    background-position: 0 100%;
+  }
+}
+.plus-badge.pb.halo {
+  overflow: visible !important;
+  margin-top: 9px;
+}
+.plus-badge.pb.halo::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  width: 24px;
+  height: 7px;
+  margin-left: -12px;
+  border: 2px solid #ffd45c;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ffd45c;
+  animation: hf 2.4s ease-in-out infinite;
+}
+@keyframes hf {
+  50% {
+    transform: translateY(-2px);
+    opacity: 0.7;
+  }
+}
+.plus-badge.pb.tilt {
+  animation: ti 3.2s ease-in-out infinite;
+}
+@keyframes ti {
+  0%,
+  100% {
+    transform: perspective(70px) rotateY(-16deg);
+  }
+  50% {
+    transform: perspective(70px) rotateY(16deg);
+  }
+}
+.plus-badge.pb.au {
+  animation: au 7s linear infinite;
+}
+@keyframes au {
+  to {
+    background-position: -200% 0, 260% 0, -80% 0;
+  }
+}
+.plus-badge.pb.rain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, rgba(74, 222, 128, 0.4) 0 1px, transparent 1px 6px);
+  -webkit-mask: repeating-linear-gradient(180deg, #000 0 3px, transparent 3px 7px);
+  mask: repeating-linear-gradient(180deg, #000 0 3px, transparent 3px 7px);
+  -webkit-mask-size: 100% 14px;
+  mask-size: 100% 14px;
+  animation: rn 0.8s linear infinite;
+}
+@keyframes rn {
+  to {
+    -webkit-mask-position: 0 14px;
+    mask-position: 0 14px;
+  }
+}
+.plus-badge.pb.sw {
+  animation: sw 3s ease-in-out infinite;
+}
+@keyframes sw {
+  50% {
+    transform: rotate(2.5deg) translateY(-1px);
+  }
+}
+.plus-badge.pb.fire {
+  animation: fr 1.2s ease-in-out infinite;
+}
+@keyframes fr {
+  50% {
+    background-position: 0 -4px, 3px -2px, -3px -3px;
+  }
+}
+.plus-badge.pb.zap {
+  animation: zp 3.5s steps(1) infinite;
+}
+@keyframes zp {
+  0%,
+  90%,
+  100% {
+    filter: none;
+  }
+  92% {
+    filter: brightness(2.4);
+  }
+  94% {
+    filter: none;
+  }
+  96% {
+    filter: brightness(2);
+  }
+}
+.plus-badge.pb.spk {
+  animation: spk 2.5s ease-in-out infinite;
+}
+@keyframes spk {
+  50% {
+    filter: brightness(1.4) saturate(1.2);
+  }
+}
+.plus-badge.pb.spn i {
+  display: inline-block;
+  animation: sp 6s linear infinite;
+}
+@keyframes sp {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.plus-badge.pb.coin {
+  animation: cn 2.6s ease-in-out infinite;
+}
+@keyframes cn {
+  0%,
+  100% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.18);
+  }
+}
+.plus-badge.pb.sun {
+  animation: sn 4s ease-in-out infinite;
+}
+@keyframes sn {
+  50% {
+    background-position: 0 -3px, 0 0;
+  }
+}
+.plus-badge.pb.lqc {
+  background-size: 100% 220% !important;
+  animation: lq 3s ease-in-out infinite;
+}
+@keyframes lq {
+  50% {
+    background-position: 0 100%;
+  }
+}
+.plus-badge.pb.fk {
+  animation: fk 3.4s steps(1) infinite;
+}
+@keyframes fk {
+  0%,
+  18%,
+  22%,
+  62%,
+  64%,
+  100% {
+    opacity: 1;
+  }
+  20%,
+  63% {
+    opacity: 0.3;
+  }
+}
+.plus-badge.pb.star::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  left: -20%;
+  width: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #fff);
+  transform: rotate(25deg);
+  animation: ss 3s linear infinite;
+}
+@keyframes ss {
+  to {
+    left: 120%;
+    top: 70%;
+  }
+}
+.plus-badge.pb.live i {
+  position: relative;
+}
+.plus-badge.pb.live i::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  animation: rp 1.6s ease-out infinite;
+}
+@keyframes rp {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+.plus-badge.pb.gx {
+  animation: gx 1.6s steps(1) infinite;
+}
+@keyframes gx {
+  0% {
+    text-shadow: -2px 0 #0ff, 2px 0 #f0f;
+  }
+  20% {
+    text-shadow: 2px 0 #0ff, -2px 0 #f0f;
+    transform: translateX(1px);
+  }
+  40% {
+    text-shadow: -1px 1px #0ff, 1px -1px #f0f;
+    transform: none;
+  }
+  60% {
+    text-shadow: -3px 0 #0ff, 3px 0 #f0f;
+    transform: translateX(-1px);
+  }
+  80% {
+    text-shadow: 1px 0 #0ff, -1px 0 #f0f;
+    transform: none;
+  }
+}
+.plus-badge.pb.orbit {
+  animation: ob 2.6s linear infinite;
+}
+@keyframes ob {
+  to {
+    --a: 360deg;
+  }
+}
+.plus-badge.pb.mq {
+  animation: mq 1s steps(1) infinite;
+}
+.plus-badge.pb.live2 i {
+  display: none;
+}
+.plus-badge.pb.live2::before {
+  content: "";
+  width: 18px;
+  height: 12px;
+  flex: none;
+  background:
+    linear-gradient(#fff, #fff) 0 100% / 3px 30% no-repeat,
+    linear-gradient(#fff, #fff) 5px 100% / 3px 60% no-repeat,
+    linear-gradient(#fff, #fff) 10px 100% / 3px 90% no-repeat,
+    linear-gradient(#fff, #fff) 15px 100% / 3px 50% no-repeat;
+  animation: lv 0.9s ease-in-out infinite;
+}
+@keyframes lv {
+  0%,
+  100% {
+    background-size: 3px 30%, 3px 60%, 3px 90%, 3px 50%;
+  }
+  50% {
+    background-size: 3px 90%, 3px 40%, 3px 55%, 3px 100%;
+  }
+}
+@keyframes mq {
+  50% {
+    border-color: #ff3d00;
+  }
+}
+
+/* Pause offscreen list badges & background tabs cleanly */
+.plus-badge.pb.plus-badge--paused,
+.plus-badge.pb.plus-badge--paused *,
+.plus-badge.pb.plus-badge--paused::before,
+.plus-badge.pb.plus-badge--paused::after,
+html.tab-hidden .plus-badge.pb,
+html.tab-hidden .plus-badge.pb *,
+html.tab-hidden .plus-badge.pb::before,
+html.tab-hidden .plus-badge.pb::after,
+html.smooth-mode .plus-badge.pb,
+html.smooth-mode .plus-badge.pb *,
+html.smooth-mode .plus-badge.pb::before,
+html.smooth-mode .plus-badge.pb::after {
+  animation-play-state: paused !important;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .plus-badge.pb,
+  .plus-badge.pb *,
+  .plus-badge.pb::before,
+  .plus-badge.pb::after {
+    animation: none !important;
+  }
+}
+
 

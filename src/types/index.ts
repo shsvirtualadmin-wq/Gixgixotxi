@@ -83,6 +83,7 @@ export interface UserProfile {
   proBadge?: string | null;
   proBadgeDesign?: string | null;
   proBadgeVisible?: boolean;
+  plus_badge_id?: number | null;
   adFreeEnabled?: boolean;
   notificationPrefs?: {
     emailKobanReceipts?: boolean;
@@ -187,6 +188,7 @@ export interface PublicProfile {
   customAvatarUrl?: string | null;
   equippedFrameId?: string | null;
   proBadge?: string | null;
+  plus_badge_id?: number | null;
   plan?: UserPlan;
   planTier?: UserPlan;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;

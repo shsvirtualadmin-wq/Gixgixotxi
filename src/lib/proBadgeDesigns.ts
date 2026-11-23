@@ -1,3 +1,5 @@
+import { isValidPlusBadgeId, resolvePlusBadgeId } from './plusBadgeDesigns';
+
 export const PRO_BADGE_IDS = [
   'ember',
   'neon',
@@ -38,11 +40,14 @@ export const DEFAULT_PRO_BADGE_DESIGN: ProBadgeDesignId = 'ember';
 
 export interface ProBadgeSettings {
   design: ProBadgeDesignId;
+  /** Canonical 1..50 PLUS badge ID, or null when unequipped */
+  plusBadgeId?: number | null;
   visible: boolean;
 }
 
 export const DEFAULT_PRO_BADGE_SETTINGS: ProBadgeSettings = {
   design: DEFAULT_PRO_BADGE_DESIGN,
+  plusBadgeId: 1,
   visible: true,
 };
 
@@ -74,7 +79,7 @@ export const PRO_BADGE_DESIGNS: readonly ProBadgeDesignMeta[] = [
   { id: 'holo', number: 3, name: 'Holo Foil', tagline: 'Pastel iridescent foil gradient that slides smoothly', animated: true, font: 'space' },
   { id: 'hex', number: 4, name: 'Hex Plate', tagline: 'Precision hexagon plate with gold-red edge pulse', animated: true, font: 'space' },
   { id: 'pixel', number: 5, name: '8-Bit Plaque', tagline: 'Stepped arcade plaque with bobbing pixel crown', animated: true, font: 'doto' },
-  { id: 'seal', number: 6, name: 'Royal Seal', tagline: 'Radial gold crown medallion with pulsing outer ring', animated: true, font: 'space' },
+  { id: 'seal', number: 6, name: 'Velvet Seal', tagline: 'Radial gold medallion with pulsing outer ring', animated: true, font: 'space' },
   { id: 'tag', number: 7, name: 'Crimson Tag', tagline: 'Cut-corner red tag with glinting gold left stripe', animated: true, font: 'space' },
   { id: 'glass', number: 8, name: 'Ruby Glass', tagline: 'Translucent ruby pill with specular edge & sheen', animated: true, font: 'space' },
   { id: 'mono', number: 9, name: 'Mono Contrast', tagline: 'High-contrast minimal pill (static)', animated: false, font: 'space' },
@@ -119,29 +124,75 @@ export function normalizeProBadgeDesign(val: unknown): ProBadgeDesignId {
 export function validateProBadgePayload(raw: unknown): {
   valid: boolean;
   value?: ProBadgeSettings;
+  hasExplicitPlusBadgeId?: boolean;
   error?: string;
 } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { valid: false, error: 'Payload must be a JSON object.' };
   }
   const obj = raw as Record<string, unknown>;
-  const rawDesign = typeof obj.design === 'string' ? obj.design.trim().toLowerCase() : '';
-  if (!isValidProBadgeDesign(rawDesign)) {
-    return {
-      valid: false,
-      error: `Invalid badge design "${String(obj.design ?? '')}". Must be one of the 31 whitelisted designs.`,
-    };
-  }
+
   if (typeof obj.visible !== 'boolean') {
     return {
       valid: false,
       error: 'Field "visible" must be a boolean (true or false).',
     };
   }
+
+  const hasPlusField =
+    Object.prototype.hasOwnProperty.call(obj, 'plus_badge_id') ||
+    Object.prototype.hasOwnProperty.call(obj, 'plusBadgeId');
+
+  if (hasPlusField) {
+    const rawPlus =
+      obj.plus_badge_id !== undefined ? obj.plus_badge_id : obj.plusBadgeId;
+    if (rawPlus !== null && !isValidPlusBadgeId(rawPlus)) {
+      return {
+        valid: false,
+        error: `Invalid plus_badge_id "${String(rawPlus)}". Must be null or an integer from 1 to 50.`,
+      };
+    }
+    const design: ProBadgeDesignId = isValidProBadgeDesign(obj.design)
+      ? normalizeProBadgeDesign(obj.design)
+      : DEFAULT_PRO_BADGE_DESIGN;
+    return {
+      valid: true,
+      hasExplicitPlusBadgeId: true,
+      value: {
+        design,
+        plusBadgeId: rawPlus === null ? null : rawPlus,
+        visible: obj.visible,
+      },
+    };
+  }
+
+  const rawDesign = typeof obj.design === 'string' ? obj.design.trim().toLowerCase() : '';
+  if (!isValidProBadgeDesign(rawDesign)) {
+    // Also accept numeric/prefixed PLUS design strings (e.g. 'plus:12' or '12')
+    const resolvedPlus = resolvePlusBadgeId(rawDesign);
+    if (resolvedPlus !== null) {
+      return {
+        valid: true,
+        hasExplicitPlusBadgeId: true,
+        value: {
+          design: DEFAULT_PRO_BADGE_DESIGN,
+          plusBadgeId: resolvedPlus,
+          visible: obj.visible,
+        },
+      };
+    }
+    return {
+      valid: false,
+      error: `Invalid badge design "${String(obj.design ?? '')}".`,
+    };
+  }
+
   return {
     valid: true,
+    hasExplicitPlusBadgeId: false,
     value: {
       design: rawDesign,
+      plusBadgeId: resolvePlusBadgeId(rawDesign),
       visible: obj.visible,
     },
   };

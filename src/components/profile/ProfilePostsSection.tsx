@@ -954,16 +954,17 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           {resolvedPostAuthor}
                         </span>
                         {(post.authorProBadge || (isPro && authorProBadge)) && (() => {
-                          const rawBadge = String(post.authorProBadge || authorProBadge || '');
+                          const rawBadge = String(post.authorProBadge || authorProBadge || '').trim();
                           const badgeTier: 'pro' | 'plus' =
                             authorPlan === 'plus' || rawBadge.toLowerCase().startsWith('plus')
                               ? 'plus'
                               : 'pro';
                           return (
                             <ProBadge
-                              design={normalizeProBadgeDesign(rawBadge.replace(/^plus:/i, ''))}
+                              design={badgeTier === 'plus' ? rawBadge : normalizeProBadgeDesign(rawBadge)}
                               tier={badgeTier}
                               size="sm"
+                              listMode
                             />
                           );
                         })()}

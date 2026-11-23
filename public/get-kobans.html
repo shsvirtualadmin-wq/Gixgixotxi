@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Get Kobans — Boardly Payment Sheet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg-backdrop: #07070a;
+      --sheet-bg: #111116;
+      --surface: #18181f;
+      --surface-deep: #14141a;
+      --btn-matte: #25252c;
+      --btn-matte-hover: #2d2d36;
+      --red-top: #e5282f;
+      --red-bottom: #c3161c;
+      --red-glow: 0 6px 22px rgba(229, 40, 47, 0.34);
+      --disabled-bg: #3a1215;
+      --disabled-text: #8c5c60;
+      --text-primary: #f5f5f7;
+      --text-secondary: #9898a6;
+      --text-muted: #6e6e7c;
+      --gold: #f5b638;
+      --green: #34d399;
+      --danger: #f87171;
+      --divider: rgba(255, 255, 255, 0.06);
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: var(--bg-backdrop);
+      color: var(--text-primary);
+      font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "tnum" 1;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      min-height: 100dvh;
+      background:
+        radial-gradient(600px 320px at 50% 0%, rgba(229, 40, 47, 0.08), transparent 70%),
+        var(--bg-backdrop);
+    }
+
+    @media (min-width: 520px) {
+      body {
+        align-items: center;
+        padding: 20px 16px;
+      }
+    }
+
+    .sheet {
+      width: 100%;
+      max-width: 430px;
+      max-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      background: var(--sheet-bg);
+      border-radius: 28px 28px 0 0;
+      overflow: hidden;
+      box-shadow: 0 -10px 48px rgba(0, 0, 0, 0.65);
+    }
+
+    @media (min-width: 520px) {
+      .sheet {
+        max-height: min(92dvh, 880px);
+        border-radius: 28px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.72);
+      }
+    }
+
+    /* Header */
+    .sheet-header {
+      flex-shrink: 0;
+      padding: 10px 20px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: var(--sheet-bg);
+      border-bottom: 1px solid var(--divider);
+    }
+
+    .grab-bar {
+      width: 40px;
+      height: 4px;
+      border-radius: 999px;
+      background: #2f2f38;
+      margin: 0 auto;
+    }
+
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .sheet-title-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .sheet-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .rate-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .rate-sub strong {
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .icon-close {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: var(--btn-matte);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 120ms ease;
+    }
+
+    .icon-close:hover {
+      background: var(--btn-matte-hover);
+      color: var(--text-primary);
+    }
+
+    .icon-close:active {
+      transform: scale(0.93);
+    }
+
+    /* Scrollable content */
+    .sheet-body {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 18px 20px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      scrollbar-width: none;
+    }
+
+    .sheet-body::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Amount hero display */
+    .amount-panel {
+      background: var(--surface);
+      border-radius: 22px;
+      padding: 18px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 6px;
+    }
+
+    .amount-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .amount-display {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+    }
+
+    .koban-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--gold);
+      color: #161208;
+      font-size: 12px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      align-self: center;
+      flex-shrink: 0;
+    }
+
+    .amount-number {
+      font-size: 40px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.05;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .amount-unit {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .amount-pkr-preview {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .amount-pkr-preview strong {
+      color: var(--text-primary);
+    }
+
+    .amount-error {
+      min-height: 18px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--danger);
+      margin-top: 2px;
+    }
+
+    /* Quick amount chips */
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .btn-matte {
+      border: none;
+      outline: none;
+      background: var(--btn-matte);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 120ms ease, opacity 120ms ease;
+    }
+
+    .btn-matte:hover:not(:disabled) {
+      background: var(--btn-matte-hover);
+    }
+
+    .btn-matte:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    .btn-matte:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .btn-red {
+      border: none;
+      outline: none;
+      background: linear-gradient(180deg, var(--red-top) 0%, var(--red-bottom) 100%);
+      color: #ffffff;
+      font-family: inherit;
+      font-weight: 600;
+      box-shadow: var(--red-glow);
+      cursor: pointer;
+      transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 120ms ease;
+    }
+
+    .btn-red:active:not(:disabled) {
+      transform: scale(0.96);
+    }
+
+    .btn-red:disabled {
+      background: var(--disabled-bg);
+      color: var(--disabled-text);
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .chip-btn {
+      height: 44px;
+      border-radius: 14px;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 3x4 Custom Keypad */
+    .keypad-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label-row {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+
+    .section-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .keypad-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 68px);
+      gap: 12px 24px;
+      justify-content: center;
+      padding: 4px 0;
+    }
+
+    .key-circle {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: none;
+      outline: none;
+      background: var(--btn-matte);
+      color: var(--text-primary);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 23px;
+      font-weight: 600;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 110ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 110ms ease;
+    }
+
+    .key-circle:hover:not(:disabled) {
+      background: var(--btn-matte-hover);
+    }
+
+    .key-circle:active:not(:disabled) {
+      transform: scale(0.92);
+    }
+
+    .key-circle:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .key-double-zero {
+      font-size: 19px;
+      letter-spacing: -0.02em;
+    }
+
+    .key-backspace {
+      width: 68px;
+      height: 68px;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 110ms cubic-bezier(0.2, 0.8, 0.2, 1), color 110ms ease;
+    }
+
+    .key-backspace:hover:not(:disabled) {
+      color: var(--text-primary);
+    }
+
+    .key-backspace:active:not(:disabled) {
+      transform: scale(0.88);
+    }
+
+    .key-backspace:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Section blocks */
+    .block {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Coupon bar */
+    .coupon-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .field-input {
+      width: 100%;
+      height: 46px;
+      border-radius: 14px;
+      border: none;
+      outline: none;
+      background: var(--surface);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 0 14px;
+      transition: background-color 140ms ease;
+    }
+
+    .field-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .field-input:focus {
+      background: #1e1e27;
+    }
+
+    .field-input:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .coupon-input {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .coupon-input::placeholder {
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .coupon-action-btn {
+      flex-shrink: 0;
+      height: 46px;
+      padding: 0 18px;
+      border-radius: 14px;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .coupon-msg {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 0 2px;
+      display: none;
+    }
+
+    .coupon-msg.visible {
+      display: block;
+    }
+
+    .coupon-msg.error {
+      color: var(--danger);
+    }
+
+    .coupon-msg.success {
+      color: var(--green);
+    }
+
+    /* Total Summary Card */
+    .summary-card {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .summary-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    .summary-row .label {
+      color: var(--text-secondary);
+    }
+
+    .summary-row .val {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .summary-row.discount-row {
+      display: none;
+    }
+
+    .summary-row.discount-row.visible {
+      display: flex;
+    }
+
+    .summary-row.discount-row .label,
+    .summary-row.discount-row .val {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .summary-divider {
+      height: 1px;
+      background: var(--divider);
+      margin: 2px 0;
+    }
+
+    .summary-row.total-row {
+      font-size: 15px;
+    }
+
+    .summary-row.total-row .label {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .summary-row.total-row .val {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .strike-pkr {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: line-through;
+      margin-right: 6px;
+    }
+
+    /* Payment method toggle */
+    .method-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .method-btn {
+      height: 46px;
+      border-radius: 14px;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* Account info card */
+    .account-card {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .account-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .account-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
+    .account-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      flex-shrink: 0;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 10px;
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .copy-btn.copied {
+      color: var(--green);
+    }
+
+    /* TID input helper */
+    .tid-helper {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 0 2px;
+    }
+
+    .tid-helper.ready {
+      color: var(--green);
+    }
+
+    /* Sticky Footer */
+    .sheet-footer {
+      flex-shrink: 0;
+      padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+      background: var(--sheet-bg);
+      border-top: 1px solid var(--divider);
+    }
+
+    .submit-btn {
+      width: 100%;
+      height: 54px;
+      border-radius: 16px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .submit-btn:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .submit-btn.is-submitted {
+      background: #1a382b;
+      color: var(--green);
+      box-shadow: none;
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <!-- Header -->
+    <header class="sheet-header">
+      <div class="grab-bar" aria-hidden="true"></div>
+      <div class="header-row">
+        <div class="sheet-title-wrap">
+          <h1 id="sheetTitle" class="sheet-title">Get Kobans</h1>
+          <div class="rate-sub">Rate: <strong>10 Kobans = PKR 1</strong></div>
+        </div>
+        <button type="button" class="icon-close" id="resetBtn" aria-label="Reset form" title="Reset">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Scrollable Body -->
+    <div class="sheet-body">
+      <!-- Live Kobans Readout -->
+      <section class="amount-panel" aria-live="polite">
+        <span class="amount-eyebrow">Amount</span>
+        <div class="amount-display">
+          <span class="koban-dot" aria-hidden="true">K</span>
+          <span class="amount-number" id="amountDisplay">1,000</span>
+          <span class="amount-unit">Kobans</span>
+        </div>
+        <div class="amount-pkr-preview" id="pkrSubline">
+          Equals <strong>PKR 100</strong>
+        </div>
+        <div class="amount-error" id="amountError" role="alert"></div>
+      </section>
+
+      <!-- Quick-amount chips -->
+      <section class="block" aria-label="Quick amount options">
+        <div class="quick-grid" id="quickChips">
+          <button type="button" class="chip-btn btn-matte" data-amount="500">500</button>
+          <button type="button" class="chip-btn btn-red" data-amount="1000" aria-pressed="true">1,000</button>
+          <button type="button" class="chip-btn btn-matte" data-amount="2500">2,500</button>
+          <button type="button" class="chip-btn btn-matte" data-amount="5000">5,000</button>
+        </div>
+      </section>
+
+      <!-- 3x4 Custom Keypad -->
+      <section class="keypad-wrap" aria-label="Custom amount keypad">
+        <div class="section-label-row">
+          <span class="section-label">Custom amount</span>
+          <span class="section-hint">Min 500 · step 50</span>
+        </div>
+        <div class="keypad-grid" id="keypad">
+          <button type="button" class="key-circle" data-key="1">1</button>
+          <button type="button" class="key-circle" data-key="2">2</button>
+          <button type="button" class="key-circle" data-key="3">3</button>
+          <button type="button" class="key-circle" data-key="4">4</button>
+          <button type="button" class="key-circle" data-key="5">5</button>
+          <button type="button" class="key-circle" data-key="6">6</button>
+          <button type="button" class="key-circle" data-key="7">7</button>
+          <button type="button" class="key-circle" data-key="8">8</button>
+          <button type="button" class="key-circle" data-key="9">9</button>
+          <button type="button" class="key-circle key-double-zero" data-key="00">00</button>
+          <button type="button" class="key-circle" data-key="0">0</button>
+          <button type="button" class="key-backspace" data-key="backspace" aria-label="Backspace">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+              <line x1="18" y1="9" x2="12" y2="15"></line>
+              <line x1="12" y1="9" x2="18" y2="15"></line>
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- Coupon Field -->
+      <section class="block" aria-label="Coupon code">
+        <div class="section-label-row">
+          <label for="couponInput" class="section-label">Coupon code</label>
+          <span class="section-hint">Try EARLY11 or FLAT50</span>
+        </div>
+        <div class="coupon-row">
+          <input
+            id="couponInput"
+            class="field-input coupon-input"
+            type="text"
+            placeholder="Enter promo code"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="20"
+          />
+          <button type="button" id="couponApplyBtn" class="coupon-action-btn btn-red" disabled>
+            Apply
+          </button>
+          <button type="button" id="couponRemoveBtn" class="coupon-action-btn btn-matte" style="display: none;">
+            Remove
+          </button>
+        </div>
+        <div id="couponMsg" class="coupon-msg" role="status"></div>
+      </section>
+
+      <!-- Total Breakdown -->
+      <section class="summary-card" aria-label="Payment total">
+        <div class="summary-row">
+          <span class="label" id="subtotalLabel">1,000 Kobans</span>
+          <span class="val" id="subtotalVal">PKR 100</span>
+        </div>
+        <div class="summary-row discount-row" id="discountRow">
+          <span class="label" id="discountLabel">Coupon (EARLY11)</span>
+          <span class="val" id="discountVal">−PKR 11</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-row total-row">
+          <span class="label">Total to send</span>
+          <span class="val" id="totalVal">PKR 100</span>
+        </div>
+      </section>
+
+      <!-- Payment Method Toggle -->
+      <section class="block" aria-label="Payment method">
+        <div class="section-label-row">
+          <span class="section-label">Payment method</span>
+          <span class="section-hint">Send exact PKR total</span>
+        </div>
+        <div class="method-grid" id="methodToggle">
+          <button type="button" class="method-btn btn-red" data-method="jazzcash" aria-pressed="true">
+            JazzCash
+          </button>
+          <button type="button" class="method-btn btn-matte" data-method="opay" aria-pressed="false">
+            Opay
+          </button>
+        </div>
+
+        <div class="account-card">
+          <div class="account-row">
+            <div class="account-meta">
+              <span class="account-label" id="acctNumLabel">JazzCash Account Number</span>
+              <span class="account-value" id="acctNumValue">+923058969050</span>
+            </div>
+            <button type="button" class="copy-btn btn-matte" id="copyNumBtn">Copy</button>
+          </div>
+          <div class="summary-divider"></div>
+          <div class="account-row">
+            <div class="account-meta">
+              <span class="account-label">Account Title</span>
+              <span class="account-value" id="acctTitleValue">Haseena Bibi</span>
+            </div>
+            <button type="button" class="copy-btn btn-matte" id="copyTitleBtn">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Transaction ID -->
+      <section class="block" aria-label="Transaction ID">
+        <div class="section-label-row">
+          <label for="tidInput" class="section-label">Transaction ID (TID)</label>
+          <span class="section-hint">From your receipt</span>
+        </div>
+        <input
+          id="tidInput"
+          class="field-input"
+          type="text"
+          placeholder="e.g. JC82940175"
+          autocomplete="off"
+          spellcheck="false"
+          maxlength="40"
+        />
+        <div class="tid-helper" id="tidHelper">Enter at least 6 characters from your payment receipt.</div>
+      </section>
+    </div>
+
+    <!-- Sticky Submit Footer -->
+    <footer class="sheet-footer">
+      <button type="button" id="submitBtn" class="submit-btn btn-red" disabled>
+        Submit payment · PKR 100
+      </button>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const RATE = 10; // 10 Kobans = PKR 1
+      const MIN_KOBANS = 500;
+      const STEP_KOBANS = 50;
+      const MAX_DIGITS = 6;
+      const QUICK_AMOUNTS = [500, 1000, 2500, 5000];
+
+      const ACCOUNTS = {
+        jazzcash: {
+          name: 'JazzCash',
+          number: '+923058969050',
+          title: 'Haseena Bibi',
+        },
+        opay: {
+          name: 'Opay',
+          number: '+923058969050',
+          title: 'Sadia',
+        },
+      };
+
+      const COUPONS = {
+        EARLY11: { code: 'EARLY11', type: 'pct', value: 11 },
+        KOB10: { code: 'KOB10', type: 'pct', value: 10 },
+        WELCOME20: { code: 'WELCOME20', type: 'pct', value: 20 },
+        FLAT50: { code: 'FLAT50', type: 'flat', value: 50 },
+      };
+
+      const state = {
+        rawAmount: '1000',
+        freshFromPreset: true,
+        method: 'jazzcash',
+        coupon: null,
+        tid: '',
+        submitted: false,
+      };
+
+      // DOM refs
+      const amountDisplay = document.getElementById('amountDisplay');
+      const pkrSubline = document.getElementById('pkrSubline');
+      const amountError = document.getElementById('amountError');
+      const quickChips = document.getElementById('quickChips');
+      const keypad = document.getElementById('keypad');
+      const couponInput = document.getElementById('couponInput');
+      const couponApplyBtn = document.getElementById('couponApplyBtn');
+      const couponRemoveBtn = document.getElementById('couponRemoveBtn');
+      const couponMsg = document.getElementById('couponMsg');
+      const subtotalLabel = document.getElementById('subtotalLabel');
+      const subtotalVal = document.getElementById('subtotalVal');
+      const discountRow = document.getElementById('discountRow');
+      const discountLabel = document.getElementById('discountLabel');
+      const discountVal = document.getElementById('discountVal');
+      const totalVal = document.getElementById('totalVal');
+      const methodToggle = document.getElementById('methodToggle');
+      const acctNumLabel = document.getElementById('acctNumLabel');
+      const acctNumValue = document.getElementById('acctNumValue');
+      const acctTitleValue = document.getElementById('acctTitleValue');
+      const copyNumBtn = document.getElementById('copyNumBtn');
+      const copyTitleBtn = document.getElementById('copyTitleBtn');
+      const tidInput = document.getElementById('tidInput');
+      const tidHelper = document.getElementById('tidHelper');
+      const submitBtn = document.getElementById('submitBtn');
+      const resetBtn = document.getElementById('resetBtn');
+
+      function getKobans() {
+        const n = parseInt(state.rawAmount || '0', 10);
+        return Number.isFinite(n) && n >= 0 ? n : 0;
+      }
+
+      function validateAmount(kobans) {
+        if (kobans < MIN_KOBANS) {
+          return { valid: false, message: 'Minimum is 500 Kobans.' };
+        }
+        if (kobans % STEP_KOBANS !== 0) {
+          return { valid: false, message: 'Only multiples of 50 are allowed.' };
+        }
+        return { valid: true, message: '' };
+      }
+
+      function formatPkr(value) {
+        if (Number.isInteger(value)) {
+          return 'PKR ' + value.toLocaleString('en-US');
+        }
+        return 'PKR ' + value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+      }
+
+      function computeTotals(kobans) {
+        const basePkr = kobans / RATE;
+        let discountPkr = 0;
+
+        if (state.coupon && basePkr > 0) {
+          if (state.coupon.type === 'pct') {
+            discountPkr = Math.min(basePkr, Math.round((basePkr * state.coupon.value) / 100));
+          } else if (state.coupon.type === 'flat') {
+            discountPkr = Math.min(basePkr, state.coupon.value);
+          }
+        }
+
+        const finalPkr = Math.max(0, basePkr - discountPkr);
+        return { basePkr, discountPkr, finalPkr };
+      }
+
+      function setCouponMessage(text, kind) {
+        if (!text) {
+          couponMsg.textContent = '';
+          couponMsg.className = 'coupon-msg';
+          return;
+        }
+        couponMsg.textContent = text;
+        couponMsg.className = 'coupon-msg visible ' + kind;
+      }
+
+      function render() {
+        const kobans = getKobans();
+        const validation = validateAmount(kobans);
+        const { basePkr, discountPkr, finalPkr } = computeTotals(kobans);
+
+        // Readout
+        amountDisplay.textContent = kobans.toLocaleString('en-US');
+        pkrSubline.innerHTML = 'Equals <strong>' + formatPkr(basePkr) + '</strong>';
+        amountError.textContent = validation.valid ? '' : validation.message;
+
+        // Quick chips active state
+        const chipButtons = quickChips.querySelectorAll('.chip-btn');
+        chipButtons.forEach((btn) => {
+          const val = Number(btn.getAttribute('data-amount'));
+          const isSelected = val === kobans && validation.valid;
+          btn.classList.toggle('btn-red', isSelected);
+          btn.classList.toggle('btn-matte', !isSelected);
+          btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+          btn.disabled = state.submitted;
+        });
+
+        // Keypad disabled after submit
+        keypad.querySelectorAll('button').forEach((btn) => {
+          btn.disabled = state.submitted;
+        });
+
+        // Coupon controls
+        if (state.coupon) {
+          couponInput.value = state.coupon.code;
+          couponInput.disabled = true;
+          couponApplyBtn.style.display = 'none';
+          couponRemoveBtn.style.display = 'inline-flex';
+          couponRemoveBtn.disabled = state.submitted;
+        } else {
+          couponInput.disabled = state.submitted;
+          couponApplyBtn.style.display = 'inline-flex';
+          couponRemoveBtn.style.display = 'none';
+          couponApplyBtn.disabled = state.submitted || couponInput.value.trim().length === 0;
+        }
+
+        // Totals card
+        subtotalLabel.textContent = kobans.toLocaleString('en-US') + ' Kobans';
+        subtotalVal.textContent = formatPkr(basePkr);
+
+        if (state.coupon && discountPkr > 0) {
+          discountRow.classList.add('visible');
+          discountLabel.textContent =
+            state.coupon.type === 'pct'
+              ? 'Coupon (' + state.coupon.code + ' · ' + state.coupon.value + '% off)'
+              : 'Coupon (' + state.coupon.code + ')';
+          discountVal.textContent = '−' + formatPkr(discountPkr);
+          totalVal.innerHTML =
+            '<span class="strike-pkr">' + formatPkr(basePkr) + '</span>' + formatPkr(finalPkr);
+        } else {
+          discountRow.classList.remove('visible');
+          totalVal.textContent = formatPkr(basePkr);
+        }
+
+        // Payment method toggle & account details
+        const account = ACCOUNTS[state.method];
+        methodToggle.querySelectorAll('.method-btn').forEach((btn) => {
+          const isSelected = btn.getAttribute('data-method') === state.method;
+          btn.classList.toggle('btn-red', isSelected);
+          btn.classList.toggle('btn-matte', !isSelected);
+          btn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+          btn.disabled = state.submitted;
+        });
+        acctNumLabel.textContent = account.name + ' Account Number';
+        acctNumValue.textContent = account.number;
+        acctTitleValue.textContent = account.title;
+
+        // TID state
+        const cleanTid = state.tid.trim();
+        const tidValid = cleanTid.length >= 6;
+        tidInput.disabled = state.submitted;
+        if (cleanTid.length === 0) {
+          tidHelper.textContent = 'Enter at least 6 characters from your payment receipt.';
+          tidHelper.className = 'tid-helper';
+        } else if (!tidValid) {
+          const remaining = 6 - cleanTid.length;
+          tidHelper.textContent = remaining + ' more character' + (remaining === 1 ? '' : 's') + ' required.';
+          tidHelper.className = 'tid-helper';
+        } else {
+          tidHelper.textContent = 'Transaction ID looks ready.';
+          tidHelper.className = 'tid-helper ready';
+        }
+
+        // Submit button
+        if (state.submitted) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('is-submitted');
+          submitBtn.textContent = 'Submitted · verifying within 24 hours';
+        } else {
+          submitBtn.classList.remove('is-submitted');
+          const canSubmit = validation.valid && tidValid;
+          submitBtn.disabled = !canSubmit;
+          submitBtn.textContent = validation.valid
+            ? 'Submit payment · ' + formatPkr(finalPkr)
+            : 'Submit payment';
+        }
+      }
+
+      // Quick chip click
+      quickChips.addEventListener('click', (e) => {
+        const btn = e.target.closest('.chip-btn');
+        if (!btn || state.submitted) return;
+        const val = btn.getAttribute('data-amount');
+        if (!val) return;
+        state.rawAmount = String(val);
+        state.freshFromPreset = true;
+        render();
+      });
+
+      // Keypad input
+      keypad.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-key]');
+        if (!btn || state.submitted) return;
+        const key = btn.getAttribute('data-key');
+
+        if (key === 'backspace') {
+          state.freshFromPreset = false;
+          if (state.rawAmount.length <= 1) {
+            state.rawAmount = '0';
+          } else {
+            state.rawAmount = state.rawAmount.slice(0, -1);
+          }
+          render();
+          return;
+        }
+
+        // Digit or "00"
+        let current = state.freshFromPreset ? '' : state.rawAmount;
+        state.freshFromPreset = false;
+        if (current === '0') current = '';
+
+        const candidate = (current + key).replace(/^0+/, '') || '0';
+        if (candidate.length > MAX_DIGITS) return;
+        state.rawAmount = candidate;
+        render();
+      });
+
+      // Coupon input & apply/remove
+      couponInput.addEventListener('input', () => {
+        setCouponMessage('', '');
+        couponApplyBtn.disabled = state.submitted || couponInput.value.trim().length === 0;
+      });
+
+      function applyCoupon() {
+        if (state.submitted || state.coupon) return;
+        const code = couponInput.value.trim().toUpperCase();
+        if (!code) return;
+        const found = COUPONS[code];
+        if (!found) {
+          setCouponMessage('Invalid coupon', 'error');
+          return;
+        }
+        state.coupon = found;
+        const label = found.type === 'pct' ? found.value + '% off' : 'PKR ' + found.value + ' off';
+        setCouponMessage('Coupon ' + found.code + ' applied · ' + label, 'success');
+        render();
+      }
+
+      couponApplyBtn.addEventListener('click', applyCoupon);
+      couponInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          applyCoupon();
+        }
+      });
+
+      couponRemoveBtn.addEventListener('click', () => {
+        if (state.submitted) return;
+        state.coupon = null;
+        couponInput.value = '';
+        setCouponMessage('', '');
+        render();
+        couponInput.focus();
+      });
+
+      // Method toggle
+      methodToggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('.method-btn');
+        if (!btn || state.submitted) return;
+        const nextMethod = btn.getAttribute('data-method');
+        if (nextMethod && ACCOUNTS[nextMethod]) {
+          state.method = nextMethod;
+          render();
+        }
+      });
+
+      // Copy buttons
+      function bindCopy(btn, getter) {
+        let timer = null;
+        btn.addEventListener('click', () => {
+          const text = getter();
+          btn.textContent = 'Copied';
+          btn.classList.add('copied');
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            btn.textContent = 'Copy';
+            btn.classList.remove('copied');
+          }, 1500);
+
+          const fallbackCopy = () => {
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.setAttribute('readonly', '');
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            } catch (_) {
+              // fallback silent
+            }
+          };
+
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(fallbackCopy);
+          } else {
+            fallbackCopy();
+          }
+        });
+      }
+
+      bindCopy(copyNumBtn, () => ACCOUNTS[state.method].number);
+      bindCopy(copyTitleBtn, () => ACCOUNTS[state.method].title);
+
+      // TID input
+      tidInput.addEventListener('input', () => {
+        state.tid = tidInput.value;
+        render();
+      });
+
+      // Submit
+      submitBtn.addEventListener('click', () => {
+        const kobans = getKobans();
+        const valid = validateAmount(kobans).valid;
+        if (!valid || state.tid.trim().length < 6 || state.submitted) return;
+        state.submitted = true;
+        render();
+      });
+
+      // Reset button (top-right close/reset)
+      resetBtn.addEventListener('click', () => {
+        state.rawAmount = '1000';
+        state.freshFromPreset = true;
+        state.method = 'jazzcash';
+        state.coupon = null;
+        state.tid = '';
+        state.submitted = false;
+        couponInput.value = '';
+        tidInput.value = '';
+        setCouponMessage('', '');
+        render();
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>
