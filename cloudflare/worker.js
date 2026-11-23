@@ -5068,6 +5068,445 @@ export default {
         }
       }
 
+      if (
+        (path === '/api/coupons/validate' || path === '/api/pro/coupon/validate') &&
+        method === 'POST'
+      ) {
+        const user = await authenticateRequest(request, env, true);
+        if (!user || !user.uid) {
+          return errorResponse(request, env, 'Authentication required. Please sign in.', 'UNAUTHENTICATED', 401);
+        }
+        if (user.isGuest || String(user.uid).startsWith('guest_')) {
+          return jsonResponse(
+            request,
+            env,
+            {
+              ok: false,
+              valid: false,
+              code: 'GUEST_FORBIDDEN',
+              error: 'Guest accounts cannot apply coupons. Please sign in with a registered account.',
+              message: 'Guest accounts cannot apply coupons. Please sign in with a registered account.',
+            },
+            403
+          );
+        }
+
+        const body = await request.json().catch(() => ({}));
+        const cleanCode = String(body.code || body.couponCode || '').trim().toUpperCase();
+        if (!cleanCode) {
+          return jsonResponse(
+            request,
+            env,
+            {
+              ok: false,
+              valid: false,
+              code: 'EMPTY_COUPON',
+              error: 'Please enter a coupon code.',
+              message: 'Please enter a coupon code.',
+            },
+            400
+          );
+        }
+
+        const projectId = String(env.FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316').trim();
+        const databaseId = String(env.FIREBASE_DATABASE_ID || '(default)').trim();
+        const fsBase = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/${databaseId}/documents`;
+        const authHdr = request.headers.get('Authorization') || '';
+
+        const decodeFsVal = (v) => {
+          if (!v || typeof v !== 'object') return null;
+          if ('stringValue' in v) return v.stringValue;
+          if ('integerValue' in v) return Number(v.integerValue);
+          if ('doubleValue' in v) return Number(v.doubleValue);
+          if ('booleanValue' in v) return Boolean(v.booleanValue);
+          if ('nullValue' in v) return null;
+          if ('timestampValue' in v) return v.timestampValue;
+          if ('arrayValue' in v) return (v.arrayValue?.values || []).map(decodeFsVal);
+          if ('mapValue' in v) {
+            const out = {};
+            for (const [k, val] of Object.entries(v.mapValue?.fields || {})) {
+              out[k] = decodeFsVal(val);
+            }
+            return out;
+          }
+          return null;
+        };
+
+        const decodeFsDoc = (doc) => {
+          if (!doc || !doc.name) return null;
+          const id = String(doc.name).split('/').pop() || '';
+          const data = {};
+          for (const [k, v] of Object.entries(doc.fields || {})) {
+            data[k] = decodeFsVal(v);
+          }
+          return { id, data };
+        };
+
+        const fetchFsDoc = async (docPath) => {
+          try {
+            const resp = await fetch(`${fsBase}/${docPath}`, {
+              headers: { Authorization: authHdr, Accept: 'application/json' },
+            });
+            if (!resp.ok) return null;
+            const decoded = decodeFsDoc(await resp.json());
+            return decoded ? decoded.data : null;
+          } catch {
+            return null;
+          }
+        };
+
+        const listFsCollection = async (col) => {
+          try {
+            const resp = await fetch(`${fsBase}/${col}?pageSize=200`, {
+              headers: { Authorization: authHdr, Accept: 'application/json' },
+            });
+            if (!resp.ok) return [];
+            const json = await resp.json();
+            return (json.documents || []).map(decodeFsDoc).filter(Boolean);
+          } catch {
+            return [];
+          }
+        };
+
+        const [plansDoc, adsDoc, fsPromoCodes, fsCoupons, fsPromoReds, fsCouponReds] =
+          await Promise.all([
+            fetchFsDoc('config/plans'),
+            fetchFsDoc('config/ads'),
+            listFsCollection('promoCodes'),
+            listFsCollection('coupons'),
+            listFsCollection('promoRedemptions'),
+            listFsCollection('couponRedemptions'),
+          ]);
+
+        const annualDiscountPct = Math.min(
+          90,
+          Math.max(0, Number(plansDoc?.annualDiscountPercent ?? 25) || 25)
+        );
+        const kobansPerPkr = Math.max(1, Number(plansDoc?.kobansPerPkr ?? 10) || 10);
+        const proMonthlyPkr = Math.max(1, Number(plansDoc?.pro?.pricePkrMonthly ?? 199) || 199);
+        const proMonthlyKobans = Math.max(
+          1,
+          Number(plansDoc?.pro?.priceKobansMonthly ?? proMonthlyPkr * kobansPerPkr) || 1990
+        );
+        const plusMonthlyPkr = Math.max(1, Number(plansDoc?.plus?.pricePkrMonthly ?? 399) || 399);
+        const plusMonthlyKobans = Math.max(
+          1,
+          Number(plansDoc?.plus?.priceKobansMonthly ?? plusMonthlyPkr * kobansPerPkr) || 3990
+        );
+        const calcAnnual = (m) => Math.round(m * 12 * (1 - annualDiscountPct / 100));
+
+        const catalog = {
+          pro_monthly: {
+            id: 'pro_monthly',
+            tier: 'pro',
+            name: 'Boardly Pro, Monthly Pass',
+            duration_days: 30,
+            price_pkr: proMonthlyPkr,
+            price_kobans: proMonthlyKobans,
+          },
+          pro_annual: {
+            id: 'pro_annual',
+            tier: 'pro',
+            name: 'Boardly Pro, Annual Pass',
+            duration_days: 365,
+            price_pkr: calcAnnual(proMonthlyPkr),
+            price_kobans: calcAnnual(proMonthlyKobans),
+          },
+          plus_monthly: {
+            id: 'plus_monthly',
+            tier: 'plus',
+            name: 'Boardly Plus, Monthly Pass',
+            duration_days: 30,
+            price_pkr: plusMonthlyPkr,
+            price_kobans: plusMonthlyKobans,
+          },
+          plus_annual: {
+            id: 'plus_annual',
+            tier: 'plus',
+            name: 'Boardly Plus, Annual Pass',
+            duration_days: 365,
+            price_pkr: calcAnnual(plusMonthlyPkr),
+            price_kobans: calcAnnual(plusMonthlyKobans),
+          },
+        };
+
+        const rawPlanId = String(body.planId || '').trim().toLowerCase();
+        const rawPlan = String(body.plan || '').trim().toLowerCase();
+        let resolvedPlanId = '';
+        for (const cand of [rawPlanId, rawPlan]) {
+          if (catalog[cand]) {
+            resolvedPlanId = cand;
+            break;
+          }
+        }
+        if (!resolvedPlanId) {
+          const tierRaw = String(body.tier || body.planTier || rawPlan || '').trim().toLowerCase();
+          let isPlus = tierRaw === 'plus' || rawPlanId.includes('plus') || rawPlan.includes('plus');
+          const cycle = String(body.billingCycle || body.cycle || rawPlan || rawPlanId || '')
+            .trim()
+            .toLowerCase();
+          const isAnnual = cycle === 'annual' || cycle === 'yearly';
+          const numericAmount = Number(body.amount);
+          if (!isPlus && Number.isFinite(numericAmount) && numericAmount > 0) {
+            const plusCand = catalog[isAnnual ? 'plus_annual' : 'plus_monthly'];
+            if (numericAmount === plusCand.price_pkr) {
+              isPlus = true;
+            }
+          }
+          resolvedPlanId = isAnnual
+            ? isPlus
+              ? 'plus_annual'
+              : 'pro_annual'
+            : isPlus
+              ? 'plus_monthly'
+              : 'pro_monthly';
+        }
+        const targetPlan = catalog[resolvedPlanId] || catalog.pro_monthly;
+
+        const defaultCoupons = [
+          {
+            id: 'promo_early21_default',
+            code: 'EARLY21',
+            label: 'Early offer: 20% off Pro and Plus',
+            discount_type: 'percent',
+            percent_off: 20,
+            appliesToPlans: ['pro', 'plus'],
+            duration_months: 1,
+            max_redemptions: 100000,
+            redemption_count: 0,
+            is_active: true,
+            expires_at: null,
+          },
+          {
+            id: 'promo_boardly50_half',
+            code: 'BOARDLY50',
+            label: 'Boardly 50% Student Discount',
+            discount_type: 'percent',
+            percent_off: 50,
+            duration_months: 1,
+            max_redemptions: 500,
+            redemption_count: 0,
+            is_active: true,
+            expires_at: null,
+          },
+          {
+            id: 'promo_boardly20_discount',
+            code: 'BOARDLY20',
+            label: 'Boardly 20% Scholarship Coupon',
+            discount_type: 'percent',
+            percent_off: 20,
+            duration_months: 1,
+            max_redemptions: 1000,
+            redemption_count: 0,
+            is_active: true,
+            expires_at: null,
+          },
+        ];
+
+        const normalizeCoupon = (raw) => {
+          const code = String(raw.code || raw.promo_code || raw.id || '').trim().toUpperCase();
+          const rawType = String(raw.discountType || raw.discount_type || raw.type || '').toLowerCase();
+          let discountType = 'percent';
+          if (rawType === '1_year_free_pro' || rawType === 'free_pro') discountType = rawType;
+          else if (rawType === 'fixed_pkr') discountType = 'fixed_pkr';
+          else if (rawType === 'fixed_kobans') discountType = 'fixed_kobans';
+          const percentOff =
+            discountType === '1_year_free_pro' || discountType === 'free_pro'
+              ? 100
+              : Math.min(100, Math.max(0, Number(raw.percentOff ?? raw.percent_off ?? raw.discountPercent ?? 0) || 0));
+          const amountOffPkr = Math.max(0, Number(raw.amountOffPkr ?? raw.amount_off_pkr ?? 0) || 0);
+          const amountOffKobans = Math.max(0, Number(raw.amountOffKobans ?? raw.amount_off_kobans ?? 0) || 0);
+          const maxRedemptions = Math.max(1, Number(raw.maxRedemptions ?? raw.max_redemptions ?? raw.maxUses ?? 1) || 1);
+          const redemptionCount = Math.max(
+            0,
+            Number(raw.redemptionCount ?? raw.redemption_count ?? raw.redeemedCount ?? raw.usedCount ?? 0) || 0
+          );
+          const isActive =
+            raw.active !== undefined ? Boolean(raw.active) : raw.isActive !== undefined ? Boolean(raw.isActive) : raw.is_active !== false;
+          const durationMonths = Math.max(0, Number(raw.durationMonths ?? raw.duration_months ?? (discountType === '1_year_free_pro' ? 12 : 0)) || 0);
+          const durationDays = Math.max(0, Number(raw.durationDays ?? raw.duration_days ?? (durationMonths === 12 ? 365 : durationMonths * 30)) || 0);
+          return {
+            id: String(raw.id || `promo_${code.toLowerCase()}`),
+            code,
+            label: String(raw.label || code),
+            discountType,
+            percentOff,
+            amountOffPkr,
+            amountOffKobans,
+            appliesTo: String(raw.appliesTo || raw.applies_to || 'all').toLowerCase(),
+            appliesToPlans: Array.isArray(raw.appliesToPlans)
+              ? raw.appliesToPlans.map((x) => String(x).toLowerCase()).filter((x) => x === 'pro' || x === 'plus')
+              : undefined,
+            durationMonths,
+            durationDays,
+            maxRedemptions,
+            redemptionCount,
+            isActive,
+            expiresAt: raw.expires_at || raw.expiresAt || null,
+          };
+        };
+
+        const couponMap = new Map();
+        for (const raw of defaultCoupons) {
+          const n = normalizeCoupon(raw);
+          if (n.code) couponMap.set(n.code, n);
+        }
+        for (const item of [...fsPromoCodes, ...fsCoupons]) {
+          const n = normalizeCoupon({ id: item.id, ...item.data });
+          if (n.code) couponMap.set(n.code, n);
+        }
+        if (adsDoc?.promoCode?.code) {
+          const p = adsDoc.promoCode;
+          const pCode = String(p.code).trim().toUpperCase();
+          const existing = couponMap.get(pCode);
+          const livePromo = normalizeCoupon({
+            id: 'ads_promo_active',
+            code: pCode,
+            label: `${Number(p.percentOff || 20)}% Off`,
+            discount_type: 'percent',
+            percent_off: Number(p.percentOff || 20),
+            appliesToPlans: Array.isArray(p.plans) ? p.plans : ['pro', 'plus'],
+            max_redemptions: 100000,
+            redemption_count: existing ? existing.redemptionCount : 0,
+            is_active: p.active !== false,
+            expires_at: p.endDate ? `${p.endDate}T23:59:59.999Z` : null,
+          });
+          couponMap.set(livePromo.code, livePromo);
+        }
+
+        const coupon = couponMap.get(cleanCode);
+        const failCoupon = (code, msg) =>
+          jsonResponse(
+            request,
+            env,
+            { ok: false, valid: false, code, error: msg, message: msg },
+            400
+          );
+
+        if (!coupon) return failCoupon('INVALID_COUPON', 'Invalid coupon');
+        if (!coupon.isActive) return failCoupon('COUPON_INACTIVE', 'Coupon is no longer active');
+        if (coupon.expiresAt) {
+          const expMs = new Date(coupon.expiresAt).getTime();
+          if (!Number.isNaN(expMs) && expMs <= Date.now()) {
+            return failCoupon('COUPON_EXPIRED', 'Coupon expired');
+          }
+        }
+        if (coupon.redemptionCount >= coupon.maxRedemptions) {
+          return failCoupon('COUPON_MAX_REDEMPTIONS', 'Coupon has reached its maximum uses');
+        }
+        const alreadyUsed = [...fsPromoReds, ...fsCouponReds].some((r) => {
+          const rCode = String(r.data?.promo_code || r.data?.couponCode || r.data?.code || '')
+            .trim()
+            .toUpperCase();
+          const rUid = String(r.data?.student_id || r.data?.userId || r.data?.uid || '').trim();
+          return rCode === cleanCode && rUid === user.uid;
+        });
+        if (alreadyUsed) {
+          return failCoupon('ALREADY_REDEEMED', 'You have already used this coupon');
+        }
+        if (coupon.appliesTo && coupon.appliesTo !== 'all' && coupon.appliesTo !== targetPlan.id) {
+          return failCoupon(
+            'COUPON_PLAN_MISMATCH',
+            `Coupon code "${cleanCode}" applies only to ${coupon.appliesTo.replace('_', ' ')}.`
+          );
+        }
+        if (
+          Array.isArray(coupon.appliesToPlans) &&
+          coupon.appliesToPlans.length > 0 &&
+          !coupon.appliesToPlans.includes(targetPlan.tier)
+        ) {
+          const allowedLabels = coupon.appliesToPlans
+            .map((t) => (t === 'plus' ? 'Boardly Plus' : 'Boardly Pro'))
+            .join(' and ');
+          return failCoupon(
+            'COUPON_PLAN_MISMATCH',
+            `Coupon code "${cleanCode}" applies only to ${allowedLabels}.`
+          );
+        }
+
+        const originalPkr = targetPlan.price_pkr;
+        const originalKobans = targetPlan.price_kobans;
+        let discountPkr = 0;
+        let discountKobans = 0;
+        if (
+          coupon.discountType === '1_year_free_pro' ||
+          coupon.discountType === 'free_pro' ||
+          coupon.percentOff >= 100
+        ) {
+          discountPkr = originalPkr;
+          discountKobans = originalKobans;
+        } else if (coupon.discountType === 'fixed_pkr') {
+          discountPkr = Math.min(originalPkr, coupon.amountOffPkr);
+          discountKobans = Math.min(originalKobans, coupon.amountOffPkr * kobansPerPkr);
+        } else if (coupon.discountType === 'fixed_kobans') {
+          discountKobans = Math.min(originalKobans, coupon.amountOffKobans);
+          discountPkr = Math.min(originalPkr, Math.floor(coupon.amountOffKobans / kobansPerPkr));
+        } else {
+          discountPkr = Math.min(originalPkr, Math.round((originalPkr * coupon.percentOff) / 100));
+          discountKobans = Math.min(
+            originalKobans,
+            Math.round((originalKobans * coupon.percentOff) / 100)
+          );
+        }
+        const finalPkr = Math.max(0, originalPkr - discountPkr);
+        const finalKobans = Math.max(0, originalKobans - discountKobans);
+        const isFreeGrant = finalPkr === 0 || finalKobans === 0 || coupon.percentOff >= 100;
+        const effectiveDurationDays =
+          coupon.discountType === '1_year_free_pro'
+            ? 365
+            : coupon.durationDays > 0 && isFreeGrant
+              ? coupon.durationDays
+              : targetPlan.duration_days;
+        const discountValue =
+          coupon.discountType === 'fixed_pkr'
+            ? coupon.amountOffPkr
+            : coupon.discountType === 'fixed_kobans'
+              ? coupon.amountOffKobans
+              : coupon.percentOff;
+
+        const pricing = {
+          planId: targetPlan.id,
+          planTier: targetPlan.tier,
+          planName: targetPlan.name,
+          originalPkr,
+          discountPkr,
+          finalPkr,
+          originalKobans,
+          discountKobans,
+          finalKobans,
+          isFreeGrant,
+          effectiveDurationDays,
+        };
+
+        return jsonResponse(request, env, {
+          ok: true,
+          valid: true,
+          discountType: coupon.discountType,
+          discountValue,
+          finalPrice: finalPkr,
+          finalKobans,
+          message: 'Coupon applied',
+          ...pricing,
+          coupon: {
+            id: coupon.id,
+            code: coupon.code,
+            label: coupon.label,
+            discountType: coupon.discountType,
+            discountValue,
+            percentOff: coupon.percentOff,
+            amountOffPkr: coupon.amountOffPkr,
+            amountOffKobans: coupon.amountOffKobans,
+            durationMonths: coupon.durationMonths,
+            durationDays: coupon.durationDays,
+            maxRedemptions: coupon.maxRedemptions,
+            redemptionCount: coupon.redemptionCount,
+            finalPrice: finalPkr,
+            message: 'Coupon applied',
+            ...pricing,
+          },
+        });
+      }
+
       return errorResponse(request, env, `Route not found: ${method} ${path}`, 'NOT_FOUND', 404);
     } catch (err) {
       const status = err.status || 500;

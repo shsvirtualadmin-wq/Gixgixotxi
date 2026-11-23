@@ -291,11 +291,14 @@ export type ValidatedProCoupon = ValidatedCouponInfo;
 export async function validateProCoupon(params: {
   code: string;
   planId: ProPlanId;
+  amount?: number;
 }): Promise<ValidatedCouponInfo> {
   const token = await auth.currentUser?.getIdToken().catch(() => null);
   if (!token) {
     throw new Error('Please sign in to apply a coupon code.');
   }
+  const cleanCode = params.code.trim().toUpperCase();
+  const billing = getBillingFromPlanId(params.planId);
   const resp = await fetch('/api/coupons/validate', {
     method: 'POST',
     headers: {
@@ -303,13 +306,24 @@ export async function validateProCoupon(params: {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      code: params.code.trim(),
+      code: cleanCode,
+      plan: billing,
       planId: params.planId,
+      ...(typeof params.amount === 'number' && Number.isFinite(params.amount)
+        ? { amount: params.amount }
+        : {}),
     }),
   });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || !data?.ok || !data?.coupon) {
-    throw new Error(data?.error || 'Invalid or expired coupon code.');
+  if (!resp.ok || data?.valid === false || data?.ok === false) {
+    const rawMsg = String(data?.message || data?.error || '').trim();
+    const isRawRouteErr = /route not found/i.test(rawMsg);
+    throw new Error(
+      !rawMsg || isRawRouteErr ? 'Could not validate coupon right now. Please try again.' : rawMsg
+    );
+  }
+  if (!data?.coupon) {
+    throw new Error(data?.message || data?.error || 'Invalid coupon');
   }
   return data.coupon as ValidatedCouponInfo;
 }
@@ -794,6 +808,10 @@ export async function submitProPaymentRequest(params: {
       ? params.couponCode.trim().toUpperCase()
       : null;
     let wroteOnServer = false;
+
+    if (appliedCouponCode && !token) {
+      throw new Error('Please sign in to apply a coupon and submit your payment.');
+    }
 
     if (token) {
       const resp = await fetch('/api/pro/submit-payment', {

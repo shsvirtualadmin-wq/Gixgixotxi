@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -126,10 +126,20 @@ export function ProCheckoutSheet({
   balanceLoadedRef.current = balanceLoaded;
   const plansConfigRef = useRef(plansConfig);
   plansConfigRef.current = plansConfig;
+  const refreshPlanStatusRef = useRef(refreshPlanStatus);
+  refreshPlanStatusRef.current = refreshPlanStatus;
+  const submittingRef = useRef(submitting);
+  submittingRef.current = submitting;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const handleSheetClose = useCallback(() => {
+    if (!submittingRef.current) onCloseRef.current();
+  }, []);
 
   useEffect(() => {
     if (open) {
-      refreshPlanStatus().catch(() => {});
+      refreshPlanStatusRef.current().catch(() => {});
       const resolvedPlan = getProPlanById(initialPlanId, plansConfigRef.current);
       setSelectedPlanId(resolvedPlan.id);
       const currentBal = kobanBalanceRef.current;
@@ -152,7 +162,7 @@ export function ProCheckoutSheet({
         `plan_chk_${resolvedPlan.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
       );
     }
-  }, [open, initialPlanId, refreshPlanStatus]);
+  }, [open, initialPlanId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -175,9 +185,11 @@ export function ProCheckoutSheet({
     if (appliedCoupon?.code) {
       setCouponLoading(true);
       try {
+        const nextPlan = getProPlanById(nextPlanId, plansConfigRef.current);
         const revalidated = await validateProCoupon({
           code: appliedCoupon.code,
           planId: nextPlanId,
+          amount: nextPlan.price_pkr,
         });
         setAppliedCoupon(revalidated);
         setCouponError(null);
@@ -200,9 +212,11 @@ export function ProCheckoutSheet({
     setCouponError(null);
     setErrorMsg(null);
     try {
+      const currentPlan = getProPlanById(selectedPlanId, plansConfigRef.current);
       const validated = await validateProCoupon({
         code: clean,
         planId: selectedPlanId,
+        amount: currentPlan.price_pkr,
       });
       setAppliedCoupon(validated);
       setCouponInput(validated.code);
@@ -495,9 +509,7 @@ export function ProCheckoutSheet({
   return (
     <SettingsSheet
       open={open}
-      onClose={() => {
-        if (!submitting) onClose();
-      }}
+      onClose={handleSheetClose}
       title={plan.name}
       showCloseButton
       footer={footerNode}
@@ -740,7 +752,12 @@ export function ProCheckoutSheet({
                   Coupon ({appliedCoupon.code})
                 </span>
                 <span className="text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  −{appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0}%
+                  {appliedCoupon.discountType === 'fixed_pkr' && appliedCoupon.amountOffPkr > 0
+                    ? `−PKR ${appliedCoupon.amountOffPkr.toLocaleString()}`
+                    : appliedCoupon.discountType === 'fixed_kobans' &&
+                        appliedCoupon.amountOffKobans > 0
+                      ? `−${appliedCoupon.amountOffKobans.toLocaleString()} Kobans`
+                      : `−${appliedCoupon.percentOff ?? appliedCoupon.discountPercent ?? 0}%`}
                 </span>
               </div>
             )}
@@ -781,6 +798,10 @@ export function ProCheckoutSheet({
               <input
                 id="pro-coupon-input"
                 type="text"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="done"
                 value={couponInput}
                 disabled={Boolean(appliedCoupon) || couponLoading || submitting}
                 onChange={(e) => {
@@ -825,6 +846,15 @@ export function ProCheckoutSheet({
                 </span>
               )}
             </div>
+            {appliedCoupon && !couponError && (
+              <p
+                role="status"
+                className="flex items-center gap-1.5 px-2 text-[12px] font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                <Check className="h-3.5 w-3.5 shrink-0" />
+                <span>Coupon applied</span>
+              </p>
+            )}
             {couponError && (
               <p className="px-2 text-[12px]" style={{ color: 'var(--danger)' }}>
                 {couponError}

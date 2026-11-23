@@ -188,7 +188,22 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   }
 
   // 3. Route to cloudflare/worker.ts for routes owned by worker.ts, otherwise cloudflare/worker.js
+  const isDedicatedEconomyOrProRoute =
+    path === '/api/admin/coupons' ||
+    path.startsWith('/api/admin/coupons/') ||
+    path === '/api/coupons' ||
+    path.startsWith('/api/coupons/') ||
+    path === '/api/pro/coupon/validate' ||
+    path === '/api/pro/coupon/redeem' ||
+    path === '/api/pro/purchase-kobans' ||
+    path === '/api/pro/submit-payment' ||
+    path === '/api/pro/status' ||
+    path === '/api/pro/purchase-guard' ||
+    path === '/api/pro/purchase' ||
+    path === '/api/pro/activate';
+
   const isTsWorkerRoute =
+    isDedicatedEconomyOrProRoute ||
     path.startsWith('/api/universities') ||
     path.startsWith('/api/media/') ||
     path.startsWith('/api/r2/') ||
@@ -199,14 +214,11 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     path.startsWith('/api/announcements') ||
     path.startsWith('/api/follows') ||
     path.startsWith('/api/questions') ||
-    path.startsWith('/api/posts') ||
-    path === '/api/admin/coupons' ||
-    path.startsWith('/api/admin/coupons/') ||
-    path.startsWith('/api/coupons');
+    path.startsWith('/api/posts');
 
   if (isTsWorkerRoute) {
     const tsResp = await tsWorker.fetch(request.clone() as any, env, context as any);
-    if (tsResp.status !== 404) {
+    if (isDedicatedEconomyOrProRoute || tsResp.status !== 404) {
       return tsResp;
     }
   }

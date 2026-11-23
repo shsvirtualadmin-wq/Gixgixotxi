@@ -26,6 +26,8 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const dragStartYRef = useRef<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
 
@@ -48,6 +50,9 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     const focusTimer = window.setTimeout(() => {
       const sheetEl = sheetRef.current;
       if (!sheetEl) return;
+      if (document.activeElement && sheetEl.contains(document.activeElement)) {
+        return;
+      }
       sheetEl.focus({ preventScroll: true });
       resetScroll();
     }, 20);
@@ -55,7 +60,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && sheetRef.current) {
@@ -85,7 +90,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
       setDragOffsetY(0);
       previousFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 

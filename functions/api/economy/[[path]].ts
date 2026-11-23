@@ -895,7 +895,7 @@ async function validateCouponForUser(
     return {
       valid: false,
       code: 'INVALID_COUPON',
-      error: `Coupon code "${cleanCode}" is invalid or does not exist.`,
+      error: 'Invalid coupon',
     };
   }
 
@@ -903,7 +903,7 @@ async function validateCouponForUser(
     return {
       valid: false,
       code: 'COUPON_INACTIVE',
-      error: `Coupon code "${cleanCode}" is no longer active.`,
+      error: 'Coupon is no longer active',
     };
   }
 
@@ -913,7 +913,7 @@ async function validateCouponForUser(
       return {
         valid: false,
         code: 'COUPON_EXPIRED',
-        error: `Coupon code "${cleanCode}" has expired.`,
+        error: 'Coupon expired',
       };
     }
   }
@@ -922,7 +922,7 @@ async function validateCouponForUser(
     return {
       valid: false,
       code: 'COUPON_MAX_REDEMPTIONS',
-      error: `Coupon code "${cleanCode}" has reached its maximum redemption limit (${coupon.maxRedemptions}/${coupon.maxRedemptions}).`,
+      error: 'Coupon has reached its maximum uses',
     };
   }
 
@@ -937,7 +937,7 @@ async function validateCouponForUser(
     return {
       valid: false,
       code: 'ALREADY_REDEEMED',
-      error: `You have already redeemed coupon code "${cleanCode}" on your account.`,
+      error: 'You have already used this coupon',
     };
   }
 
@@ -1062,23 +1062,56 @@ async function recordCouponRedemptionAtomically(
   return { redemptionId, updatedCoupon };
 }
 
-function resolvePlanIdFromBody(body: Record<string, any>, fallback = 'pro_monthly'): string {
+function resolvePlanIdFromBody(
+  body: Record<string, any>,
+  fallback = 'pro_monthly',
+  plansConfig?: PlansConfigDoc
+): string {
   const rawPlanId = String(body.planId || '').trim().toLowerCase();
-  if (
-    rawPlanId === 'pro_monthly' ||
-    rawPlanId === 'pro_annual' ||
-    rawPlanId === 'plus_monthly' ||
-    rawPlanId === 'plus_annual'
-  ) {
-    return rawPlanId;
+  const rawPlan = String(body.plan || '').trim().toLowerCase();
+  const directCandidates = [rawPlanId, rawPlan];
+  for (const candidate of directCandidates) {
+    if (
+      candidate === 'pro_monthly' ||
+      candidate === 'pro_annual' ||
+      candidate === 'plus_monthly' ||
+      candidate === 'plus_annual'
+    ) {
+      return candidate;
+    }
   }
-  const tierRaw = String(body.tier || body.planTier || body.plan || '').trim().toLowerCase();
-  const isPlus = tierRaw === 'plus' || rawPlanId.includes('plus');
-  const cycle = String(body.billingCycle || body.cycle || rawPlanId || '').trim().toLowerCase();
-  if (cycle === 'annual' || cycle === 'yearly' || cycle === 'pro_annual' || cycle === 'plus_annual') {
+  const tierRaw = String(body.tier || body.planTier || rawPlan || '').trim().toLowerCase();
+  let isPlus = tierRaw === 'plus' || rawPlanId.includes('plus') || rawPlan.includes('plus');
+  const cycle = String(
+    body.billingCycle || body.cycle || rawPlan || rawPlanId || ''
+  )
+    .trim()
+    .toLowerCase();
+  const isAnnual =
+    cycle === 'annual' ||
+    cycle === 'yearly' ||
+    cycle === 'pro_annual' ||
+    cycle === 'plus_annual';
+  const isMonthly =
+    cycle === 'monthly' ||
+    cycle === 'pro_monthly' ||
+    cycle === 'plus_monthly';
+
+  // If caller sent { plan: 'monthly' | 'annual', amount } without explicit tier/planId,
+  // infer tier by matching against authoritative server catalog prices (never trust amount for pricing).
+  const numericAmount = Number(body.amount);
+  if (!isPlus && Number.isFinite(numericAmount) && numericAmount > 0) {
+    const cfg = plansConfig || DEFAULT_PLANS_CONFIG;
+    const plusPlan = getPlanById(isAnnual ? 'plus_annual' : 'plus_monthly', cfg);
+    if (numericAmount === plusPlan.price_pkr) {
+      isPlus = true;
+    }
+  }
+
+  if (isAnnual) {
     return isPlus ? 'plus_annual' : 'pro_annual';
   }
-  if (cycle === 'monthly' || cycle === 'pro_monthly' || cycle === 'plus_monthly') {
+  if (isMonthly) {
     return isPlus ? 'plus_monthly' : 'pro_monthly';
   }
   if (isPlus) return 'plus_monthly';
@@ -1194,8 +1227,9 @@ export async function handleEconomyApiRequest(context: {
     request.method === 'POST'
   ) {
     const body = (await request.json().catch(() => ({}))) as Record<string, any>;
-    const code = String(body.code || body.couponCode || '').trim();
-    const planId = resolvePlanIdFromBody(body, 'pro_monthly');
+    const code = String(body.code || body.couponCode || '').trim().toUpperCase();
+    const plansConfigForPlan = await loadPlansConfigServer(fsHelper);
+    const planId = resolvePlanIdFromBody(body, 'pro_monthly', plansConfigForPlan);
 
     const validation = await validateCouponForUser(fsHelper, code, verifiedUser.uid, planId);
     if (!validation.valid) {
@@ -1205,20 +1239,34 @@ export async function handleEconomyApiRequest(context: {
           valid: false,
           code: validation.code,
           error: validation.error,
+          message: validation.error,
         },
-        validation.code === 'INVALID_COUPON' ? 404 : 400
+        400
       );
     }
+
+    const discountValue =
+      validation.coupon.discountType === 'fixed_pkr'
+        ? validation.coupon.amountOffPkr
+        : validation.coupon.discountType === 'fixed_kobans'
+          ? validation.coupon.amountOffKobans
+          : validation.coupon.percentOff;
 
     return jsonResponse({
       ok: true,
       valid: true,
+      discountType: validation.coupon.discountType,
+      discountValue,
+      finalPrice: validation.pricing.finalPkr,
+      finalKobans: validation.pricing.finalKobans,
+      message: 'Coupon applied',
       ...validation.pricing,
       coupon: {
         id: validation.coupon.id,
         code: validation.coupon.code,
         label: validation.coupon.label,
         discountType: validation.coupon.discountType,
+        discountValue,
         percentOff: validation.coupon.percentOff,
         amountOffPkr: validation.coupon.amountOffPkr,
         amountOffKobans: validation.coupon.amountOffKobans,
@@ -1226,6 +1274,8 @@ export async function handleEconomyApiRequest(context: {
         durationDays: validation.coupon.durationDays,
         maxRedemptions: validation.coupon.maxRedemptions,
         redemptionCount: validation.coupon.redemptionCount,
+        finalPrice: validation.pricing.finalPkr,
+        message: 'Coupon applied',
         ...validation.pricing,
       },
     });
@@ -1239,8 +1289,9 @@ export async function handleEconomyApiRequest(context: {
     request.method === 'POST'
   ) {
     const body = (await request.json().catch(() => ({}))) as Record<string, any>;
-    const code = String(body.code || body.couponCode || '').trim();
-    const planId = resolvePlanIdFromBody(body, 'pro_annual');
+    const code = String(body.code || body.couponCode || '').trim().toUpperCase();
+    const plansConfigForPlan = await loadPlansConfigServer(fsHelper);
+    const planId = resolvePlanIdFromBody(body, 'pro_annual', plansConfigForPlan);
 
     const validation = await validateCouponForUser(fsHelper, code, verifiedUser.uid, planId);
     if (!validation.valid) {
@@ -1250,8 +1301,9 @@ export async function handleEconomyApiRequest(context: {
           valid: false,
           code: validation.code,
           error: validation.error,
+          message: validation.error,
         },
-        validation.code === 'INVALID_COUPON' ? 404 : 400
+        400
       );
     }
 
