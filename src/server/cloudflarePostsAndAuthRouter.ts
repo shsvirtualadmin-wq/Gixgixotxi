@@ -6355,7 +6355,7 @@ ${postSitemaps}
       const cleanBase64 = dataBase64.includes(',')
         ? dataBase64.slice(dataBase64.indexOf(',') + 1)
         : dataBase64;
-      const buffer = Buffer.from(cleanBase64, 'base64');
+      let buffer: Buffer = Buffer.from(cleanBase64, 'base64');
 
       if (buffer.length === 0) {
         return res.status(400).json({ success: false, error: 'Uploaded logo file is empty (0 bytes).' });
@@ -6367,12 +6367,32 @@ ${postSitemaps}
         });
       }
 
+      let finalMimeType = mimeType;
+      if (mimeType !== 'image/svg+xml') {
+        try {
+          const sharpMod = await import('sharp');
+          const sharpFn = sharpMod.default || (sharpMod as any);
+          if (typeof sharpFn === 'function') {
+            const optimized = await sharpFn(buffer)
+              .resize(256, 256, { fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 88 })
+              .toBuffer();
+            if (optimized && optimized.length > 0) {
+              buffer = optimized;
+              finalMimeType = 'image/webp';
+            }
+          }
+        } catch {
+          // Keep original buffer if sharp is unavailable
+        }
+      }
+
       const ext =
-        mimeType === 'image/svg+xml'
+        finalMimeType === 'image/svg+xml'
           ? 'svg'
-          : mimeType === 'image/png'
+          : finalMimeType === 'image/png'
           ? 'png'
-          : mimeType === 'image/jpeg'
+          : finalMimeType === 'image/jpeg'
           ? 'jpg'
           : 'webp';
       const safeUniKey = uni.id.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -6408,7 +6428,7 @@ ${postSitemaps}
               Bucket: r2BucketName,
               Key: r2Key,
               Body: buffer,
-              ContentType: mimeType,
+              ContentType: finalMimeType,
               CacheControl: 'public, max-age=31536000, immutable',
             })
           );

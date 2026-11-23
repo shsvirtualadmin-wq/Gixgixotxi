@@ -419,18 +419,9 @@ export function resolveEffectiveCrewPlan(
 
   const sharingAllowed = crew.isProShared !== false;
   if (sharingAllowed) {
-    if (crew.effectivePlan) {
-      promote(normalizePlanTier(crew.effectivePlan));
-    }
-    if (crew.hasPlusMember === true) {
-      promote('plus');
-    }
-    if (crew.hasProMember === true) {
-      promote('pro');
-    }
-
-    if (Array.isArray(crew.members)) {
-      for (const m of crew.members) {
+    const hasMemberList = Array.isArray(crew.members) && crew.members.length > 0;
+    if (hasMemberList) {
+      for (const m of crew.members!) {
         if (!m) continue;
         if (options?.excludeSelfUid && m.uid && m.uid === options.excludeSelfUid) {
           if (options.selfPersonalPlan) {
@@ -440,6 +431,17 @@ export function resolveEffectiveCrewPlan(
         }
         const memberPlan = getPlan(m, nowMs);
         promote(memberPlan);
+      }
+    } else {
+      // Legacy summary-only crew docs that omit `members`: fall back to cached flags
+      if (crew.effectivePlan) {
+        promote(normalizePlanTier(crew.effectivePlan));
+      }
+      if (crew.hasPlusMember === true) {
+        promote('plus');
+      }
+      if (crew.hasProMember === true) {
+        promote('pro');
       }
     }
   }

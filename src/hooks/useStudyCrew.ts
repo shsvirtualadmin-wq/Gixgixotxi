@@ -83,6 +83,17 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       (m as any).planTier === 'plus' ||
       Boolean((m as any).isPlus) ||
       (typeof rawBadge === 'string' && rawBadge.startsWith('plus:'));
+    const isProMember =
+      isPlusMember ||
+      (m as any).plan === 'pro' ||
+      (m as any).planTier === 'pro' ||
+      Boolean((m as any).isPro) ||
+      (typeof rawBadge === 'string' && rawBadge.trim().length > 0);
+    const memberTier: 'free' | 'pro' | 'plus' = isPlusMember
+      ? 'plus'
+      : isProMember
+      ? 'pro'
+      : 'free';
     return {
       uid: m.userUid,
       displayName: m.userName || 'Student',
@@ -93,10 +104,10 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       activeToday: true,
       questionsSolved: 0,
       streak: 1,
-      isPro: true,
+      isPro: isProMember,
       isPlus: isPlusMember,
-      plan: isPlusMember ? 'plus' : 'pro',
-      planTier: isPlusMember ? 'plus' : 'pro',
+      plan: memberTier,
+      planTier: memberTier,
       proBadge: rawBadge,
     };
   });
@@ -106,6 +117,16 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     const crewIsPlus =
       (crew as any).effectivePlan === 'plus' ||
       (typeof rawCrewBadge === 'string' && rawCrewBadge.startsWith('plus:'));
+    const crewIsPro =
+      crewIsPlus ||
+      (crew as any).effectivePlan === 'pro' ||
+      Boolean((crew as any).hasProMember) ||
+      (typeof rawCrewBadge === 'string' && rawCrewBadge.trim().length > 0);
+    const captainTier: 'free' | 'pro' | 'plus' = crewIsPlus
+      ? 'plus'
+      : crewIsPro
+      ? 'pro'
+      : 'free';
     mappedMembers.push({
       uid: crew.captainUid,
       displayName: crew.captainName || 'Captain',
@@ -116,10 +137,10 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       activeToday: true,
       questionsSolved: 0,
       streak: 1,
-      isPro: true,
+      isPro: crewIsPro,
       isPlus: crewIsPlus,
-      plan: crewIsPlus ? 'plus' : 'pro',
-      planTier: crewIsPlus ? 'plus' : 'pro',
+      plan: captainTier,
+      planTier: captainTier,
       proBadge: rawCrewBadge,
     });
   }
@@ -128,6 +149,18 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     mappedMembers.some((m) => m.isPlus || m.plan === 'plus') ||
     (crew as any).effectivePlan === 'plus' ||
     Boolean((crew as any).hasPlusMember);
+
+  const hasProMember =
+    hasPlusMember ||
+    mappedMembers.some((m) => m.isPro || m.plan === 'pro') ||
+    (crew as any).effectivePlan === 'pro' ||
+    Boolean((crew as any).hasProMember);
+
+  const effectivePlan: 'free' | 'pro' | 'plus' = hasPlusMember
+    ? 'plus'
+    : hasProMember
+    ? 'pro'
+    : 'free';
 
   return {
     id: crew.id,
@@ -143,11 +176,11 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     maxMembers: MAX_CREW_MEMBERS,
     isLocked: crew.status === 'suspended',
     streak: 1,
-    hasProMember: true,
+    hasProMember,
     hasPlusMember,
-    effectivePlan: hasPlusMember ? 'plus' : 'pro',
+    effectivePlan,
     weakChapters: [],
-    tier: 'paid',
+    tier: hasProMember ? 'paid' : 'free',
     createdAt: crew.createdAt,
   };
 }

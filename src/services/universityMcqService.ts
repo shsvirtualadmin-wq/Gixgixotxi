@@ -17,6 +17,9 @@ import {
   markUniversityLogoCached,
   normalizeUniversityLogoUrl,
   clearFailedUniversityLogoCache,
+  rememberUniversityLogoUrls,
+  getRememberedUniversityLogoUrl,
+  preloadUniversityLogosInBatches,
 } from '../components/ui/UniversityLogoBox';
 
 export interface ParsedImportMcqRow {
@@ -123,7 +126,13 @@ function loadLocalD1Mirror(): LocalD1Mirror {
 
 function normalizeUniversityRow(u: D1UniversityRow): D1UniversityRow {
   const anyU = u as any;
-  const rawLogo = u.logo_url || anyU.logoUrl || anyU.icon_url || anyU.image_key || '';
+  const rawLogo =
+    u.logo_url ||
+    anyU.logoUrl ||
+    anyU.icon_url ||
+    anyU.image_key ||
+    getRememberedUniversityLogoUrl(u.id, u.slug) ||
+    '';
   const updatedAt = anyU.updated_at || anyU.logo_updated_at || '';
   const normalizedLogo = normalizeUniversityLogoUrl(rawLogo, updatedAt);
   return {
@@ -330,12 +339,20 @@ export async function fetchUniversities(forceRefresh = false): Promise<D1Univers
         const mirror = loadLocalD1Mirror();
         mirror.universities = normalizedRows;
         saveLocalD1Mirror(mirror);
+        rememberUniversityLogoUrls(normalizedRows);
         for (const u of normalizedRows) {
           if (u.logo_url) {
             clearFailedUniversityLogoCache(u.logo_url);
-            primeUniversityLogoCache(u.logo_url);
           }
         }
+        // Schedule deduplicated idle-time batch preloading (live universities first, then coming soon)
+        const liveLogoUrls = normalizedRows
+          .filter((u) => Number(u.mcq_count || 0) > 0 || Number(u.is_live || 0) > 0)
+          .map((u) => u.logo_url);
+        const soonLogoUrls = normalizedRows
+          .filter((u) => !(Number(u.mcq_count || 0) > 0 || Number(u.is_live || 0) > 0))
+          .map((u) => u.logo_url);
+        preloadUniversityLogosInBatches([...liveLogoUrls, ...soonLogoUrls], { batchSize: 3 });
         universitiesMemoryCache = {
           data: normalizedRows,
           expiresAt: Date.now() + UNIVERSITIES_CACHE_TTL_MS,

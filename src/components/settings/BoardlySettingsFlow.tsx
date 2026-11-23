@@ -751,7 +751,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           label="Ad-free experience"
           helperText={
             isPaid
-              ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+              ? adFreeEnabled
+                ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+                : 'Ads are currently shown because you turned ad-free off. Turn this back on anytime to hide ads.'
               : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
           }
         >
@@ -997,7 +999,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           label="Ad-free experience"
           helperText={
             isPaid
-              ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+              ? adFreeEnabled
+                ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+                : 'Ads are currently shown because you turned ad-free off. Turn this back on anytime to hide ads.'
               : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
           }
         >
@@ -1630,7 +1634,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
               label="Ad-free experience"
               helperText={
                 isPaid
-                  ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+                  ? adFreeEnabled
+                    ? 'Ads are hidden because you are on Pro/Plus. You can turn this off anytime if you want to see ads.'
+                    : 'Ads are currently shown because you turned ad-free off. Turn this back on anytime to hide ads.'
                   : 'Upgrade to Boardly Pro or Plus to enjoy an ad-free experience across all pages.'
               }
             >

@@ -57,7 +57,13 @@ import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 import { AD_SLOTS } from '@/config/ads';
 import {
   UniversityLogoBox,
+  UNIVERSITY_LOGO_RETRY_DELAYS_MS,
+  appendLogoRetryQuery,
+  clearFailedUniversityLogoCache,
+  markUniversityLogoCached,
   normalizeUniversityLogoUrl,
+  preloadUniversityLogosInBatches,
+  rememberUniversityLogoUrls,
   getUniversityInitials,
 } from '@/components/ui/UniversityLogoBox';
 
@@ -71,24 +77,92 @@ const UniversityCardLogo = memo(function UniversityCardLogo({
   variant: 'badge' | 'hero';
 }) {
   const cleanUrl = normalizeUniversityLogoUrl(logoUrl);
-  const [hasError, setHasError] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [permanentlyFailed, setPermanentlyFailed] = useState(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    setHasError(false);
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    setRetryAttempt(0);
+    setIsRetrying(false);
+    setPermanentlyFailed(false);
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
   }, [cleanUrl]);
 
-  const showLogo = Boolean(cleanUrl && !hasError);
+  // Recover automatically if connection comes back online after exhausting retries
+  useEffect(() => {
+    if (!permanentlyFailed || !cleanUrl || typeof window === 'undefined') return;
+    const onOnline = () => {
+      clearFailedUniversityLogoCache(cleanUrl);
+      setPermanentlyFailed(false);
+      setIsRetrying(false);
+      setRetryAttempt(1);
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [permanentlyFailed, cleanUrl]);
+
+  const scheduleRetry = useCallback(() => {
+    if (!cleanUrl || retryTimerRef.current) return;
+    if (retryAttempt < UNIVERSITY_LOGO_RETRY_DELAYS_MS.length) {
+      const delay = UNIVERSITY_LOGO_RETRY_DELAYS_MS[retryAttempt];
+      setIsRetrying(true);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        setRetryAttempt((prev) => prev + 1);
+      }, delay);
+    } else {
+      setIsRetrying(false);
+      setPermanentlyFailed(true);
+    }
+  }, [cleanUrl, retryAttempt]);
+
+  // Catch any image that failed before React attached the onError handler
+  useEffect(() => {
+    const el = imgRef.current;
+    if (!el || !cleanUrl || permanentlyFailed || isRetrying) return;
+    if (el.complete && el.naturalWidth === 0) {
+      scheduleRetry();
+    }
+  }, [cleanUrl, retryAttempt, permanentlyFailed, isRetrying, scheduleRetry]);
+
+  const activeSrc = cleanUrl ? appendLogoRetryQuery(cleanUrl, retryAttempt) : '';
+  const showLogo = Boolean(activeSrc && !permanentlyFailed);
   const initials = getUniversityInitials(name);
+  const sizePx = variant === 'badge' ? 38 : 128;
 
   if (showLogo) {
     return (
       <img
-        src={cleanUrl}
+        ref={imgRef}
+        src={activeSrc}
         alt={name}
-        loading="lazy"
+        width={sizePx}
+        height={sizePx}
+        loading="eager"
         decoding="async"
-        onError={() => setHasError(true)}
+        onLoad={() => {
+          if (retryTimerRef.current) {
+            clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+          }
+          setIsRetrying(false);
+          setPermanentlyFailed(false);
+          markUniversityLogoCached(cleanUrl);
+        }}
+        onError={scheduleRetry}
         className={variant === 'badge' ? 'uni-lg-badge-img' : 'uni-lg-big-logo-img'}
+        style={isRetrying ? { visibility: 'hidden' } : undefined}
       />
     );
   }
@@ -692,6 +766,8 @@ export function OverviewPage() {
 
   const [showAllSoonUnis, setShowAllSoonUnis] = useState(false);
   const [activeCarouselIdx, setActiveCarouselIdx] = useState(0);
+  const activeCarouselIdxRef = useRef(0);
+  activeCarouselIdxRef.current = activeCarouselIdx;
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
   const liveUniversities = useMemo(
@@ -709,6 +785,44 @@ export function OverviewPage() {
       ),
     [universities]
   );
+
+  // Cache logo URLs in memory and preload+decode ALL university logos (live + coming soon)
+  // after first paint in small idle batches, starting with the visible card and its neighbors.
+  // Keyed only on the stable logo-URL signature so swiping never restarts or cancels preloading.
+  const universityLogoSignature = useMemo(
+    () =>
+      [...liveUniversities, ...soonUniversities]
+        .map((u) => `${u.id}:${u.logo_url || ''}`)
+        .join('|'),
+    [liveUniversities, soonUniversities]
+  );
+
+  useEffect(() => {
+    if (liveUniversities.length === 0 && soonUniversities.length === 0) return;
+    rememberUniversityLogoUrls([...liveUniversities, ...soonUniversities]);
+
+    const orderedUrls: string[] = [];
+    const totalLive = liveUniversities.length;
+    if (totalLive > 0) {
+      const center = Math.max(0, Math.min(totalLive - 1, activeCarouselIdxRef.current));
+      const pushIfPresent = (idx: number) => {
+        if (idx >= 0 && idx < totalLive && liveUniversities[idx]?.logo_url) {
+          orderedUrls.push(liveUniversities[idx].logo_url);
+        }
+      };
+      pushIfPresent(center);
+      for (let offset = 1; offset < totalLive; offset++) {
+        pushIfPresent(center + offset);
+        pushIfPresent(center - offset);
+      }
+    }
+    for (const u of soonUniversities) {
+      if (u.logo_url) orderedUrls.push(u.logo_url);
+    }
+
+    return preloadUniversityLogosInBatches(orderedUrls, { batchSize: 3 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universityLogoSignature]);
 
   const handleCarouselScroll = useCallback(() => {
     const el = carouselRef.current;
@@ -1004,6 +1118,7 @@ export function OverviewPage() {
                               name={uni.name}
                               logoUrl={uni.logo_url}
                               size="xs"
+                              eager
                             />
                             <span className="truncate max-w-[180px]">{uni.name}</span>
                           </span>

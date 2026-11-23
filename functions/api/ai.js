@@ -625,7 +625,7 @@ function resolveCrewMemberPlan(member, nowMs) {
   return 'free';
 }
 
-function resolveCrewBestPlan(crewDoc, nowMs) {
+function resolveCrewBestPlan(crewDoc, nowMs, options = {}) {
   if (!crewDoc) return 'free';
   let best = 'free';
 
@@ -635,19 +635,27 @@ function resolveCrewBestPlan(crewDoc, nowMs) {
   }
 
   if (crewDoc.isProShared !== false) {
-    const declared = String(crewDoc.effectivePlan || '').trim().toLowerCase();
-    if (declared === 'plus' || crewDoc.hasPlusMember === true) {
-      best = 'plus';
-    } else if ((declared === 'pro' || crewDoc.hasProMember === true) && planTierRank(best) < 1) {
-      best = 'pro';
-    }
-
-    if (Array.isArray(crewDoc.members)) {
+    const hasMemberList = Array.isArray(crewDoc.members) && crewDoc.members.length > 0;
+    if (hasMemberList) {
       for (const m of crewDoc.members) {
+        if (!m || typeof m !== 'object') continue;
+        if (options.excludeSelfUid && m.uid && m.uid === options.excludeSelfUid) {
+          if (options.selfPersonalPlan && planTierRank(options.selfPersonalPlan) > planTierRank(best)) {
+            best = options.selfPersonalPlan;
+          }
+          continue;
+        }
         const mPlan = resolveCrewMemberPlan(m, nowMs);
         if (planTierRank(mPlan) > planTierRank(best)) {
           best = mPlan;
         }
+      }
+    } else {
+      const declared = String(crewDoc.effectivePlan || '').trim().toLowerCase();
+      if (declared === 'plus' || crewDoc.hasPlusMember === true) {
+        best = 'plus';
+      } else if ((declared === 'pro' || crewDoc.hasProMember === true) && planTierRank(best) < 1) {
+        best = 'pro';
       }
     }
   }
@@ -689,7 +697,7 @@ async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser, skip
   const personalPlan = resolvePersonalPlanFromUserDoc(userDoc, nowMs);
   let crewPlan = 'free';
 
-  // Inherit highest plan inside Nakama Crew (matches src/hooks/useEffectivePlan.ts)
+  // Inherit highest active (non-expired) plan inside Nakama Crew (matches src/hooks/useEffectivePlan.ts)
   const crewId = userDoc?.crewId ? String(userDoc.crewId).trim() : '';
   if (crewId && personalPlan !== 'plus') {
     const crewDoc = await getFirestoreDoc(
@@ -697,7 +705,48 @@ async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser, skip
       accessToken,
       `crews/${encodeURIComponent(crewId)}`
     ).catch(() => null);
-    crewPlan = resolveCrewBestPlan(crewDoc, nowMs);
+    if (crewDoc && crewDoc.isProShared !== false && Array.isArray(crewDoc.members) && crewDoc.members.length > 0) {
+      // Verify live sharer expiry against users/{uid} when a member snapshot omits expiry dates
+      const hydratedMembers = await Promise.all(
+        crewDoc.members.map(async (m) => {
+          if (!m || typeof m !== 'object' || !m.uid || m.uid === authUser.uid) return m;
+          const snapshotPlan = resolveCrewMemberPlan(m, nowMs);
+          if (snapshotPlan === 'free') return m;
+          const hasSnapshotExpiry =
+            parseExpiryMs(m.plusUntil) !== null ||
+            parseExpiryMs(m.proUntil) !== null ||
+            parseExpiryMs(m.planExpiresAt) !== null ||
+            parseExpiryMs(m.premiumExpiresAt) !== null;
+          if (hasSnapshotExpiry) return m;
+          const liveSharerDoc = await getFirestoreDoc(
+            baseUrl,
+            accessToken,
+            `users/${encodeURIComponent(String(m.uid))}`
+          ).catch(() => null);
+          if (!liveSharerDoc) return m;
+          const livePlan = resolvePersonalPlanFromUserDoc(liveSharerDoc, nowMs);
+          return {
+            ...m,
+            plan: livePlan,
+            planTier: livePlan,
+            isPlus: livePlan === 'plus',
+            isPro: livePlan === 'pro' || livePlan === 'plus',
+            plusUntil: liveSharerDoc.plusUntil ?? null,
+            proUntil: liveSharerDoc.proUntil ?? null,
+            planExpiresAt: liveSharerDoc.planExpiresAt ?? null,
+          };
+        })
+      );
+      crewPlan = resolveCrewBestPlan({ ...crewDoc, members: hydratedMembers }, nowMs, {
+        excludeSelfUid: authUser.uid,
+        selfPersonalPlan: personalPlan,
+      });
+    } else {
+      crewPlan = resolveCrewBestPlan(crewDoc, nowMs, {
+        excludeSelfUid: authUser.uid,
+        selfPersonalPlan: personalPlan,
+      });
+    }
   }
 
   const useCrew = planTierRank(crewPlan) > planTierRank(personalPlan);

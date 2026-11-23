@@ -522,28 +522,44 @@ export function useEffectivePlan(): EffectivePlanResult {
   const paymentEntry = currentUid ? paymentRequestsRegistry.get(currentUid) : undefined;
   const nowMs = Date.now() + (paymentEntry?.serverTimeOffsetMs || 0);
 
-  // Automatic timer to transition plan status the exact moment an active plan expires
+  const { data: crewData, loading: crewLoading, error: crewError } = crewState;
+
+  // Automatic timer to transition plan status the exact moment an active personal or crew plan expires
   const rawProfile = profile as Record<string, any> | null;
+  const crewExpCandidates: Array<number | null> = [];
+  if (crewData) {
+    crewExpCandidates.push(parseExpiryMillis(crewData.paid_until));
+    if (Array.isArray(crewData.members)) {
+      for (const m of crewData.members) {
+        if (!m) continue;
+        crewExpCandidates.push(
+          parseExpiryMillis(m.plusUntil),
+          parseExpiryMillis((m as Record<string, unknown>).proUntil),
+          parseExpiryMillis(m.planExpiresAt),
+          parseExpiryMillis(m.premiumExpiresAt)
+        );
+      }
+    }
+  }
   const expCandidates = [
     parseExpiryMillis(rawProfile?.plusUntil),
     parseExpiryMillis(rawProfile?.planExpiresAt),
     parseExpiryMillis(rawProfile?.premiumExpiresAt),
     parseExpiryMillis(rawProfile?.proUntil),
-  ].filter((v): v is number => v !== null);
-  const activeExpiryMs = expCandidates.length > 0 ? Math.max(...expCandidates) : null;
+    ...crewExpCandidates,
+  ].filter((v): v is number => v !== null && v > nowMs);
+  const nextExpiryMs = expCandidates.length > 0 ? Math.min(...expCandidates) : null;
 
   useEffect(() => {
-    if (!activeExpiryMs) return;
-    const msUntilExpiry = activeExpiryMs - (Date.now() + (paymentEntry?.serverTimeOffsetMs || 0));
+    if (!nextExpiryMs) return;
+    const msUntilExpiry = nextExpiryMs - (Date.now() + (paymentEntry?.serverTimeOffsetMs || 0));
     if (msUntilExpiry <= 0) return;
     const delay = Math.min(msUntilExpiry + 250, 24 * 60 * 60 * 1000);
     const timer = setTimeout(() => {
       setExpiryTick((t) => t + 1);
     }, delay);
     return () => clearTimeout(timer);
-  }, [activeExpiryMs, paymentEntry?.serverTimeOffsetMs]);
-
-  const { data: crewData, loading: crewLoading, error: crewError } = crewState;
+  }, [nextExpiryMs, paymentEntry?.serverTimeOffsetMs]);
 
   const resolved = resolveEffectivePlan({
     email: currentEmail,
