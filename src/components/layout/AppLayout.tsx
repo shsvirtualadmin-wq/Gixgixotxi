@@ -53,7 +53,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div
       data-student-shell="true"
-      className={`relative min-h-screen flex flex-col antialiased overflow-x-clip ${
+      className={`relative min-h-[100dvh] flex flex-col antialiased overflow-x-clip ${
         isSettingsRoute
           ? 'bg-[var(--menu-bg)] text-[var(--menu-text)]'
           : pathname === '/rewards'
@@ -69,14 +69,14 @@ export function AppLayout({ children }: AppLayoutProps) {
       <main
         inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
-        className={`flex-1 w-full min-w-0 box-border overflow-x-hidden mx-auto flex flex-col transition-all duration-200 ${
+        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''
         } ${
           isFullBleedMain
-            ? 'max-w-none p-0 pb-[var(--sdn-page-pb)]'
+            ? 'max-w-none p-0 dashboard-main-scroll'
             : isProfileRoute
-            ? 'max-w-5xl px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[var(--sdn-page-pb)]'
-            : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
+            ? 'max-w-[1400px] px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 dashboard-main-scroll'
+            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'
         }`}
       >
         <BoardlySuspenseBoundary variant="page">

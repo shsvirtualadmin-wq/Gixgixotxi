@@ -84,7 +84,7 @@ export function PromoBanner({
       ref={bannerRef}
       aria-label="Boardly offer"
       data-boardly-offer={offer.id}
-      data-ad-slot-id={slotId}
+      data-boardly-slot={slotId}
       className={`w-full min-w-0 flex flex-col gap-1.5 ${className}`}
     >
       <span

@@ -612,8 +612,37 @@ export function isAdBlockedRoute(pathnameRaw: string): boolean {
     .toLowerCase()
     .replace(/\/+$/, '') || '/';
 
-  // 1. Exact or prefix-blocked routes
+  // 1. Exact ad-free routes (dashboard cockpit & private list/utility pages)
+  const blockedExact = new Set([
+    '/dashboard',
+    '/dashboard/menu',
+    '/menu',
+    '/practice',
+    '/results',
+    '/dashboard/results',
+    '/dashboard/history',
+  ]);
+  if (blockedExact.has(path)) {
+    return true;
+  }
+
+  // 2. Prefix-blocked routes (auth, billing, legal, admin, profile, settings, captains, rewards, and ad-free dashboard tabs)
   const blockedPrefixes = [
+    '/dashboard/practice',
+    '/dashboard/arena',
+    '/dashboard/streaks',
+    '/dashboard/notifications',
+    '/dashboard/messages',
+    '/dashboard/locker',
+    '/dashboard/certificates',
+    '/dashboard/ai',
+    '/dashboard/past-papers',
+    '/dashboard/merit-meter',
+    '/dashboard/study-circles',
+    '/notifications',
+    '/messages',
+    '/locker',
+    '/certificates',
     '/pricing',
     '/plan',
     '/plans',
@@ -657,7 +686,7 @@ export function isAdBlockedRoute(pathnameRaw: string): boolean {
     }
   }
 
-  // 2. Active test runners (allow /test/:id/result and /results/:id where result_below belongs)
+  // 3. Active test runners (allow /test/:id/result, /results/:id, /dashboard/results/:id where result_below belongs)
   if (/^\/test\/[^/]+$/.test(path)) {
     return true;
   }

@@ -77,8 +77,8 @@ html.ui-glass {
     inset 0 -1px 0 rgba(0, 0, 0, 0.32),
     0 12px 32px -8px rgba(0, 0, 0, 0.52);
 
-  /* A8: Keep at least 128px + safe-area bottom padding */
-  --sdn-page-pb: calc(128px + env(safe-area-inset-bottom, 0px));
+  /* Keep at least 136px + safe-area bottom padding so last cards & CTAs clear the floating dock */
+  --sdn-page-pb: calc(136px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Adaptive Light Theme Tokens: crisp white cards on clean neutral canvas */

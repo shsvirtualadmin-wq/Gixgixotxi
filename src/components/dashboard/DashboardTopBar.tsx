@@ -223,14 +223,13 @@ export function DashboardTopBar({
   return (
     <>
       <header
-        className="sticky z-[70] w-full max-w-full box-border px-3 sm:px-6 lg:px-8 pb-1 shrink-0 pointer-events-none select-none overflow-visible"
+        className="sticky top-0 z-[70] w-full max-w-full box-border px-3 sm:px-6 lg:px-8 pb-2 shrink-0 pointer-events-none select-none overflow-visible dashboard-topbar-wrap"
         style={{
-          top: 'calc(12px + env(safe-area-inset-top, 0px))',
-          marginTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
         }}
       >
         <div
-          className="w-full max-w-5xl mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-hidden"
+          className="w-full max-w-[1400px] mx-auto min-w-0 box-border h-14 sm:h-[60px] px-3 sm:px-4 rounded-full dashboard-glass-bar allow-backdrop-blur flex flex-row items-center justify-between gap-2 pointer-events-auto transition-all duration-200 overflow-hidden"
         >
           {/* Left side: Back arrow + Title (on sub-pages like /rewards) or Boardly Doto logo + PRO pill */}
           <div className="flex items-center gap-2 shrink-0 min-w-0">

@@ -11695,6 +11695,9 @@ ${postSitemaps}
   app.get('/api/ads/config', (req, res) => delegateToAdsWorker(req, res, false));
   app.post('/api/ads/event', (req, res) => delegateToAdsWorker(req, res, false));
   app.post('/api/ads/stats', (req, res) => delegateToAdsWorker(req, res, false));
+  app.get('/api/placements/config', (req, res) => delegateToAdsWorker(req, res, false));
+  app.post('/api/placements/event', (req, res) => delegateToAdsWorker(req, res, false));
+  app.post('/api/placements/stats', (req, res) => delegateToAdsWorker(req, res, false));
   app.get('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));
   app.put('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));
   app.post('/api/admin/ads/config', (req, res) => delegateToAdsWorker(req, res, true));

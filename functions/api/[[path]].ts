@@ -36,7 +36,12 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     return handleAiMentorsRequest(request, env);
   }
 
-  if (path === '/api/ads' || path.startsWith('/api/ads/')) {
+  if (
+    path === '/api/ads' ||
+    path.startsWith('/api/ads/') ||
+    path === '/api/placements' ||
+    path.startsWith('/api/placements/')
+  ) {
     return handlePublicAdsRequest({ request, env });
   }
 

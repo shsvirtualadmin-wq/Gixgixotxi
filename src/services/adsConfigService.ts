@@ -105,30 +105,34 @@ export async function fetchPublicAdsConfig(force = false): Promise<AdsConfigDoc>
   if (inflightPromise) return inflightPromise;
 
   inflightPromise = (async () => {
-    try {
-      const resp = await fetch('/api/ads/config', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
+    const endpoints = ['/api/placements/config', '/api/ads/config'];
+    for (const endpoint of endpoints) {
+      try {
+        const resp = await fetch(endpoint, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const raw = data?.config || data;
+        if (!raw || typeof raw !== 'object') continue;
+        const normalized = normalizeAdsConfig(raw);
+        memoryConfig = normalized;
+        memoryFetchedAt = Date.now();
+        writeSessionCache(normalized, memoryFetchedAt);
+        notifyListeners(normalized);
+        return normalized;
+      } catch {
+        // Try next endpoint or fall back to built-in defaults
       }
-      const data = await resp.json();
-      const normalized = normalizeAdsConfig(data?.config || data);
-      memoryConfig = normalized;
-      memoryFetchedAt = Date.now();
-      writeSessionCache(normalized, memoryFetchedAt);
-      notifyListeners(normalized);
-      return normalized;
-    } catch {
-      const fallback = memoryConfig || DEFAULT_ADS_CONFIG;
-      memoryConfig = fallback;
-      memoryFetchedAt = Date.now();
-      return fallback;
-    } finally {
-      inflightPromise = null;
     }
-  })();
+    const fallback = memoryConfig || DEFAULT_ADS_CONFIG;
+    memoryConfig = fallback;
+    memoryFetchedAt = Date.now();
+    return fallback;
+  })().finally(() => {
+    inflightPromise = null;
+  });
 
   return inflightPromise;
 }
@@ -189,9 +193,9 @@ export function recordBoardlyOfferEvent(
   try {
     if (type === 'click' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const blob = new Blob([payload], { type: 'application/json' });
-      if (navigator.sendBeacon('/api/ads/event', blob)) return;
+      if (navigator.sendBeacon('/api/placements/event', blob)) return;
     }
-    fetch('/api/ads/event', {
+    fetch('/api/placements/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: payload,

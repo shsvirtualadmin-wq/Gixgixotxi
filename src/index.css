@@ -2140,8 +2140,8 @@ body,
     backdrop-filter: blur(18px) !important;
   }
   .dashboard-glass-bar {
-    -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
-    backdrop-filter: blur(20px) saturate(1.6) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
+    backdrop-filter: blur(20px) saturate(1.05) !important;
   }
   .overlay-blur {
     -webkit-backdrop-filter: blur(8px) !important;
@@ -3158,27 +3158,36 @@ html[data-tab-hidden="true"] *::after {
   --glass-menu-active-border: rgba(225, 29, 42, 0.36);
 }
 
-/* Shared Glass Bar for Dashboard Top Navbar */
+/* Shared Glass Bar for Dashboard Top Navbar — neutral frosted glass with zero color smear */
 :root,
 .light,
 [data-theme="light"] {
-  --dashboard-topbar-bg: rgba(255, 255, 255, 0.55);
+  --dashboard-topbar-bg: rgba(255, 255, 255, 0.84);
 }
 
 .dark,
 [data-theme="dark"] {
-  --dashboard-topbar-bg: rgba(22, 22, 26, 0.5);
+  --dashboard-topbar-bg: rgba(18, 18, 22, 0.84);
+}
+
+.dashboard-topbar-wrap {
+  background: linear-gradient(
+    to bottom,
+    var(--bg) 0%,
+    var(--bg) 52%,
+    transparent 100%
+  );
 }
 
 .dashboard-glass-bar {
   background: var(--dashboard-topbar-bg) !important;
   border: none !important;
-  -webkit-backdrop-filter: blur(20px) saturate(1.6) !important;
-  backdrop-filter: blur(20px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.05) !important;
+  backdrop-filter: blur(20px) saturate(1.05) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.6),
-    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.48),
+    inset -1.5px -1.5px 1px -1px rgba(255, 255, 255, 0.24),
     0 8px 24px -6px rgba(0, 0, 0, 0.18) !important;
 }
 
@@ -7160,14 +7169,20 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
    ========================================================================== */
 
 :root {
-  /* 64px nav + 12px bottom offset + 8px lens extension + 36px clearance = 120px */
-  --sdn-page-pb: calc(120px + env(safe-area-inset-bottom, 0px));
+  /* 64px nav + 12px bottom offset + 40px clearance = 116px */
+  --sdn-page-pb: calc(116px + env(safe-area-inset-bottom, 0px));
 }
 
-@media (min-width: 768px) {
+@media (min-width: 900px) {
   :root {
-    --sdn-page-pb: calc(128px + env(safe-area-inset-bottom, 0px));
+    /* 64px nav + 16px bottom offset + 56px generous laptop/desktop clearance = 136px */
+    --sdn-page-pb: calc(136px + env(safe-area-inset-bottom, 0px));
   }
+}
+
+/* Explicit scroll clearance helper so last cards & CTAs never sit under the floating dock */
+.dashboard-main-scroll {
+  padding-bottom: var(--sdn-page-pb);
 }
 
 /* Dock wrapper: phone-first floating pill 12px from left/right, 12px above bottom + safe-area, 64px tall, fully rounded.
@@ -7187,7 +7202,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
   isolation: isolate;
 
   width: auto;
-  max-width: 560px;
+  max-width: 520px;
   height: 64px;
   padding: 0 var(--pad);
   border-radius: 9999px;
@@ -7221,6 +7236,24 @@ body.modal-open .sdn-dock {
     --pad: 8px;
     --gap: 6px;
     --ic: 24px;
+  }
+}
+
+@media (min-width: 900px) {
+  .sdn-dock {
+    left: 50%;
+    right: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: min(520px, calc(100vw - 32px));
+    max-width: 520px;
+    margin-inline: 0;
+    transform: translate3d(-50%, 0, 0);
+  }
+
+  body[data-modal-open="true"] .sdn-dock,
+  body[data-chat-open="true"] .sdn-dock,
+  body.modal-open .sdn-dock {
+    transform: translate3d(-50%, 24px, 0) !important;
   }
 }
 
@@ -12524,21 +12557,21 @@ input[type="search"],
 }
 
 .uni-lg-blob--orange {
-  width: 360px;
-  height: 440px;
-  top: 168px;
+  width: 320px;
+  height: 360px;
+  top: 220px;
   right: -96px;
-  background: radial-gradient(circle, rgba(255, 138, 48, 0.4) 0%, rgba(255, 98, 36, 0.18) 48%, transparent 74%);
+  background: radial-gradient(circle, rgba(255, 138, 48, 0.22) 0%, rgba(255, 98, 36, 0.1) 48%, transparent 72%);
 }
 
 .dark .uni-lg-blob--red,
 [data-theme="dark"] .uni-lg-blob--red {
-  background: radial-gradient(circle, rgba(255, 36, 52, 0.62) 0%, rgba(215, 20, 34, 0.26) 48%, transparent 74%);
+  background: radial-gradient(circle, rgba(255, 36, 52, 0.45) 0%, rgba(215, 20, 34, 0.18) 48%, transparent 72%);
 }
 
 .dark .uni-lg-blob--orange,
 [data-theme="dark"] .uni-lg-blob--orange {
-  background: radial-gradient(circle, rgba(255, 142, 46, 0.48) 0%, rgba(255, 96, 36, 0.2) 48%, transparent 74%);
+  background: radial-gradient(circle, rgba(255, 142, 46, 0.26) 0%, rgba(255, 96, 36, 0.11) 48%, transparent 72%);
 }
 
 .uni-lg-content {

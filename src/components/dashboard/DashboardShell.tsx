@@ -14,8 +14,6 @@ import { ensureWelcomeNotificationForUser } from '@/services/notificationService
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { useNavStore } from '@/lib/navStore';
 import { UserPlus, X } from 'lucide-react';
-import { AdSlot } from '@/components/AdSlot';
-import { AD_SLOTS, isAdBlockedRoute } from '@/config/ads';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
@@ -67,17 +65,6 @@ export function DashboardShell() {
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
     location.pathname === '/saved';
-  const isAiRoute =
-    location.pathname.startsWith('/dashboard/ai');
-  const isFormulaRoute =
-    location.pathname.startsWith('/dashboard/formulas') ||
-    location.pathname.startsWith('/dashboard/formula-vault');
-  const showDesktopSidebarAd =
-    !isSettingsRoute &&
-    !isProfileRoute &&
-    !isAiRoute &&
-    !isFormulaRoute &&
-    !isAdBlockedRoute(location.pathname);
 
   useEffect(() => {
     if (user?.uid && isSessionVerified && !isGuest) {
@@ -193,7 +180,7 @@ export function DashboardShell() {
 
       {/* Small non-blocking note for guests (Part B Rule 3) */}
       {isGuest && !guestNoteDismissed && (
-        <div className="max-w-5xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-2">
+        <div className="max-w-[1400px] w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-2">
           <div className="px-3.5 py-2 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
             <span>
               Signed in as guest (<strong className="text-[var(--text)] font-mono">@{profile?.username || user?.displayName || 'guest'}</strong>). Clearing browser data means you cannot return unless you upgrade.
@@ -220,34 +207,23 @@ export function DashboardShell() {
         </div>
       )}
 
-      {/* Main Content Container (+ Desktop-Only Sticky Sidebar Ad Slot) */}
+      {/* Main Content Container — full viewport width centered up to 1400px, ad-free dashboard cockpit */}
       <main
         inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
         aria-hidden={isMenuOpen ? 'true' : undefined}
         className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''
         } ${
-          isSettingsRoute || isProfileRoute
+          isSettingsRoute
             ? 'max-w-none p-0'
-            : showDesktopSidebarAd
-            ? 'max-w-7xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
-            : 'max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-[var(--sdn-page-pb)]'
+            : isProfileRoute
+            ? 'max-w-none p-0 dashboard-main-scroll'
+            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
           <BoardlySuspenseBoundary variant="page">
-            {showDesktopSidebarAd ? (
-              <div className="w-full flex items-start gap-6 min-w-0">
-                <div className="flex-1 min-w-0 max-w-5xl mx-auto">
-                  <KeepAliveTabsOutlet />
-                </div>
-                <div className="hidden lg:block w-[260px] shrink-0 sticky top-24 self-start">
-                  <AdSlot slotId={AD_SLOTS.sidebar_desktop} format="vertical" compact />
-                </div>
-              </div>
-            ) : (
-              <KeepAliveTabsOutlet />
-            )}
+            <KeepAliveTabsOutlet />
           </BoardlySuspenseBoundary>
         </DashboardErrorBoundary>
       </main>

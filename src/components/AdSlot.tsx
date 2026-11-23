@@ -41,6 +41,8 @@ export interface AdSlotProps {
   previewConfig?: AdsConfigDoc;
   previewSlotOverride?: AdSlotConfig;
   isPreview?: boolean;
+  /** Viewer simulation inside /admin/ads phone preview */
+  previewAs?: 'guest' | 'free' | 'paid';
 }
 
 const ADSENSE_SCRIPT_ID = 'boardly-adsense-script';
@@ -93,7 +95,7 @@ function ensureAdSenseScriptLoaded(publisherId: string, onScriptError?: () => vo
 /**
  * Clean reserved placeholder shown while a signed-in user's plan is still loading,
  * or when a Google slot has no fill and Boardly offer fallback is disabled/exhausted.
- * Ensures non-ad-free visitors always see a clean reserved slot rather than a vanished area.
+ * Uses neutral DOM attributes so cosmetic content blockers never hide reserved slots.
  */
 function AdSpacePlaceholder({
   slotId,
@@ -106,10 +108,9 @@ function AdSpacePlaceholder({
 }) {
   return (
     <aside
-      aria-label="Advertisement"
-      data-ad-slot-container="true"
-      data-ad-slot-id={slotId}
-      data-ad-placeholder={loading ? 'loading' : 'ad-space'}
+      aria-label="Sponsored placement"
+      data-boardly-slot={slotId}
+      data-boardly-state={loading ? 'loading' : 'reserved'}
       className="w-full min-w-0 flex flex-col gap-1.5"
     >
       <span
@@ -144,11 +145,11 @@ function AdSpacePlaceholder({
  *    Ad-free toggle ON sees nothing (`null`). While plan is loading, shows reserved "Ad space".
  * 3. Controlled live from /admin/ads with safe built-in defaults (all slots ON by default).
  * 4. `store_rows` is strictly Boardly-only (never Google).
- * 5. Until AdSense approves (blank slot ID, script load failure, unfilled, or 3s timeout),
+ * 5. Until AdSense approves (blank slot ID, script load failure, ad-blocker collapse, unfilled, or 3s timeout),
  *    Google slots switch automatically to their fallback Boardly offer (or "Ad space" placeholder).
  * 6. Two slots on the same page never show the same Boardly offer.
  * 7. Only one ad/offer is visible at a time on mobile screens (<768px).
- * 8. Add `?adsdebug=1` to any URL to inspect every slot's ID, mode, state, and hidden reason.
+ * 8. Add `?adsdebug=1` to any URL to inspect every slot's ID, mode, viewer, state, and hidden reason.
  */
 export function AdSlot({
   slotId,
@@ -159,6 +160,7 @@ export function AdSlot({
   previewConfig,
   previewSlotOverride,
   isPreview = false,
+  previewAs = 'guest',
 }: AdSlotProps) {
   const location = useLocation();
   const reactId = useId();
@@ -274,7 +276,7 @@ export function AdSlot({
     hiddenReason = 'slot_disabled_in_admin';
   }
 
-  const shouldHideCompletely = hiddenReason !== null;
+  const shouldHideCompletely = !isPreview && hiddenReason !== null;
 
   // Enforce store_rows strictly Boardly-only
   const effectiveMode = slotConfig?.boardlyOnly ? 'boardly' : slotConfig?.mode || 'boardly';
@@ -290,12 +292,13 @@ export function AdSlot({
     Boolean(cleanGoogleSlotId) &&
     Boolean(cleanPublisherId);
 
-  // When waiting for AdSense approval (no Google Slot ID yet, script failed, or unfilled/timeout),
+  // When waiting for AdSense approval (no Google Slot ID yet, script failed, ad-blocker collapsed, or unfilled/timeout),
   // BOTH 'auto' and 'google' modes fall back to the Boardly offer if fallbackToBoardly is ON!
   const needsBoardlyOffer =
     !shouldHideCompletely &&
     !isWaitingForPlan &&
     (effectiveMode === 'boardly' ||
+      isPreview ||
       ((effectiveMode === 'auto' || effectiveMode === 'google') &&
         config.fallbackToBoardly &&
         (!canAttemptGoogle || googleState === 'unfilled')));
@@ -308,13 +311,15 @@ export function AdSlot({
       ? slotConfig?.primaryOfferId || 'early'
       : slotConfig?.fallbackOfferId || slotConfig?.primaryOfferId || 'early';
 
+  const pickPreviewOffer = (): BoardlyOffer | null => {
+    const exact = config.offers.find((o) => o.id === preferredOfferId);
+    if (exact && isOfferActiveNow(exact)) return exact;
+    return config.offers.find((o) => isOfferActiveNow(o)) || exact || config.offers[0] || null;
+  };
+
   const [resolvedOffer, setResolvedOffer] = useState<BoardlyOffer | null>(() => {
     if (!needsBoardlyOffer || !slotConfig) return null;
-    if (isPreview) {
-      const exact = config.offers.find((o) => o.id === preferredOfferId);
-      if (exact && isOfferActiveNow(exact)) return exact;
-      return config.offers.find((o) => isOfferActiveNow(o)) || exact || null;
-    }
+    if (isPreview) return pickPreviewOffer();
     return claimUniqueOfferForPage(pageKey, slotClaimKey, preferredOfferId, config.offers);
   });
 
@@ -333,7 +338,7 @@ export function AdSlot({
       const picked =
         exact && isOfferActiveNow(exact)
           ? exact
-          : config.offers.find((o) => isOfferActiveNow(o)) || exact || null;
+          : config.offers.find((o) => isOfferActiveNow(o)) || exact || config.offers[0] || null;
       setResolvedOffer(picked);
       return;
     }
@@ -364,7 +369,7 @@ export function AdSlot({
     });
   }, [isPreview, shouldHideCompletely, slotClaimKey]);
 
-  // Load Google AdSense and watch fill status with 3-second fallback timeout
+  // Load Google AdSense and watch fill status (including cosmetic ad-blocker collapse + 3s timeout)
   useEffect(() => {
     if (!canAttemptGoogle) {
       hasPushedRef.current = false;
@@ -396,8 +401,22 @@ export function AdSlot({
     }
 
     const insEl = insRef.current;
+    const isCosmeticallyBlocked = (): boolean => {
+      if (!insEl || typeof window === 'undefined') return false;
+      try {
+        const cs = window.getComputedStyle(insEl);
+        return cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0';
+      } catch {
+        return false;
+      }
+    };
+
     const checkStatus = (): boolean => {
       if (!insEl || cancelled) return false;
+      if (isCosmeticallyBlocked()) {
+        setGoogleState('unfilled');
+        return true;
+      }
       const status = insEl.getAttribute('data-ad-status');
       if (status === 'filled') {
         setGoogleState('filled');
@@ -419,12 +438,15 @@ export function AdSlot({
           observer.disconnect();
         }
       });
-      observer.observe(insEl, { attributes: true, attributeFilter: ['data-ad-status'] });
+      observer.observe(insEl, {
+        attributes: true,
+        attributeFilter: ['data-ad-status', 'style', 'class'],
+      });
     }
 
     const timeoutId = window.setTimeout(() => {
       if (cancelled) return;
-      if (!insEl) {
+      if (!insEl || isCosmeticallyBlocked()) {
         setGoogleState('unfilled');
         return;
       }
@@ -444,30 +466,82 @@ export function AdSlot({
     };
   }, [canAttemptGoogle, cleanGoogleSlotId, cleanPublisherId]);
 
-  // Hidden completely for normal visitors; visible as a diagnostic box when ?adsdebug=1 is active
-  if (shouldHideCompletely) {
-    if (!isDebugMode) {
-      return null;
-    }
-    return (
-      <div
-        data-ad-debug-hidden={String(slotId)}
-        className={`w-full min-w-0 rounded-xl border-2 border-dashed border-rose-500/80 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300 ${className}`}
-        style={{ fontFamily: 'var(--font-mono)' }}
-      >
-        <div className="font-bold text-rose-400">
-          [ADS DEBUG · HIDDEN] slot={String(slotId)} · mode={effectiveMode}
-        </div>
-        <div className="opacity-90 mt-0.5">reason: {hiddenReason}</div>
-      </div>
-    );
-  }
+  const viewerRoleLabel = !user?.uid
+    ? 'logged_out'
+    : isGuest || user.uid.startsWith('guest_')
+    ? 'guest'
+    : planLoading
+    ? 'loading_plan'
+    : plan;
 
-  // Admin phone preview helper for Google mode when slot ID is set vs fallback
-  if (isPreview && (effectiveMode === 'google' || effectiveMode === 'auto')) {
+  useEffect(() => {
+    if (!isDebugMode) return;
+    console.info('[AdSlot debug]', {
+      slotId: String(slotId),
+      path: location.pathname,
+      mode: effectiveMode,
+      viewer: viewerRoleLabel,
+      hiddenReason,
+      googleState,
+      offerId: resolvedOffer?.id || null,
+      mobileAllowed,
+    });
+  }, [
+    isDebugMode,
+    slotId,
+    location.pathname,
+    effectiveMode,
+    viewerRoleLabel,
+    hiddenReason,
+    googleState,
+    resolvedOffer?.id,
+    mobileAllowed,
+  ]);
+
+  // ================= ADMIN PHONE PREVIEW (ALL MODES + VIEW-AS SWITCH) =================
+  // Ignores viewer's own plan, ad-free toggle, master switch, slot enabled state, desktopOnly, and route rules.
+  if (isPreview && slotConfig) {
+    if (previewAs === 'paid') {
+      return (
+        <div
+          data-boardly-slot-preview={slotConfig.id}
+          className={`w-full min-w-0 rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)]/35 min-h-[96px] p-4 flex flex-col items-center justify-center text-center gap-1 ${className}`}
+        >
+          <span
+            className="text-xs font-semibold text-[var(--text-secondary)]"
+            style={{ fontFamily: 'var(--font-mono)' }}
+          >
+            Hidden: ad-free is on
+          </span>
+          <span className="text-[11px] text-[var(--text-muted)]">
+            Pro / Plus members with ad-free enabled see an empty area here.
+          </span>
+        </div>
+      );
+    }
+
+    const previewOffer = resolvedOffer || pickPreviewOffer();
+
+    if (effectiveMode === 'boardly') {
+      return previewOffer ? (
+        <PromoBanner
+          offer={previewOffer}
+          slotId={slotConfig.id}
+          className={className}
+          compact={compact}
+          isPreview
+        />
+      ) : (
+        <AdSpacePlaceholder slotId={slotConfig.id} compact={compact} />
+      );
+    }
+
     if (cleanGoogleSlotId) {
       return (
-        <div className={`w-full min-w-0 flex flex-col gap-1.5 ${className}`}>
+        <div
+          data-boardly-slot-preview={slotConfig.id}
+          className={`w-full min-w-0 flex flex-col gap-1.5 ${className}`}
+        >
           <span
             className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)] select-none px-1"
             style={{ fontFamily: 'var(--font-mono)' }}
@@ -480,13 +554,13 @@ export function AdSlot({
               {cleanPublisherId || 'No publisher ID'} · Slot {cleanGoogleSlotId}
             </span>
           </div>
-          {config.fallbackToBoardly && resolvedOffer && (
+          {config.fallbackToBoardly && previewOffer && (
             <div className="pt-2">
               <p className="text-[11px] text-[var(--text-muted)] mb-1">
                 Fallback if Google has no ad:
               </p>
               <PromoBanner
-                offer={resolvedOffer}
+                offer={previewOffer}
                 slotId={slotConfig.id}
                 compact={compact}
                 isPreview
@@ -496,10 +570,11 @@ export function AdSlot({
         </div>
       );
     }
-    if (resolvedOffer) {
+
+    if (config.fallbackToBoardly && previewOffer) {
       return (
         <PromoBanner
-          offer={resolvedOffer}
+          offer={previewOffer}
           slotId={slotConfig.id}
           className={className}
           compact={compact}
@@ -507,7 +582,27 @@ export function AdSlot({
         />
       );
     }
+
     return <AdSpacePlaceholder slotId={slotConfig.id} compact={compact} />;
+  }
+
+  // Hidden completely for normal visitors; visible as a diagnostic box when ?adsdebug=1 is active (including for admins/Plus)
+  if (shouldHideCompletely || !slotConfig) {
+    if (!isDebugMode) {
+      return null;
+    }
+    return (
+      <div
+        data-boardly-slot-debug={String(slotId)}
+        className={`w-full min-w-0 rounded-xl border-2 border-dashed border-rose-500/80 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-500 dark:text-rose-300 ${className}`}
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
+        <div className="font-bold text-rose-600 dark:text-rose-400">
+          [ADS DEBUG · HIDDEN] slot={String(slotId)} · mode={effectiveMode} · viewer={viewerRoleLabel}
+        </div>
+        <div className="opacity-90 mt-0.5">reason: {hiddenReason || 'missing_slot_config'}</div>
+      </div>
+    );
   }
 
   // Desktop-only slot wrapper class (unless debug mode is inspecting it)
@@ -542,9 +637,8 @@ export function AdSlot({
     />
   ) : showGoogleUnit ? (
     <aside
-      aria-label="Advertisement"
-      data-ad-slot-container="true"
-      data-ad-slot-id={slotConfig.id}
+      aria-label="Sponsored placement"
+      data-boardly-slot={slotConfig.id}
       className="w-full min-w-0 flex flex-col gap-1.5"
     >
       <span
@@ -582,7 +676,7 @@ export function AdSlot({
   return (
     <div
       ref={containerRef}
-      data-ad-wrapper={slotConfig.id}
+      data-boardly-slot={slotConfig.id}
       className={`w-full min-w-0 ${desktopOnlyClass} ${className} ${
         isDebugMode
           ? 'rounded-2xl border-2 border-dashed border-emerald-500/85 bg-emerald-500/[0.04] p-2'
@@ -596,6 +690,7 @@ export function AdSlot({
         >
           <span>[ADS DEBUG] slot={slotConfig.id}</span>
           <span>· mode={effectiveMode}</span>
+          <span>· viewer={viewerRoleLabel}</span>
           <span>· state={debugStateLabel}</span>
           <span>· {debugSubNote}</span>
         </div>

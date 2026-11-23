@@ -512,7 +512,13 @@ export async function handlePublicAdsApiRequest(params: {
   const url = new URL(request.url);
   const pathClean = url.pathname.replace(/\/+$/, '') || '/';
 
-  if ((pathClean === '/api/ads/config' || pathClean === '/api/ads') && method === 'GET') {
+  if (
+    (pathClean === '/api/ads/config' ||
+      pathClean === '/api/ads' ||
+      pathClean === '/api/placements/config' ||
+      pathClean === '/api/placements') &&
+    method === 'GET'
+  ) {
     try {
       const config = await loadAdsConfigServer(env);
       return jsonAdsResponse(
@@ -526,7 +532,13 @@ export async function handlePublicAdsApiRequest(params: {
     }
   }
 
-  if ((pathClean === '/api/ads/event' || pathClean === '/api/ads/stats') && method === 'POST') {
+  if (
+    (pathClean === '/api/ads/event' ||
+      pathClean === '/api/ads/stats' ||
+      pathClean === '/api/placements/event' ||
+      pathClean === '/api/placements/stats') &&
+    method === 'POST'
+  ) {
     try {
       const body = (await request.json().catch(() => ({}))) as Record<string, any>;
       const ok = await recordAdOfferStatServer(env, {
