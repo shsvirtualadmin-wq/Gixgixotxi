@@ -14,7 +14,8 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { TARGET_DATABASE_ID } from '@/lib/firebaseConfig';
 import type { PlansConfigDoc } from '@/lib/planTier';
 import { fetchPlansConfigOnce } from '@/hooks/usePlansConfig';
 import {
@@ -291,6 +292,33 @@ export interface PaginatedCouponsResult {
   hasMore: boolean;
 }
 
+function isPermissionDeniedError(err: unknown): boolean {
+  const code = String((err as { code?: string })?.code || '').toLowerCase();
+  const msg = String((err as { message?: string })?.message || '').toLowerCase();
+  return code.includes('permission-denied') || msg.includes('missing or insufficient permissions');
+}
+
+async function withAdminPermissionRetry<T>(operationLabel: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (isPermissionDeniedError(err) && auth.currentUser) {
+      try {
+        await auth.currentUser.getIdToken(true);
+        return await fn();
+      } catch (retryErr) {
+        if (isPermissionDeniedError(retryErr)) {
+          throw new Error(
+            `Missing or insufficient permissions for ${operationLabel}. Publish the updated firestore.rules (coupons + redemptions) to database "${TARGET_DATABASE_ID}" and sign in with an admin account.`
+          );
+        }
+        throw retryErr;
+      }
+    }
+    throw err;
+  }
+}
+
 /**
  * Fetches coupons strictly paginated (20 per page) using `orderBy('createdAt', 'desc')`.
  * Never loads the entire collection.
@@ -299,27 +327,29 @@ export async function fetchCouponsPaginatedAdmin(params?: {
   pageSize?: number;
   cursor?: QueryDocumentSnapshot<DocumentData> | null;
 }): Promise<PaginatedCouponsResult> {
-  const pageSize = Math.max(1, Math.min(50, params?.pageSize ?? 20));
-  const couponsCol = collection(db, 'coupons');
-  const q = params?.cursor
-    ? query(couponsCol, orderBy('createdAt', 'desc'), startAfter(params.cursor), limit(pageSize + 1))
-    : query(couponsCol, orderBy('createdAt', 'desc'), limit(pageSize + 1));
+  return withAdminPermissionRetry('listing coupons', async () => {
+    const pageSize = Math.max(1, Math.min(50, params?.pageSize ?? 20));
+    const couponsCol = collection(db, 'coupons');
+    const q = params?.cursor
+      ? query(couponsCol, orderBy('createdAt', 'desc'), startAfter(params.cursor), limit(pageSize + 1))
+      : query(couponsCol, orderBy('createdAt', 'desc'), limit(pageSize + 1));
 
-  const snap = await getDocs(q);
-  const hasMore = snap.docs.length > pageSize;
-  const pageDocs = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
+    const snap = await getDocs(q);
+    const hasMore = snap.docs.length > pageSize;
+    const pageDocs = hasMore ? snap.docs.slice(0, pageSize) : snap.docs;
 
-  const items: CouponDoc[] = [];
-  for (const d of pageDocs) {
-    const normalized = normalizeCouponDoc(d.id, d.data() as Record<string, unknown>);
-    if (normalized) items.push(normalized);
-  }
+    const items: CouponDoc[] = [];
+    for (const d of pageDocs) {
+      const normalized = normalizeCouponDoc(d.id, d.data() as Record<string, unknown>);
+      if (normalized) items.push(normalized);
+    }
 
-  return {
-    items,
-    lastDoc: pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null,
-    hasMore,
-  };
+    return {
+      items,
+      lastDoc: pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null,
+      hasMore,
+    };
+  });
 }
 
 /**
@@ -329,30 +359,33 @@ export async function createCouponAdmin(
   input: NewCouponDraftInput,
   adminUid: string
 ): Promise<CouponDoc> {
-  if (!adminUid) {
+  const effectiveAdminUid = auth.currentUser?.uid || adminUid;
+  if (!effectiveAdminUid) {
     throw new Error('Admin sign-in is required to create coupons.');
   }
 
   const valid = validateNewCouponDraft(input);
   const couponRef = doc(db, 'coupons', valid.code);
 
-  await runTransaction(db, async (tx) => {
-    const existing = await tx.get(couponRef);
-    if (existing.exists()) {
-      throw new Error(`Coupon "${valid.code}" already exists. Choose a different code.`);
-    }
+  await withAdminPermissionRetry(`creating coupon "${valid.code}"`, async () => {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(couponRef);
+      if (existing.exists()) {
+        throw new Error(`Coupon "${valid.code}" already exists. Choose a different code.`);
+      }
 
-    tx.set(couponRef, {
-      code: valid.code,
-      type: valid.type,
-      value: valid.value,
-      appliesTo: valid.appliesTo,
-      maxRedemptions: valid.maxRedemptions,
-      redeemedCount: 0,
-      expiresAt: valid.expiresAtMs !== null ? Timestamp.fromMillis(valid.expiresAtMs) : null,
-      active: valid.active,
-      createdAt: serverTimestamp(),
-      createdBy: adminUid,
+      tx.set(couponRef, {
+        code: valid.code,
+        type: valid.type,
+        value: valid.value,
+        appliesTo: valid.appliesTo,
+        maxRedemptions: valid.maxRedemptions,
+        redeemedCount: 0,
+        expiresAt: valid.expiresAtMs !== null ? Timestamp.fromMillis(valid.expiresAtMs) : null,
+        active: valid.active,
+        createdAt: serverTimestamp(),
+        createdBy: effectiveAdminUid,
+      });
     });
   });
 
@@ -366,7 +399,7 @@ export async function createCouponAdmin(
     expiresAt: valid.expiresAtMs,
     active: valid.active,
     createdAt: Date.now(),
-    createdBy: adminUid,
+    createdBy: effectiveAdminUid,
   };
 }
 
@@ -376,7 +409,9 @@ export async function createCouponAdmin(
 export async function setCouponActiveAdmin(code: string, active: boolean): Promise<void> {
   const cleanCode = normalizeCouponCode(code);
   if (!cleanCode) throw new Error('Invalid coupon code.');
-  await updateDoc(doc(db, 'coupons', cleanCode), {
-    active: Boolean(active),
+  await withAdminPermissionRetry(`updating coupon "${cleanCode}"`, async () => {
+    await updateDoc(doc(db, 'coupons', cleanCode), {
+      active: Boolean(active),
+    });
   });
 }

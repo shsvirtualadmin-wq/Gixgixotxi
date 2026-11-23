@@ -499,8 +499,8 @@ service cloud.firestore {
         signedIn() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['redeemedCount']) &&
         resource.data.active == true &&
-        (resource.data.expiresAt == null || resource.data.expiresAt > request.time) &&
-        (resource.data.maxRedemptions == null || resource.data.redeemedCount < resource.data.maxRedemptions) &&
+        (!('expiresAt' in resource.data) || resource.data.expiresAt == null || resource.data.expiresAt > request.time) &&
+        (!('maxRedemptions' in resource.data) || resource.data.maxRedemptions == null || resource.data.redeemedCount < resource.data.maxRedemptions) &&
         request.resource.data.redeemedCount == resource.data.redeemedCount + 1 &&
         !exists(/databases/$(database)/documents/coupons/$(couponCode)/redemptions/$(request.auth.uid)) &&
         existsAfter(/databases/$(database)/documents/coupons/$(couponCode)/redemptions/$(request.auth.uid))
@@ -525,10 +525,12 @@ service cloud.firestore {
           exists(/databases/$(database)/documents/coupons/$(couponCode)) &&
           get(/databases/$(database)/documents/coupons/$(couponCode)).data.active == true &&
           (
+            !('expiresAt' in get(/databases/$(database)/documents/coupons/$(couponCode)).data) ||
             get(/databases/$(database)/documents/coupons/$(couponCode)).data.expiresAt == null ||
             get(/databases/$(database)/documents/coupons/$(couponCode)).data.expiresAt > request.time
           ) &&
           (
+            !('maxRedemptions' in get(/databases/$(database)/documents/coupons/$(couponCode)).data) ||
             get(/databases/$(database)/documents/coupons/$(couponCode)).data.maxRedemptions == null ||
             get(/databases/$(database)/documents/coupons/$(couponCode)).data.redeemedCount <
               get(/databases/$(database)/documents/coupons/$(couponCode)).data.maxRedemptions
