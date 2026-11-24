@@ -1243,7 +1243,7 @@ export function AdminPaymentsPage() {
               rows={3}
               value={planRejectReason}
               onChange={(e) => setPlanRejectReason(e.target.value)}
-              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none"
             />
             <div className="flex items-center gap-2.5">
               <button
@@ -1357,7 +1357,7 @@ export function AdminPaymentsPage() {
               rows={3}
               value={kobanRejectReason}
               onChange={(e) => setKobanRejectReason(e.target.value)}
-              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none"
             />
             <div className="flex items-center gap-2.5 pt-2">
               <button

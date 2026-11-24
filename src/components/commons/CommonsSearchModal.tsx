@@ -231,7 +231,7 @@ export function CommonsSearchModal({
         {/* Glass Pill Search Bar with Red Focus Ring + Cancel */}
         <div className="p-4 sm:p-5 space-y-3.5">
           <div className="flex items-center gap-2.5">
-            <div className="flex-1 flex items-center gap-2.5 px-4 min-h-[50px] rounded-full bg-white/[0.07] border border-white/[0.18] focus-within:border-[#D71921] focus-within:ring-2 focus-within:ring-[#D71921]/40 transition-all">
+            <div className="flex-1 flex items-center gap-2.5 px-4 min-h-[50px] rounded-full bg-white/[0.07] border border-white/[0.18] transition-all">
               <Search size={18} className="text-[#D71921] shrink-0" />
               <input
                 ref={inputRef}

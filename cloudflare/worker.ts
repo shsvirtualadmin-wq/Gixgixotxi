@@ -1182,6 +1182,7 @@ export function rowToCommonsPost(
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
     // Strictly hide author UID on anonymous posts in all public responses
     authorUid,
+    authorId: authorUid,
     authorName: resolvedAuthorName,
     authorUsername: resolvedAuthorUsername,
     authorAvatar: resolvedAuthorAvatar,
@@ -7731,8 +7732,20 @@ ${urls
         const classLevel = (url.searchParams.get('classLevel') || '').trim();
         const board = (url.searchParams.get('board') || '').trim();
         const search = (url.searchParams.get('search') || url.searchParams.get('q') || '').trim();
-        const authorUid = (url.searchParams.get('authorUid') || '').trim();
-        const includeOwnAnonymous = url.searchParams.get('includeOwnAnonymous') === 'true';
+        const authorUid = (
+          url.searchParams.get('authorUid') ||
+          url.searchParams.get('authorId') ||
+          url.searchParams.get('author_uid') ||
+          ''
+        ).trim();
+        const requestedOwnAnonymous =
+          url.searchParams.get('includeOwnAnonymous') === 'true' ||
+          url.searchParams.get('includeOwnAnonymous') === '1';
+        let canIncludeOwnAnonymous = false;
+        if (authorUid && requestedOwnAnonymous) {
+          const verifiedCaller = await verifyFirebaseIdToken(req, env).catch(() => null);
+          canIncludeOwnAnonymous = Boolean(verifiedCaller && verifiedCaller.uid === authorUid);
+        }
         const savedBy = (url.searchParams.get('savedBy') || '').trim();
         const likedBy = (url.searchParams.get('likedBy') || '').trim();
         const followingUidsRaw = (url.searchParams.get('followingUids') || '').trim();
@@ -7765,7 +7778,7 @@ ${urls
           binds.push(board);
         }
         if (authorUid) {
-          if (includeOwnAnonymous) {
+          if (canIncludeOwnAnonymous) {
             clauses.push('(author_uid = ? OR real_author_uid = ?)');
             binds.push(authorUid, authorUid);
           } else {
@@ -7808,10 +7821,20 @@ ${urls
             ? 'is_pinned DESC, upvotes DESC, created_at DESC'
             : 'is_pinned DESC, created_at DESC';
 
-        const sql = `SELECT * FROM posts WHERE ${clauses.join(' AND ')} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+        const whereSql = clauses.join(' AND ');
+        const filterBinds = [...binds];
+        const sql = `SELECT * FROM posts WHERE ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
         binds.push(pageSize + 1, offset);
 
-        const { results } = await env.DB.prepare(sql).bind(...binds).all();
+        const [{ results }, countRow] = await Promise.all([
+          env.DB.prepare(sql).bind(...binds).all(),
+          authorUid
+            ? env.DB.prepare(`SELECT COUNT(*) AS cnt FROM posts WHERE ${whereSql}`)
+                .bind(...filterBinds)
+                .first<{ cnt: number }>()
+                .catch(() => null)
+            : Promise.resolve(null),
+        ]);
         let rows: any[] = results || [];
         if (
           rows.length === 0 &&
@@ -7867,25 +7890,37 @@ ${urls
         const posts = pageRows.map((r) =>
           rowToCommonsPost(r as Record<string, any>, liveAuthorsMap)
         );
+        const resolvedTotal =
+          countRow && typeof countRow.cnt === 'number'
+            ? Number(countRow.cnt)
+            : offset + posts.length;
 
         const bothBindingsPresent = Boolean(env.DB && env.R2_BUCKET);
         const hasAuthHeader = Boolean(
           req.headers.get('Authorization') || req.headers.get('X-Guest-Session')
         );
         const isPublicFeedQuery =
-          !hasAuthHeader && !flaggedOnly && !savedBy && !likedBy && !includeOwnAnonymous;
+          !hasAuthHeader &&
+          !authorUid &&
+          !flaggedOnly &&
+          !savedBy &&
+          !likedBy &&
+          !canIncludeOwnAnonymous;
         return jsonResponse(
           {
             success: true,
             backendMode: bothBindingsPresent ? 'cloudflare-d1-r2' : 'preview-demo',
             posts,
+            total: resolvedTotal,
             hasMore,
             nextOffset: hasMore ? offset + pageSize : null,
           },
           200,
           {
             ...cors,
-            'Cache-Control': isPublicFeedQuery
+            'Cache-Control': authorUid
+              ? 'private, no-store'
+              : isPublicFeedQuery
               ? 'public, max-age=30, stale-while-revalidate=90'
               : 'private, max-age=10, stale-while-revalidate=30',
           }

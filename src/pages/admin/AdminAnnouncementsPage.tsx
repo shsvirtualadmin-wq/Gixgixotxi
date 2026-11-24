@@ -301,7 +301,7 @@ export function AdminAnnouncementsPage() {
               placeholder="Welcome to Boardly"
               maxLength={120}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm focus:border-[var(--red)] outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none"
             />
           </div>
 
@@ -316,7 +316,7 @@ export function AdminAnnouncementsPage() {
               rows={5}
               maxLength={2500}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm focus:border-[var(--red)] outline-none resize-y"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none resize-y"
             />
           </div>
 
@@ -370,7 +370,7 @@ export function AdminAnnouncementsPage() {
               placeholder="e.g. Platform update: New chemistry practice sets added"
               maxLength={120}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm focus:border-[var(--red)] outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none"
             />
             <div className="text-[11px] text-[var(--muted)] mt-1 text-right">
               {title.length}/120
@@ -388,7 +388,7 @@ export function AdminAnnouncementsPage() {
               rows={4}
               maxLength={2000}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm focus:border-[var(--red)] outline-none resize-y"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none resize-y"
             />
             <div className="text-[11px] text-[var(--muted)] mt-1 text-right">
               {message.length}/2000

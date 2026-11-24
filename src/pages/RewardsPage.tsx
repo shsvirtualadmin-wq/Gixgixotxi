@@ -1856,7 +1856,7 @@ export function RewardsPage() {
                     placeholder="BLD-7K9M2P"
                     maxLength={12}
                     aria-label="Enter friend's referral code"
-                    className="h-12 min-h-[48px] flex-1 min-w-0 rounded-full border px-4 font-mono text-sm uppercase tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
+                    className="h-12 min-h-[48px] flex-1 min-w-0 rounded-full border px-4 font-mono text-sm uppercase tracking-wider focus:outline-none"
                     style={{
                       backgroundColor: 'var(--rw-bg)',
                       borderColor: 'var(--rw-border)',
@@ -1984,7 +1984,7 @@ export function RewardsPage() {
                               }
                               placeholder="Enter friend's BLD-XXXXXX"
                               aria-label={`Enter referral code for ${item.counterpartDisplayName}`}
-                              className="h-11 min-h-[44px] flex-1 min-w-0 rounded-full border px-4 font-mono text-xs uppercase focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
+                              className="h-11 min-h-[44px] flex-1 min-w-0 rounded-full border px-4 font-mono text-xs uppercase focus:outline-none"
                               style={{
                                 backgroundColor: 'var(--rw-bg)',
                                 borderColor: 'var(--rw-border)',

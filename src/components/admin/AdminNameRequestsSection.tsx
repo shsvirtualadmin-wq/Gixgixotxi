@@ -234,7 +234,7 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
               placeholder="Search request or UID..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full h-9 pl-8 pr-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
+              className="w-full h-9 pl-8 pr-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
             />
           </div>
           <button

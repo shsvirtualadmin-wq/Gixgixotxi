@@ -284,7 +284,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                 onChange={(e) => setDisplayName(e.target.value)}
                 maxLength={40}
                 placeholder="Student"
-                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none transition-colors"
               />
               <span className="text-[10px] text-[var(--muted)] font-mono">
                 Plain text only. Emails and URLs are strictly prohibited.
@@ -307,7 +307,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                 onChange={(e) => setStatus(e.target.value.slice(0, 40))}
                 maxLength={40}
                 placeholder="e.g. Grinding organic chemistry"
-                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none transition-colors"
               />
             </div>
 
@@ -327,7 +327,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                 maxLength={160}
                 rows={3}
                 placeholder="Add a short bio so other students can get to know you."
-                className="w-full p-3 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors resize-none"
+                className="w-full p-3 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none transition-colors resize-none"
               />
             </div>
 

@@ -174,7 +174,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               onChange={(e) => setDisplayName(e.target.value)}
               maxLength={40}
               placeholder="Your name"
-              className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
+              className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-100 placeholder-neutral-500 focus:outline-none"
             />
           </div>
 
@@ -190,7 +190,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               onChange={(e) => setStatus(e.target.value)}
               maxLength={40}
               placeholder="e.g. Exploring concepts & learning together..."
-              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none focus:border-accent"
+              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none"
             />
           </div>
 
@@ -206,7 +206,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               maxLength={160}
               rows={3}
               placeholder="Add a short bio so other students can get to know you."
-              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none focus:border-accent resize-none"
+              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none resize-none"
             />
             <p className="text-[10px] text-muted">Plain text only. Links will not be rendered.</p>
           </div>

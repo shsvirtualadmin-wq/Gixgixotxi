@@ -134,7 +134,7 @@ export function CommonsReportModal({
                 onChange={(e) => setDetails(e.target.value)}
                 placeholder="Help our moderators understand the issue..."
                 rows={2}
-                className="w-full px-3.5 py-2.5 text-xs glass-row rounded-[16px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[#D71921]"
+                className="w-full px-3.5 py-2.5 text-xs glass-row rounded-[16px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
               />
             </div>
 

@@ -266,7 +266,7 @@ export function GrandLinePage() {
               placeholder="Search tests or captains..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
             />
           </div>
 

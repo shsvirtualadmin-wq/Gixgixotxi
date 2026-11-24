@@ -1263,7 +1263,7 @@ export function UserOverrideDrawer({
                         setPlanTouched(true);
                       }}
                       placeholder="Days"
-                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-mono text-[var(--text)] focus:outline-none"
                     />
                     <input
                       type="date"
@@ -1273,7 +1273,7 @@ export function UserOverrideDrawer({
                         setPlanTouched(true);
                       }}
                       aria-label="Explicit expiry date"
-                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[12px] font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                      className="w-full px-3 py-1.5 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[12px] font-mono text-[var(--text)] focus:outline-none"
                     />
                   </div>
                 )}

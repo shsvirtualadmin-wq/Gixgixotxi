@@ -1241,6 +1241,7 @@ export function rowToCommonsPost(
     anonymous: isAnon,
     anonymousAlias: row.anonymous_alias || 'Anonymous Student',
     authorUid,
+    authorId: authorUid,
     authorName: resolvedAuthorName,
     authorUsername: resolvedAuthorUsername,
     authorAvatar: resolvedAuthorAvatar,
@@ -2100,7 +2101,8 @@ ${postSitemaps}
   app.get('/api/posts', async (req, res) => {
     try {
       const user = await verifyFirebaseJwtZeroFirestore(req).catch(() => null);
-      const currentUid = user?.uid || String(req.query.currentUid || '').trim() || null;
+      const verifiedUid = user?.uid || null;
+      const currentUid = verifiedUid || String(req.query.currentUid || '').trim() || null;
 
       const store = loadD1Store();
       const pageSize = Math.min(
@@ -2114,8 +2116,14 @@ ${postSitemaps}
       const classLevel = String(req.query.classLevel || '').trim();
       const board = String(req.query.board || '').trim();
       const search = String(req.query.search || req.query.q || '').trim().toLowerCase();
-      const authorUid = String(req.query.authorUid || '').trim();
-      const includeOwnAnonymous = req.query.includeOwnAnonymous === 'true';
+      const authorUid = String(
+        req.query.authorUid || req.query.authorId || req.query.author_uid || ''
+      ).trim();
+      const includeOwnAnonymous =
+        req.query.includeOwnAnonymous === 'true' || req.query.includeOwnAnonymous === '1';
+      const canIncludeOwnAnonymous = Boolean(
+        authorUid && includeOwnAnonymous && verifiedUid && verifiedUid === authorUid
+      );
       const savedBy = String(req.query.savedBy || '').trim();
       const likedBy = String(req.query.likedBy || '').trim();
       const followingUidsRaw = String(req.query.followingUids || '').trim();
@@ -2166,10 +2174,10 @@ ${postSitemaps}
       }
       if (authorUid) {
         rows = rows.filter((p) => {
-          if (includeOwnAnonymous && currentUid === authorUid) {
+          if (canIncludeOwnAnonymous) {
             return p.real_author_uid === authorUid || p.author_uid === authorUid;
           }
-          return p.author_uid === authorUid && p.is_anonymous === 0;
+          return p.author_uid === authorUid && !Number(p.is_anonymous || 0);
         });
       }
       if (savedBy) {
@@ -2253,10 +2261,12 @@ ${postSitemaps}
       };
 
       const isPublicFeedQuery =
-        !currentUid && !flaggedOnly && !savedBy && !likedBy && !includeOwnAnonymous;
+        !currentUid && !authorUid && !flaggedOnly && !savedBy && !likedBy && !canIncludeOwnAnonymous;
       res.setHeader(
         'Cache-Control',
-        isPublicFeedQuery
+        authorUid
+          ? 'private, no-store'
+          : isPublicFeedQuery
           ? 'public, max-age=30, stale-while-revalidate=90'
           : 'private, max-age=10, stale-while-revalidate=30'
       );

@@ -413,10 +413,32 @@ export async function onRequest(context: {
     const search = (url.searchParams.get('search') || url.searchParams.get('q') || '')
       .trim()
       .toLowerCase();
+    const authorUid = (
+      url.searchParams.get('authorUid') ||
+      url.searchParams.get('authorId') ||
+      url.searchParams.get('author_uid') ||
+      ''
+    ).trim();
+    const requestedOwnAnonymous =
+      url.searchParams.get('includeOwnAnonymous') === 'true' ||
+      url.searchParams.get('includeOwnAnonymous') === '1';
+    let canIncludeOwnAnonymous = false;
+    if (authorUid && requestedOwnAnonymous) {
+      const verifiedCaller = await verifyFirebaseIdToken(request, env || {}).catch(() => null);
+      canIncludeOwnAnonymous = Boolean(verifiedCaller && verifiedCaller.uid === authorUid);
+    }
     const sort = (url.searchParams.get('sort') || 'newest').trim();
 
     let rows = memoryStore.posts.filter((p) => !Number(p.is_hidden || 0));
 
+    if (authorUid) {
+      rows = rows.filter((p) => {
+        if (canIncludeOwnAnonymous) {
+          return p.real_author_uid === authorUid || p.author_uid === authorUid;
+        }
+        return p.author_uid === authorUid && !Number(p.is_anonymous || 0);
+      });
+    }
     if (subject && subject !== 'all') {
       rows = rows.filter((p) => {
         const ps = String(p.subject || '').toLowerCase();
@@ -648,6 +670,44 @@ export async function onRequest(context: {
         backendMode: 'preview-demo',
         post: rowToCommonsPost(row, liveAuthorsMap),
       }),
+      { status: 200, headers: jsonHeaders }
+    );
+  }
+
+  if (!action && request.method === 'DELETE') {
+    const user = await verifyFirebaseIdToken(request, env || {});
+    if (!user) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          code: 'NOT_AUTHENTICATED',
+          error: 'Please sign in again',
+        }),
+        { status: 401, headers: jsonHeaders }
+      );
+    }
+    const idx = memoryStore.posts.findIndex((p) => p.id === postId || p.slug === slugOrId);
+    if (idx === -1) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Post not found.' }),
+        { status: 404, headers: jsonHeaders }
+      );
+    }
+    const existing = memoryStore.posts[idx];
+    const isAdmin = user.role === 'superadmin' || user.role === 'admin';
+    if (
+      existing.real_author_uid !== user.uid &&
+      existing.author_uid !== user.uid &&
+      !isAdmin
+    ) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Forbidden' }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
+    memoryStore.posts.splice(idx, 1);
+    return new Response(
+      JSON.stringify({ success: true, deletedId: existing.id }),
       { status: 200, headers: jsonHeaders }
     );
   }

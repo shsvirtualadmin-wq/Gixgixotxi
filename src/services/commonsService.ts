@@ -699,6 +699,14 @@ export async function createCommonsPost(params: {
 
   const normalized = normalizeCloudflarePost(data.post || { id: data.postId, ...params });
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boardly:posts-changed', {
+        detail: { action: 'create', authorUid: author.uid, postId: normalized.id },
+      })
+    );
+  }
+
   // Notify followers when a non-anonymous post is published (never if anonymous)
   if (!isAnonymous && author.uid) {
     void (async () => {
@@ -1586,5 +1594,12 @@ export async function deleteCommonsPost(
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({}));
     throw new Error(data?.error || 'Could not delete post.');
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boardly:posts-changed', {
+        detail: { action: 'delete', authorUid: _userUid || undefined, postId },
+      })
+    );
   }
 }

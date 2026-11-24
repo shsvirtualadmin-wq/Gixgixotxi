@@ -11,6 +11,8 @@ import {
   Loader2,
   CornerDownRight,
   RefreshCw,
+  FileText,
+  EyeOff,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
@@ -193,6 +195,7 @@ async function toggleCommonsCommentLike(
 
 export interface ProfilePostItem {
   id: string;
+  slug?: string;
   authorId: string;
   authorName: string;
   authorUsername?: string | null;
@@ -202,6 +205,7 @@ export interface ProfilePostItem {
   authorFrame?: string | null;
   authorProBadge?: string | null;
   authorPlusBadge?: number | null;
+  isAnonymous?: boolean;
   title?: string;
   description: string;
   type?: string;
@@ -210,8 +214,10 @@ export interface ProfilePostItem {
   subject?: string;
   files?: Array<{
     url?: string;
+    downloadUrl?: string;
     name?: string;
     mimeType?: string;
+    type?: string;
     size?: number;
   }>;
   likesCount: number;
@@ -259,36 +265,48 @@ function normalizeServerPost(raw: any): ProfilePostItem {
     }
   }
 
+  const isAnon = Boolean(raw.isAnonymous || raw.is_anonymous || raw.anonymous);
+
   return {
     id: String(raw.id || ''),
-    authorId: String(raw.authorId || raw.author_id || ''),
-    authorName: String(raw.authorName || raw.author_name || 'Student'),
-    authorUsername: raw.authorUsername || raw.author_username || null,
-    authorRole: raw.authorRole || raw.author_role || 'student',
-    authorCustomRole: raw.authorCustomRole || raw.author_custom_role || null,
-    authorAvatar: raw.authorAvatar || raw.author_avatar || null,
-    authorFrame: raw.authorFrame || raw.author_frame || null,
-    authorProBadge: raw.authorProBadge || raw.author_pro_badge || null,
-    authorPlusBadge:
-      typeof raw.authorPlusBadge === 'number'
-        ? raw.authorPlusBadge
-        : typeof raw.author_plus_badge === 'number'
-        ? raw.author_plus_badge
-        : typeof raw.plusBadge === 'number'
-        ? raw.plusBadge
-        : null,
+    slug: typeof raw.slug === 'string' && raw.slug ? raw.slug : undefined,
+    authorId: isAnon
+      ? ''
+      : String(raw.authorUid || raw.authorId || raw.author_uid || raw.author_id || ''),
+    authorName: isAnon
+      ? String(raw.anonymousAlias || raw.anonymous_alias || 'Anonymous Student')
+      : String(raw.authorName || raw.author_name || 'Student'),
+    authorUsername: isAnon ? null : raw.authorUsername || raw.author_username || null,
+    authorRole: isAnon ? 'student' : raw.authorRole || raw.author_role || 'student',
+    authorCustomRole: isAnon ? null : raw.authorCustomRole || raw.author_custom_role || null,
+    authorAvatar: isAnon ? null : raw.authorAvatar || raw.author_avatar || null,
+    authorFrame: isAnon ? null : raw.authorFrame || raw.author_frame || null,
+    authorProBadge: isAnon ? null : raw.authorProBadge || raw.author_pro_badge || null,
+    authorPlusBadge: isAnon
+      ? null
+      : typeof raw.authorPlusBadge === 'number'
+      ? raw.authorPlusBadge
+      : typeof raw.author_plus_badge === 'number'
+      ? raw.author_plus_badge
+      : typeof raw.plusBadge === 'number'
+      ? raw.plusBadge
+      : null,
+    isAnonymous: isAnon,
     title: typeof raw.title === 'string' ? raw.title : '',
-    description: String(raw.description || ''),
+    description: String(raw.description ?? raw.body ?? raw.content ?? ''),
     type: String(raw.type || 'post'),
     board: String(raw.board || 'All Boards'),
     classLevel: String(raw.classLevel || raw.class_level || 'All Classes'),
     subject: String(raw.subject || 'General'),
     files: parsedFiles,
-    likesCount: Math.max(0, Number(raw.likesCount ?? raw.likes_count ?? 0)),
-    commentsCount: Math.max(0, Number(raw.commentsCount ?? raw.comments_count ?? 0)),
-    viewsCount: Math.max(0, Number(raw.viewsCount ?? raw.views_count ?? 0)),
-    likedByMe: Boolean(raw.likedByMe),
-    bookmarkedByMe: Boolean(raw.bookmarkedByMe),
+    likesCount: Math.max(0, Number(raw.likesCount ?? raw.likes_count ?? raw.upvotes ?? 0)),
+    commentsCount: Math.max(
+      0,
+      Number(raw.commentsCount ?? raw.comments_count ?? raw.commentCount ?? 0)
+    ),
+    viewsCount: Math.max(0, Number(raw.viewsCount ?? raw.views_count ?? raw.views ?? 0)),
+    likedByMe: Boolean(raw.likedByMe ?? raw.votedByMe),
+    bookmarkedByMe: Boolean(raw.bookmarkedByMe ?? raw.savedByMe),
     createdAt: createdMs,
   };
 }
@@ -336,9 +354,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const [submittingCommentPostId, setSubmittingCommentPostId] = useState<string | null>(null);
   const [shareToastPostId, setShareToastPostId] = useState<string | null>(null);
 
+  const [totalPostsCount, setTotalPostsCount] = useState<number>(0);
+
   const loadUserPosts = useCallback(async () => {
     if (!targetUid) {
       setPosts([]);
+      setTotalPostsCount(0);
+      onCountChange?.(0);
       setLoading(false);
       setLoadError(null);
       return;
@@ -348,15 +370,21 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 8000);
     try {
-      const headers = await getCommonsAuthHeaders().catch(() => ({} as Record<string, string>));
-      const res = await fetch(
-        `/api/posts?authorId=${encodeURIComponent(targetUid)}&limit=50`,
-        {
-          headers,
-          credentials: 'include',
-          signal: controller.signal,
-        }
-      );
+      const headers = await getCommonsAuthHeaders(false).catch(() => ({} as Record<string, string>));
+      const params = new URLSearchParams({
+        authorUid: targetUid,
+        limit: '100',
+      });
+      const viewerUid = user?.uid || '';
+      if (isOwnProfile && viewerUid && viewerUid === targetUid) {
+        params.set('includeOwnAnonymous', 'true');
+      }
+      const res = await fetch(`/api/posts?${params.toString()}`, {
+        headers,
+        credentials: 'include',
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       if (!res.ok) {
         throw new Error('Could not load posts.');
       }
@@ -364,15 +392,25 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       const rawList = Array.isArray(data?.posts) ? data.posts : [];
       const filtered = rawList
         .filter((r: any) => {
-          const aid = String(r.authorId || r.author_id || '');
-          const isAnon = Boolean(r.isAnonymous || r.is_anonymous);
-          return aid === targetUid && !isAnon;
+          const aid = String(r.authorUid || r.authorId || r.author_uid || r.author_id || '');
+          const isAnon = Boolean(r.isAnonymous || r.is_anonymous || r.anonymous);
+          if (isAnon) {
+            // Anonymous posts are strictly only shown on the user's own profile (when verified by server)
+            return Boolean(isOwnProfile && viewerUid && viewerUid === targetUid);
+          }
+          return aid === targetUid;
         })
         .map(normalizeServerPost)
         .sort((a: ProfilePostItem, b: ProfilePostItem) => b.createdAt - a.createdAt);
 
+      const serverTotal =
+        typeof data?.total === 'number' && data?.hasMore
+          ? Math.max(filtered.length, Number(data.total))
+          : filtered.length;
+
       setPosts(filtered);
-      onCountChange?.(filtered.length);
+      setTotalPostsCount(serverTotal);
+      onCountChange?.(serverTotal);
     } catch (err) {
       setLoadError(
         err instanceof Error && err.name === 'AbortError'
@@ -383,11 +421,24 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       window.clearTimeout(timer);
       setLoading(false);
     }
-  }, [targetUid, onCountChange]);
+  }, [targetUid, isOwnProfile, user?.uid, onCountChange]);
 
   useEffect(() => {
     void loadUserPosts();
   }, [loadUserPosts]);
+
+  useEffect(() => {
+    const handlePostsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ authorUid?: string }>).detail;
+      if (!detail?.authorUid || detail.authorUid === targetUid) {
+        void loadUserPosts();
+      }
+    };
+    window.addEventListener('boardly:posts-changed', handlePostsChanged);
+    return () => {
+      window.removeEventListener('boardly:posts-changed', handlePostsChanged);
+    };
+  }, [loadUserPosts, targetUid]);
 
   const handleSelectImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -532,10 +583,18 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           });
 
       setPosts((prev) => {
+        const alreadyPresent = prev.some((p) => p.id === createdPost.id);
         const next = [createdPost, ...prev.filter((p) => p.id !== createdPost.id)];
-        onCountChange?.(next.length);
+        const nextTotal = alreadyPresent ? Math.max(totalPostsCount, next.length) : Math.max(next.length, totalPostsCount + 1);
+        setTotalPostsCount(nextTotal);
+        onCountChange?.(nextTotal);
         return next;
       });
+      window.dispatchEvent(
+        new CustomEvent('boardly:posts-changed', {
+          detail: { action: 'create', authorUid: user.uid, postId: createdPost.id },
+        })
+      );
       setComposerText('');
       clearComposerImage();
     } catch (err: any) {
@@ -613,9 +672,12 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   const handleDeletePost = async (postId: string) => {
     if (!isOwnProfile) return;
     const previous = posts;
+    const previousTotal = totalPostsCount;
     const next = posts.filter((p) => p.id !== postId);
+    const nextTotal = Math.max(next.length, previousTotal - 1);
     setPosts(next);
-    onCountChange?.(next.length);
+    setTotalPostsCount(nextTotal);
+    onCountChange?.(nextTotal);
 
     try {
       const headers = await getCommonsAuthHeaders();
@@ -626,11 +688,19 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       });
       if (!res.ok) {
         setPosts(previous);
-        onCountChange?.(previous.length);
+        setTotalPostsCount(previousTotal);
+        onCountChange?.(previousTotal);
+      } else {
+        window.dispatchEvent(
+          new CustomEvent('boardly:posts-changed', {
+            detail: { action: 'delete', authorUid: targetUid, postId },
+          })
+        );
       }
     } catch {
       setPosts(previous);
-      onCountChange?.(previous.length);
+      setTotalPostsCount(previousTotal);
+      onCountChange?.(previousTotal);
     }
   };
 
@@ -770,7 +840,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
       <div className="flex items-center justify-between px-1">
         <h3 className="text-[14px] font-medium text-[var(--text-muted)]">Posts</h3>
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold font-inter-num text-[var(--text-muted)] bg-[var(--card)] border border-[var(--border)]">
-          {posts.length.toLocaleString()} {posts.length === 1 ? 'post' : 'posts'}
+          {totalPostsCount.toLocaleString()} {totalPostsCount === 1 ? 'post' : 'posts'}
         </span>
       </div>
 
@@ -928,23 +998,38 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             const imageAttachments = (post.files || []).filter(
               (f) =>
                 f?.url &&
-                (f.mimeType?.startsWith('image/') ||
+                ((f.mimeType || f.type || '').startsWith('image/') ||
+                  /\.(png|jpe?g|gif|webp|avif)$/i.test(f.name || f.url || ''))
+            );
+            const fileAttachments = (post.files || []).filter(
+              (f) =>
+                (f?.url || f?.downloadUrl) &&
+                !((f.mimeType || f.type || '').startsWith('image/') ||
                   /\.(png|jpe?g|gif|webp|avif)$/i.test(f.name || f.url || ''))
             );
 
-            const bodyText =
-              post.description && post.description !== post.title
-                ? post.description
-                : post.title || post.description;
+            const trimmedTitle = (post.title || '').trim();
+            const trimmedDesc = (post.description || '').trim();
+            const showDistinctTitle =
+              Boolean(trimmedTitle) &&
+              Boolean(trimmedDesc) &&
+              trimmedTitle !== trimmedDesc &&
+              !trimmedDesc.startsWith(trimmedTitle);
+            const bodyText = trimmedDesc || trimmedTitle;
             const isLong = shouldCollapsePost(bodyText);
             const isExpanded = Boolean(expandedPostIds[post.id]);
-            const resolvedPostAuthor = getDisplayName({
-              display_name: post.authorName || authorDisplayName,
-              username: post.authorUsername || authorUsername,
-            });
-            const resolvedPostHandle = getUsernameHandle({
-              username: post.authorUsername || authorUsername,
-            });
+            const isAnonOwnPost = Boolean(post.isAnonymous && isOwnProfile);
+            const resolvedPostAuthor = isAnonOwnPost
+              ? 'Anonymous'
+              : getDisplayName({
+                  display_name: post.authorName || authorDisplayName,
+                  username: post.authorUsername || authorUsername,
+                });
+            const resolvedPostHandle = isAnonOwnPost
+              ? null
+              : getUsernameHandle({
+                  username: post.authorUsername || authorUsername,
+                });
 
             return (
               <article
@@ -954,18 +1039,29 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 {/* Post Author Row */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-3 min-w-0">
-                    <BoardlyAvatar
-                      size={40}
-                      uid={post.authorId || targetUid}
-                      equippedAvatar={post.authorAvatar || authorAvatar}
-                      equippedFrameId={post.authorFrame || authorFrame}
-                      alt={resolvedPostAuthor}
-                    />
+                    {isAnonOwnPost ? (
+                      <div className="w-10 h-10 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center shrink-0 text-[var(--text-muted)]">
+                        <EyeOff className="w-4 h-4" />
+                      </div>
+                    ) : (
+                      <BoardlyAvatar
+                        size={40}
+                        uid={post.authorId || targetUid}
+                        equippedAvatar={post.authorAvatar || authorAvatar}
+                        equippedFrameId={post.authorFrame || authorFrame}
+                        alt={resolvedPostAuthor}
+                      />
+                    )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[15px] font-semibold text-[var(--text)] truncate">
                           {resolvedPostAuthor}
                         </span>
+                        {isAnonOwnPost && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]">
+                            Anonymous · Only you see this here
+                          </span>
+                        )}
                         {(() => {
                           const resolvedPlusBadge =
                             typeof post.authorPlusBadge === 'number'
@@ -1016,6 +1112,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
                 {/* Post Body */}
                 <div className="mt-3">
+                  {showDistinctTitle && (
+                    <h4 className="text-[16px] font-semibold text-[var(--text)] leading-snug mb-1.5">
+                      {trimmedTitle}
+                    </h4>
+                  )}
                   <div
                     className={`text-[15px] leading-[1.55] whitespace-pre-wrap break-words text-[var(--text)] ${
                       isLong && !isExpanded ? 'line-clamp-6' : ''
@@ -1050,6 +1151,24 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         loading="lazy"
                         className="w-full max-h-80 object-cover rounded-2xl border border-[var(--border)]"
                       />
+                    ))}
+                  </div>
+                )}
+
+                {/* Non-Image File Attachments */}
+                {fileAttachments.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {fileAttachments.map((file, i) => (
+                      <a
+                        key={`${post.id}_file_${i}`}
+                        href={file.downloadUrl || file.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[13px] font-medium text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors"
+                      >
+                        <FileText className="w-4 h-4 text-[var(--accent)] shrink-0" />
+                        <span className="truncate">{file.name || 'Attached file'}</span>
+                      </a>
                     ))}
                   </div>
                 )}
@@ -1254,7 +1373,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                                 ? `Reply to ${replyTarget.authorName}...`
                                 : 'Write a comment...'
                             }
-                            className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+                            className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
                           />
                           <button
                             type="button"

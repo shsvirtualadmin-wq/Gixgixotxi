@@ -439,7 +439,7 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="checkbox"
                   checked={closeAllAttemptsNow}
                   onChange={(e) => setCloseAllAttemptsNow(e.target.checked)}
-                  className="mt-0.5 rounded border-[var(--border)] bg-[var(--surface)] text-[#ef4444] focus:ring-[#ef4444]"
+                  className="mt-0.5 rounded border-[var(--border)] bg-[var(--surface)] text-[#ef4444]"
                 />
                 <div className="text-xs">
                   <span className="font-bold text-amber-700 dark:text-amber-200 block">
@@ -519,7 +519,7 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="datetime-local"
                   value={startLocalPkt}
                   onChange={(e) => setStartLocalPkt(e.target.value)}
-                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#ef4444]"
+                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none"
                 />
                 {parsedStartMs && (
                   <p className="text-[11px] text-[var(--text-muted)]">
@@ -551,7 +551,7 @@ export const GrandLineScheduleSheet: React.FC<{
                   type="datetime-local"
                   value={endLocalPkt}
                   onChange={(e) => setEndLocalPkt(e.target.value)}
-                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[#ef4444]"
+                  className="w-full min-h-[42px] px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] focus:outline-none"
                 />
                 {parsedEndMs && (
                   <p className="text-[11px] text-[var(--text-muted)]">
@@ -592,7 +592,7 @@ export const GrandLineScheduleSheet: React.FC<{
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="e.g. Extended by 2 hours for evening batch, or ended early for maintenance..."
-              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)]/60 focus:outline-none focus:border-[#ef4444] resize-none"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)]/60 focus:outline-none resize-none"
             />
           </div>
 

@@ -1023,10 +1023,10 @@
   padding: 0 16px;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
 }
-.glass-input:focus {
+.glass-input:focus,
+.glass-input:focus-visible {
   outline: none;
-  border-color: #d7141f;
-  box-shadow: 0 0 0 3px rgba(215, 20, 31, 0.18);
+  box-shadow: none;
 }
 
 /* ===== SHARED GLASS SYSTEM (STEP 8 & 9 - GPU OPTIMIZED) ===== */
@@ -1465,17 +1465,16 @@
 .auth-form-input:focus,
 .auth-form-input:focus-visible {
   outline: none !important;
-  border-color: #D71921 !important;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.22) !important;
+  box-shadow: none !important;
 }
 .auth-form-input.input-error {
   border-color: #D71921 !important;
-  box-shadow: 0 0 0 2px rgba(215, 25, 33, 0.14);
+  box-shadow: none !important;
 }
 .auth-form-input.input-error:focus,
 .auth-form-input.input-error:focus-visible {
-  border-color: #D71921 !important;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28) !important;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Theme-aware autofill override */
@@ -1589,10 +1588,44 @@
   background-image: radial-gradient(circle, rgba(17, 17, 20, 0.28) 1px, transparent 1px);
 }
 
-/* Focus ring (excludes menu search input and AI chat composer textarea which keep styling on their parent pill) */
-:focus-visible:not(.fsm-search-input):not(.ai-composer-textarea) {
+/* Focus ring for non-form keyboard controls only (never inputs, textareas, selects, or search bars) */
+:focus-visible:not(input):not(textarea):not(select):not(.fsm-search-input):not(.ai-composer-textarea) {
   outline: 2px solid var(--red) !important;
   outline-offset: 2px;
+}
+
+/* Global clean input/textarea/select focus rule — no red outline, focus ring, or extra box shadow */
+input,
+textarea,
+select,
+input:focus,
+input:focus-visible,
+input:active,
+textarea:focus,
+textarea:focus-visible,
+textarea:active,
+select:focus,
+select:focus-visible,
+select:active {
+  outline: none !important;
+  outline-width: 0 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+input:not(:-webkit-autofill),
+textarea:not(:-webkit-autofill),
+select:not(:-webkit-autofill),
+input:not(:-webkit-autofill):focus,
+input:not(:-webkit-autofill):focus-visible,
+input:not(:-webkit-autofill):active,
+textarea:not(:-webkit-autofill):focus,
+textarea:not(:-webkit-autofill):focus-visible,
+textarea:not(:-webkit-autofill):active,
+select:not(:-webkit-autofill):focus,
+select:not(:-webkit-autofill):focus-visible,
+select:not(:-webkit-autofill):active {
+  box-shadow: none !important;
 }
 
 /* Scrollbar */
@@ -4961,8 +4994,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 
 .aqb-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: none;
 }
 
 /* Selection Sticky Bar at Bottom */
@@ -5290,8 +5322,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 
 .akb-input:focus {
   outline: none !important;
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 2px var(--focus-ring) !important;
+  box-shadow: none !important;
 }
 
 .akb-search-clear-btn {
@@ -6931,7 +6962,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 
 .cw-pill-input:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1.5px var(--cw-red);
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7266,7 +7297,7 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 
 .ncd-input:focus {
   outline: none;
-  border-color: var(--cw-red);
+  box-shadow: none;
 }
 
 /* Empty state rounded bordered box */
@@ -7858,7 +7889,7 @@ body.modal-open .boardly-post-card {
 }
 
 .fsm-appearance-select:focus-visible {
-  border-color: var(--nav-icon-active);
+  outline: none;
 }
 
 .fsm-appearance-select option {
@@ -7907,10 +7938,8 @@ body.modal-open .boardly-post-card {
 .fsm-search-pill:focus-within,
 .fsm-search-pill.is-focused {
   outline: none;
-  border-color: var(--nav-icon-active);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--nav-icon-active) 45%, transparent),
-    var(--nav-glass-shadow);
+  border-color: var(--nav-glass-border);
+  box-shadow: var(--nav-glass-shadow);
 }
 
 .fsm-search-input,
@@ -8749,7 +8778,6 @@ button.rs-day-cell:active {
 .cum-input:focus,
 .cum-input:focus-visible {
   outline: none !important;
-  border: 2px solid var(--cum-red) !important;
   box-shadow: none !important;
 }
 
@@ -9006,8 +9034,8 @@ button.rs-day-cell:active {
 }
 
 .msg-search-input:focus {
-  border-color: var(--rs-red);
-  box-shadow: 0 0 0 1px var(--rs-red);
+  outline: none;
+  box-shadow: none;
 }
 
 /* Conversation row card (26px radius) */
@@ -9368,8 +9396,8 @@ button.rs-day-cell:active {
 }
 
 .conv-input:focus {
-  border: 2px solid var(--rs-red);
-  padding: 0 17px;
+  outline: none;
+  box-shadow: none;
 }
 
 .conv-send-btn {
@@ -11783,10 +11811,20 @@ button.section-chip:active:not(:disabled),
    SHARED FIXES S1–S4 & BOARDLY iOS + GLASSMORPHISM + NOTHING OS TOKENS
    ============================================================================ */
 
-/* S1. Search inputs: remove the double red ring. Only the wrapper shows the focus ring. */
+/* S1. Search inputs: transparent, borderless, no outline or focus ring inside search wrappers. */
 input[type="search"],
+input[type="search"]:focus,
+input[type="search"]:focus-visible,
+input[type="search"]:active,
 .search-pill-wrapper input,
-.boardly-search-wrapper input {
+.search-pill-wrapper input:focus,
+.search-pill-wrapper input:focus-visible,
+.search-pill-wrapper textarea,
+.search-pill-wrapper textarea:focus,
+.search-pill-wrapper textarea:focus-visible,
+.boardly-search-wrapper input,
+.boardly-search-wrapper input:focus,
+.boardly-search-wrapper input:focus-visible {
   outline: none !important;
   box-shadow: none !important;
   border: 0 !important;
@@ -11805,8 +11843,9 @@ input[type="search"],
 
 .search-pill-wrapper:focus-within,
 .boardly-search-wrapper:focus-within {
-  border-color: rgba(215, 25, 33, 0.75) !important;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  outline: none !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
 }
 
 /* S2. Page content z-index below bottom nav with safe bottom padding; modals z-index 2000 */
@@ -12051,8 +12090,7 @@ input[type="search"],
 .lg-nothing-input:focus,
 .lg-nothing-input:focus-visible {
   outline: none;
-  border-color: #D71921;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28);
+  box-shadow: none;
 }
 
 .lg-nothing-red-btn {
@@ -12178,8 +12216,9 @@ input[type="search"],
 }
 
 .formula-search-pill:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 .formula-search-input,
@@ -12293,14 +12332,15 @@ input[type="search"],
   background-color: rgba(0, 0, 0, 0.54);
 }
 
-/* Settings floating search pill — focus ring on pill only, never inner rectangle */
+/* Settings floating search pill — clean outer pill in all states, zero red border or inner rectangle */
 .settings-search-pill {
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .settings-search-pill:focus-within {
-  border-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 24px -6px rgba(0, 0, 0, 0.14) !important;
+  outline: none !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
 }
 
 .settings-search-input,

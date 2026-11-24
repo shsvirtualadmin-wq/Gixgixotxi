@@ -1696,7 +1696,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search banners, avatars, frames, effects, nameplates…"
                   aria-label="Search store items by name"
-                  className="w-full h-10 pl-10 pr-9 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[#E11D2A]"
+                  className="w-full h-10 pl-10 pr-9 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                 />
                 {searchQuery && (
                   <button

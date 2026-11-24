@@ -374,7 +374,7 @@ export function AdminCrewsPage() {
             placeholder="Search by name or code..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.08)] text-xs text-white placeholder-[rgba(255,255,255,0.4)] focus:outline-none focus:border-[#D71921] transition-colors"
+            className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.08)] text-xs text-white placeholder-[rgba(255,255,255,0.4)] focus:outline-none transition-colors"
           />
         </div>
       </div>

@@ -498,7 +498,7 @@ export function OtpVerificationCard({
             maxLength={12}
             disabled={verifying}
             autoFocus
-            className="w-full h-14 px-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] text-center text-lg font-mono font-bold tracking-widest text-[var(--text)] focus:outline-none focus:border-[#D71921] transition-colors"
+            className="w-full h-14 px-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] text-center text-lg font-mono font-bold tracking-widest text-[var(--text)] focus:outline-none transition-colors"
           />
         ) : (
           <div className="grid grid-cols-6 gap-2 sm:gap-2.5 w-full">
@@ -519,7 +519,7 @@ export function OtpVerificationCard({
                 onPaste={handlePaste}
                 disabled={verifying}
                 aria-label={`Digit ${idx + 1} of 6`}
-                className="w-full h-13 sm:h-14 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] text-center text-lg sm:text-xl font-bold text-[var(--text)] focus:outline-none focus:border-[#D71921] transition-colors"
+                className="w-full h-13 sm:h-14 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] text-center text-lg sm:text-xl font-bold text-[var(--text)] focus:outline-none transition-colors"
                 style={{ fontFamily: 'var(--font-dot, var(--font-heading))' }}
               />
             ))}

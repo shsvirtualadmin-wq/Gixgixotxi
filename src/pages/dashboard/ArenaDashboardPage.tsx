@@ -394,7 +394,7 @@ export function ArenaDashboardPage() {
               placeholder="Enter 6-char room code (e.g. NET2026)"
               value={circleInput}
               onChange={(e) => setCircleInput(e.target.value)}
-              className="flex-1 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)] uppercase tracking-wider focus:border-[var(--accent)]"
+              className="flex-1 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)] uppercase tracking-wider focus:outline-none"
               style={{ height: '48px' }}
             />
             <button

@@ -141,7 +141,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
       {/* Search pill */}
       <div className="px-3.5 pb-3 shrink-0">
         <div
-          className="flex h-10 items-center gap-2 rounded-full px-3.5 transition-shadow focus-within:ring-2 focus-within:ring-[var(--accent)]"
+          className="flex h-10 items-center gap-2 rounded-full px-3.5 transition-shadow"
           style={{
             backgroundColor: 'var(--card)',
             border: '1px solid var(--border)',

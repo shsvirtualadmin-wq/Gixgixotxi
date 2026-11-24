@@ -468,7 +468,7 @@ export const AdminCertificatesPage: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search student, serial (BDLY-GL01-0001), or mock..."
-                  className="w-full min-h-[42px] pl-9 pr-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                  className="w-full min-h-[42px] pl-9 pr-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs text-[var(--text)] focus:outline-none"
                 />
               </div>
 

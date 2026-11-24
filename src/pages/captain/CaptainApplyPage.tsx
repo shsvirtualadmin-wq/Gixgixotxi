@@ -322,10 +322,10 @@ export function CaptainApplyPage() {
                   if (fieldErrors.studentName) setFieldErrors((prev) => ({ ...prev, studentName: undefined }));
                 }}
                 placeholder="e.g. Ali Ahmed"
-                className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                   fieldErrors.studentName
-                    ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                    : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                    ? 'border-[var(--red)]'
+                    : 'border-white/12'
                 }`}
                 style={{ height: '52px' }}
               />
@@ -348,10 +348,10 @@ export function CaptainApplyPage() {
                     if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                   }}
                   placeholder="student@example.com"
-                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                     fieldErrors.email
-                      ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      ? 'border-[var(--red)]'
+                      : 'border-white/12'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -372,10 +372,10 @@ export function CaptainApplyPage() {
                     setPhone(e.target.value);
                     if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                     fieldErrors.phone
-                      ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      ? 'border-[var(--red)]'
+                      : 'border-white/12'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -399,10 +399,10 @@ export function CaptainApplyPage() {
                     setInstitution(e.target.value);
                     if (fieldErrors.institution) setFieldErrors((prev) => ({ ...prev, institution: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                     fieldErrors.institution
-                      ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      ? 'border-[var(--red)]'
+                      : 'border-white/12'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -423,10 +423,10 @@ export function CaptainApplyPage() {
                     setCity(e.target.value);
                     if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                     fieldErrors.city
-                      ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      ? 'border-[var(--red)]'
+                      : 'border-white/12'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -444,7 +444,7 @@ export function CaptainApplyPage() {
               <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                className="w-full rounded-2xl bg-white/[0.04] border border-white/12 px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full rounded-2xl bg-white/[0.04] border border-white/12 px-4 text-sm text-[var(--text)] focus:outline-none"
                 style={{ height: '52px' }}
               >
                 <option value="HSSC-I (11th Class)">HSSC-I (11th Class)</option>
@@ -468,10 +468,10 @@ export function CaptainApplyPage() {
                   setStatement(e.target.value);
                   if (fieldErrors.statement) setFieldErrors((prev) => ({ ...prev, statement: undefined }));
                 }}
-                className={`w-full rounded-2xl bg-white/[0.04] border p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-2xl bg-white/[0.04] border p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none ${
                   fieldErrors.statement
-                    ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                    : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
+                    ? 'border-[var(--red)]'
+                    : 'border-white/12'
                 }`}
               />
               {fieldErrors.statement && (

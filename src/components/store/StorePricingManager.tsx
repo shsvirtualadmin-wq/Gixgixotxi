@@ -441,7 +441,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search item name or ID..."
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] outline-none focus:border-red-500 transition-colors"
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs text-[var(--text)] placeholder-[var(--muted)] outline-none transition-colors"
                 />
               </div>
             </div>
@@ -681,7 +681,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               <select
                 value={bulkCategory}
                 onChange={(e) => setBulkCategory(e.target.value as any)}
-                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none focus:border-red-500 cursor-pointer"
+                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none cursor-pointer"
               >
                 <option value="nameplate">Nameplates</option>
                 <option value="avatar_frame">Avatar Frames</option>
@@ -700,7 +700,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               <select
                 value={bulkType}
                 onChange={(e) => setBulkType(e.target.value as any)}
-                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none focus:border-red-500 cursor-pointer"
+                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none cursor-pointer"
               >
                 <option value="static">Static Only</option>
                 <option value="animated">Animated Only</option>
@@ -716,7 +716,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               <select
                 value={bulkMode}
                 onChange={(e) => setBulkMode(e.target.value as any)}
-                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none focus:border-red-500 cursor-pointer"
+                className="w-full text-xs bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] font-heading outline-none cursor-pointer"
               >
                 <option value="exact">Set Exact Price (Kobans)</option>
                 <option value="percentage_increase">Increase by Percentage (+%)</option>
@@ -738,7 +738,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                   value={bulkValue}
                   onChange={(e) => setBulkValue(Math.max(0, parseInt(e.target.value) || 0))}
                   placeholder="e.g. 300"
-                  className="w-full text-xs font-mono font-bold bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] outline-none focus:border-red-500"
+                  className="w-full text-xs font-mono font-bold bg-[var(--card)] border border-[var(--border)] rounded-xl p-2.5 text-[var(--text)] outline-none"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)]">
                   {bulkMode.includes('percentage') ? '%' : '🪙'}

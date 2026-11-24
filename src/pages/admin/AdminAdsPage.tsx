@@ -501,7 +501,7 @@ export function AdminAdsPage() {
                       updateConfig((p) => ({ ...p, publisherId: e.target.value.trim() }))
                     }
                     placeholder="ca-pub-6994939022289204"
-                    className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm font-mono text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm font-mono text-[var(--text)] focus:outline-none"
                   />
                 </div>
 

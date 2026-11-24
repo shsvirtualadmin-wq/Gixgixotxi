@@ -113,7 +113,7 @@ export const VerifyCertificatePage: React.FC = () => {
               onChange={(e) => setSerialInput(e.target.value.toUpperCase())}
               placeholder="BDLY-GL01-0001"
               aria-label="Certificate Serial Number"
-              className="w-full min-h-[46px] pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] font-mono text-sm text-[var(--text)] uppercase tracking-wider focus:outline-none focus:border-[var(--accent)]"
+              className="w-full min-h-[46px] pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] font-mono text-sm text-[var(--text)] uppercase tracking-wider focus:outline-none"
             />
           </div>
           <button

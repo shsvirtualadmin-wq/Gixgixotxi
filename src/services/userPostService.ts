@@ -463,6 +463,14 @@ export async function createUserPost(params: {
     })();
   }
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boardly:posts-changed', {
+        detail: { action: 'create', authorUid: params.userId, postId: created.id },
+      })
+    );
+  }
+
   return created;
 }
 
@@ -561,11 +569,19 @@ export async function deleteUserPost(
   _userId?: string
 ): Promise<boolean> {
   const postId = typeof arg1 === 'object' && arg1 !== null ? arg1.id : arg1;
+  const ownerUid = typeof arg1 === 'object' && arg1 !== null ? arg1.userId : _userId;
   const headers = await getAuthHeaders(true);
   const resp = await fetch(`/api/posts/${encodeURIComponent(postId)}`, {
     method: 'DELETE',
     headers,
   });
+  if (resp.ok && typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boardly:posts-changed', {
+        detail: { action: 'delete', authorUid: ownerUid || undefined, postId },
+      })
+    );
+  }
   return resp.ok;
 }
 

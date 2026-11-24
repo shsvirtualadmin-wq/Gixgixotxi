@@ -594,8 +594,9 @@ html.ui-glass [data-admin-sheet] input:focus,
 html.ui-glass [data-admin-sheet] select:focus,
 html.ui-glass [data-admin-sheet] textarea:focus,
 html.ui-glass [data-student-page] select:focus {
-  border-color: #D71921 !important;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28) !important;
+  outline: none !important;
+  border-color: var(--edge) !important;
+  box-shadow: none !important;
 }
 
 /* Container pills that wrap an icon + input or icon + select (Users search, Audit search, Store Pricing search & category filter, Settings search, Kobans search) */
@@ -613,14 +614,15 @@ html.ui-glass [data-admin-page="kobans"] .akb-search-box {
   padding-right: 14px;
 }
 
-/* Red 3px focus ring goes on the outer container */
+/* Keep normal glass container appearance on focus-within — zero red border or ring */
 html.ui-glass .lg-input-wrap:focus-within,
 html.ui-glass [data-student-page="settings"] .fsm-search-pill:focus-within,
 html.ui-glass [data-admin-page] div:has(> svg + input):focus-within,
 html.ui-glass [data-admin-page] div:has(> svg + select):focus-within,
 html.ui-glass [data-admin-page="kobans"] .akb-search-box:focus-within {
-  border-color: #D71921 !important;
-  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.28) !important;
+  outline: none !important;
+  border-color: var(--edge) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
 }
 
 /* Inner input/select inside a container has ZERO border, ZERO background, ZERO box-shadow */

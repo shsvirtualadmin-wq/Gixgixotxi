@@ -266,7 +266,7 @@ export function AdminPlansPage() {
                   setFreeCredits(e.target.value);
                   setDirty(true);
                 }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
               />
             </div>
 
@@ -307,7 +307,7 @@ export function AdminPlansPage() {
                     setProPricePkr(e.target.value);
                     setDirty(true);
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
                 />
               </div>
 
@@ -324,7 +324,7 @@ export function AdminPlansPage() {
                     setProPriceKobans(e.target.value);
                     setDirty(true);
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
                 />
               </div>
 
@@ -341,7 +341,7 @@ export function AdminPlansPage() {
                     setProCredits(e.target.value);
                     setDirty(true);
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
                 />
               </div>
             </div>
@@ -463,7 +463,7 @@ export function AdminPlansPage() {
                   setAnnualDiscountPct(e.target.value);
                   setDirty(true);
                 }}
-                className="w-32 px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                className="w-32 px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
               />
               <span className="text-xs font-heading text-[var(--muted)]">
                 Applied to Monthly × 12 for both Pro and Plus (PKR &amp; Kobans).

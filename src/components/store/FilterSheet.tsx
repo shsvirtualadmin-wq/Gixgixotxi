@@ -104,7 +104,7 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
               id="store-sort-select"
               value={filters.sortBy}
               onChange={(e) => onChange({ sortBy: e.target.value as SortOption })}
-              className="w-full h-11 px-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] text-sm font-bold text-[var(--text-primary)] focus:outline-none focus:border-[#E11D2A]"
+              className="w-full h-11 px-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] text-sm font-bold text-[var(--text-primary)] focus:outline-none"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.id} value={opt.id}>

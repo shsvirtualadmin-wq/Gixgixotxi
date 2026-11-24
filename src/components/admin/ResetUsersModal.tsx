@@ -215,7 +215,7 @@ export function ResetUsersModal({
                   onChange={(e) => setConfirmInput(e.target.value)}
                   placeholder="RESET"
                   disabled={executing}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)] border border-[var(--border)] text-sm text-white font-mono focus:border-red-500 outline-none uppercase"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)] border border-[var(--border)] text-sm text-white font-mono outline-none uppercase"
                 />
               </div>
 

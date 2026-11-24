@@ -3147,8 +3147,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       placeholder="Your name"
                       className={`w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none ${
                         !displayNameCheck.valid
-                          ? 'border-[#D71921] focus:border-[#D71921]'
-                          : 'border-[var(--border)] focus:border-[var(--accent)]'
+                          ? 'border-[#D71921]'
+                          : 'border-[var(--border)]'
                       }`}
                     />
                     {!displayNameCheck.valid && displayNameCheck.error && (
@@ -3168,8 +3168,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div
                       className={`min-h-[46px] px-4 rounded-full bg-[var(--bg)] border flex items-center ${
                         !usernameCheck.valid
-                          ? 'border-[#D71921] focus-within:border-[#D71921]'
-                          : 'border-[var(--border)] focus-within:border-[var(--accent)]'
+                          ? 'border-[#D71921]'
+                          : 'border-[var(--border)]'
                       }`}
                     >
                       <span className="text-[var(--text-muted)] text-[15px] mr-1">@</span>
@@ -3265,7 +3265,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     placeholder="Add a short bio..."
                     rows={3}
                     maxLength={160}
-                    className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none"
+                    className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none resize-none"
                   />
                 </div>
               </div>

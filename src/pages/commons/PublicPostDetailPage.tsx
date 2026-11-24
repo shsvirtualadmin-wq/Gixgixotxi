@@ -857,7 +857,7 @@ export const PublicPostDetailPage: React.FC = () => {
                   : 'Sign in to post a comment or answer...'
               }
               rows={3}
-              className="w-full max-w-full rounded-xl bg-surface-muted border border-border p-3.5 text-sm text-primary placeholder:text-muted focus:outline-none focus:border-[#D71921]"
+              className="w-full max-w-full rounded-xl bg-surface-muted border border-border p-3.5 text-sm text-primary placeholder:text-muted focus:outline-none"
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
               <label className="inline-flex items-center gap-2 text-xs text-secondary cursor-pointer">

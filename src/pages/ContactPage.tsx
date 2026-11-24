@@ -367,7 +367,7 @@ export function ContactPage() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g. Ayesha Khan"
-                      className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                      className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none transition-colors ${
                         fieldErrors.name ? 'border-[var(--red)]' : 'border-white/12'
                       }`}
                       style={{ height: '52px' }}
@@ -392,7 +392,7 @@ export function ContactPage() {
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         placeholder="student@example.com"
-                        className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                        className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none transition-colors ${
                           fieldErrors.email ? 'border-[var(--red)]' : 'border-white/12'
                         }`}
                         style={{ height: '52px' }}
@@ -415,7 +415,7 @@ export function ContactPage() {
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                         placeholder="0300 1234567"
-                        className="w-full rounded-2xl px-4 py-3 bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors"
+                        className="w-full rounded-2xl px-4 py-3 bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none transition-colors"
                         style={{ height: '52px' }}
                       />
                     </div>
@@ -436,7 +436,7 @@ export function ContactPage() {
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                       placeholder="Describe your inquiry, payment slip reference, or technical question..."
                       maxLength={2000}
-                      className={`w-full rounded-2xl p-4 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                      className={`w-full rounded-2xl p-4 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none transition-colors ${
                         fieldErrors.message ? 'border-[var(--red)]' : 'border-white/12'
                       }`}
                     />

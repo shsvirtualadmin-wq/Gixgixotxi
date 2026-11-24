@@ -708,7 +708,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 value={signatoryName}
                 onChange={(e) => setSignatoryName(e.target.value)}
                 placeholder="e.g. Syed H. Shah"
-                className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm text-[var(--text)] focus:outline-none"
               />
             </div>
             <div>
@@ -720,7 +720,7 @@ export const SignatureUploader: React.FC<SignatureUploaderProps> = ({
                 value={signatoryTitle}
                 onChange={(e) => setSignatoryTitle(e.target.value)}
                 placeholder="e.g. Founder, Boardly"
-                className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+                className="w-full min-h-[44px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm text-[var(--text)] focus:outline-none"
               />
             </div>
           </div>

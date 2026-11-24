@@ -530,7 +530,7 @@ export function StudyBuddyPage() {
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Post sprint update or note..."
-              className="flex-1 px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+              className="flex-1 px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] focus:outline-none"
             />
             <Button variant="primary" size="sm" type="submit" loading={sendingMsg} className="shrink-0">
               <Send size={13} />

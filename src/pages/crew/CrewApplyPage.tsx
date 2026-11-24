@@ -149,7 +149,7 @@ export function CrewApplyPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
                 style={{ height: '52px' }}
               />
             </div>
@@ -164,7 +164,7 @@ export function CrewApplyPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -179,7 +179,7 @@ export function CrewApplyPage() {
                   placeholder="0300 1234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -196,7 +196,7 @@ export function CrewApplyPage() {
                   placeholder="e.g. Punjab Group of Colleges"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -211,7 +211,7 @@ export function CrewApplyPage() {
                   placeholder="e.g. Lahore / Islamabad"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -224,7 +224,7 @@ export function CrewApplyPage() {
               <select
                 value={academicLevel}
                 onChange={(e) => setAcademicLevel(e.target.value)}
-                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none"
                 style={{ height: '52px' }}
               >
                 <option value="FSc Pre-Engineering">FSc Pre-Engineering</option>
@@ -245,7 +245,7 @@ export function CrewApplyPage() {
                 placeholder="Share your outreach plan, student groups, or academy study circles..."
                 value={promotionPlan}
                 onChange={(e) => setPromotionPlan(e.target.value)}
-                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
               />
             </div>
 

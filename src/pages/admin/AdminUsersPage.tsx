@@ -1692,7 +1692,7 @@ export function AdminUsersPage() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <div
                 data-users-search-wrap
-                className="flex-1 flex items-center gap-2 px-3.5 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] focus-within:border-[#D71921]/70 transition-colors min-w-0"
+                className="flex-1 flex items-center gap-2 px-3.5 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] transition-colors min-w-0"
               >
                 <Search size={15} className="text-[var(--muted)] shrink-0" />
                 <input

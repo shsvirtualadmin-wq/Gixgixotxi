@@ -357,7 +357,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                 value={transactionId}
                 onChange={(e) => setTransactionId(e.target.value)}
                 placeholder="e.g. 84920194821 or 2940284"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
               />
               <p className="text-[11px] text-[var(--muted)]">
                 Copy the TID from your {PAYMENT_METHODS_PAIR_LABEL} confirmation SMS or receipt screen.

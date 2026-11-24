@@ -360,7 +360,7 @@ export function CommonsCommentsDrawer({
                 type="checkbox"
                 checked={isAnonymous}
                 onChange={(e) => setIsAnonymous(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-border bg-surface text-accent focus:ring-accent cursor-pointer accent-red-600"
+                className="w-3.5 h-3.5 rounded border-border bg-surface text-accent cursor-pointer accent-red-600"
               />
               <span className="flex items-center gap-1">
                 <EyeOff size={13} /> Comment anonymously
@@ -380,7 +380,7 @@ export function CommonsCommentsDrawer({
                   : 'Sign in to join the discussion'
               }
               disabled={!currentUser || submitting}
-              className="flex-1 px-3.5 py-2.5 text-sm sm:text-xs bg-surface border border-border rounded-xl text-primary placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-50 transition-colors"
+              className="flex-1 px-3.5 py-2.5 text-sm sm:text-xs bg-surface border border-border rounded-xl text-primary placeholder:text-muted focus:outline-none disabled:opacity-50 transition-colors"
             />
             <button
               type="submit"

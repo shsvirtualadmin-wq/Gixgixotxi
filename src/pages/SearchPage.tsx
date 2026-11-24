@@ -156,7 +156,7 @@ export const SearchPage: React.FC = () => {
           </h1>
 
           <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 mb-5">
-            <div className="relative flex-1 flex items-center rounded-full bg-white/[0.07] border border-white/[0.18] focus-within:border-[#D71921] focus-within:ring-2 focus-within:ring-[#D71921]/40 transition-all min-h-[52px] px-4">
+            <div className="relative flex-1 flex items-center rounded-full bg-white/[0.07] border border-white/[0.18] transition-all min-h-[52px] px-4">
               <Search size={18} className="text-[#D71921] shrink-0 mr-3" />
               <input
                 type="search"

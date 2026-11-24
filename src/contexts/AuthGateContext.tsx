@@ -468,7 +468,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           maxLength={20}
                           autoFocus
                           autoComplete="off"
-                          className="w-full h-12 pl-9 pr-4 rounded-full bg-white/[0.06] border border-white/[0.18] font-mono text-sm text-[var(--text-primary)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/35"
+                          className="w-full h-12 pl-9 pr-4 rounded-full bg-white/[0.06] border border-white/[0.18] font-mono text-sm text-[var(--text-primary)] focus:outline-none"
                         />
                       </div>
 

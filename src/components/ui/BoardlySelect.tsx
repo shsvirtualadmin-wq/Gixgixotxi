@@ -325,8 +325,8 @@ export const BoardlySelect: React.FC<BoardlySelectProps> = ({
         onKeyDown={handleKeyDown}
         className={`w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border text-[15px] text-[var(--text)] flex items-center justify-between gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none ${
           open
-            ? 'border-[#D71921] ring-2 ring-[#D71921]/20'
-            : 'border-[var(--border)] hover:border-[var(--text-muted)]/50 focus:border-[var(--accent)]'
+            ? 'border-[var(--text-muted)]/60'
+            : 'border-[var(--border)] hover:border-[var(--text-muted)]/50'
         }`}
       >
         <span className="flex items-center gap-2.5 min-w-0">
