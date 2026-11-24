@@ -6,16 +6,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { broadcastPublicProfileUpdate } from '@/services/publicProfileService';
 import {
-  DEFAULT_PLUS_BADGE_ID,
   DEFAULT_PLUS_BADGE_SETTINGS,
   isValidPlusBadgeId,
   validatePlusBadgePayload,
   type PlusBadgeSettings,
 } from '@/lib/plusBadgeDesigns';
 
-const LS_KEY_GLOBAL = 'boardly_plus_badge_v1';
+const LS_KEY_GLOBAL_LEGACY = 'boardly_plus_badge_v1';
+const LS_KEY_GLOBAL = 'boardly_plus_badge_v2';
 const getLsKeyForUser = (uid?: string | null) =>
-  uid ? `boardly_plus_badge_v1_${uid}` : LS_KEY_GLOBAL;
+  uid ? `boardly_plus_badge_v2_${uid}` : LS_KEY_GLOBAL;
 
 function readSettingsFromLocalStorage(uid?: string | null): {
   settings: PlusBadgeSettings;
@@ -59,8 +59,10 @@ function writeSettingsToLocalStorage(settings: PlusBadgeSettings, uid?: string |
 export function clearPlusBadgeCacheForUid(uid?: string | null): void {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.removeItem(LS_KEY_GLOBAL_LEGACY);
     window.localStorage.removeItem(LS_KEY_GLOBAL);
     if (uid) {
+      window.localStorage.removeItem(`boardly_plus_badge_v1_${uid}`);
       window.localStorage.removeItem(getLsKeyForUser(uid));
     }
   } catch {
@@ -113,7 +115,7 @@ export interface PlusBadgeContextValue {
 
 const PlusBadgeContext = createContext<PlusBadgeContextValue>({
   settings: { ...DEFAULT_PLUS_BADGE_SETTINGS },
-  plusBadgeDesign: DEFAULT_PLUS_BADGE_ID,
+  plusBadgeDesign: null,
   plusBadgeVisible: true,
   effectivePlusBadgeId: null,
   isActivePlus: false,
@@ -165,11 +167,11 @@ export function PlusBadgeProvider({ children }: { children: React.ReactNode }) {
     }
     if (userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'plus_badge_design')) {
       const d = (userProfile as any).plus_badge_design;
-      return d === null ? null : isValidPlusBadgeId(d) ? d : DEFAULT_PLUS_BADGE_ID;
+      return d === null ? null : isValidPlusBadgeId(d) ? d : null;
     }
     if (userProfile && Object.prototype.hasOwnProperty.call(userProfile, 'plus_badge_id')) {
       const d = userProfile.plus_badge_id;
-      return d === null ? null : isValidPlusBadgeId(d) ? d : DEFAULT_PLUS_BADGE_ID;
+      return d === null ? null : isValidPlusBadgeId(d) ? d : null;
     }
     return settings.plus_badge_design;
   }, [known, settings.plus_badge_design, userProfile]);
@@ -230,11 +232,11 @@ export function PlusBadgeProvider({ children }: { children: React.ReactNode }) {
           if (data?.ok) {
             const rawDesign = data.plus_badge_design;
             const parsedDesign: number | null =
-              rawDesign === null
+              rawDesign === null || rawDesign === undefined
                 ? null
                 : isValidPlusBadgeId(rawDesign)
                 ? rawDesign
-                : DEFAULT_PLUS_BADGE_ID;
+                : null;
             const candidate: PlusBadgeSettings = {
               plus_badge_design: parsedDesign,
               plus_badge_visible:
@@ -244,7 +246,11 @@ export function PlusBadgeProvider({ children }: { children: React.ReactNode }) {
             return {
               settings: candidate,
               serverActivePlus:
-                typeof data.activePlus === 'boolean' ? data.activePlus : undefined,
+                typeof data.activePlus === 'boolean'
+                  ? data.activePlus
+                  : typeof data.isPlus === 'boolean'
+                  ? data.isPlus
+                  : undefined,
             };
           }
         } catch {

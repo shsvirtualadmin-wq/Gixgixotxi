@@ -1105,6 +1105,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             equippedFrame: data.equippedFrame ?? prev.equippedFrame,
             equippedBanner: data.equippedBanner ?? prev.equippedBanner,
             equippedTitle: data.equippedTitle ?? prev.equippedTitle,
+            ...(Object.prototype.hasOwnProperty.call(data, 'plusBadge')
+              ? { plusBadge: data.plusBadge }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(data, 'plus_badge_design')
+              ? { plus_badge_design: data.plus_badge_design }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(data, 'plus_badge_visible')
+              ? { plus_badge_visible: data.plus_badge_visible }
+              : {}),
             equippedCosmetics: {
               ...(prev.equippedCosmetics || {}),
               ...(data.equippedCosmetics || {}),
@@ -1172,6 +1181,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         nameplate: nextNameplate,
         equippedBadges: op.equippedBadges ?? base.equippedBadges,
         proBadge: myProBadgeVisible ? myProBadgeDesign : null,
+        plusBadge: myEffectivePlusBadgeId,
         equippedCosmetics: {
           ...(base.equippedCosmetics || {}),
           ...(op.equippedCosmetics || {}),
@@ -1196,6 +1206,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     wallet.equipped,
     myProBadgeDesign,
     myProBadgeVisible,
+    myEffectivePlusBadgeId,
     previewMode,
     uid,
   ]);
@@ -1654,7 +1665,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       plusPlanId: profile.plusPlanId,
     });
     if (resolved !== 'free') return resolved;
-    if (typeof profile.plusBadge === 'number' || typeof profile.plus_badge_design === 'number') {
+    if (typeof profile.plusBadge === 'number') {
       return 'plus';
     }
     if (profile.proBadge) return 'pro';
@@ -1825,19 +1836,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <h2 className="text-[22px] sm:text-[24px] font-bold tracking-tight text-[var(--text)] leading-tight break-words">
                   {displayName}
                 </h2>
-                {isTargetPlus ? (
-                  <span
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(180,83,9,0.22) 0%, rgba(245,158,11,0.28) 100%)',
-                      borderColor: 'rgba(245, 158, 11, 0.55)',
-                      color: '#F59E0B',
-                    }}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    {targetPlanLabel}
-                  </span>
-                ) : isTargetPro ? (
+                {isTargetPlus ? null : isTargetPro ? (
                   <span
                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider border"
                     style={{

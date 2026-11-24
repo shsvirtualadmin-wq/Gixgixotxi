@@ -5551,6 +5551,9 @@ export default {
         };
 
         const checkActivePlus = async () => {
+          if (authUser.isSuperAdmin === true) {
+            return true;
+          }
           const authHdr = request.headers.get('Authorization') || '';
           const projectId = String(env.FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316').trim();
           const databaseId = String(
@@ -5637,6 +5640,7 @@ export default {
           return jsonResponse(request, env, {
             ok: true,
             isPlus,
+            activePlus: isPlus,
             plus_badge_design: plusBadgeDesign,
             plus_badge_visible: plusBadgeVisible,
             plusBadge: isPlus && plusBadgeVisible && plusBadgeDesign !== null ? plusBadgeDesign : null,
@@ -5649,7 +5653,7 @@ export default {
           return errorResponse(
             request,
             env,
-            'Boardly PLUS is required to customize your PLUS badge.',
+            'An active Boardly Plus plan is required to customize and save a PLUS badge.',
             'PLUS_REQUIRED',
             403
           );
@@ -5724,6 +5728,7 @@ export default {
         return jsonResponse(request, env, {
           ok: true,
           isPlus: true,
+          activePlus: true,
           plus_badge_design: parsedDesign.value,
           plus_badge_visible: visibleRaw,
           plusBadge: visibleRaw && parsedDesign.value !== null ? parsedDesign.value : null,

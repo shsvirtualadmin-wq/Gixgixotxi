@@ -41,6 +41,9 @@ import {
   deleteEconomyFallbackDocForTest,
   getEconomyFallbackDocForTest,
 } from '../../functions/api/economy/[[path]]';
+import { handlePlusBadgeRequest } from '../../functions/api/plus-badge';
+import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
+import { DEFAULT_PLUS_BADGE_SETTINGS } from '../lib/plusBadgeDesigns';
 
 const NOW = Date.parse('2026-11-19T12:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -369,5 +372,186 @@ test('8. Firestore security rules: config/plans before wildcard & protected Plus
       rulesText.includes(protectedKey),
       `firestore.rules must block client writes to ${protectedKey}`
     );
+  }
+});
+
+test('9. PLUS badge: no default #01 fallback, Superadmin saves without subscription row, toggle off hides, non-Plus blocked', async () => {
+  // Default settings must NOT fall back to design #01
+  assert.equal(DEFAULT_PLUS_BADGE_SETTINGS.plus_badge_design, null);
+  assert.equal(DEFAULT_PLUS_BADGE_SETTINGS.plus_badge_visible, true);
+
+  const superUid = `test_superadmin_plus_${Date.now()}`;
+  const freeUid = `test_free_plus_${Date.now()}`;
+  const localDb = getSharedLocalD1Database();
+
+  const superVerifier = async () => ({
+    uid: superUid,
+    email: 'owner@boardly.test',
+    name: 'Boardly Owner',
+    emailVerified: true,
+    role: 'superadmin',
+    captain: true,
+    admin: true,
+    superAdmin: true,
+    isSuperAdmin: true,
+    isAdminOrAbove: true,
+  });
+
+  const freeVerifier = async () => ({
+    uid: freeUid,
+    email: 'student@boardly.test',
+    name: 'Free Student',
+    emailVerified: true,
+    role: 'student',
+    captain: false,
+    admin: false,
+    superAdmin: false,
+    isSuperAdmin: false,
+    isAdminOrAbove: false,
+  });
+
+  const baseNowMs = Date.now();
+  const proUid = `test_pro_plus_${Date.now()}`;
+
+  const proVerifier = async () => ({
+    uid: proUid,
+    email: 'pro@boardly.test',
+    name: 'Pro Student',
+    emailVerified: true,
+    role: 'student',
+    captain: false,
+    admin: false,
+    superAdmin: false,
+    isSuperAdmin: false,
+    isAdminOrAbove: false,
+  });
+
+  try {
+    // 1. Superadmin with no saved design and no subscription row -> GET returns null (NO default #01)
+    const getInitial = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer fake_super_token' },
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs,
+      tokenVerifierOverride: superVerifier,
+    });
+    assert.equal(getInitial.status, 200);
+    const initialJson = (await getInitial.json()) as any;
+    assert.equal(initialJson.ok, true);
+    assert.equal(initialJson.activePlus, true);
+    assert.equal(initialJson.planTier, 'plus');
+    assert.equal(initialJson.plus_badge_design, null);
+    assert.equal(initialJson.plusBadge, null);
+
+    // 2. Superadmin picks design #12 and saves -> succeeds (200) without PLUS_REQUIRED error
+    const putSave = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer fake_super_token',
+        },
+        body: JSON.stringify({ plus_badge_design: 12, plus_badge_visible: true }),
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs + 1000,
+      tokenVerifierOverride: superVerifier,
+    });
+    assert.equal(putSave.status, 200);
+    const saveJson = (await putSave.json()) as any;
+    assert.equal(saveJson.ok, true);
+    assert.equal(saveJson.plus_badge_design, 12);
+    assert.equal(saveJson.plus_badge_visible, true);
+    assert.equal(saveJson.plusBadge, 12);
+
+    // 3. Reload (GET) -> returns saved design #12
+    const getSaved = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer fake_super_token' },
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs + 2000,
+      tokenVerifierOverride: superVerifier,
+    });
+    assert.equal(getSaved.status, 200);
+    const savedJson = (await getSaved.json()) as any;
+    assert.equal(savedJson.plus_badge_design, 12);
+    assert.equal(savedJson.plus_badge_visible, true);
+    assert.equal(savedJson.plusBadge, 12);
+
+    // 4. Turn "Show my badge" off -> saves and resolves plusBadge to null
+    const putHide = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer fake_super_token',
+        },
+        body: JSON.stringify({ plus_badge_design: 12, plus_badge_visible: false }),
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs + 5000,
+      tokenVerifierOverride: superVerifier,
+    });
+    assert.equal(putHide.status, 200);
+    const hideJson = (await putHide.json()) as any;
+    assert.equal(hideJson.ok, true);
+    assert.equal(hideJson.plus_badge_design, 12);
+    assert.equal(hideJson.plus_badge_visible, false);
+    assert.equal(hideJson.plusBadge, null);
+
+    // 5. Non-Plus Free user attempting to save -> still receives 403 PLUS_REQUIRED
+    const putFree = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer fake_free_token',
+        },
+        body: JSON.stringify({ plus_badge_design: 5, plus_badge_visible: true }),
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs + 6000,
+      tokenVerifierOverride: freeVerifier,
+    });
+    assert.equal(putFree.status, 403);
+    const freeJson = (await putFree.json()) as any;
+    assert.equal(freeJson.code, 'PLUS_REQUIRED');
+    assert.equal(
+      freeJson.error,
+      'An active Boardly Plus plan is required to customize and save a PLUS badge.'
+    );
+
+    // 6. Pro-only (non-Plus) user attempting to save -> still receives 403 PLUS_REQUIRED
+    const putPro = await handlePlusBadgeRequest({
+      request: new Request('http://localhost/api/plus-badge', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer fake_pro_token',
+        },
+        body: JSON.stringify({ plus_badge_design: 5, plus_badge_visible: true }),
+      }),
+      env: {},
+      dbOverride: localDb,
+      nowMs: baseNowMs + 7000,
+      tokenVerifierOverride: proVerifier,
+    });
+    assert.equal(putPro.status, 403);
+    const proJson = (await putPro.json()) as any;
+    assert.equal(proJson.code, 'PLUS_REQUIRED');
+  } finally {
+    await localDb
+      .prepare('DELETE FROM user_plus_badge WHERE user_id = ?1')
+      .bind(superUid)
+      .run();
   }
 });

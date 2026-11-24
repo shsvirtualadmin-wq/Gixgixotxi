@@ -1072,6 +1072,7 @@ export function resolveLiveAuthorsBatchSync(
         uid,
         email: uRow?.email || rRow?.email || null,
         role: liveRole || 'student',
+        isSuperAdmin: liveRole === 'superadmin',
         isGuest: false,
         plan: hasActiveLock ? (proLock.planTier || 'pro') : (uRow as any)?.plan ?? null,
         planTier: (uRow as any)?.plan_tier ?? (uRow as any)?.planTier ?? null,
@@ -4297,6 +4298,9 @@ ${postSitemaps}
           uid: item.uid,
           email: item.email,
           role: item.role,
+          isSuperAdmin:
+            SUPERADMIN_UIDS.has(item.uid) ||
+            String(item.role || '').toLowerCase() === 'superadmin',
           isGuest: item.uid.startsWith('guest_'),
           plan: item.plan,
           isPremium: item.plan === 'pro' || item.plan === 'plus',

@@ -577,7 +577,7 @@ export interface PlusBadgeSettings {
 }
 
 export const DEFAULT_PLUS_BADGE_SETTINGS: PlusBadgeSettings = {
-  plus_badge_design: DEFAULT_PLUS_BADGE_ID,
+  plus_badge_design: null,
   plus_badge_visible: true,
 };
 

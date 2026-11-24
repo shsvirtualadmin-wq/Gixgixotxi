@@ -3,12 +3,12 @@ import {
   getSharedLocalD1Database,
   FirestoreRestAdapter,
   parseServiceAccountFromEnv,
+  resolveConfiguredOwnerEmail,
   type RewardsEnv,
   type RewardsD1Database,
   type VerifiedFirebaseToken,
 } from '../_utils/firestoreRestAdmin';
 import {
-  DEFAULT_PLUS_BADGE_ID,
   DEFAULT_PLUS_BADGE_SETTINGS,
   isValidPlusBadgeId,
   resolvePlusBadgeId,
@@ -129,6 +129,7 @@ export async function checkUserActivePlusServer(
     uid: string;
     email?: string;
     plan?: string;
+    isSuperAdmin?: boolean;
     isAdminOrAbove?: boolean;
     role?: string;
     isGuest?: boolean;
@@ -218,10 +219,13 @@ export async function checkUserActivePlusServer(
     // Non-fatal
   }
 
+  const isSuperAdmin = Boolean(user.isSuperAdmin === true);
+
   const unified = resolveUnifiedPlanStatus({
     uid,
     email: user.email || fsDoc?.email || null,
-    role: fsDoc?.role || user.role || (user.isAdminOrAbove ? 'admin' : 'student'),
+    role: fsDoc?.role || user.role || (isSuperAdmin ? 'superadmin' : user.isAdminOrAbove ? 'admin' : 'student'),
+    isSuperAdmin,
     isGuest: false,
     plan: fsDoc?.plan ?? user.plan ?? null,
     planTier: fsDoc?.planTier ?? null,
@@ -356,16 +360,23 @@ export async function resolvePlusBadgesBatch(
     if (r?.uid && r?.role) roleByUid.set(String(r.uid), String(r.role));
   }
 
+  const ownerEmail = resolveConfiguredOwnerEmail(env as any);
+
   for (const uid of missingUids) {
     const uRow = unameByUid.get(uid);
     const role = roleByUid.get(uid) || uRow?.role || 'student';
     const email = uRow?.email || null;
     const isGuest = uid.startsWith('guest_') || uRow?.account_type === 'guest';
+    const isSuperAdmin =
+      !isGuest &&
+      (String(role || '').toLowerCase() === 'superadmin' ||
+        (Boolean(email) && String(email).trim().toLowerCase() === ownerEmail));
 
     const unified = resolveUnifiedPlanStatus({
       uid,
       email,
       role,
+      isSuperAdmin,
       isGuest,
       plan: uRow?.plan ?? null,
       planTier: uRow?.plan_tier ?? uRow?.planTier ?? null,
@@ -380,7 +391,7 @@ export async function resolvePlusBadgesBatch(
 
     const activePlus = Boolean(unified.isPlus) && unified.state === 'active';
     const pref = badgeByUid.get(uid);
-    const design = pref ? pref.design : DEFAULT_PLUS_BADGE_SETTINGS.plus_badge_design;
+    const design = pref ? pref.design : null;
     const visible = pref ? pref.visible : DEFAULT_PLUS_BADGE_SETTINGS.plus_badge_visible;
     const resolvedBadge: number | null = activePlus && visible ? design : null;
 
@@ -422,7 +433,7 @@ export function setCachedUserPlusBadge(
         : null
       : d1Row !== undefined
       ? d1Row.plus_badge_design
-      : existing?.plus_badge_design ?? DEFAULT_PLUS_BADGE_ID;
+      : existing?.plus_badge_design ?? null;
 
   const visible: boolean =
     opts.plus_badge_visible !== undefined
@@ -505,7 +516,7 @@ export async function handlePlusBadgeRequest(opts: HandlePlusBadgeOptions): Prom
       return jsonResponse(
         {
           ok: true,
-          plus_badge_design: DEFAULT_PLUS_BADGE_ID,
+          plus_badge_design: null,
           plus_badge_visible: true,
           activePlus: false,
           planTier: 'free',
@@ -536,7 +547,7 @@ export async function handlePlusBadgeRequest(opts: HandlePlusBadgeOptions): Prom
             ? null
             : isValidPlusBadgeId(Number(row.plus_badge_design))
             ? Number(row.plus_badge_design)
-            : DEFAULT_PLUS_BADGE_ID;
+            : null;
         const visible = Number(row.plus_badge_visible ?? 1) !== 0;
         const plusBadge = setCachedUserPlusBadge(userId, {
           activePlus: plusCheck.isActivePlus,
@@ -565,7 +576,7 @@ export async function handlePlusBadgeRequest(opts: HandlePlusBadgeOptions): Prom
     const fallbackDesign =
       plusCheck.firestoreDesign !== undefined
         ? plusCheck.firestoreDesign
-        : DEFAULT_PLUS_BADGE_ID;
+        : null;
     const fallbackVisible =
       plusCheck.firestoreVisible !== undefined ? plusCheck.firestoreVisible : true;
 

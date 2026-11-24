@@ -86,7 +86,9 @@ export const PlusBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
         text:
           draft.plus_badge_visible && selectedMeta
             ? `Saved! Your "${selectedMeta.name}" PLUS badge is now live everywhere.`
-            : 'Saved! Your PLUS badge is now hidden.',
+            : !draft.plus_badge_visible
+            ? 'Saved! Your PLUS badge is now hidden.'
+            : 'Saved! Your PLUS badge has been cleared.',
       });
     } else {
       setFeedback({

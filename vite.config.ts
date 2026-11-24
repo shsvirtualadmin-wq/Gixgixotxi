@@ -1608,6 +1608,7 @@ RULES:
                 process.env.FIREBASE_DATABASE_ID ||
                 process.env.VITE_FIREBASE_DATABASE_ID ||
                 process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID,
+              OWNER_EMAIL: process.env.OWNER_EMAIL,
             },
           });
 

@@ -681,7 +681,7 @@ export function normalizePublicProfileDoc(
       if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')) {
         return p.plus_badge_id === null ? null : resolvePlusBadgeId(p.plus_badge_id);
       }
-      return 1;
+      return null;
     })(),
     proBadge: (() => {
       if (uid.startsWith('guest_') || botMatch) return null;
