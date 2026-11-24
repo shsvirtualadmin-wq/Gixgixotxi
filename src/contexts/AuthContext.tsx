@@ -62,6 +62,7 @@ import {
   syncPublicProfile,
 } from '@/services/publicProfileService';
 import { teardownEffectivePlanListeners } from '@/hooks/useEffectivePlan';
+import { upsertSavedAccount } from '@/utils/savedAccounts';
 import {
   readOptimisticUserSnapshot,
   writeOptimisticUserSnapshot,
@@ -1803,6 +1804,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Auth state listener (Single Source of Truth with `/api/auth/me`) ─────
   const authSeqRef = useRef(0);
+  const lastAuthUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1815,6 +1817,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut))
       ) {
         if (!firebaseUser) {
+          lastAuthUidRef.current = null;
           setAuthStatus('unauthenticated');
           setUser(null);
           setProfile(null);
@@ -1826,6 +1829,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (firebaseUser) {
+        const previousUid = lastAuthUidRef.current;
+        const switchedAccount = Boolean(previousUid && previousUid !== firebaseUser.uid);
+        lastAuthUidRef.current = firebaseUser.uid;
+        if (switchedAccount) {
+          // Switching directly from one logged-in account (e.g. admin) to another (e.g. student):
+          // immediately clear previous role claims and stale profile so the new account never inherits them.
+          setTokenClaims({
+            superAdmin: false,
+            admin: false,
+            captain: false,
+            verified: false,
+            rawClaims: {},
+          });
+          setActiveGrants([]);
+          setProfile((prev) => (prev && prev.uid === firebaseUser.uid ? prev : null));
+          setProfileLoading(true);
+        }
         setUser(firebaseUser);
         setAuthStatus('authenticated');
         preloadSecurityAndSettingsForUid(firebaseUser.uid, false);
@@ -2007,6 +2027,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 null,
               streak: Number(updated.streak || 0),
               targetUniversity: updated.targetUniversity,
+            });
+            upsertSavedAccount({
+              uid: firebaseUser.uid,
+              email: updated.email || (firebaseUser.email || '').toLowerCase(),
+              displayName:
+                updated.displayName ||
+                updated.display_name ||
+                updated.username ||
+                firebaseUser.email ||
+                'Account',
+              username: updated.username || null,
+              role: updated.role || 'student',
+              equippedAvatar:
+                updated.equipped?.avatar ||
+                (updated as any).equippedAvatar ||
+                updated.avatar ||
+                null,
+              equippedFrameId:
+                updated.equipped?.frame ||
+                (updated as any).equippedFrame ||
+                updated.frame ||
+                null,
+              isGuest: Boolean(updated.isGuest),
             });
             return updated;
           });

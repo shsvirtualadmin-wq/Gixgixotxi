@@ -55,6 +55,13 @@ import {
   readSwrCache,
   writeSwrCache,
 } from '@/utils/userStateSource';
+import {
+  buildAddAccountUrl,
+  getSavedAccounts,
+  removeSavedAccount,
+  upsertSavedAccount,
+  type SavedAccountEntry,
+} from '@/utils/savedAccounts';
 import { useAiCredits } from '@/hooks/useAiCredits';
 import {
   deleteAllAiChatsFromFirestore,
@@ -232,6 +239,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   // Sheets
   const [aboutOpen, setAboutOpen] = useState(false);
   const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccountEntry[]>(() => getSavedAccounts());
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [appearanceSheetOpen, setAppearanceSheetOpen] = useState(false);
@@ -467,6 +475,40 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     : isGuest
     ? 'Guest'
     : 'Free';
+
+  useEffect(() => {
+    if (!user?.uid || isGuest) {
+      if (switchAccountOpen) {
+        setSavedAccounts(getSavedAccounts());
+      }
+      return;
+    }
+    const updated = upsertSavedAccount({
+      uid: user.uid,
+      email: user.email || profile?.email || '',
+      displayName: currentDisplayName || profile?.username || user.email || 'Account',
+      username: profile?.username || null,
+      role: profile?.role || (isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student'),
+      planLabel: planLabel || null,
+      equippedAvatar: equippedLoadout.avatar || null,
+      equippedFrameId: equippedLoadout.frame || null,
+    });
+    setSavedAccounts(updated);
+  }, [
+    switchAccountOpen,
+    user?.uid,
+    user?.email,
+    isGuest,
+    profile?.email,
+    profile?.username,
+    profile?.role,
+    isSuperAdmin,
+    isAdmin,
+    currentDisplayName,
+    planLabel,
+    equippedLoadout.avatar,
+    equippedLoadout.frame,
+  ]);
 
   const nextResetDateLabel = useMemo(() => {
     const tomorrow = new Date();
@@ -1784,7 +1826,51 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         equippedAvatar={equippedLoadout.avatar}
         equippedFrameId={equippedLoadout.frame}
         planLabel={planLabel}
-        onAddAccount={() => navigateTo('/login')}
+        savedAccounts={savedAccounts}
+        onSelectSavedAccount={(account) => {
+          if (user?.uid && !isGuest) {
+            const nextList = upsertSavedAccount({
+              uid: user.uid,
+              email: user.email || profile?.email || '',
+              displayName: currentDisplayName || profile?.username || user.email || 'Account',
+              username: profile?.username || null,
+              role: profile?.role || (isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student'),
+              planLabel,
+              equippedAvatar: equippedLoadout.avatar || null,
+              equippedFrameId: equippedLoadout.frame || null,
+            });
+            setSavedAccounts(nextList);
+          }
+          const currentPath =
+            typeof window !== 'undefined' ? window.location.pathname : '/settings';
+          navigateTo(
+            buildAddAccountUrl({
+              email: account.email || undefined,
+              returnTo: currentPath,
+            })
+          );
+        }}
+        onRemoveSavedAccount={(removeUid) => {
+          setSavedAccounts(removeSavedAccount(removeUid));
+        }}
+        onAddAccount={() => {
+          if (user?.uid && !isGuest) {
+            const nextList = upsertSavedAccount({
+              uid: user.uid,
+              email: user.email || profile?.email || '',
+              displayName: currentDisplayName || profile?.username || user.email || 'Account',
+              username: profile?.username || null,
+              role: profile?.role || (isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student'),
+              planLabel,
+              equippedAvatar: equippedLoadout.avatar || null,
+              equippedFrameId: equippedLoadout.frame || null,
+            });
+            setSavedAccounts(nextList);
+          }
+          const currentPath =
+            typeof window !== 'undefined' ? window.location.pathname : '/settings';
+          navigateTo(buildAddAccountUrl({ returnTo: currentPath }));
+        }}
         onSignOut={() => setSignOutConfirmOpen(true)}
       />
 

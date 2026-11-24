@@ -24,6 +24,11 @@ import {
   type CosmeticSlot,
 } from '../../../src/lib/inventorySource';
 import { isValidAvatar } from '../../../src/lib/matrixAvatarsData';
+import {
+  calculateCartTotals,
+  isLegacyUniform600Collection,
+  resolveEffectiveStoreItemPrice,
+} from '../../../src/lib/storeCartPricing';
 import { getPlanById, getProPlanById } from '../../../src/config/plans';
 import {
   DEFAULT_PLANS_CONFIG,
@@ -3693,15 +3698,23 @@ export async function handleEconomyApiRequest(context: {
         price: number;
       }> = [];
 
+      const allStoreItemsList = await fsHelper.listCollection('store_items', 500).catch(() => []);
+      const storeItemsById = new Map<string, Record<string, any>>(
+        allStoreItemsList.map((entry) => [entry.id, entry.data])
+      );
+      const legacyUniform600 = isLegacyUniform600Collection(allStoreItemsList);
+
       for (const rawItem of uniqueRawItems) {
         const itemId = String(rawItem.id).trim();
 
         const catalogMatch = ALL_KNOWN_COSMETICS.find((c) => c.id === itemId);
-        const [livePrimary, liveLegacy] = await Promise.all([
-          fsHelper.getDoc(`storeItems/${itemId}`),
-          fsHelper.getDoc(`store_items/${itemId}`),
-        ]);
-        const liveData = livePrimary || liveLegacy;
+        const liveV2 = storeItemsById.has(itemId)
+          ? storeItemsById.get(itemId)!
+          : await fsHelper.getDoc(`store_items/${itemId}`).catch(() => null);
+        // Only fall back to legacy `storeItems` collection for non-catalog items when `store_items` has no doc
+        const liveData =
+          liveV2 ||
+          (!catalogMatch ? await fsHelper.getDoc(`storeItems/${itemId}`).catch(() => null) : null);
 
         // 404 ONLY when the store item truly does not exist in catalog or Firestore
         if (!catalogMatch && !liveData) {
@@ -3720,7 +3733,18 @@ export async function handleEconomyApiRequest(context: {
           liveData?.category || liveData?.type || catalogMatch?.type || rawItem.type || 'avatar'
         );
 
-        if (liveData && (liveData.active === false || liveData.is_active === false) && !isAdmin) {
+        const resolvedPriceInfo = resolveEffectiveStoreItemPrice({
+          catalogPrice: catalogMatch
+            ? Number(catalogMatch.priceKobans ?? catalogMatch.price ?? 0)
+            : Number(rawItem.price ?? 0),
+          catalogSalePrice: catalogMatch?.salePriceKobans ?? null,
+          catalogSaleEndsAt: catalogMatch?.saleEndsAt ?? null,
+          liveDoc: liveData,
+          isLegacyUniform600: legacyUniform600,
+          isSuperAdmin: isAdmin,
+        });
+
+        if (!resolvedPriceInfo.active && !isAdmin) {
           flaggedItems.push({ itemId, name, reason: 'inactive' });
           continue;
         }
@@ -3730,21 +3754,11 @@ export async function handleEconomyApiRequest(context: {
           continue;
         }
 
-        const livePrice =
-          liveData && typeof (liveData.priceKobans ?? liveData.price_kobans ?? liveData.price) === 'number'
-            ? Math.max(
-                0,
-                Math.floor(Number(liveData.priceKobans ?? liveData.price_kobans ?? liveData.price))
-              )
-            : catalogMatch
-            ? Math.max(0, Math.floor(Number(catalogMatch.priceKobans ?? catalogMatch.price)))
-            : Math.max(0, Math.floor(Number(rawItem.price ?? 0)));
-
         validToBuy.push({
           id: itemId,
           name,
           type: itemType,
-          price: isAdmin ? 0 : livePrice,
+          price: resolvedPriceInfo.effectivePrice,
         });
       }
 
@@ -3794,13 +3808,20 @@ export async function handleEconomyApiRequest(context: {
         );
       }
 
-      const totalCost = isAdmin ? 0 : validToBuy.reduce((acc, it) => acc + it.price, 0);
-      if (!isAdmin && currentBalance < totalCost) {
+      const cartCheck = calculateCartTotals({
+        items: validToBuy,
+        balance: currentBalance,
+        isSuperAdmin: isAdmin,
+      });
+      const totalCost = cartCheck.subtotal;
+      if (!cartCheck.canAfford) {
         return jsonResponse(
           {
             ok: false,
             code: 'INSUFFICIENT_KOBANS',
-            error: `Insufficient Kobans. You need ${totalCost.toLocaleString()} Kobans (you have ${currentBalance.toLocaleString()}).`,
+            error:
+              cartCheck.insufficientBannerMessage ||
+              `Insufficient Kobans. You need ${totalCost.toLocaleString()} Kobans (you have ${currentBalance.toLocaleString()}).`,
             currentBalance,
             requiredKobans: totalCost,
           },

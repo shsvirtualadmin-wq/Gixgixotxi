@@ -2002,6 +2002,102 @@
       "verified_auth_time": 0,
       "verified_at": 1795531734867,
       "updated_at": 1795531734867
+    },
+    {
+      "user_id": "test_superadmin_plus_1795534660226",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534660231,
+      "updated_at": 1795534660231
+    },
+    {
+      "user_id": "test_free_plus_1795534660226",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534661090,
+      "updated_at": 1795534661090
+    },
+    {
+      "user_id": "test_pro_plus_1795534660228",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534661301,
+      "updated_at": 1795534661301
+    },
+    {
+      "user_id": "test_superadmin_plus_1795534754904",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534754911,
+      "updated_at": 1795534754911
+    },
+    {
+      "user_id": "test_free_plus_1795534754904",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534755787,
+      "updated_at": 1795534755787
+    },
+    {
+      "user_id": "test_pro_plus_1795534754908",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534755962,
+      "updated_at": 1795534755962
+    },
+    {
+      "user_id": "test_superadmin_plus_1795534866800",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534866806,
+      "updated_at": 1795534866806
+    },
+    {
+      "user_id": "test_free_plus_1795534866800",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534867691,
+      "updated_at": 1795534867691
+    },
+    {
+      "user_id": "test_pro_plus_1795534866803",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534867921,
+      "updated_at": 1795534867921
+    },
+    {
+      "user_id": "test_superadmin_plus_1795534908973",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534908979,
+      "updated_at": 1795534908979
+    },
+    {
+      "user_id": "test_free_plus_1795534908973",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534909832,
+      "updated_at": 1795534909832
+    },
+    {
+      "user_id": "test_pro_plus_1795534908975",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795534910096,
+      "updated_at": 1795534910096
     }
   ],
   "user_koban_style": [],

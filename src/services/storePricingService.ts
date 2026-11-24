@@ -18,6 +18,10 @@ import {
   type CosmeticItem,
 } from '@/data/cosmeticsCatalog';
 import type { CosmeticType, CosmeticRarity } from '@/types';
+import {
+  isLegacyUniform600Collection,
+  isSaleCurrentlyActive as sharedIsSaleCurrentlyActive,
+} from '@/lib/storeCartPricing';
 
 export { KOBAN_TO_PKR_RATE, kobansToPkr };
 
@@ -154,16 +158,7 @@ export function isSaleCurrentlyActive(
   salePriceKobans?: number | null,
   saleEndsAt?: string | null
 ): boolean {
-  if (salePriceKobans === null || salePriceKobans === undefined) return false;
-  if (!Number.isFinite(salePriceKobans) || salePriceKobans < 0) return false;
-  if (salePriceKobans >= priceKobans) return false;
-  if (saleEndsAt) {
-    const endMs = new Date(saleEndsAt).getTime();
-    if (Number.isFinite(endMs) && endMs <= Date.now()) {
-      return false;
-    }
-  }
-  return true;
+  return sharedIsSaleCurrentlyActive(priceKobans, salePriceKobans, saleEndsAt);
 }
 
 export function getEffectivePriceInfo(item: {
@@ -330,13 +325,9 @@ export async function fetchStoreItems(): Promise<StoreItemDoc[]> {
       return Array.from(baseCatalogMap.values());
     }
 
-    // Detect if Firestore contains legacy un-migrated uniform-600 bulk test data
+    // Detect if Firestore contains legacy un-migrated uniform-600 bulk test data (shared with server /api/store/purchase)
     const docsData = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
-    const unversionedCount = docsData.filter((d) => !d.data.priceSchemaV2).length;
-    const uniform600Count = docsData.filter(
-      (d) => !d.data.priceSchemaV2 && d.data.priceKobans === 600
-    ).length;
-    const isLegacyUniform600 = unversionedCount > 0 && uniform600Count / unversionedCount > 0.6;
+    const isLegacyUniform600 = isLegacyUniform600Collection(docsData);
 
     for (const { id, data } of docsData) {
       const base = baseCatalogMap.get(id);

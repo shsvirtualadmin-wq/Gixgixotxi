@@ -74,6 +74,7 @@ import {
   type StoreFilterState,
 } from '@/components/store/FilterSheet';
 import { CartDrawer } from '@/components/store/CartDrawer';
+import { calculateCartTotals } from '@/lib/storeCartPricing';
 import {
   buildPlansCatalog,
   buildPlanFaqItems,
@@ -465,24 +466,53 @@ export const StorePage: React.FC<StorePageProps> = ({
   );
   const photoURL: string | null = null;
 
-  // Resolved items in the cart (preserving insertion order)
-  const cartItems = useMemo(() => {
+  // Resolved items in the cart (deduplicated, preserving insertion order, excluding owned)
+  const cartTotals = useMemo(() => {
     const catalogMap = new Map(liveCatalog.map((item) => [item.id, item]));
-    return cartIds
+    const resolved = cartIds
       .map((id) => catalogMap.get(id))
-      .filter(
-        (item): item is (typeof liveCatalog)[number] =>
-          Boolean(item) && (isSuperAdmin || !owned.includes(item!.id))
-      );
-  }, [cartIds, liveCatalog, owned, isSuperAdmin]);
+      .filter((item): item is (typeof liveCatalog)[number] => Boolean(item));
+    return calculateCartTotals({
+      items: resolved,
+      balance,
+      isSuperAdmin,
+      ownedIds: owned,
+    });
+  }, [cartIds, liveCatalog, owned, isSuperAdmin, balance]);
 
-  const cartTotalKobans = useMemo(
-    () =>
-      isSuperAdmin
-        ? 0
-        : cartItems.reduce((sum, item) => sum + Math.max(0, item.price), 0),
-    [cartItems, isSuperAdmin]
+  const cartItems = cartTotals.items;
+  const cartTotalKobans = cartTotals.subtotal;
+
+  // Immediately clear any stale checkout error when cart items or affordability change
+  useEffect(() => {
+    setCartError((prev) => {
+      if (!prev) return null;
+      if (cartItems.length === 0) return null;
+      if (cartTotals.canAfford && /insufficient\s+kobans/i.test(prev)) return null;
+      return prev;
+    });
+  }, [cartItems.length, cartTotalKobans, cartTotals.canAfford]);
+
+  const handleRemoveCartItem = useCallback(
+    (itemId: string) => {
+      removeFromCart(itemId);
+      setCartError(null);
+      setFlaggedItemsNotice([]);
+      checkoutKeyRef.current = `${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+    },
+    [removeFromCart]
   );
+
+  const handleClearCartItems = useCallback(() => {
+    clearCart();
+    setCartError(null);
+    setFlaggedItemsNotice([]);
+    checkoutKeyRef.current = `${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+  }, [clearCart]);
 
   // Count of active filters (excluding defaults)
   const activeFilterCount = useMemo(() => {
@@ -2515,11 +2545,11 @@ export const StorePage: React.FC<StorePageProps> = ({
         flaggedItemsNotice={flaggedItemsNotice}
         completedOrder={completedOrder}
         equippingOrder={equippingOrder}
-        onRemoveItem={removeFromCart}
-        onClearCart={clearCart}
+        onRemoveItem={handleRemoveCartItem}
+        onClearCart={handleClearCartItems}
         onCheckout={handleCartCheckout}
         onOpenGetKobans={() => {
-          const deficit = Math.max(500, cartTotalKobans - balance);
+          const deficit = Math.max(500, cartTotals.deficit);
           setCartOpen(false);
           setGetKobansInitialAmount(deficit);
           setGetKobansOpen(true);

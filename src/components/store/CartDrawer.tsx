@@ -24,6 +24,7 @@ import {
 } from '@/components/koban/CosmeticRenderers';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { useTheme } from '@/hooks/useTheme';
+import { calculateCartTotals } from '@/lib/storeCartPricing';
 import { CATEGORY_SHORT_LABEL, RARITY_ACCENT } from './StoreCard';
 
 export interface CartDrawerProps {
@@ -76,10 +77,22 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
   const [conflictDetailsOpen, setConflictDetailsOpen] = useState(false);
 
+  // Single shared calculation for cart items, subtotal, affordability, and banner
+  const cartTotals = useMemo(
+    () =>
+      calculateCartTotals({
+        items: cartItems,
+        balance,
+        isSuperAdmin,
+      }),
+    [cartItems, balance, isSuperAdmin]
+  );
+  const uniqueCartItems = cartTotals.items;
+
   // Detect if 2+ items in the cart share a category
   const duplicateCategories = useMemo(() => {
     const counts: Record<string, string[]> = {};
-    for (const item of cartItems) {
+    for (const item of uniqueCartItems) {
       const label = CATEGORY_SHORT_LABEL[item.type];
       if (!counts[label]) counts[label] = [];
       counts[label].push(item.name);
@@ -91,7 +104,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         newestName: names[names.length - 1],
         count: names.length,
       }));
-  }, [cartItems]);
+  }, [uniqueCartItems]);
 
   const [isClosing, setIsClosing] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -221,20 +234,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
     }));
   };
 
-  const subtotal = isSuperAdmin
-    ? 0
-    : cartItems.reduce(
-        (sum, item) =>
-          sum + Math.max(0, Math.floor(item.price ?? item.priceKobans)),
-        0
-      );
+  const subtotal = cartTotals.subtotal;
   const pkrEquivalent = (subtotal / 10).toLocaleString(undefined, {
     minimumFractionDigits: subtotal % 10 === 0 ? 0 : 1,
     maximumFractionDigits: 1,
   });
-  const canAfford = isSuperAdmin || balance >= subtotal;
-  const deficit = Math.max(0, subtotal - balance);
-  const rawBalanceAfter = isSuperAdmin ? balance : balance - subtotal;
+  const canAfford = cartTotals.canAfford;
+  const deficit = cartTotals.deficit;
+  const rawBalanceAfter = cartTotals.balanceAfterPurchase;
+  // Never display a stale/false "Insufficient Kobans" error banner when the real total is affordable
+  const resolvedBannerError = !canAfford
+    ? cartTotals.insufficientBannerMessage
+    : errorMessage && !/insufficient\s+kobans/i.test(errorMessage)
+    ? errorMessage
+    : null;
 
   const borderClass = isDark ? 'border-white/[0.18]' : 'border-black/[0.08]';
   const rowSurfaceClass = isDark
@@ -316,7 +329,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 >
                   {completedOrder
                     ? 'Purchase Complete'
-                    : `Your Cart (${cartItems.length})`}
+                    : `Your Cart (${uniqueCartItems.length})`}
                 </div>
                 <p className={`text-xs font-medium truncate ${mutedTextClass}`}>
                   {completedOrder
@@ -513,7 +526,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </button>
               </div>
             </div>
-          ) : cartItems.length === 0 ? (
+          ) : uniqueCartItems.length === 0 ? (
             /* Empty Cart State */
             <div className="p-8 text-center space-y-3">
               <div
@@ -635,8 +648,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 )}
 
                 {/* Error banner */}
-                {errorMessage && (
+                {resolvedBannerError && (
                   <div
+                    role="alert"
                     className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs ${
                       isDark
                         ? 'bg-[#D71921]/20 border-[#D71921]/45 text-[#FF8A92]'
@@ -644,13 +658,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     }`}
                   >
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span className="font-semibold">{errorMessage}</span>
+                    <span className="font-semibold">{resolvedBannerError}</span>
                   </div>
                 )}
 
                 {/* Cart Items List */}
                 <div className="space-y-2.5 stagger-list">
-                  {cartItems.map((item) => {
+                  {uniqueCartItems.map((item) => {
                     const itemPrice = item.price ?? item.priceKobans;
                     const isLegendary = item.rarity === 'legendary';
                     const rarityStyle = RARITY_ACCENT[item.rarity] || RARITY_ACCENT.common;
@@ -737,8 +751,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <div className={`p-4 rounded-[24px] border ${rowSurfaceClass} space-y-2 text-xs`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className={`font-semibold ${secondaryTextClass}`}>
-                      Subtotal ({cartItems.length}{' '}
-                      {cartItems.length === 1 ? 'item' : 'items'})
+                      Subtotal ({uniqueCartItems.length}{' '}
+                      {uniqueCartItems.length === 1 ? 'item' : 'items'})
                     </span>
                     <div className="text-right">
                       <div
@@ -765,7 +779,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       className={`inline-flex items-center gap-1 tabular-nums ${primaryTextClass}`}
                     >
                       <KobanIcon size={13} />
-                      {balance.toLocaleString()} Kobans
+                      {cartTotals.currentBalance.toLocaleString()} Kobans
                     </span>
                   </div>
 

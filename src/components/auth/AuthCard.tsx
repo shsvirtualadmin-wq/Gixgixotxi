@@ -15,13 +15,20 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { auth } from '@/lib/firebase';
 import { logRedirect } from '@/utils/debugTracker';
 import { OtpVerificationCard } from './OtpVerificationCard';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 import { isWebAuthnSupported, signInWithPasskey } from '@/services/securityCenterService';
+import { isAddAccountUrl, shouldAutoRedirectFromAuthScreen } from '@/utils/savedAccounts';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
+  isAddAccountFlow?: boolean;
+  initialEmail?: string;
+  initialUid?: string | null;
+  onAuthSubmitSuccess?: (targetUid?: string | null) => void;
+  onCancelAddAccount?: () => void;
 }
 
 function sanitizeFriendlyAuthMessage(raw?: string | null): string {
@@ -34,7 +41,21 @@ function sanitizeFriendlyAuthMessage(raw?: string | null): string {
     .trim();
 }
 
-export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
+export function AuthCard({
+  initialMode = 'signin',
+  isAddAccountFlow: isAddAccountFlowProp,
+  initialEmail = '',
+  initialUid = null,
+  onAuthSubmitSuccess,
+  onCancelAddAccount,
+}: AuthCardProps) {
+  const isAddAccountFlow = Boolean(
+    isAddAccountFlowProp ??
+      (typeof window !== 'undefined' && isAddAccountUrl(window.location.search))
+  );
+  const [hasSubmittedNewAuth, setHasSubmittedNewAuth] = useState(false);
+  const [submittedTargetUid, setSubmittedTargetUid] = useState<string | null>(null);
+
   const [mode, setMode] = useState<'signin' | 'signup' | 'guest'>(() => {
     if (typeof window !== 'undefined') {
       const sp = new URLSearchParams(window.location.search);
@@ -67,7 +88,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
   // Form State
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -103,12 +124,16 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     setPasskeyLoading(true);
     try {
       await signInWithPasskey(email.trim() || undefined);
+      const nextUid = auth.currentUser?.uid ?? null;
+      setSubmittedTargetUid(nextUid);
+      setHasSubmittedNewAuth(true);
+      onAuthSubmitSuccess?.(nextUid);
     } catch (err: any) {
       setGeneralError(sanitizeFriendlyAuthMessage(err?.message) || 'Could not sign in with passkey.');
     } finally {
       setPasskeyLoading(false);
     }
-  }, [email]);
+  }, [email, onAuthSubmitSuccess]);
 
   // Segmented thumb liquid stretch state
   const [segStretching, setSegStretching] = useState(false);
@@ -246,22 +271,24 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
     const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
 
-    if (redirectParam && redirectParam.startsWith('/')) {
-      sessionStorage.removeItem('boardly_post_login_redirect');
-      return redirectParam;
-    }
-    if (storedRedirect && storedRedirect.startsWith('/')) {
-      sessionStorage.removeItem('boardly_post_login_redirect');
-      return storedRedirect;
-    }
-    if (pendingCrew) {
-      return `/join/${pendingCrew}`;
+    if (!isAddAccountFlow) {
+      if (redirectParam && redirectParam.startsWith('/')) {
+        sessionStorage.removeItem('boardly_post_login_redirect');
+        return redirectParam;
+      }
+      if (storedRedirect && storedRedirect.startsWith('/')) {
+        sessionStorage.removeItem('boardly_post_login_redirect');
+        return storedRedirect;
+      }
+      if (pendingCrew) {
+        return `/join/${pendingCrew}`;
+      }
     }
     if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
       return '/onboarding';
     }
     return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-  }, [profile, getRoleRedirectUrl]);
+  }, [profile, getRoleRedirectUrl, isAddAccountFlow]);
 
   const handleStartGuestMode = useCallback(() => {
     setGeneralError('');
@@ -295,7 +322,11 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         setGeneralError(res.error || 'Could not start guest session.');
         return;
       }
-      const dest = getDestinationUrl();
+      const nextUid = auth.currentUser?.uid ?? null;
+      setSubmittedTargetUid(nextUid);
+      setHasSubmittedNewAuth(true);
+      onAuthSubmitSuccess?.(nextUid);
+      const dest = isAddAccountFlow ? '/dashboard' : getDestinationUrl();
       logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
       navigate(dest, { replace: true });
     } catch (err: unknown) {
@@ -311,15 +342,35 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   };
 
   // Navigate ONLY after session has completed 6-digit verification (or Google / Guest sign-in)
+  // AND never auto-bounce an existing logged-in user (admin or student) during Add Account flow
   useEffect(() => {
-    if (user && isSessionVerified) {
-      if (!profileLoading || profile) {
-        const dest = getDestinationUrl();
-        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated & verified -> send to target)');
-        navigate(dest, { replace: true });
-      }
+    const canRedirect = shouldAutoRedirectFromAuthScreen({
+      isAddAccountFlow,
+      hasCompletedNewAuthSubmit: hasSubmittedNewAuth,
+      initialUid,
+      currentUid: user?.uid ?? null,
+      profileUid: profile?.uid ?? null,
+      profileLoading,
+      isSessionVerified,
+      submittedTargetUid,
+    });
+    if (canRedirect) {
+      const dest = getDestinationUrl();
+      logRedirect('/login', dest, 'AuthCard.tsx (user authenticated & verified -> send to target)');
+      navigate(dest, { replace: true });
     }
-  }, [user, isSessionVerified, profile, profileLoading, navigate, getDestinationUrl]);
+  }, [
+    isAddAccountFlow,
+    hasSubmittedNewAuth,
+    submittedTargetUid,
+    initialUid,
+    user,
+    isSessionVerified,
+    profile,
+    profileLoading,
+    navigate,
+    getDestinationUrl,
+  ]);
 
   const handleGoogleSignIn = async () => {
     setGeneralError('');
@@ -330,6 +381,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
     try {
       await signInWithGoogle();
+      const nextUid = auth.currentUser?.uid ?? null;
+      setSubmittedTargetUid(nextUid);
+      setHasSubmittedNewAuth(true);
+      onAuthSubmitSuccess?.(nextUid);
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
       if (
@@ -403,10 +458,14 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     try {
       if (mode === 'signin') {
         await signIn(email.trim(), password);
+        const nextUid = auth.currentUser?.uid ?? null;
+        setSubmittedTargetUid(nextUid);
+        setHasSubmittedNewAuth(true);
+        onAuthSubmitSuccess?.(nextUid);
       } else {
         const searchParams = new URLSearchParams(window.location.search);
         const redirectParam = searchParams.get('redirect');
-        if (redirectParam && redirectParam.startsWith('/')) {
+        if (!isAddAccountFlow && redirectParam && redirectParam.startsWith('/')) {
           try {
             sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
           } catch {
@@ -419,6 +478,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           displayName.trim(),
           signupUsername.trim().replace(/^@+/, '')
         );
+        const nextUid = auth.currentUser?.uid ?? null;
+        setSubmittedTargetUid(nextUid);
+        setHasSubmittedNewAuth(true);
+        onAuthSubmitSuccess?.(nextUid);
       }
     } catch (err: unknown) {
       if (import.meta.env.DEV) {
@@ -756,13 +819,41 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         </button>
       </div>
 
+      {/* Add-Account context bar when adding/switching accounts */}
+      {isAddAccountFlow && (
+        <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/[0.12] bg-white/[0.04] px-3.5 py-2.5 text-xs">
+          <div className="min-w-0">
+            <p className="font-semibold text-[var(--text)]">Add another account</p>
+            <p className="text-[11px] text-[var(--text-muted)] truncate">
+              Your current account stays saved in Switch account.
+            </p>
+          </div>
+          {onCancelAddAccount && (
+            <button
+              type="button"
+              onClick={onCancelAddAccount}
+              className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-white/[0.08] transition-colors shrink-0 cursor-pointer"
+            >
+              <ArrowLeft size={14} />
+              <span>Back</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 3. Heading & Subtext */}
       <div className="text-left">
         <h1
           className="text-xl sm:text-2xl text-[var(--text)] tracking-tight"
           style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
         >
-          {mode === 'signin' ? 'Sign in to continue' : 'Create your account'}
+          {isAddAccountFlow
+            ? mode === 'signin'
+              ? 'Sign in to another account'
+              : 'Create another account'
+            : mode === 'signin'
+            ? 'Sign in to continue'
+            : 'Create your account'}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
           {mode === 'signin'

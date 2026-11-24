@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, MoreHorizontal, Plus, X } from 'lucide-react';
 import { BoardlyAvatar } from '../ui/BoardlyAvatar';
 import { useBodyScrollLock } from '@/utils/scrollLock';
+import type { SavedAccountEntry } from '@/utils/savedAccounts';
 
 export interface SettingsSheetProps {
   open: boolean;
@@ -416,6 +417,9 @@ export const SwitchAccountSheet: React.FC<{
   equippedAvatar?: string | null;
   equippedFrameId?: string | null;
   planLabel: string;
+  savedAccounts?: SavedAccountEntry[];
+  onSelectSavedAccount?: (account: SavedAccountEntry) => void;
+  onRemoveSavedAccount?: (uid: string) => void;
   onAddAccount: () => void;
   onSignOut: () => void;
 }> = ({
@@ -430,10 +434,14 @@ export const SwitchAccountSheet: React.FC<{
   equippedAvatar,
   equippedFrameId,
   planLabel,
+  savedAccounts = [],
+  onSelectSavedAccount,
+  onRemoveSavedAccount,
   onAddAccount,
   onSignOut,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const otherSavedAccounts = savedAccounts.filter((entry) => entry.uid && entry.uid !== uid);
 
   return (
     <SettingsSheet open={open} onClose={onClose} title="Switch account" alignTitle="left">
@@ -514,6 +522,74 @@ export const SwitchAccountSheet: React.FC<{
           strokeWidth={2.25}
         />
       </div>
+
+      {/* Other saved accounts on this device */}
+      {otherSavedAccounts.length > 0 && (
+        <div className="mt-2.5 space-y-2">
+          {otherSavedAccounts.map((acc) => {
+            const subline = [acc.email || (acc.username ? `@${acc.username}` : ''), acc.planLabel]
+              .filter(Boolean)
+              .join(' · ');
+            return (
+              <div
+                key={acc.uid}
+                className="flex min-h-[64px] items-center gap-2 rounded-[24px] px-3 py-2.5 transition-colors hover:bg-[var(--settings-row-hover)]"
+                style={{
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onSelectSavedAccount) {
+                      onSelectSavedAccount(acc);
+                    } else {
+                      onAddAccount();
+                    }
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer"
+                >
+                  <BoardlyAvatar
+                    uid={acc.uid}
+                    equippedAvatar={acc.equippedAvatar || undefined}
+                    equippedFrameId={acc.equippedFrameId || undefined}
+                    name={acc.displayName}
+                    size="sm"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="truncate text-[15px] font-semibold"
+                      style={{ color: 'var(--text)' }}
+                    >
+                      {acc.displayName}
+                    </div>
+                    {subline && (
+                      <div
+                        className="truncate text-[12px]"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {subline}
+                      </div>
+                    )}
+                  </div>
+                </button>
+                {onRemoveSavedAccount && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${acc.displayName} from saved accounts`}
+                    onClick={() => onRemoveSavedAccount(acc.uid)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-active)] cursor-pointer"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Add account row */}
       <button
