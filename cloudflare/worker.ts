@@ -62,7 +62,11 @@ import {
 } from '../functions/_utils/adminRoleGate';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 import { handleKobanStyleRequest } from '../functions/api/koban-style';
-import { handlePlusBadgeRequest } from '../functions/api/plus-badge';
+import {
+  handlePlusBadgeRequest,
+  resolvePlusBadgesBatch,
+} from '../functions/api/plus-badge';
+import { resolveProBadgesBatch } from '../functions/api/pro-badge';
 import { handleFormulaVaultWorkerRequest } from './formulaVaultWorkerHandler';
 import jsWorker from './worker.js';
 
@@ -2907,11 +2911,318 @@ ${urls
       return jsonResponse({ error: 'Announcement endpoint not found' }, 404, cors);
     }
 
-    // 2b-follows. API Routes under /api/follows
-    if (url.pathname.startsWith('/api/follows')) {
+    // 2b-follows. API Routes under /api/follows, /api/followers, /api/following
+    if (
+      url.pathname === '/api/followers' ||
+      url.pathname === '/api/followers/' ||
+      url.pathname === '/api/following' ||
+      url.pathname === '/api/following/' ||
+      url.pathname.startsWith('/api/follows')
+    ) {
       if (!env.DB) {
-        return jsonResponse({ success: false, error: 'D1 binding missing' }, 503, cors);
+        return jsonResponse({ success: false, ok: false, error: 'D1 binding missing' }, 503, cors);
       }
+
+      const queryFollowListFromD1 = async (
+        mode: 'followers' | 'following',
+        targetUid: string,
+        rawLimit: string | null,
+        rawOffset: string | null
+      ) => {
+        const parsedLimit = Number.parseInt(String(rawLimit ?? '50'), 10);
+        const pageLimit = Number.isFinite(parsedLimit)
+          ? Math.min(50, Math.max(1, parsedLimit))
+          : 50;
+        const parsedOffset = Number.parseInt(String(rawOffset ?? '0'), 10);
+        const pageOffset = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
+
+        const filterCol = mode === 'followers' ? 'following_uid' : 'follower_uid';
+        const joinCol = mode === 'followers' ? 'follower_uid' : 'following_uid';
+
+        const countRow = await env.DB!
+          .prepare(`SELECT COUNT(*) AS cnt FROM follows WHERE ${filterCol} = ?1`)
+          .bind(targetUid)
+          .first<{ cnt: number }>();
+        const total = Number(countRow?.cnt ?? 0);
+
+        let joinedRows: Record<string, any>[] = [];
+        let usedFullLeftJoin = false;
+
+        try {
+          const fullRes = await env.DB!
+            .prepare(
+              `SELECT
+                 f.${joinCol} AS uid,
+                 f.created_at AS followed_at,
+                 uu.username_display AS uu_username_display,
+                 uu.username_lower AS uu_username_lower,
+                 uu.display_name AS uu_display_name,
+                 uu.avatar AS uu_avatar,
+                 uu.frame AS uu_frame,
+                 uu.role AS uu_role,
+                 uu.custom_role AS uu_custom_role,
+                 ga.username AS ga_username,
+                 ga.display_name AS ga_display_name,
+                 ga.role AS ga_role,
+                 ga.tests_completed AS ga_tests_completed,
+                 ga.total_questions_solved AS ga_questions_solved,
+                 ga.streak AS ga_streak,
+                 ga.stats_json AS ga_stats_json,
+                 ur.role AS ur_role,
+                 ur.custom_role AS ur_custom_role,
+                 pb.design AS pro_badge_design,
+                 pb.visible AS pro_badge_visible,
+                 plb.plus_badge_design AS plus_badge_design,
+                 plb.plus_badge_visible AS plus_badge_visible
+               FROM follows f
+               LEFT JOIN user_usernames uu ON uu.uid = f.${joinCol}
+               LEFT JOIN guest_accounts ga ON ga.uid = f.${joinCol}
+               LEFT JOIN user_roles ur ON ur.uid = f.${joinCol}
+               LEFT JOIN user_pro_badge pb ON pb.user_id = f.${joinCol}
+               LEFT JOIN user_plus_badge plb ON plb.user_id = f.${joinCol}
+               WHERE f.${filterCol} = ?1
+               ORDER BY f.created_at DESC
+               LIMIT ?2 OFFSET ?3`
+            )
+            .bind(targetUid, pageLimit, pageOffset)
+            .all<Record<string, any>>();
+          joinedRows = fullRes.results || [];
+          usedFullLeftJoin = true;
+        } catch {
+          // Graceful fallback if an optional badge/profile column or table hasn't been created yet
+          const baseRes = await env.DB!
+            .prepare(
+              `SELECT
+                 f.${joinCol} AS uid,
+                 f.created_at AS followed_at
+               FROM follows f
+               WHERE f.${filterCol} = ?1
+               ORDER BY f.created_at DESC
+               LIMIT ?2 OFFSET ?3`
+            )
+            .bind(targetUid, pageLimit, pageOffset)
+            .all<Record<string, any>>();
+          joinedRows = baseRes.results || [];
+        }
+
+        const pageUids = joinedRows
+          .map((r) => String(r.uid || '').trim())
+          .filter(Boolean);
+
+        const nowMs = Date.now();
+        const [fallbackAuthors, proBadgesMap, plusBadgesMap] = await Promise.all([
+          !usedFullLeftJoin && pageUids.length > 0
+            ? resolveWorkerLiveAuthorsBatch(env.DB, pageUids)
+            : Promise.resolve(new Map<string, WorkerLiveAuthor>()),
+          pageUids.length > 0
+            ? resolveProBadgesBatch(pageUids, env.DB as any, env as any, nowMs).catch(
+                () => new Map<string, any>()
+              )
+            : Promise.resolve(new Map<string, any>()),
+          pageUids.length > 0
+            ? resolvePlusBadgesBatch(pageUids, env.DB as any, env as any, nowMs).catch(
+                () => new Map<string, number | null>()
+              )
+            : Promise.resolve(new Map<string, number | null>()),
+        ]);
+
+        const computeLevel = (row: Record<string, any>): number => {
+          let xp = 0;
+          if (typeof row.ga_stats_json === 'string' && row.ga_stats_json) {
+            try {
+              const parsed = JSON.parse(row.ga_stats_json);
+              if (typeof parsed?.xp === 'number' && parsed.xp > 0) xp = parsed.xp;
+            } catch {
+              // ignore malformed stats_json
+            }
+          }
+          if (xp <= 0) {
+            const tests = Number(row.ga_tests_completed || 0);
+            const qs = Number(row.ga_questions_solved || 0);
+            const streak = Number(row.ga_streak || 0);
+            xp = tests * 120 + qs * 8 + streak * 50;
+          }
+          return Math.max(1, Math.floor(Math.max(0, xp) / 500) + 1);
+        };
+
+        const users = joinedRows
+          .map((r) => {
+            const rowUid = String(r.uid || '').trim();
+            if (!rowUid) return null;
+            const live = fallbackAuthors.get(rowUid);
+            const username =
+              r.uu_username_display ||
+              r.uu_username_lower ||
+              r.ga_username ||
+              live?.username ||
+              null;
+            const displayName =
+              r.uu_display_name ||
+              r.ga_display_name ||
+              live?.displayName ||
+              username ||
+              'Student';
+            const avatar =
+              sanitizeStoreAvatarId(r.uu_avatar, live?.avatar) ||
+              (typeof r.uu_avatar === 'string' && r.uu_avatar.trim() ? r.uu_avatar.trim() : null);
+            const frame = r.uu_frame || live?.frame || null;
+            const rawRole = r.ur_role || r.uu_role || r.ga_role || live?.role || 'student';
+            const role =
+              rawRole === 'superadmin' || rawRole === 'super_admin' ? 'student' : String(rawRole);
+            const customRole = r.ur_custom_role || r.uu_custom_role || live?.customRole || null;
+
+            const rawPlusDesign =
+              r.plus_badge_design !== undefined && r.plus_badge_design !== null
+                ? Number(r.plus_badge_design)
+                : null;
+            const validPlusDesign =
+              rawPlusDesign !== null &&
+              Number.isInteger(rawPlusDesign) &&
+              rawPlusDesign >= 1 &&
+              rawPlusDesign <= 50
+                ? rawPlusDesign
+                : null;
+            const plusVisible =
+              r.plus_badge_visible !== undefined && r.plus_badge_visible !== null
+                ? Number(r.plus_badge_visible) !== 0
+                : true;
+
+            const proVisible =
+              r.pro_badge_visible !== undefined && r.pro_badge_visible !== null
+                ? Number(r.pro_badge_visible) !== 0
+                : true;
+            const proDesign =
+              typeof r.pro_badge_design === 'string' && r.pro_badge_design.trim()
+                ? r.pro_badge_design.trim()
+                : null;
+
+            const fallbackPlusBadge =
+              validPlusDesign !== null && plusVisible ? validPlusDesign : null;
+            const resolvedPlusBadge = plusBadgesMap.has(rowUid)
+              ? (plusBadgesMap.get(rowUid) ?? null)
+              : fallbackPlusBadge;
+
+            const fallbackProBadge =
+              proDesign && proVisible ? proDesign : null;
+            const resolvedProBadge =
+              resolvedPlusBadge !== null
+                ? null
+                : proBadgesMap.has(rowUid)
+                  ? (proBadgesMap.get(rowUid) ?? null)
+                  : fallbackProBadge;
+
+            return {
+              uid: rowUid,
+              displayName: String(displayName),
+              username: username ? String(username) : null,
+              avatar,
+              frame,
+              level: computeLevel(r),
+              role,
+              customRole,
+              plusBadge: resolvedPlusBadge,
+              plus_badge_design: validPlusDesign,
+              plus_badge_visible: plusVisible,
+              proBadge: resolvedProBadge,
+              proBadgeDesign: proDesign,
+              proBadgeVisible: proVisible,
+              followedAt: Number(r.followed_at || 0),
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          total,
+          limit: pageLimit,
+          offset: pageOffset,
+          hasMore: pageOffset + users.length < total,
+          ids: pageUids,
+          users,
+        };
+      };
+
+      if (
+        (url.pathname === '/api/followers' || url.pathname === '/api/followers/') &&
+        req.method === 'GET'
+      ) {
+        const targetUid = (
+          url.searchParams.get('uid') ||
+          url.searchParams.get('userId') ||
+          url.searchParams.get('followingUid') ||
+          ''
+        ).trim();
+        if (!targetUid) {
+          return jsonResponse(
+            { success: false, ok: false, error: 'uid query parameter is required.' },
+            400,
+            cors
+          );
+        }
+        const data = await queryFollowListFromD1(
+          'followers',
+          targetUid,
+          url.searchParams.get('limit'),
+          url.searchParams.get('offset')
+        );
+        return jsonResponse(
+          {
+            success: true,
+            ok: true,
+            uid: targetUid,
+            total: data.total,
+            followersCount: data.total,
+            limit: data.limit,
+            offset: data.offset,
+            hasMore: data.hasMore,
+            followerIds: data.ids,
+            followers: data.users,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
+      if (
+        (url.pathname === '/api/following' || url.pathname === '/api/following/') &&
+        req.method === 'GET'
+      ) {
+        const targetUid = (
+          url.searchParams.get('uid') ||
+          url.searchParams.get('userId') ||
+          url.searchParams.get('followerUid') ||
+          ''
+        ).trim();
+        if (!targetUid) {
+          return jsonResponse(
+            { success: false, ok: false, error: 'uid query parameter is required.' },
+            400,
+            cors
+          );
+        }
+        const data = await queryFollowListFromD1(
+          'following',
+          targetUid,
+          url.searchParams.get('limit'),
+          url.searchParams.get('offset')
+        );
+        return jsonResponse(
+          {
+            success: true,
+            ok: true,
+            uid: targetUid,
+            total: data.total,
+            followingCount: data.total,
+            limit: data.limit,
+            offset: data.offset,
+            hasMore: data.hasMore,
+            followingIds: data.ids,
+            following: data.users,
+          },
+          200,
+          { ...cors, 'Cache-Control': 'no-store' }
+        );
+      }
+
       if (req.method === 'GET') {
         const followerUid = (url.searchParams.get('followerUid') || '').trim();
         const followingUid = (url.searchParams.get('followingUid') || '').trim();
@@ -2928,27 +3239,47 @@ ${urls
           );
         }
         if (followingUid) {
-          const { results } = await env.DB.prepare(
-            'SELECT follower_uid FROM follows WHERE following_uid = ? ORDER BY created_at DESC'
-          )
-            .bind(followingUid)
-            .all();
-          const followerIds = (results || []).map((r: any) => String(r.follower_uid));
+          const data = await queryFollowListFromD1(
+            'followers',
+            followingUid,
+            url.searchParams.get('limit'),
+            url.searchParams.get('offset')
+          );
           return jsonResponse(
-            { success: true, followerIds, followersCount: followerIds.length },
+            {
+              success: true,
+              ok: true,
+              followerIds: data.ids,
+              followers: data.users,
+              followersCount: data.total,
+              total: data.total,
+              limit: data.limit,
+              offset: data.offset,
+              hasMore: data.hasMore,
+            },
             200,
             { ...cors, 'Cache-Control': 'no-store' }
           );
         }
         if (followerUid) {
-          const { results } = await env.DB.prepare(
-            'SELECT following_uid FROM follows WHERE follower_uid = ? ORDER BY created_at DESC'
-          )
-            .bind(followerUid)
-            .all();
-          const followingIds = (results || []).map((r: any) => String(r.following_uid));
+          const data = await queryFollowListFromD1(
+            'following',
+            followerUid,
+            url.searchParams.get('limit'),
+            url.searchParams.get('offset')
+          );
           return jsonResponse(
-            { success: true, followingIds, followingCount: followingIds.length },
+            {
+              success: true,
+              ok: true,
+              followingIds: data.ids,
+              following: data.users,
+              followingCount: data.total,
+              total: data.total,
+              limit: data.limit,
+              offset: data.offset,
+              hasMore: data.hasMore,
+            },
             200,
             { ...cors, 'Cache-Control': 'no-store' }
           );

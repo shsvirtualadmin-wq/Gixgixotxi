@@ -41,6 +41,7 @@ import {
 import type { PublicProfile, EquippedCosmetics } from '@/types';
 import {
   getPublicProfile,
+  getPublicProfiles,
   syncPublicProfile,
   syncProfileToD1Backend,
   broadcastPublicProfileUpdate,
@@ -76,7 +77,108 @@ const COSMETIC_ROLE_OPTIONS = [
 ];
 
 const PROFILE_REQUEST_TIMEOUT_MS = 8000;
+const FOLLOW_LIST_PAGE_SIZE = 50;
 const PROFILE_SWR_PREFIX = 'boardly_profile_swr_v1_';
+
+interface FollowListItem {
+  uid: string;
+  displayName: string;
+  username: string;
+  avatar?: string;
+  equippedAvatar?: string;
+  photoURL?: string;
+  frame?: string;
+  equippedFrame?: string;
+  level: number;
+  role?: string;
+  customRole?: string;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
+  proBadge?: ProBadgeDesignId | null;
+  proBadgeDesign?: ProBadgeDesignId | null;
+  proBadgeVisible?: boolean;
+  followedAt?: number;
+}
+
+function normalizeFollowListItem(raw: any): FollowListItem | null {
+  const itemUid = String(raw?.uid || '').trim();
+  if (!itemUid) return null;
+
+  const cleanUsername = getRawUsername({ username: raw?.username }) || '';
+  const cleanDisplayName = getDisplayName({
+    display_name: raw?.display_name ?? raw?.displayName,
+    username: cleanUsername,
+  });
+
+  const rawAvatar = typeof raw?.avatar === 'string' ? raw.avatar.trim() : '';
+  const isAvatarUrl = /^(https?:\/\/|data:image\/|\/)/i.test(rawAvatar);
+  const resolvedPhotoURL =
+    typeof raw?.photoURL === 'string' && raw.photoURL.trim()
+      ? raw.photoURL.trim()
+      : isAvatarUrl
+        ? rawAvatar
+        : '';
+  const resolvedEquippedAvatar =
+    typeof raw?.equippedAvatar === 'string' && raw.equippedAvatar.trim()
+      ? raw.equippedAvatar.trim()
+      : resolvedPhotoURL
+        ? 'custom'
+        : rawAvatar || 'avatar-1';
+
+  const resolvedFrame =
+    typeof raw?.equippedFrame === 'string' && raw.equippedFrame.trim()
+      ? raw.equippedFrame.trim()
+      : typeof raw?.frame === 'string' && raw.frame.trim()
+        ? raw.frame.trim()
+        : 'none';
+
+  const resolvedLevel = Math.max(1, Number(raw?.level ?? raw?.stats?.level ?? 1) || 1);
+
+  const plusVisible = raw?.plus_badge_visible;
+  const hasExplicitPlusBadge =
+    raw !== null &&
+    typeof raw === 'object' &&
+    Object.prototype.hasOwnProperty.call(raw, 'plusBadge');
+  const resolvedPlusBadge =
+    plusVisible === false
+      ? null
+      : resolvePlusBadgeId(
+          hasExplicitPlusBadge ? raw.plusBadge : (raw?.plus_badge_design ?? null)
+        );
+
+  const proVisible = raw?.proBadgeVisible;
+  const hasExplicitProBadge =
+    raw !== null &&
+    typeof raw === 'object' &&
+    Object.prototype.hasOwnProperty.call(raw, 'proBadge');
+  const rawProValue = hasExplicitProBadge ? raw.proBadge : (raw?.proBadgeDesign ?? null);
+  const resolvedProBadge =
+    proVisible === false || !rawProValue
+      ? null
+      : normalizeProBadgeDesign(rawProValue);
+
+  return {
+    uid: itemUid,
+    displayName: cleanDisplayName,
+    username: cleanUsername,
+    avatar: rawAvatar || resolvedPhotoURL || resolvedEquippedAvatar,
+    equippedAvatar: resolvedEquippedAvatar,
+    photoURL: resolvedPhotoURL || undefined,
+    frame: resolvedFrame,
+    equippedFrame: resolvedFrame,
+    level: resolvedLevel,
+    role: typeof raw?.role === 'string' ? raw.role : undefined,
+    customRole: typeof raw?.customRole === 'string' ? raw.customRole : undefined,
+    plusBadge: resolvedPlusBadge,
+    plus_badge_design: resolvedPlusBadge,
+    plus_badge_visible: resolvedPlusBadge !== null,
+    proBadge: resolvedProBadge,
+    proBadgeDesign: resolvedProBadge,
+    proBadgeVisible: resolvedProBadge !== null,
+    followedAt: typeof raw?.followedAt === 'number' ? raw.followedAt : undefined,
+  };
+}
 
 interface AchievementBadgeMeta {
   id: string;
@@ -488,9 +590,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Followers / Following Modal state
   const [followListModal, setFollowListModal] = useState<'followers' | 'following' | null>(null);
-  const [followListUsers, setFollowListUsers] = useState<PublicProfile[]>([]);
+  const [followListUsers, setFollowListUsers] = useState<FollowListItem[]>([]);
   const [followListLoading, setFollowListLoading] = useState(false);
+  const [followListLoadingMore, setFollowListLoadingMore] = useState(false);
   const [followListError, setFollowListError] = useState<string | null>(null);
+  const [followListHasMore, setFollowListHasMore] = useState(false);
+  const [followListTotal, setFollowListTotal] = useState<number | null>(null);
+  const followListReqIdRef = useRef(0);
+  const followListAbortRef = useRef<AbortController | null>(null);
+  const followListOffsetRef = useRef(0);
+
+  const closeFollowListModal = useCallback(() => {
+    followListReqIdRef.current += 1;
+    if (followListAbortRef.current) {
+      followListAbortRef.current.abort();
+      followListAbortRef.current = null;
+    }
+    setFollowListModal(null);
+    setFollowListLoading(false);
+    setFollowListLoadingMore(false);
+    setFollowListError(null);
+  }, []);
 
   // Direct Message Modal state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -563,18 +683,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [isEditing, followListModal, isChatOpen, isModal]);
 
+  // Abort any in-flight follow list request on unmount or profile switch
+  useEffect(() => {
+    return () => {
+      followListReqIdRef.current += 1;
+      if (followListAbortRef.current) {
+        followListAbortRef.current.abort();
+        followListAbortRef.current = null;
+      }
+    };
+  }, [uid]);
+
   // Close sub-modals on Escape
   useEffect(() => {
     if (!isEditing && !followListModal) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (followListModal) setFollowListModal(null);
+        if (followListModal) closeFollowListModal();
         else if (isEditing && !saving) setIsEditing(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isEditing, followListModal, saving]);
+  }, [isEditing, followListModal, saving, closeFollowListModal]);
 
   const hydrateEditFields = useCallback((p: EnrichedProfile) => {
     const cleanName = getDisplayName({
@@ -1040,28 +1171,73 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setFollowsSyncing(true);
     setFollowsError(null);
     try {
+      const fetchApiCount = async (endpoint: '/api/followers' | '/api/following'): Promise<number | null> => {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), PROFILE_REQUEST_TIMEOUT_MS);
+        try {
+          const res = await fetch(
+            `${endpoint}?uid=${encodeURIComponent(uid)}&limit=1&offset=0`,
+            { signal: controller.signal, credentials: 'same-origin' }
+          );
+          if (!res.ok) return null;
+          const body = await res.json();
+          const rawTotal =
+            endpoint === '/api/followers'
+              ? (body?.total ?? body?.followersCount)
+              : (body?.total ?? body?.followingCount);
+          const parsed = Number(rawTotal);
+          return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+        } catch {
+          return null;
+        } finally {
+          window.clearTimeout(timer);
+        }
+      };
+
       const fQuery = query(collection(db, 'follows'), where('followingId', '==', uid), limit(500));
       const fgQuery = query(collection(db, 'follows'), where('followerId', '==', uid), limit(500));
-      const checks: [Promise<any>, Promise<any>, Promise<any>] = [
-        withTimeout(getDocs(fQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Followers'),
-        withTimeout(getDocs(fgQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Following'),
-        currentUser && !isOwnProfile
-          ? withTimeout(
-              getDoc(doc(db, 'follows', `${currentUser.uid}_${uid}`)),
-              PROFILE_REQUEST_TIMEOUT_MS,
-              'Follow status'
-            )
-          : Promise.resolve(null),
-      ];
-      const [fSnap, fgSnap, myFollowDoc] = await Promise.all(checks);
-      setFollowersCount(fSnap.size);
-      setFollowingCount(fgSnap.size);
-      if (myFollowDoc) {
-        setIsFollowing(myFollowDoc.exists());
+
+      const [apiFollowersRes, apiFollowingRes, fsFollowersRes, fsFollowingRes, myFollowRes] =
+        await Promise.allSettled([
+          fetchApiCount('/api/followers'),
+          fetchApiCount('/api/following'),
+          withTimeout(getDocs(fQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Followers'),
+          withTimeout(getDocs(fgQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Following'),
+          currentUser && !isOwnProfile
+            ? withTimeout(
+                getDoc(doc(db, 'follows', `${currentUser.uid}_${uid}`)),
+                PROFILE_REQUEST_TIMEOUT_MS,
+                'Follow status'
+              )
+            : Promise.resolve(null),
+        ]);
+
+      const d1Followers =
+        apiFollowersRes.status === 'fulfilled' ? apiFollowersRes.value : null;
+      const d1Following =
+        apiFollowingRes.status === 'fulfilled' ? apiFollowingRes.value : null;
+      const fsFollowers =
+        fsFollowersRes.status === 'fulfilled' ? fsFollowersRes.value.size : null;
+      const fsFollowing =
+        fsFollowingRes.status === 'fulfilled' ? fsFollowingRes.value.size : null;
+
+      if (d1Followers === null && fsFollowers === null && d1Following === null && fsFollowing === null) {
+        throw new Error('Could not refresh follower counts.');
       }
+
+      const nextFollowers = Math.max(d1Followers ?? 0, fsFollowers ?? 0);
+      const nextFollowing = Math.max(d1Following ?? 0, fsFollowing ?? 0);
+
+      setFollowersCount(nextFollowers);
+      setFollowingCount(nextFollowing);
+
+      if (myFollowRes.status === 'fulfilled' && myFollowRes.value) {
+        setIsFollowing(myFollowRes.value.exists());
+      }
+
       setProfile((prev) => {
         if (!prev) return prev;
-        const next = { ...prev, followersCount: fSnap.size, followingCount: fgSnap.size };
+        const next = { ...prev, followersCount: nextFollowers, followingCount: nextFollowing };
         writeCachedProfile(uid, next);
         return next;
       });
@@ -1222,6 +1398,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       return;
     }
     setFollowLoading(true);
+    const nextAction: 'follow' | 'unfollow' = isFollowing ? 'unfollow' : 'follow';
     const followDocId = `${currentUser.uid}_${uid}`;
     const followRef = doc(db, 'follows', followDocId);
     try {
@@ -1242,6 +1419,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         setIsFollowing(true);
         setFollowersCount((c) => c + 1);
       }
+
+      // Sync the follow mutation to D1 follows table so counts and lists stay consistent
+      void (async () => {
+        try {
+          const token = await auth.currentUser?.getIdToken().catch(() => null);
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (token) headers.Authorization = `Bearer ${token}`;
+          await fetch('/api/follows', {
+            method: 'POST',
+            headers,
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              action: nextAction,
+              followerUid: currentUser.uid,
+              followingUid: uid,
+            }),
+          });
+        } catch {
+          // Best-effort sync; Firestore update already succeeded
+        }
+      })();
     } catch (err) {
       console.error('Failed to toggle follow:', err);
     } finally {
@@ -1249,33 +1447,184 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
-  const openFollowList = async (type: 'followers' | 'following') => {
+  const openFollowList = async (
+    type: 'followers' | 'following',
+    options?: { append?: boolean }
+  ) => {
     if (!uid || previewMode) return;
-    setFollowListModal(type);
-    setFollowListLoading(true);
-    setFollowListError(null);
-    setFollowListUsers([]);
-    try {
-      const field = type === 'followers' ? 'followingId' : 'followerId';
-      const targetField = type === 'followers' ? 'followerId' : 'followingId';
-      const q = query(collection(db, 'follows'), where(field, '==', uid), limit(50));
-      const snap = await withTimeout(getDocs(q), PROFILE_REQUEST_TIMEOUT_MS, 'Follow list');
-      const targetUids = snap.docs
-        .map((d) => d.data()[targetField] as string)
-        .filter(Boolean);
+    const isAppend = Boolean(options?.append);
+    const offset = isAppend ? followListOffsetRef.current : 0;
 
-      const results = await Promise.allSettled(
-        targetUids.map((tUid) => withTimeout(getPublicProfile(tUid), PROFILE_REQUEST_TIMEOUT_MS))
-      );
-      const loaded: PublicProfile[] = [];
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value) loaded.push(r.value);
+    // Cancel any previous in-flight request so closing & reopening never gets stuck
+    const reqId = ++followListReqIdRef.current;
+    if (followListAbortRef.current) {
+      followListAbortRef.current.abort();
+      followListAbortRef.current = null;
+    }
+    const controller = new AbortController();
+    followListAbortRef.current = controller;
+    const timeoutHandle = window.setTimeout(() => controller.abort(), PROFILE_REQUEST_TIMEOUT_MS);
+
+    setFollowListModal(type);
+    setFollowListError(null);
+    if (isAppend) {
+      setFollowListLoadingMore(true);
+    } else {
+      setFollowListLoading(true);
+      setFollowListLoadingMore(false);
+      setFollowListUsers([]);
+      setFollowListHasMore(false);
+      setFollowListTotal(null);
+      followListOffsetRef.current = 0;
+    }
+
+    const endpoint = type === 'followers' ? '/api/followers' : '/api/following';
+    const url = `${endpoint}?uid=${encodeURIComponent(uid)}&limit=${FOLLOW_LIST_PAGE_SIZE}&offset=${offset}`;
+    const fallbackErrorMsg =
+      type === 'followers' ? "Couldn't load followers" : "Couldn't load following";
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: controller.signal,
+        credentials: 'same-origin',
+      });
+
+      const rawText = await response.text();
+      let parsedBody: any = null;
+      try {
+        parsedBody = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        parsedBody = rawText;
       }
-      setFollowListUsers(loaded);
+
+      console.info('[ProfileView][FollowList]', {
+        url,
+        status: response.status,
+        body: parsedBody,
+      });
+
+      if (reqId !== followListReqIdRef.current) return;
+
+      if (!response.ok || !parsedBody || typeof parsedBody !== 'object') {
+        throw new Error(fallbackErrorMsg);
+      }
+
+      const rawList =
+        type === 'followers'
+          ? (Array.isArray(parsedBody.followers) ? parsedBody.followers : [])
+          : (Array.isArray(parsedBody.following) ? parsedBody.following : []);
+
+      let normalizedItems: FollowListItem[] = rawList
+        .map((item: any) => normalizeFollowListItem(item))
+        .filter((item: FollowListItem | null): item is FollowListItem => item !== null);
+
+      let totalCount = Number(
+        type === 'followers'
+          ? (parsedBody.total ?? parsedBody.followersCount ?? normalizedItems.length)
+          : (parsedBody.total ?? parsedBody.followingCount ?? normalizedItems.length)
+      );
+      if (!Number.isFinite(totalCount) || totalCount < 0) {
+        totalCount = normalizedItems.length;
+      }
+
+      let hasMore = Boolean(parsedBody.hasMore);
+
+      // Compatibility fallback: if D1 has 0 rows on initial page, check legacy Firestore follows
+      if (!isAppend && normalizedItems.length === 0) {
+        try {
+          const field = type === 'followers' ? 'followingId' : 'followerId';
+          const targetField = type === 'followers' ? 'followerId' : 'followingId';
+          const q = query(
+            collection(db, 'follows'),
+            where(field, '==', uid),
+            limit(FOLLOW_LIST_PAGE_SIZE)
+          );
+          const snap = await withTimeout(getDocs(q), 5000, 'Follow list');
+          if (reqId !== followListReqIdRef.current) return;
+
+          const legacyUids = Array.from(
+            new Set(
+              snap.docs
+                .map((d) => String(d.data()?.[targetField] || '').trim())
+                .filter(Boolean)
+            )
+          );
+
+          if (legacyUids.length > 0) {
+            const profileMap = await withTimeout(
+              getPublicProfiles(legacyUids),
+              5000,
+              'Follow profiles'
+            ).catch(() => new Map<string, PublicProfile>());
+            if (reqId !== followListReqIdRef.current) return;
+
+            normalizedItems = legacyUids
+              .map((tUid) => {
+                const prof = profileMap.get(tUid);
+                return normalizeFollowListItem(
+                  prof
+                    ? {
+                        ...prof,
+                        uid: tUid,
+                        level: prof.stats?.level ?? (prof as any).level ?? 1,
+                      }
+                    : {
+                        uid: tUid,
+                        displayName: 'Student',
+                        username: '',
+                        avatar: 'avatar-1',
+                        level: 1,
+                      }
+                );
+              })
+              .filter((item): item is FollowListItem => item !== null);
+            totalCount = Math.max(totalCount, normalizedItems.length);
+            hasMore = false;
+          }
+        } catch {
+          // Keep empty D1 result if Firestore fallback is unavailable
+        }
+      }
+
+      if (reqId !== followListReqIdRef.current) return;
+
+      if (isAppend) {
+        setFollowListUsers((prev) => {
+          const seen = new Set(prev.map((u) => u.uid));
+          const merged = [...prev];
+          for (const item of normalizedItems) {
+            if (!seen.has(item.uid)) {
+              seen.add(item.uid);
+              merged.push(item);
+            }
+          }
+          followListOffsetRef.current = merged.length;
+          return merged;
+        });
+      } else {
+        followListOffsetRef.current = normalizedItems.length;
+        setFollowListUsers(normalizedItems);
+        if (type === 'followers') {
+          setFollowersCount(totalCount);
+        } else {
+          setFollowingCount(totalCount);
+        }
+      }
+
+      setFollowListTotal(totalCount);
+      setFollowListHasMore(hasMore);
     } catch (err) {
-      setFollowListError(err instanceof Error ? err.message : 'Could not load list.');
+      if (reqId !== followListReqIdRef.current) return;
+      console.error('[ProfileView][FollowList] Failed to load:', err);
+      setFollowListError(fallbackErrorMsg);
     } finally {
-      setFollowListLoading(false);
+      window.clearTimeout(timeoutHandle);
+      if (reqId === followListReqIdRef.current) {
+        followListAbortRef.current = null;
+        setFollowListLoading(false);
+        setFollowListLoadingMore(false);
+      }
     }
   };
 
@@ -2333,18 +2682,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         >
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
-            onClick={() => setFollowListModal(null)}
+            onClick={closeFollowListModal}
             aria-hidden="true"
           />
           <div className="relative z-10 w-full sm:max-w-md max-h-[85dvh] rounded-t-[24px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
             <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
             <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-[var(--text)] capitalize">
-                {followListModal}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-semibold text-[var(--text)] capitalize">
+                  {followListModal}
+                </h3>
+                {!followListLoading && followListTotal !== null && (
+                  <span className="font-inter-num text-[12px] font-semibold text-[var(--text-muted)]">
+                    {followListTotal.toLocaleString()}
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setFollowListModal(null)}
+                onClick={closeFollowListModal}
                 aria-label="Close list"
                 className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
               >
@@ -2353,12 +2709,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
               {followListLoading ? (
-                <div className="space-y-2.5 py-2 animate-pulse">
+                <div className="space-y-2.5 py-2 animate-pulse" aria-busy="true" aria-label={`Loading ${followListModal}`}>
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-14 rounded-2xl bg-[var(--bg)] border border-[var(--border)]" />
                   ))}
                 </div>
-              ) : followListError ? (
+              ) : followListError && followListUsers.length === 0 ? (
                 <div className="py-8 text-center space-y-3">
                   <p className="text-[13px] text-[var(--text-muted)]">{followListError}</p>
                   <button
@@ -2371,50 +2727,87 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               ) : followListUsers.length === 0 ? (
                 <div className="py-10 text-center text-[var(--text-muted)] text-[14px]">
-                  No {followListModal} yet.
+                  {followListModal === 'followers'
+                    ? 'No followers yet.'
+                    : 'Not following anyone yet.'}
                 </div>
               ) : (
-                followListUsers.map((u) => {
-                  const uDisplay = getDisplayName({
-                    display_name: (u as any).display_name ?? u.displayName,
-                    username: u.username,
-                  });
-                  const uHandle = getUsernameHandle({ username: u.username });
-                  return (
-                    <button
-                      type="button"
-                      key={u.uid}
-                      onClick={() => {
-                        setFollowListModal(null);
-                        navigate(`/profile?uid=${encodeURIComponent(u.uid)}`);
-                      }}
-                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] cursor-pointer transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <BoardlyAvatar
-                          size={40}
-                          uid={u.uid}
-                          equippedAvatar={u.equippedAvatar}
-                          customPhotoURL={u.photoURL}
-                          equippedFrameId={u.equippedFrame}
-                        />
-                        <div className="min-w-0">
-                          <div className="text-[14px] font-semibold text-[var(--text)] truncate">
-                            {uDisplay}
-                          </div>
-                          {uHandle && (
-                            <div className="text-[12px] text-[var(--text-muted)] truncate">
-                              {uHandle}
+                <>
+                  {followListUsers.map((u) => {
+                    const uDisplay = getDisplayName({
+                      display_name: u.displayName,
+                      username: u.username,
+                    });
+                    const uHandle = getUsernameHandle({ username: u.username });
+                    return (
+                      <button
+                        type="button"
+                        key={u.uid}
+                        onClick={() => {
+                          closeFollowListModal();
+                          navigate(`/profile?uid=${encodeURIComponent(u.uid)}`);
+                        }}
+                        className="w-full flex items-center justify-between gap-2 p-3 rounded-2xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] cursor-pointer transition-colors text-left"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <BoardlyAvatar
+                            size={40}
+                            uid={u.uid}
+                            equippedAvatar={u.equippedAvatar}
+                            customPhotoURL={u.photoURL}
+                            equippedFrameId={u.equippedFrame}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[14px] font-semibold text-[var(--text)] truncate">
+                                {uDisplay}
+                              </span>
+                              {typeof u.plusBadge === 'number' ? (
+                                <PlusBadge id={u.plusBadge} size="sm" listMode />
+                              ) : u.proBadge ? (
+                                <ProBadge design={u.proBadge} size="sm" listMode />
+                              ) : null}
                             </div>
-                          )}
+                            <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)] truncate">
+                              {uHandle && <span className="truncate">{uHandle}</span>}
+                              {uHandle && <span aria-hidden="true">·</span>}
+                              <span className="font-inter-num shrink-0">Lv {u.level}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-[13px] font-semibold text-[var(--accent)] shrink-0">
-                        View
-                      </span>
-                    </button>
-                  );
-                })
+                        <span className="text-[13px] font-semibold text-[var(--accent)] shrink-0">
+                          View
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {followListError && followListUsers.length > 0 && (
+                    <div className="pt-2 text-center space-y-2">
+                      <p className="text-[12px] text-[var(--text-muted)]">{followListError}</p>
+                      <button
+                        type="button"
+                        onClick={() => void openFollowList(followListModal, { append: true })}
+                        className="px-4 py-1.5 rounded-full bg-[var(--accent)] text-white text-[12px] font-semibold cursor-pointer"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {followListHasMore && !followListError && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        disabled={followListLoadingMore}
+                        onClick={() => void openFollowList(followListModal, { append: true })}
+                        className="w-full py-2.5 rounded-xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text)] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {followListLoadingMore ? 'Loading...' : 'Load more'}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

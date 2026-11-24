@@ -4489,8 +4489,155 @@ ${postSitemaps}
   });
 
   // ==========================================================================
-  // D1 FOLLOWS & NOTIFICATIONS ROUTES (/api/follows & /api/notifications)
+  // D1 FOLLOWS & NOTIFICATIONS ROUTES (/api/followers, /api/following, /api/follows)
   // ==========================================================================
+  const buildLocalFollowListPayload = (
+    store: D1Store,
+    mode: 'followers' | 'following',
+    targetUid: string,
+    rawLimit: unknown,
+    rawOffset: unknown
+  ) => {
+    const parsedLimit = Number.parseInt(String(rawLimit ?? '50'), 10);
+    const pageLimit = Number.isFinite(parsedLimit)
+      ? Math.min(50, Math.max(1, parsedLimit))
+      : 50;
+    const parsedOffset = Number.parseInt(String(rawOffset ?? '0'), 10);
+    const pageOffset = Number.isFinite(parsedOffset) ? Math.max(0, parsedOffset) : 0;
+
+    const matchingRows = (Array.isArray(store.follows) ? store.follows : [])
+      .filter((f) =>
+        mode === 'followers'
+          ? f.following_uid === targetUid
+          : f.follower_uid === targetUid
+      )
+      .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+
+    const total = matchingRows.length;
+    const pageRows = matchingRows.slice(pageOffset, pageOffset + pageLimit);
+    const pageUids = pageRows
+      .map((f) => String(mode === 'followers' ? f.follower_uid : f.following_uid).trim())
+      .filter(Boolean);
+
+    const liveMap = resolveLiveAuthorsBatchSync(pageUids, store);
+    const tables = getSharedLocalD1Database().tables;
+
+    const users = pageRows.map((f) => {
+      const rowUid = String(mode === 'followers' ? f.follower_uid : f.following_uid).trim();
+      const live = liveMap.get(rowUid);
+      const gRow = tables.guest_accounts.get(rowUid);
+      const proRow = tables.user_pro_badge.get(rowUid);
+      const plusRow = tables.user_plus_badge.get(rowUid);
+
+      const tests = Number((gRow as any)?.tests_completed || 0);
+      const qs = Number((gRow as any)?.total_questions_solved || 0);
+      const streak = Number((gRow as any)?.streak || 0);
+      const xp = tests * 120 + qs * 8 + streak * 50;
+      const level = Math.max(1, Math.floor(Math.max(0, xp) / 500) + 1);
+
+      return {
+        uid: rowUid,
+        username: live?.username || null,
+        displayName: live?.displayName || live?.username || 'Student',
+        avatar: live?.avatar || null,
+        frame: live?.frame || null,
+        level,
+        role: live?.role || 'student',
+        customRole: live?.customRole || null,
+        plusBadge: live?.plusBadge ?? null,
+        plus_badge_design:
+          live?.plus_badge_design !== undefined
+            ? live.plus_badge_design
+            : plusRow
+            ? plusRow.plus_badge_design
+            : null,
+        plus_badge_visible:
+          live?.plus_badge_visible !== undefined
+            ? live.plus_badge_visible
+            : plusRow
+            ? Number(plusRow.plus_badge_visible ?? 1) !== 0
+            : true,
+        proBadge: live?.proBadge ?? null,
+        proBadgeDesign: proRow?.design ?? null,
+        proBadgeVisible: proRow ? Number(proRow.visible ?? 1) !== 0 : true,
+        followedAt: Number(f.created_at || 0),
+      };
+    });
+
+    return {
+      total,
+      limit: pageLimit,
+      offset: pageOffset,
+      hasMore: pageOffset + users.length < total,
+      ids: pageUids,
+      users,
+    };
+  };
+
+  app.get('/api/followers', async (req, res) => {
+    const store = loadD1Store();
+    if (!Array.isArray(store.follows)) store.follows = [];
+    const targetUid = String(
+      req.query.uid || req.query.userId || req.query.followingUid || ''
+    ).trim();
+    if (!targetUid) {
+      return res
+        .status(400)
+        .json({ success: false, ok: false, error: 'uid query parameter is required.' });
+    }
+    const data = buildLocalFollowListPayload(
+      store,
+      'followers',
+      targetUid,
+      req.query.limit,
+      req.query.offset
+    );
+    return res.status(200).json({
+      success: true,
+      ok: true,
+      uid: targetUid,
+      total: data.total,
+      followersCount: data.total,
+      limit: data.limit,
+      offset: data.offset,
+      hasMore: data.hasMore,
+      followerIds: data.ids,
+      followers: data.users,
+    });
+  });
+
+  app.get('/api/following', async (req, res) => {
+    const store = loadD1Store();
+    if (!Array.isArray(store.follows)) store.follows = [];
+    const targetUid = String(
+      req.query.uid || req.query.userId || req.query.followerUid || ''
+    ).trim();
+    if (!targetUid) {
+      return res
+        .status(400)
+        .json({ success: false, ok: false, error: 'uid query parameter is required.' });
+    }
+    const data = buildLocalFollowListPayload(
+      store,
+      'following',
+      targetUid,
+      req.query.limit,
+      req.query.offset
+    );
+    return res.status(200).json({
+      success: true,
+      ok: true,
+      uid: targetUid,
+      total: data.total,
+      followingCount: data.total,
+      limit: data.limit,
+      offset: data.offset,
+      hasMore: data.hasMore,
+      followingIds: data.ids,
+      following: data.users,
+    });
+  });
+
   app.get('/api/follows', async (req, res) => {
     const store = loadD1Store();
     if (!Array.isArray(store.follows)) store.follows = [];
@@ -4504,51 +4651,43 @@ ${postSitemaps}
       return res.status(200).json({ success: true, isFollowing });
     }
     if (followingUid) {
-      const followerIds = store.follows
-        .filter((f) => f.following_uid === followingUid)
-        .map((f) => f.follower_uid);
-      const liveMap = resolveLiveAuthorsBatchSync(followerIds, store);
-      const followers = followerIds.map((uid) => {
-        const live = liveMap.get(uid);
-        return {
-          uid,
-          username: live?.username || null,
-          displayName: live?.displayName || live?.username || 'Student',
-          avatar: live?.avatar || null,
-          frame: live?.frame || null,
-          role: live?.role || 'student',
-          customRole: live?.customRole || null,
-        };
-      });
+      const data = buildLocalFollowListPayload(
+        store,
+        'followers',
+        followingUid,
+        req.query.limit,
+        req.query.offset
+      );
       return res.status(200).json({
         success: true,
-        followerIds,
-        followers,
-        followersCount: followerIds.length,
+        ok: true,
+        followerIds: data.ids,
+        followers: data.users,
+        followersCount: data.total,
+        total: data.total,
+        limit: data.limit,
+        offset: data.offset,
+        hasMore: data.hasMore,
       });
     }
     if (followerUid) {
-      const followingIds = store.follows
-        .filter((f) => f.follower_uid === followerUid)
-        .map((f) => f.following_uid);
-      const liveMap = resolveLiveAuthorsBatchSync(followingIds, store);
-      const following = followingIds.map((uid) => {
-        const live = liveMap.get(uid);
-        return {
-          uid,
-          username: live?.username || null,
-          displayName: live?.displayName || live?.username || 'Student',
-          avatar: live?.avatar || null,
-          frame: live?.frame || null,
-          role: live?.role || 'student',
-          customRole: live?.customRole || null,
-        };
-      });
+      const data = buildLocalFollowListPayload(
+        store,
+        'following',
+        followerUid,
+        req.query.limit,
+        req.query.offset
+      );
       return res.status(200).json({
         success: true,
-        followingIds,
-        following,
-        followingCount: followingIds.length,
+        ok: true,
+        followingIds: data.ids,
+        following: data.users,
+        followingCount: data.total,
+        total: data.total,
+        limit: data.limit,
+        offset: data.offset,
+        hasMore: data.hasMore,
       });
     }
     return res.status(200).json({ success: true, follows: [] });
