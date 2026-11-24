@@ -269,7 +269,7 @@ export function OverviewPage() {
     location.pathname === '/dashboard/' ||
     location.pathname === '/menu' ||
     location.pathname === '/dashboard/menu';
-  const { user, profile, streak } = useUserProfile();
+  const { user, profile, streak, loading: profileLoading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
   const isPlus = effectivePlan.isPlus;
@@ -352,11 +352,24 @@ export function OverviewPage() {
     ? 'Unlimited'
     : Math.max(0, FREE_DAILY_TESTS - d1Stats.todayTestsCount);
 
-  const cleanFullName = sanitizeStudentDisplayName(
-    profile?.displayName || user?.displayName,
-    profile?.shortId || user?.uid
-  );
-  const firstName = cleanFullName.split(' ')[0] || 'Student';
+  const rawDisplayName = (
+    profile?.display_name ||
+    profile?.displayName ||
+    profile?.realName ||
+    profile?.name ||
+    user?.displayName ||
+    ''
+  ).trim();
+  const cleanFullName =
+    rawDisplayName && rawDisplayName.toLowerCase() !== 'student'
+      ? sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid)
+      : profile?.username
+      ? `@${profile.username}`
+      : '';
+  const firstName =
+    cleanFullName && cleanFullName.toLowerCase() !== 'student'
+      ? cleanFullName.split(' ')[0] || ''
+      : '';
   const safeStreak = Number.isFinite(Number(streak))
     ? Math.max(0, Math.floor(Number(streak)))
     : 0;
@@ -874,7 +887,20 @@ export function OverviewPage() {
           className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight leading-tight"
           style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
         >
-          Salam, {firstName}! Ready to practice today?
+          {firstName ? (
+            `Salam, ${firstName}! Ready to practice today?`
+          ) : profileLoading ? (
+            <>
+              Salam,{' '}
+              <span
+                className="inline-block align-middle h-6 w-28 animate-pulse rounded-full bg-[var(--border)]"
+                aria-label="Loading name"
+              />
+              ! Ready to practice today?
+            </>
+          ) : (
+            'Salam! Ready to practice today?'
+          )}
         </h1>
       </section>
 

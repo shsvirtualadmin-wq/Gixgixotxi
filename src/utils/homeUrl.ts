@@ -16,8 +16,13 @@ export type SessionLayoutStatus = 'loading' | 'authenticated' | 'unauthenticated
  */
 export function isUserAuthenticated(
   user?: { uid?: string } | null,
-  profileLoading?: boolean
+  profileLoading?: boolean,
+  authStatus?: SessionLayoutStatus
 ): boolean {
+  if (authStatus === 'authenticated') {
+    return true;
+  }
+
   if (user && (typeof user.uid === 'string' ? user.uid.length > 0 : true)) {
     return true;
   }
@@ -41,7 +46,7 @@ export function isUserAuthenticated(
   }
 
   // If auth state has finished loading and user is explicitly null, user is logged out
-  if (user === null && profileLoading === false) {
+  if (authStatus === 'unauthenticated' || (user === null && profileLoading === false)) {
     return false;
   }
 
@@ -54,9 +59,19 @@ export function isUserAuthenticated(
  */
 export function getSessionStatus(
   user?: { uid?: string } | null,
-  profileLoading?: boolean
+  profileLoading?: boolean,
+  authStatus?: SessionLayoutStatus
 ): SessionLayoutStatus {
-  if (isUserAuthenticated(user, profileLoading)) {
+  if (authStatus === 'loading') {
+    return 'loading';
+  }
+  if (authStatus === 'authenticated') {
+    return 'authenticated';
+  }
+  if (authStatus === 'unauthenticated') {
+    return 'unauthenticated';
+  }
+  if (isUserAuthenticated(user, profileLoading, authStatus)) {
     return 'authenticated';
   }
   if (profileLoading) {
@@ -66,8 +81,8 @@ export function getSessionStatus(
 }
 
 export function useSessionStatus(): SessionLayoutStatus {
-  const { user, profileLoading } = useAuth();
-  return getSessionStatus(user, profileLoading);
+  const { user, profileLoading, authStatus } = useAuth();
+  return getSessionStatus(user, profileLoading, authStatus);
 }
 
 /**
@@ -77,17 +92,18 @@ export function useSessionStatus(): SessionLayoutStatus {
  */
 export function getHomeUrl(
   user?: { uid?: string } | null,
-  profileLoading?: boolean
+  profileLoading?: boolean,
+  authStatus?: SessionLayoutStatus
 ): '/dashboard/commons' | '/' {
-  return isUserAuthenticated(user, profileLoading) ? '/dashboard/commons' : '/';
+  return isUserAuthenticated(user, profileLoading, authStatus) ? '/dashboard/commons' : '/';
 }
 
 /**
  * React hook wrapper around `getHomeUrl()` connected to `useAuth()`.
  */
 export function useHomeUrl(): '/dashboard/commons' | '/' {
-  const { user, profileLoading } = useAuth();
-  return getHomeUrl(user, profileLoading);
+  const { user, profileLoading, authStatus } = useAuth();
+  return getHomeUrl(user, profileLoading, authStatus);
 }
 
 /**

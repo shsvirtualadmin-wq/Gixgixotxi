@@ -19,6 +19,7 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
   const {
     user,
     isGuest,
+    authStatus,
     profileLoading,
     tokenClaims,
     isAdmin,
@@ -26,7 +27,7 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
   } = useAuth();
   const location = useLocation();
 
-  if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
+  if (authStatus === 'loading' || profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
     return <RoutePageSkeleton />;
   }
 

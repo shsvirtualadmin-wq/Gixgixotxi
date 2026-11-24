@@ -68,6 +68,7 @@ import {
   getVisibleRoleGroups,
   highestStaffRank,
   normalizeProfileStatus,
+  normalizeStaffRank,
   resolveProfileRoleSelection,
   validateProfileBio,
   validateProfileDisplayName,
@@ -453,7 +454,7 @@ function buildImmediateOwnSeed(
     realName: ownProfile?.realName || ownProfile?.name || currentUser?.displayName || undefined,
     username: rawUsername,
     role: ownProfile?.role || 'student',
-    customRole: ownProfile?.customRole || 'Student',
+    customRole: ownProfile?.customRole || undefined,
     equippedAvatar,
     photoURL: canonicalLoadout.photoURL || '',
     equippedFrame,
@@ -538,6 +539,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const {
     user: currentUser,
     profile: ownProfile,
+    authStatus,
     profileLoading: authProfileLoading,
     isSuperAdmin,
     isAdmin,
@@ -1150,7 +1152,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           'student';
 
         const resolvedCustomRole =
-          uData?.customRole ?? pubData?.customRole ?? d1Live?.customRole ?? 'Student';
+          uData?.customRole ?? pubData?.customRole ?? d1Live?.customRole ?? undefined;
 
         const resolvedBio =
           uData?.bio ?? pubData?.bio ?? (d1Live?.bio !== undefined ? d1Live.bio : '');
@@ -1210,7 +1212,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           realName: uData?.realName || uData?.name || (isOwnProfile ? currentUser?.displayName || undefined : undefined),
           username: rawUsername,
           role: resolvedRole as any,
-          customRole: resolvedCustomRole || 'Student',
+          customRole: resolvedCustomRole || undefined,
           equippedAvatar: resolvedEquippedAvatar,
           photoURL: resolvedPhotoURL,
           equippedFrame: resolvedFrame,
@@ -2410,11 +2412,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Role & Status Chips */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <RoleBadge
-                role={profile.role}
-                customRole={profile.customRole}
-                size="md"
-              />
+              {isOwnProfile &&
+              authStatus === 'loading' &&
+              !profile.customRole &&
+              normalizeStaffRank(profile.role) === 'none' &&
+              profile.role !== 'teacher' ? (
+                <span
+                  className="inline-block h-7 w-24 animate-pulse rounded-full bg-[var(--border)]/70"
+                  aria-label="Loading role"
+                />
+              ) : (
+                <RoleBadge
+                  role={profile.role}
+                  customRole={profile.customRole}
+                  size="md"
+                />
+              )}
               {(() => {
                 const statusOpt = getProfileStatusOption(profile.status);
                 return (

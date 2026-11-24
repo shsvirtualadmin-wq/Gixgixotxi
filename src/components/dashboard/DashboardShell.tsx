@@ -30,13 +30,14 @@ export function DashboardShell() {
     profile,
     isGuest,
     profileLoading,
+    authStatus,
     isSessionVerified,
     otpVerificationState,
     isSigningOut,
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const isAuthenticated = isUserAuthenticated(user, profileLoading);
+  const isAuthenticated = isUserAuthenticated(user, profileLoading, authStatus);
   const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const { isMenuOpen } = useNavStore();
@@ -110,7 +111,7 @@ export function DashboardShell() {
     if (signingOutNow) {
       return;
     }
-    if (!isAuthenticated && !profileLoading && !user) {
+    if (authStatus !== 'loading' && !isAuthenticated && !profileLoading && !user) {
       const publicPath = getPublicEquivalentForLoggedOut(location.pathname);
       if (publicPath) {
         navigate(`${publicPath}${location.search}${location.hash}`, { replace: true });
@@ -126,6 +127,7 @@ export function DashboardShell() {
     }
   }, [
     isSigningOut,
+    authStatus,
     isAuthenticated,
     user,
     profileLoading,
@@ -136,7 +138,7 @@ export function DashboardShell() {
   ]);
 
   // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL
-  if (!isAuthenticated && !profileLoading && !user) {
+  if (authStatus !== 'loading' && !isAuthenticated && !profileLoading && !user) {
     const signingOutNow =
       isSigningOut ||
       (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));

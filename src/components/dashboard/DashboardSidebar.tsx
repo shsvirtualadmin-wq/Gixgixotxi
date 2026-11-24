@@ -32,7 +32,7 @@ import { AdSlot } from '@/components/AdSlot';
 import { AD_SLOTS } from '@/config/ads';
 
 export function DashboardSidebar() {
-  const { isAdmin, isSuperAdmin, isCaptain, isGuest, signOutUser, isSigningOut } = useAuth();
+  const { isAdmin, isSuperAdmin, isCaptain, isGuest, authStatus, profileLoading, signOutUser, isSigningOut } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
   const navigate = useNavigate();
@@ -61,8 +61,10 @@ export function DashboardSidebar() {
       realName: profile?.realName ?? profile?.name ?? user?.displayName,
       username: profile?.username,
     },
-    'Student'
+    ''
   );
+  const isIdentityLoading =
+    (authStatus === 'loading' || profileLoading) && !displayName && !user?.uid && !profile?.uid;
 
   return (
     <aside
@@ -342,9 +344,16 @@ export function DashboardSidebar() {
               </div>
             ) : (
               <div className="flex items-center gap-1.5 min-w-0">
-                <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                  {displayName}
-                </p>
+                {isIdentityLoading ? (
+                  <span
+                    className="inline-block h-3.5 w-24 animate-pulse rounded-full bg-[var(--border)]"
+                    aria-label="Loading profile"
+                  />
+                ) : (
+                  <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                    {displayName || (isGuest ? 'Guest' : 'Account')}
+                  </p>
+                )}
                 {isPlus && effectivePlusBadgeId !== null ? (
                   <PlusBadge
                     id={effectivePlusBadgeId}
@@ -363,7 +372,17 @@ export function DashboardSidebar() {
               </div>
             )}
             <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">
-              {isGuest ? 'Guest' : isPlus ? 'Plus Member' : isPro ? 'Pro Member' : 'Free Starter'}
+              {isIdentityLoading
+                ? ''
+                : isGuest
+                ? 'Guest'
+                : isPlus
+                ? 'Plus Member'
+                : isPro
+                ? 'Pro Member'
+                : authStatus === 'authenticated'
+                ? 'Free Starter'
+                : ''}
             </p>
           </div>
         </div>

@@ -73,7 +73,7 @@ export function DashboardTopBar({
   showBackArrow,
   title,
 }: Props) {
-  const { signOutUser, isAdmin, isGuest } = useAuth();
+  const { signOutUser, isAdmin, isGuest, authStatus, profileLoading } = useAuth();
   const { requireAuth } = useAuthGate();
   const { user, profile } = useUserProfile();
   const navigate = useNavigate();
@@ -185,12 +185,12 @@ export function DashboardTopBar({
 
   const handleOpenProfile = useCallback(() => {
     setMenuOpen(false);
-    if (user) {
+    if (user || profile?.uid || authStatus === 'loading' || authStatus === 'authenticated') {
       navigate('/profile');
     } else {
       navigate('/login');
     }
-  }, [user, navigate]);
+  }, [user, profile?.uid, authStatus, navigate]);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -373,11 +373,15 @@ export function DashboardTopBar({
             >
               <BoardlyAvatar
                 uid={user?.uid}
-                name={getDisplayName({
-                  display_name: profile?.display_name ?? profile?.displayName,
-                  realName: profile?.realName ?? profile?.name ?? user?.displayName,
-                  username: profile?.username,
-                })}
+                name={getDisplayName(
+                  {
+                    display_name: profile?.display_name ?? profile?.displayName,
+                    realName: profile?.realName ?? profile?.name ?? user?.displayName,
+                    username: profile?.username,
+                  },
+                  ''
+                )}
+                loading={(authStatus === 'loading' || profileLoading) && !user?.uid && !profile?.uid}
                 photoURL={headerLoadout.photoURL}
                 equippedAvatar={headerLoadout.avatar}
                 equippedFrameId={headerLoadout.frame}

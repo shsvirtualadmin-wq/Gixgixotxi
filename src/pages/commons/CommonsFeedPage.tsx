@@ -38,6 +38,7 @@ import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { buildEntitySlug } from '@/utils/privacy';
+import { getDisplayName } from '@/utils/displayName';
 import { AdSlot } from '@/components/AdSlot';
 import { useAdsConfig } from '@/services/adsConfigService';
 
@@ -90,8 +91,8 @@ const SUBJECT_FILTERS = [
 ];
 
 export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: boolean }) {
-  const { user, profile } = useUserProfile();
-  const { isAdmin, isGuest } = useAuth();
+  const { user, profile, loading: profileLoading } = useUserProfile();
+  const { isAdmin, isGuest, authStatus } = useAuth();
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const location = useLocation();
@@ -931,7 +932,15 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 (profile as any)?.avatar
               }
               frame={profile?.equipped?.frame || (profile as any)?.frame}
-              name={profile?.displayName || user?.displayName || 'Guest'}
+              name={getDisplayName(
+                {
+                  display_name: profile?.display_name ?? profile?.displayName,
+                  realName: profile?.realName ?? profile?.name ?? user?.displayName,
+                  username: profile?.username,
+                },
+                ''
+              )}
+              loading={(authStatus === 'loading' || profileLoading) && !user?.uid && !profile?.uid}
               isSuperAdmin={
                 isAdmin ||
                 user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
@@ -1308,7 +1317,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
               null,
             frame: profile?.equipped?.frame || (profile as any)?.frame || null,
             avatarUrl: null,
-            role: profile?.role || 'Student',
+            role: profile?.role || undefined,
             customRole: (profile as any)?.customRole || null,
           }}
           initialType={wizardConfig.initialType}

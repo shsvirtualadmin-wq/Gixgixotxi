@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -191,6 +191,8 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   const {
     user,
     profile,
+    authStatus,
+    profileLoading,
     isGuest,
     isAdmin,
     isSuperAdmin,
@@ -226,44 +228,6 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     mapRouteParamToSection(initialSubPage)
   );
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Account header avatar wrapper measurement so BoardlyAvatar + frames scale cleanly with clamp(100px, 27vw, 116px)
-  const accountAvatarWrapRef = useRef<HTMLDivElement | null>(null);
-  const [accountAvatarPx, setAccountAvatarPx] = useState<number>(() => {
-    if (typeof window === 'undefined') return 108;
-    return Math.round(Math.min(116, Math.max(100, window.innerWidth * 0.27)));
-  });
-
-  useEffect(() => {
-    if (section !== 'account') return;
-    const el = accountAvatarWrapRef.current;
-
-    const syncSize = () => {
-      const measured = el ? el.getBoundingClientRect().width : 0;
-      if (measured > 0) {
-        const next = Math.round(measured);
-        setAccountAvatarPx((prev) => (prev === next ? prev : next));
-      } else if (typeof window !== 'undefined') {
-        const fallback = Math.round(Math.min(116, Math.max(100, window.innerWidth * 0.27)));
-        setAccountAvatarPx((prev) => (prev === fallback ? prev : fallback));
-      }
-    };
-
-    syncSize();
-
-    if (el && typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(syncSize);
-      observer.observe(el);
-      return () => observer.disconnect();
-    }
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', syncSize);
-      return () => window.removeEventListener('resize', syncSize);
-    }
-
-    return undefined;
-  }, [section]);
 
   // Sheets
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -340,13 +304,18 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   });
 
   // Display name & study role editing state
-  const currentDisplayName = getDisplayName(profile, 'Student');
+  const currentDisplayName = getDisplayName(profile, '');
+  const isProfileIdentityLoading =
+    (authStatus === 'loading' || profileLoading) &&
+    !currentDisplayName &&
+    !profile?.username &&
+    !profile?.email;
   const currentUsernameHandle = getUsernameHandle(profile);
   const [displayNameDraft, setDisplayNameDraft] = useState(currentDisplayName);
   const [savingDisplayName, setSavingDisplayName] = useState(false);
   const [displayNameFeedback, setDisplayNameFeedback] = useState<string | null>(null);
   const [studyRoleDraft, setStudyRoleDraft] = useState<string>(
-    profile?.customRole || 'FSc Pre-Medical (12th)'
+    profile?.customRole || ''
   );
   const [savingStudyRole, setSavingStudyRole] = useState(false);
 
@@ -475,18 +444,26 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   };
 
   const roleLabels = useMemo(() => {
+    if (authStatus === 'loading' && !profile?.role && !isSuperAdmin && !isAdmin && !isCaptain) {
+      return '';
+    }
     const roles: string[] = [];
     if (isSuperAdmin) roles.push('superadmin');
     else if (isAdmin) roles.push('admin');
     if (isCaptain) roles.push('captain');
-    if (roles.length === 0) roles.push(isGuest ? 'guest' : 'student');
+    if (roles.length === 0) {
+      if (isGuest) roles.push('guest');
+      else if (profile?.role) roles.push(profile.role);
+    }
     return roles.join(', ');
-  }, [isSuperAdmin, isAdmin, isCaptain, isGuest]);
+  }, [authStatus, profile?.role, isSuperAdmin, isAdmin, isCaptain, isGuest]);
 
   const planLabel = isPlus
     ? 'Boardly Plus'
     : isPro
     ? 'Boardly Pro'
+    : isProfileIdentityLoading
+    ? ''
     : isGuest
     ? 'Guest'
     : 'Free';
@@ -712,18 +689,16 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             className="group relative flex flex-col items-center cursor-pointer"
             aria-label="Open your profile"
           >
-            <div
-              ref={accountAvatarWrapRef}
-              className="relative flex h-[clamp(100px,27vw,116px)] w-[clamp(100px,27vw,116px)] shrink-0 items-center justify-center"
-            >
+            <div className="relative flex h-[clamp(100px,27vw,116px)] w-[clamp(100px,27vw,116px)] shrink-0 items-center justify-center">
               <BoardlyAvatar
                 uid={user?.uid}
-                src={equippedLoadout.photoURL || undefined}
+                photoURL={equippedLoadout.photoURL || undefined}
                 equippedAvatar={equippedLoadout.avatar}
                 equippedFrameId={equippedLoadout.frame}
                 name={currentDisplayName}
-                size={accountAvatarPx}
-                priority={10}
+                loading={authStatus === 'loading' && !user?.uid && !profile?.uid}
+                size={108}
+                className="!h-full !w-full [&>div]:!h-full [&>div]:!w-full [&>div>div]:!h-full [&>div>div]:!w-full [&>div>div>.z-10]:!h-[66%] [&>div>div>.z-10]:!w-[66%]"
               />
               <span
                 className="absolute -right-[2px] -bottom-[2px] z-30 flex h-10 w-10 items-center justify-center rounded-full shadow-sm"
@@ -736,12 +711,20 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
                 <Pencil className="h-4 w-4" />
               </span>
             </div>
-            <span
-              className="mt-5 text-[20px] font-semibold leading-tight group-hover:underline"
-              style={{ color: 'var(--text)' }}
-            >
-              {currentDisplayName}
-            </span>
+            {isProfileIdentityLoading ? (
+              <span
+                className="mt-5 inline-block h-5 w-36 animate-pulse rounded-full"
+                style={{ backgroundColor: 'var(--border)' }}
+                aria-label="Loading account name"
+              />
+            ) : (
+              <span
+                className="mt-5 text-[20px] font-semibold leading-tight group-hover:underline"
+                style={{ color: 'var(--text)' }}
+              >
+                {currentDisplayName || (isGuest ? 'Guest' : 'Account')}
+              </span>
+            )}
             {currentUsernameHandle && (
               <span className="mt-0.5 text-[14px]" style={{ color: 'var(--text-muted)' }}>
                 {currentUsernameHandle}
@@ -754,25 +737,31 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           <SettingsRow
             icon={<Mail />}
             label="Email"
-            value={user?.email || profile?.email || 'Guest account'}
+            value={
+              authStatus === 'loading' && !user?.email && !profile?.email
+                ? 'Loading…'
+                : user?.email ||
+                  profile?.email ||
+                  (isGuest || authStatus === 'unauthenticated' ? 'Guest account' : '—')
+            }
             chevron="none"
           />
           <SettingsRow
             icon={<AtSign />}
             label="Username & study role"
-            value={currentUsernameHandle || 'Set up'}
+            value={currentUsernameHandle || (isProfileIdentityLoading ? 'Loading…' : 'Set up')}
             onClick={() => setSection('account-username-role')}
           />
           <SettingsRow
             icon={<User />}
             label="Display name"
-            value={currentDisplayName}
+            value={currentDisplayName || (isProfileIdentityLoading ? 'Loading…' : 'Set display name')}
             onClick={() => setSection('account-display-name')}
           />
           <SettingsRow
             icon={<Crown />}
             label="Subscription"
-            value={planLabel}
+            value={planLabel || 'Loading…'}
             onClick={() => navigateTo('/dashboard/plan')}
           />
           {!isPaid ? (
@@ -1433,15 +1422,16 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         leadingElement={
           <BoardlyAvatar
             uid={user?.uid}
-            src={equippedLoadout.photoURL || undefined}
+            photoURL={equippedLoadout.photoURL || undefined}
             equippedAvatar={equippedLoadout.avatar}
             equippedFrameId={equippedLoadout.frame}
             name={currentDisplayName}
+            loading={authStatus === 'loading' && !user?.uid && !profile?.uid}
             size="sm"
           />
         }
         label="Account"
-        value={currentDisplayName}
+        value={currentDisplayName || (isProfileIdentityLoading ? 'Loading…' : isGuest ? 'Guest' : undefined)}
         onClick={() => setSection('account')}
       />
     ),
@@ -1749,7 +1739,16 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           {showSignOut && (
             <SettingsGroup
               danger
-              helperText={`Signed in as ${user?.email || profile?.email || currentUsernameHandle || 'Guest'} · roles: ${roleLabels}`}
+              helperText={
+                isProfileIdentityLoading
+                  ? undefined
+                  : `Signed in as ${
+                      user?.email ||
+                      profile?.email ||
+                      currentUsernameHandle ||
+                      (isGuest || authStatus === 'unauthenticated' ? 'Guest' : 'Account')
+                    }${roleLabels ? ` · roles: ${roleLabels}` : ''}`
+              }
             >
               <SettingsRow
                 icon={<LogOut />}
@@ -1779,6 +1778,8 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         uid={user?.uid}
         email={user?.email || profile?.email || ''}
         displayName={currentDisplayName}
+        isGuest={isGuest}
+        authLoading={authStatus === 'loading' && !user?.uid && !profile?.uid}
         avatarUrl={equippedLoadout.photoURL}
         equippedAvatar={equippedLoadout.avatar}
         equippedFrameId={equippedLoadout.frame}

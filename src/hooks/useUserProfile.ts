@@ -417,7 +417,7 @@ export function getSharedUserProfileSnapshot(uid?: string | null): UserProfile |
  * Prevents re-render cascades and ensures instant cache-first availability.
  */
 export function useUserProfile(): UserProfileHookResult {
-  const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile, syncGuestProgress, isGuest } = useAuth();
+  const { user, profile: authProfile, profileLoading: authLoading, authStatus, updateLocalProfile, syncGuestProgress, isGuest } = useAuth();
   const [tick, setTick] = useState(0);
 
   const authProfileRef = useRef<UserProfile | null>(authProfile);
@@ -486,10 +486,17 @@ export function useUserProfile(): UserProfileHookResult {
     if (!user?.uid || !authProfile) return;
     if (sharedState.profile && sharedState.profile.uid === user.uid) {
       const nextCustomRole = authProfile.customRole ?? sharedState.profile.customRole;
-      const nextRole = authProfile.role || sharedState.profile.role || 'student';
-      // Only fill missing username/displayName from authProfile; never overwrite a live sharedState value with a stale authProfile value
+      const nextRole = authProfile.role || sharedState.profile.role;
+      // Fill missing or placeholder ('Student') displayName from authProfile; never overwrite a live non-placeholder sharedState value
       const nextUsername = sharedState.profile.username || authProfile.username;
-      const nextDisplayName = sharedState.profile.displayName || authProfile.displayName;
+      const sharedName = (sharedState.profile.displayName || '').trim();
+      const authName = (authProfile.displayName || '').trim();
+      const isSharedPlaceholder =
+        !sharedName || sharedName.toLowerCase() === 'student';
+      const nextDisplayName =
+        isSharedPlaceholder && authName && authName.toLowerCase() !== 'student'
+          ? authName
+          : sharedName || authName || null;
       if (
         nextCustomRole !== sharedState.profile.customRole ||
         nextRole !== sharedState.profile.role ||
@@ -498,7 +505,7 @@ export function useUserProfile(): UserProfileHookResult {
       ) {
         sharedState.profile = {
           ...sharedState.profile,
-          role: nextRole,
+          ...(nextRole ? { role: nextRole } : {}),
           customRole: nextCustomRole,
           username: nextUsername,
           displayName: nextDisplayName,
@@ -527,8 +534,11 @@ export function useUserProfile(): UserProfileHookResult {
     }
   }, [user?.uid, authProfile]);
 
-  // Loading state: true only while Auth is resolving OR while initial snapshot is waiting for active user
-  const loading = (authLoading && !profile) || (Boolean(user?.uid) && !hasReceivedSnapshot && !profile);
+  // Loading state: true while Auth is resolving OR while initial snapshot is waiting for active user
+  const loading =
+    (authStatus === 'loading' && !profile) ||
+    (authLoading && !profile) ||
+    (Boolean(user?.uid) && !hasReceivedSnapshot && !profile);
 
   // Unified field extraction without target exam
   const profileCompleted = Boolean(profile?.profileCompleted || profile?.onboardingCompleted);
@@ -720,10 +730,11 @@ export function useUserProfile(): UserProfileHookResult {
         writeOptimisticUserSnapshot({
           uid: user.uid,
           email: nextSharedProfile.email || user.email || '',
-          displayName: localPayload.displayName,
+          displayName:
+            localPayload.displayName.toLowerCase() !== 'student' ? localPayload.displayName : null,
           username: nextSharedProfile.username || null,
           shortId: nextSharedProfile.shortId,
-          role: 'student',
+          role: nextSharedProfile.role === 'teacher' ? 'teacher' : 'student',
           customRole: nextSharedProfile.customRole || null,
           plan: nextSharedProfile.plan || 'free',
           isGuest: false,

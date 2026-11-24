@@ -12587,6 +12587,7 @@ ${postSitemaps}
     req.originalUrl = '/api/auth/profile-sync';
     return delegateToAuthWorker(req, res);
   });
+  app.get('/api/auth/me', delegateToAuthWorker);
   app.get('/api/auth/resolve-profiles', delegateToAuthWorker);
   app.post('/api/auth/username-register', delegateToAuthWorker);
   app.get('/api/auth/username-check', delegateToAuthWorker);

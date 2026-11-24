@@ -87,7 +87,8 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
   questionsSolved,
 }: BoardlyCoPilotCardProps) {
   const { smoothMode } = useSmoothMode();
-  const safeName = firstName || 'Student';
+  const rawName = (firstName || '').trim();
+  const safeName = rawName && rawName.toLowerCase() !== 'student' ? rawName : '';
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const [inViewport, setInViewport] = useState(true);
 
@@ -112,51 +113,54 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
     const latestAttempt = safeAttempts[0];
     const daysSinceLast = computeDaysSince(latestAttempt?.createdAt);
     const timeGreeting = getTimeOfDayGreeting();
+    const nameComma = safeName ? `, ${safeName}` : '';
 
     if (safeAttempts.length === 0 && questionsSolved <= 0) {
       // New user welcome messages
       list.push(
-        `Welcome to Boardly, ${safeName}! Pick a live university below to start your first test.`
+        `Welcome to Boardly${nameComma}! Pick a live university below to start your first test.`
       );
-      list.push(`${timeGreeting}, ${safeName}. What will you practice today?`);
+      list.push(`${timeGreeting}${nameComma}. What will you practice today?`);
       if (streak > 0) {
         list.push(
-          `Your ${streak}-day streak is active, ${safeName}. Let's solve your first set today!`
+          `Your ${streak}-day streak is active${nameComma}. Let's solve your first set today!`
         );
       }
       return list;
     }
 
     if (daysSinceLast === 1) {
-      list.push(`I was sad you didn't come yesterday, ${safeName}. Ready to jump back in?`);
+      list.push(`I was sad you didn't come yesterday${nameComma}. Ready to jump back in?`);
     } else if (daysSinceLast !== null && daysSinceLast >= 2) {
-      list.push(`You haven't practiced in ${daysSinceLast} days, ${safeName}. Let's warm up today!`);
+      list.push(`You haven't practiced in ${daysSinceLast} days${nameComma}. Let's warm up today!`);
     } else if (daysSinceLast === 0 && latestAttempt) {
       list.push(
-        `Nice work on ${latestAttempt.universityName} (${Math.round(Number(latestAttempt.accuracy) || 0)}% accuracy) today, ${safeName}!`
+        `Nice work on ${latestAttempt.universityName} (${Math.round(Number(latestAttempt.accuracy) || 0)}% accuracy) today${nameComma}!`
       );
     }
 
     if (safeWeak.length > 0) {
       const weakest = safeWeak[0];
       list.push(
-        `${weakest.topic} (${weakest.subject}) is at ${Math.round(Number(weakest.accuracy) || 0)}% accuracy — drill it next, ${safeName}?`
+        `${weakest.topic} (${weakest.subject}) is at ${Math.round(Number(weakest.accuracy) || 0)}% accuracy — drill it next${nameComma}?`
       );
     }
 
     if (streak > 0) {
       list.push(
-        `${streak}-day streak strong, ${safeName}! Keep your momentum alive today.`
+        `${streak}-day streak strong${nameComma}! Keep your momentum alive today.`
       );
     }
 
-    list.push(`${timeGreeting}, ${safeName}. What will you practice today?`);
+    list.push(`${timeGreeting}${nameComma}. What will you practice today?`);
 
     return list;
-  }, [ safeName, streak, recentAttempts, weakChapters, questionsSolved ]);
+  }, [safeName, streak, recentAttempts, weakChapters, questionsSolved]);
 
   const [msgIndex, setMsgIndex] = useState(0);
-  const activeMessage = messages[msgIndex % messages.length] || `What will you practice today, ${safeName}?`;
+  const activeMessage =
+    messages[msgIndex % messages.length] ||
+    (safeName ? `What will you practice today, ${safeName}?` : 'What will you practice today?');
   const [typedLen, setTypedLen] = useState<number>(() => (smoothMode ? activeMessage.length : 0));
   const [mouthFrame, setMouthFrame] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);

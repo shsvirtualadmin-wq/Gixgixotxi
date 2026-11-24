@@ -102,7 +102,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   onSignOut,
   showCoinBalanceInStore = true,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, authStatus, profileLoading, isGuest } = useAuth();
   const { isDark, toggle: toggleTheme } = useTheme();
   const { isPro, isPlus } = useEffectivePlan();
   const { kobanBalance, balanceLoaded } = useWallet();
@@ -113,9 +113,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
       realName: profile?.realName ?? profile?.name ?? user?.displayName,
       username: profile?.username,
     },
-    'Student'
+    ''
   );
   const handle = getUsernameHandle({ username: profile?.username });
+  const isIdentityLoading =
+    (authStatus === 'loading' || profileLoading) && !displayName && !user?.uid;
 
   const itemClass =
     'w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-medium text-[var(--text)] hover:bg-[var(--border)]/40 transition-colors cursor-pointer';
@@ -123,9 +125,13 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   return (
     <div className="w-[260px] max-w-[calc(100vw-32px)] space-y-2 text-[var(--text)]">
       <div className="px-3 py-2 border-b border-[var(--border)]">
-        <div className="text-[15px] font-semibold text-[var(--text)] truncate">
-          {displayName}
-        </div>
+        {isIdentityLoading ? (
+          <div className="h-4 w-28 animate-pulse rounded-full bg-[var(--border)]" />
+        ) : (
+          <div className="text-[15px] font-semibold text-[var(--text)] truncate">
+            {displayName || (isGuest ? 'Guest' : user ? 'Account' : 'Guest')}
+          </div>
+        )}
         {handle && (
           <div className="text-[12px] text-[var(--text-muted)] truncate">{handle}</div>
         )}

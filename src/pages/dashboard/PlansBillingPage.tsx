@@ -221,7 +221,7 @@ export function PlansBillingPage() {
       realName: profile?.realName ?? profile?.name ?? user?.displayName,
       username: profile?.username,
     },
-    'Student'
+    ''
   );
 
   const aiPlanLabel = aiCredits.unlimited

@@ -12,6 +12,7 @@ interface RoleGuardProps {
 export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   const {
     user,
+    authStatus,
     profileLoading,
     isCaptain,
     isAdmin,
@@ -21,7 +22,7 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
   } = useAuth();
   const location = useLocation();
 
-  if (profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
+  if (authStatus === 'loading' || profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
     return <RoutePageSkeleton />;
   }
 

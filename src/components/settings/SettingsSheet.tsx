@@ -410,6 +410,8 @@ export const SwitchAccountSheet: React.FC<{
   uid?: string | null;
   email: string;
   displayName: string;
+  isGuest?: boolean;
+  authLoading?: boolean;
   avatarUrl?: string | null;
   equippedAvatar?: string | null;
   equippedFrameId?: string | null;
@@ -422,6 +424,8 @@ export const SwitchAccountSheet: React.FC<{
   uid,
   email,
   displayName,
+  isGuest = false,
+  authLoading = false,
   avatarUrl,
   equippedAvatar,
   equippedFrameId,
@@ -436,7 +440,7 @@ export const SwitchAccountSheet: React.FC<{
       {/* Email header with three-dot menu */}
       <div className="relative mb-3 flex items-center justify-between gap-2">
         <span className="break-all text-[14px]" style={{ color: 'var(--text-muted)' }}>
-          {email || 'Guest account'}
+          {email || (authLoading ? 'Loading account…' : isGuest ? 'Guest account' : 'No email linked')}
         </span>
         <button
           type="button"
@@ -486,14 +490,22 @@ export const SwitchAccountSheet: React.FC<{
           equippedAvatar={equippedAvatar || undefined}
           equippedFrameId={equippedFrameId || undefined}
           name={displayName}
+          loading={authLoading}
           size="md"
         />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
-            {displayName}
-          </div>
+          {authLoading && !displayName ? (
+            <div
+              className="h-4 w-28 animate-pulse rounded-full"
+              style={{ backgroundColor: 'var(--border)' }}
+            />
+          ) : (
+            <div className="truncate text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
+              {displayName || (isGuest ? 'Guest' : 'Account')}
+            </div>
+          )}
           <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            {planLabel}
+            {planLabel || (authLoading ? 'Loading…' : '')}
           </div>
         </div>
         <Check

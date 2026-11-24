@@ -28,10 +28,10 @@ const LAST_KNOWN_WALLET_KEY = 'boardly_last_known_wallet_v1';
 export interface OptimisticUserSnapshot {
   uid: string;
   email: string;
-  displayName: string;
+  displayName: string | null;
   username?: string | null;
   shortId?: string;
-  role: 'student' | 'admin' | 'superadmin' | 'crew' | 'captain' | 'ambassador';
+  role: 'student' | 'teacher' | 'admin' | 'superadmin' | 'crew' | 'captain' | 'ambassador';
   customRole?: string | null;
   plan: 'free' | 'pro' | 'premium';
   isGuest?: boolean;
@@ -166,11 +166,21 @@ export function readOptimisticUserSnapshot(): OptimisticUserSnapshot | null {
     }
     // SECURITY: Never restore admin or superadmin from localStorage. Roles come ONLY from verified ID token claims.
     const safeRole =
-      parsed.role === 'captain' || parsed.role === 'crew' || parsed.role === 'ambassador'
+      parsed.role === 'captain' ||
+      parsed.role === 'crew' ||
+      parsed.role === 'ambassador' ||
+      parsed.role === 'teacher'
         ? parsed.role
         : 'student';
+    const cleanDisplay =
+      typeof parsed.displayName === 'string' &&
+      parsed.displayName.trim() &&
+      parsed.displayName.trim() !== 'Student'
+        ? parsed.displayName.trim()
+        : null;
     return {
       ...parsed,
+      displayName: cleanDisplay,
       role: safeRole,
     };
   } catch {
@@ -182,11 +192,21 @@ export function writeOptimisticUserSnapshot(snapshot: Omit<OptimisticUserSnapsho
   if (typeof window === 'undefined' || !snapshot?.uid) return;
   try {
     const safeRole =
-      snapshot.role === 'captain' || snapshot.role === 'crew' || snapshot.role === 'ambassador'
+      snapshot.role === 'captain' ||
+      snapshot.role === 'crew' ||
+      snapshot.role === 'ambassador' ||
+      snapshot.role === 'teacher'
         ? snapshot.role
         : 'student';
+    const cleanDisplay =
+      typeof snapshot.displayName === 'string' &&
+      snapshot.displayName.trim() &&
+      snapshot.displayName.trim() !== 'Student'
+        ? snapshot.displayName.trim()
+        : null;
     const record: OptimisticUserSnapshot = {
       ...snapshot,
+      displayName: cleanDisplay,
       role: safeRole,
       updatedAt: Date.now(),
     };
