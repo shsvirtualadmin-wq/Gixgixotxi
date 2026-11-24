@@ -1,6 +1,26 @@
 {
   "user_usernames": [
     {
+      "username_lower": "pkig",
+      "username": "pkig",
+      "username_display": "pkig",
+      "normalized_lookalike": "pkig",
+      "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "account_type": "registered",
+      "email": "shsvirtualadmin@gmail.com",
+      "display_name": "PKIG",
+      "role": "superadmin",
+      "custom_role": "Superadmin",
+      "status": "active",
+      "bio": "",
+      "created_at": 1775000000000,
+      "updated_at": 1775000000000,
+      "profile_layout": "game-card",
+      "avatar": "",
+      "frame": null,
+      "accent": ""
+    },
+    {
       "username_lower": "superadmin_1",
       "username": "superadmin_1",
       "username_display": "superadmin_1",
@@ -1652,6 +1672,14 @@
       "verified_auth_time": 0,
       "verified_at": 1795485636776,
       "updated_at": 1795485636776
+    },
+    {
+      "user_id": "u1",
+      "email_hash": "a@b.c",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795498830033,
+      "updated_at": 1795498830033
     }
   ],
   "user_koban_style": [],
@@ -2007,7 +2035,17 @@
   "user_2fa_backup_codes": [],
   "trusted_devices": [],
   "security_audit_logs": [],
-  "user_roles": [],
+  "user_roles": [
+    {
+      "uid": "A5YMRimdHRcmeDWutxtUGt2e4hf2",
+      "email": "shsvirtualadmin@gmail.com",
+      "role": "superadmin",
+      "custom_role": "Superadmin",
+      "is_posting_banned": 0,
+      "updated_at": 1775000000000,
+      "created_at": 1775000000000
+    }
+  ],
   "passkeys": [],
   "sessions": [],
   "security_events": []

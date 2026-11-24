@@ -12574,6 +12574,19 @@ ${postSitemaps}
   };
 
   app.post('/api/auth/profile-sync', delegateToAuthWorker);
+  app.patch('/api/auth/profile-sync', delegateToAuthWorker);
+  app.post('/api/auth/profile', delegateToAuthWorker);
+  app.patch('/api/auth/profile', delegateToAuthWorker);
+  app.post('/api/profile', (req, res) => {
+    req.url = '/api/auth/profile-sync';
+    req.originalUrl = '/api/auth/profile-sync';
+    return delegateToAuthWorker(req, res);
+  });
+  app.patch('/api/profile', (req, res) => {
+    req.url = '/api/auth/profile-sync';
+    req.originalUrl = '/api/auth/profile-sync';
+    return delegateToAuthWorker(req, res);
+  });
   app.get('/api/auth/resolve-profiles', delegateToAuthWorker);
   app.post('/api/auth/username-register', delegateToAuthWorker);
   app.get('/api/auth/username-check', delegateToAuthWorker);

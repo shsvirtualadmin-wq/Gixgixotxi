@@ -244,6 +244,104 @@ export function broadcastPublicProfileUpdate(
   return merged;
 }
 
+export interface SaveProfileD1Result {
+  uid: string;
+  username: string;
+  usernameLower: string;
+  display_name: string;
+  displayName: string;
+  avatar: string;
+  frame: string | null;
+  role: string;
+  customRole: string | null;
+  bio: string;
+  status: string;
+  accent: string;
+  updatedAt: number;
+}
+
+export class ProfileSaveError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ProfileSaveError';
+    this.status = status;
+  }
+}
+
+/**
+ * Server-enforced profile save. Throws ProfileSaveError with HTTP status (e.g. 403/409/400)
+ * when the backend rejects a role change, reserved name, duplicate username, or validation error.
+ */
+export async function saveProfileToD1Backend(
+  uid: string,
+  data: Record<string, any>
+): Promise<SaveProfileD1Result> {
+  if (!uid) {
+    throw new ProfileSaveError('Missing user uid.', 400);
+  }
+  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  const guestSession = (() => {
+    try {
+      return localStorage.getItem('boardly_guest_session_token') || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  const equippedAvatar = resolveCosmeticItemId(
+    data.equipped?.avatar ?? data.equippedAvatar ?? data.avatar,
+    'avatar'
+  );
+  const equippedFrame = resolveCosmeticItemId(
+    data.equipped?.frame ?? data.equippedFrame ?? data.frame,
+    'frame'
+  );
+
+  const payload: Record<string, any> = {
+    uid,
+    strictValidation: true,
+  };
+  if (data.username !== undefined) payload.username = data.username;
+  if (data.display_name !== undefined || data.displayName !== undefined) {
+    const dn = data.display_name ?? data.displayName;
+    payload.display_name = dn;
+    payload.displayName = dn;
+  }
+  if (data.avatar !== undefined || data.equippedAvatar !== undefined) {
+    payload.avatar = equippedAvatar !== undefined ? equippedAvatar : data.avatar;
+  }
+  if (data.frame !== undefined || data.equippedFrame !== undefined) {
+    payload.frame = equippedFrame !== undefined ? equippedFrame : data.frame;
+  }
+  if (data.bio !== undefined) payload.bio = data.bio;
+  if (data.status !== undefined) payload.status = data.status;
+  if (data.accent !== undefined) payload.accent = data.accent;
+  if (data.role !== undefined) payload.role = data.role;
+  if (data.customRole !== undefined) payload.customRole = data.customRole;
+
+  const res = await fetch('/api/auth/profile-sync', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(guestSession ? { 'X-Guest-Session': guestSession } : {}),
+      'X-User-Uid': uid,
+    },
+    credentials: 'same-origin',
+    body: JSON.stringify(payload),
+  });
+
+  const body = (await res.json().catch(() => ({}))) as any;
+  if (!res.ok || body?.ok === false) {
+    throw new ProfileSaveError(
+      body?.error || 'Failed to save profile changes.',
+      res.status || 500
+    );
+  }
+  return body.profile as SaveProfileD1Result;
+}
+
 export async function syncProfileToD1Backend(
   uid: string,
   data: Record<string, any>
@@ -293,6 +391,8 @@ export async function syncProfileToD1Backend(
         bio: data.bio !== undefined ? data.bio : undefined,
         status: data.status !== undefined ? data.status : undefined,
         accent: data.accent !== undefined ? data.accent : undefined,
+        ...(data.role !== undefined ? { role: data.role } : {}),
+        ...(data.customRole !== undefined ? { customRole: data.customRole } : {}),
       }),
     });
   } catch {
@@ -340,11 +440,12 @@ export function normalizePublicProfileDoc(
   const wEquipped = w.equipped || {};
   const botMatch = BOARDLY_BOT_ACCOUNTS.find((b) => b.uid === uid);
   const trustedD1Role = typeof p.d1Role === 'string' ? p.d1Role.trim().toLowerCase() : '';
-  const isSuperAdmin =
-    uid === SUPER_ADMIN_UID ||
-    isAdminAccount(uid) ||
-    trustedD1Role === 'superadmin' ||
-    trustedD1Role === 'admin';
+  const fallbackPublicRole =
+    typeof p.role === 'string' && p.role.trim().toLowerCase() === 'teacher' ? 'teacher' : '';
+  const resolvedRole =
+    trustedD1Role ||
+    (uid === SUPER_ADMIN_UID ? 'superadmin' : botMatch ? 'bot' : fallbackPublicRole || 'student');
+  const isSuperAdmin = resolvedRole === 'superadmin' || isAdminAccount(uid);
 
   const shortId =
     u.studentId ||
@@ -473,11 +574,6 @@ export function normalizePublicProfileDoc(
     totalQuestionsSolved: Number(u.totalQuestionsSolved ?? p.stats?.mcqs ?? 0),
   };
 
-  const resolvedRole = isSuperAdmin
-    ? 'admin'
-    : trustedD1Role ||
-      (botMatch ? 'bot' : 'student');
-
   return {
     uid,
     displayName,
@@ -491,7 +587,7 @@ export function normalizePublicProfileDoc(
         ? String(u.username || p.username || botMatch?.username).toLowerCase()
         : undefined),
     role: resolvedRole,
-    customRole: p.d1CustomRole || undefined,
+    customRole: p.d1CustomRole || p.customRole || u.customRole || undefined,
     isVerified: Boolean(
       isSuperAdmin || u.isVerified || p.isVerified || u.verified || p.verified
     ),

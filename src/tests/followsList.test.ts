@@ -276,14 +276,14 @@ test('GET /api/followers returns all 5 followers with LEFT JOIN resilience and s
 
   const byUid = new Map<string, any>(data.followers.map((u: any) => [u.uid, u]));
 
-  // Follower 1: active Plus badge visible = 7, superadmin role never leaked publicly
+  // Follower 1: active Plus badge visible = 7, staff role preserved for RoleBadge display
   const f1 = byUid.get('f1_plus');
   assert.equal(f1.displayName, 'Aisha Khan');
   assert.equal(f1.username, 'AishaPlus');
   assert.equal(f1.plusBadge, 7);
   assert.equal(f1.plus_badge_design, 7);
   assert.equal(f1.plus_badge_visible, true);
-  assert.equal(f1.role, 'student');
+  assert.equal(f1.role, 'superadmin');
 
   // Follower 2: active Pro badge
   const f2 = byUid.get('f2_pro');

@@ -6,6 +6,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import {
   getGlobalGrandLineTopScorers,
   getAllPublicGrandLineTests,
@@ -318,6 +319,12 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                               <ProBadge design={proBadgeDesign} size="sm" listMode />
                             </span>
                           ) : null}
+                          <RoleBadge
+                            role={liveProfile?.role}
+                            customRole={liveProfile?.customRole}
+                            isSuperAdmin={isSuperAdminActor}
+                            size="sm"
+                          />
                           {isCurrentUser && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
                               You

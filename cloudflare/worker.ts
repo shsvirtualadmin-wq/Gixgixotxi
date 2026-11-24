@@ -1082,9 +1082,7 @@ export async function resolveWorkerLiveAuthorsBatch(
       const frame = uRow?.frame || null;
       const rawStoredRole = rRow?.role || uRow?.role || (gRow ? 'guest' : 'student');
       const role =
-        rawStoredRole === 'superadmin' || rawStoredRole === 'super_admin'
-          ? 'student'
-          : rawStoredRole;
+        rawStoredRole === 'super_admin' ? 'superadmin' : String(rawStoredRole || 'student');
       const customRole = rRow?.custom_role || uRow?.custom_role || null;
       if (username || displayName || avatar || frame || role || customRole) {
         result.set(uid, {
@@ -3068,7 +3066,7 @@ ${urls
             const frame = r.uu_frame || live?.frame || null;
             const rawRole = r.ur_role || r.uu_role || r.ga_role || live?.role || 'student';
             const role =
-              rawRole === 'superadmin' || rawRole === 'super_admin' ? 'student' : String(rawRole);
+              rawRole === 'super_admin' ? 'superadmin' : String(rawRole || 'student');
             const customRole = r.ur_custom_role || r.uu_custom_role || live?.customRole || null;
 
             const rawPlusDesign =

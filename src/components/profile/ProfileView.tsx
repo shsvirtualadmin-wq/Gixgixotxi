@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   doc,
   getDoc,
@@ -23,7 +23,6 @@ import {
   UserCheck,
   MessageSquare,
   Award,
-  Shield,
   Check,
   X,
   Lock,
@@ -43,11 +42,13 @@ import {
   getPublicProfile,
   getPublicProfiles,
   syncPublicProfile,
-  syncProfileToD1Backend,
+  saveProfileToD1Backend,
   broadcastPublicProfileUpdate,
 } from '@/services/publicProfileService';
 import { DirectMessageModal } from '@/components/chat/DirectMessageModal';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { BoardlySelect, type BoardlySelectGroup } from '@/components/ui/BoardlySelect';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
@@ -60,21 +61,23 @@ import { getCosmeticById, type CosmeticRarity } from '@/data/cosmeticsCatalog';
 import { useWallet } from '@/hooks/useWallet';
 import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
 import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
+import {
+  PROFILE_STATUS_OPTIONS,
+  findRoleOption,
+  getProfileStatusOption,
+  getVisibleRoleGroups,
+  highestStaffRank,
+  normalizeProfileStatus,
+  resolveProfileRoleSelection,
+  validateProfileBio,
+  validateProfileDisplayName,
+  validateProfileUsername,
+  type ProfileStatusValue,
+} from '@/lib/profileRoles';
 import { getDisplayName, getUsernameHandle, getRawUsername } from '@/utils/displayName';
 import { getEquippedLoadout } from '@/utils/userStateSource';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { ProfilePostsSection } from './ProfilePostsSection';
-
-const COSMETIC_ROLE_OPTIONS = [
-  'Student',
-  'Pre-Medical',
-  'Pre-Engineering',
-  'ICS / Computer Science',
-  'O / A Levels',
-  'MDCAT Aspirant',
-  'ECAT Aspirant',
-  'Class Topper',
-];
 
 const PROFILE_REQUEST_TIMEOUT_MS = 8000;
 const FOLLOW_LIST_PAGE_SIZE = 50;
@@ -536,7 +539,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     user: currentUser,
     profile: ownProfile,
     profileLoading: authProfileLoading,
+    isSuperAdmin,
     isAdmin,
+    isCaptain,
     isGuest,
     updateProfile: updateAuthContextProfile,
     proBadgeDesign: myProBadgeDesign,
@@ -615,25 +620,127 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Direct Message Modal state
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Share Toast
+  // Share & Save Toasts
   const [copiedToast, setCopiedToast] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
 
   // Edit Profile Modal state
   const [isEditing, setIsEditing] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio] = useState('');
-  const [editStatus, setEditStatus] = useState('');
+  const [editStatus, setEditStatus] = useState<ProfileStatusValue>('active');
   const [editCustomRole, setEditCustomRole] = useState('Student');
   const [editAvatar, setEditAvatar] = useState('avatar-1');
   const [editFrame, setEditFrame] = useState<string>('none');
   const [editBanner, setEditBanner] = useState<string>('none');
   const [editEffect, setEditEffect] = useState<string>('none');
   const [editBadges, setEditBadges] = useState<string[]>(['first_login']);
+  const [editInitial, setEditInitial] = useState<{
+    displayName: string;
+    username: string;
+    bio: string;
+    status: ProfileStatusValue;
+    roleTrack: string;
+    avatar: string;
+  }>({
+    displayName: '',
+    username: '',
+    bio: '',
+    status: 'active',
+    roleTrack: 'Student',
+    avatar: 'avatar-1',
+  });
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const callerStaffRank = useMemo(() => {
+    const claimRank = isSuperAdmin
+      ? 'superadmin'
+      : isAdmin
+      ? 'admin'
+      : isCaptain
+      ? 'captain'
+      : 'none';
+    const ownUsername = (
+      getRawUsername({ username: ownProfile?.username || (isOwnProfile ? profile?.username : '') }) ||
+      ''
+    ).toLowerCase();
+    return highestStaffRank(
+      claimRank,
+      ownProfile?.role,
+      isOwnProfile ? profile?.role : null,
+      ownUsername === 'pkig' ? 'superadmin' : 'none'
+    );
+  }, [isSuperAdmin, isAdmin, isCaptain, ownProfile?.role, ownProfile?.username, isOwnProfile, profile?.role, profile?.username]);
+
+  const isCallerAdminOrAbove = callerStaffRank === 'superadmin' || callerStaffRank === 'admin';
+
+  const roleSelectGroups = useMemo<BoardlySelectGroup[]>(() => {
+    const groups = getVisibleRoleGroups({
+      callerStaffRank,
+      currentSelection: editCustomRole,
+    });
+    return groups.map((g) => ({
+      id: g.id,
+      label: g.label,
+      subtitle: g.subtitle,
+      options: g.options.map((opt) => ({
+        value: opt.value,
+        label: opt.label,
+      })),
+    }));
+  }, [callerStaffRank, editCustomRole]);
+
+  const statusSelectGroups = useMemo<BoardlySelectGroup[]>(
+    () => [
+      {
+        id: 'status',
+        options: PROFILE_STATUS_OPTIONS.map((opt) => ({
+          value: opt.value,
+          label: opt.label,
+          dotColorClass: opt.dotColorClass,
+        })),
+      },
+    ],
+    []
+  );
+
+  const displayNameCheck = useMemo(
+    () => validateProfileDisplayName(editDisplayName, isCallerAdminOrAbove),
+    [editDisplayName, isCallerAdminOrAbove]
+  );
+
+  const usernameCheck = useMemo(() => {
+    const trimmed = editUsername.trim().toLowerCase();
+    if (!trimmed && !editInitial.username) {
+      return { valid: true, clean: '' };
+    }
+    return validateProfileUsername(trimmed, isCallerAdminOrAbove);
+  }, [editUsername, editInitial.username, isCallerAdminOrAbove]);
+
+  const bioCheck = useMemo(() => validateProfileBio(editBio), [editBio]);
+
+  const isEditDirty = useMemo(() => {
+    return (
+      editDisplayName.trim() !== editInitial.displayName ||
+      editUsername.trim().toLowerCase() !== editInitial.username ||
+      editBio !== editInitial.bio ||
+      editStatus !== editInitial.status ||
+      editCustomRole !== editInitial.roleTrack ||
+      editAvatar !== editInitial.avatar
+    );
+  }, [editDisplayName, editUsername, editBio, editStatus, editCustomRole, editAvatar, editInitial]);
+
+  const isEditFormValid = displayNameCheck.valid && usernameCheck.valid && bioCheck.valid;
+
+  const closeEditModal = useCallback(() => {
+    if (saving) return;
+    setIsEditing(false);
+    setEditError('');
+  }, [saving]);
 
   // Keep latest ownProfile & wallet refs without re-triggering network fetch loops
   const ownProfileRef = useRef(ownProfile);
@@ -700,12 +807,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (followListModal) closeFollowListModal();
-        else if (isEditing && !saving) setIsEditing(false);
+        else if (isEditing && !saving) closeEditModal();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isEditing, followListModal, saving, closeFollowListModal]);
+  }, [isEditing, followListModal, saving, closeFollowListModal, closeEditModal]);
 
   const hydrateEditFields = useCallback((p: EnrichedProfile) => {
     const cleanName = getDisplayName({
@@ -713,16 +820,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       realName: p.realName,
       username: p.username,
     });
+    const cleanUname = (getRawUsername({ username: p.username }) || '').toLowerCase();
+    const cleanBio = (p.bio || '').slice(0, 160);
+    const cleanStatus = normalizeProfileStatus(p.status);
+    const cleanRoleTrack = resolveProfileRoleSelection(p.role, p.customRole);
+    const cleanAvatar = p.equippedAvatar || 'avatar-1';
+
     setEditDisplayName(cleanName);
-    setEditUsername(getRawUsername({ username: p.username }) || '');
-    setEditBio(p.bio || '');
-    setEditStatus(p.status || '');
-    setEditCustomRole(p.customRole || 'Student');
-    setEditAvatar(p.equippedAvatar || 'avatar-1');
+    setEditUsername(cleanUname);
+    setEditBio(cleanBio);
+    setEditStatus(cleanStatus);
+    setEditCustomRole(cleanRoleTrack);
+    setEditAvatar(cleanAvatar);
     setEditFrame(p.equippedFrame || 'none');
     setEditBanner(p.equippedBanner || 'none');
     setEditEffect(p.equippedCosmetics?.profileEffect || p.equippedCosmetics?.effect || 'none');
     setEditBadges(p.equippedBadges || ['first_login']);
+    setEditError('');
+    setEditInitial({
+      displayName: cleanName.trim(),
+      username: cleanUname,
+      bio: cleanBio,
+      status: cleanStatus,
+      roleTrack: cleanRoleTrack,
+      avatar: cleanAvatar,
+    });
   }, []);
 
   // Preview mode hydration
@@ -1717,21 +1839,30 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !uid || !isOwnProfile || !profile) return;
+    if (!isEditDirty) return;
 
-    const cleanDisplayName = editDisplayName.trim();
-    const cleanUser = editUsername
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '');
-
-    if (cleanDisplayName.length < 2 || cleanDisplayName.length > 32) {
-      setEditError('Display name must be between 2 and 32 characters.');
+    if (!displayNameCheck.valid) {
+      setEditError(displayNameCheck.error || 'Display name must be between 2 and 40 characters.');
       return;
     }
-    if (cleanUser && (cleanUser.length < 3 || cleanUser.length > 20)) {
-      setEditError('Username must be 3–20 characters (letters, numbers, underscores).');
+    if (!usernameCheck.valid) {
+      setEditError(
+        usernameCheck.error ||
+          'Username must be 3–20 characters (lowercase letters, numbers, dots, underscores).'
+      );
       return;
     }
+    if (!bioCheck.valid) {
+      setEditError(bioCheck.error || 'Bio must be 160 characters or fewer.');
+      return;
+    }
+
+    const cleanDisplayName = displayNameCheck.clean;
+    const cleanUser = usernameCheck.clean;
+    const cleanBio = editBio.trim();
+    const cleanStatus = normalizeProfileStatus(editStatus);
+    const roleTrackChanged = editCustomRole !== editInitial.roleTrack;
+    const selectedRoleOpt = findRoleOption(editCustomRole);
 
     setSaving(true);
     setEditError('');
@@ -1748,14 +1879,76 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         profileEffect: editEffect !== 'none' ? editEffect : undefined,
       };
 
-      const nextProfile: EnrichedProfile = {
-        ...profile,
+      if (isGuest) {
+        const guestNextRole =
+          roleTrackChanged && selectedRoleOpt && !selectedRoleOpt.isStaff
+            ? selectedRoleOpt.canonicalRole
+            : profile.role;
+        const guestNextCustomRole =
+          roleTrackChanged && selectedRoleOpt && !selectedRoleOpt.isStaff
+            ? selectedRoleOpt.value
+            : profile.customRole;
+        const nextProfile: EnrichedProfile = {
+          ...profile,
+          display_name: cleanDisplayName,
+          displayName: cleanDisplayName,
+          username: cleanUser || profile.username,
+          role: guestNextRole,
+          customRole: guestNextCustomRole,
+          bio: cleanBio,
+          status: cleanStatus,
+          equippedAvatar: editAvatar,
+          equippedFrame: editFrame,
+          equippedBanner: editBanner,
+          equippedBadges: editBadges,
+          equippedCosmetics: nextEquippedCosmetics,
+        };
+        setProfile(nextProfile);
+        writeCachedProfile(uid, nextProfile);
+        setIsEditing(false);
+        setSavedToast(true);
+        window.setTimeout(() => setSavedToast(false), 2800);
+        return;
+      }
+
+      // 1. Server-enforced save first (validates RBAC, reserved names, username uniqueness, field limits)
+      //    Only include role/customRole when actually changed so editing bio/name/status never wipes an existing staff role.
+      const serverPayload: Record<string, any> = {
         display_name: cleanDisplayName,
         displayName: cleanDisplayName,
-        username: cleanUser || profile.username,
-        customRole: editCustomRole,
-        bio: editBio.trim(),
-        status: editStatus.trim(),
+        ...(cleanUser ? { username: cleanUser } : {}),
+        bio: cleanBio,
+        status: cleanStatus,
+        avatar: editAvatar,
+        frame: editFrame,
+        banner: editBanner,
+      };
+      if (roleTrackChanged && selectedRoleOpt) {
+        serverPayload.role = selectedRoleOpt.canonicalRole;
+        serverPayload.customRole = selectedRoleOpt.value;
+      }
+
+      const savedD1 = await withTimeout(
+        saveProfileToD1Backend(uid, serverPayload),
+        PROFILE_REQUEST_TIMEOUT_MS,
+        'Save profile'
+      );
+
+      const confirmedRole = savedD1.role || profile.role || 'student';
+      const confirmedCustomRole =
+        savedD1.customRole !== undefined ? savedD1.customRole : profile.customRole;
+      const confirmedUsername = savedD1.username || cleanUser || profile.username;
+      const confirmedStatus = normalizeProfileStatus(savedD1.status || cleanStatus);
+
+      const nextProfile: EnrichedProfile = {
+        ...profile,
+        display_name: savedD1.displayName || cleanDisplayName,
+        displayName: savedD1.displayName || cleanDisplayName,
+        username: confirmedUsername,
+        role: confirmedRole as any,
+        customRole: confirmedCustomRole || undefined,
+        bio: savedD1.bio ?? cleanBio,
+        status: confirmedStatus,
         equippedAvatar: editAvatar,
         equippedFrame: editFrame,
         equippedBanner: editBanner,
@@ -1763,23 +1956,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         equippedCosmetics: nextEquippedCosmetics,
       };
 
-      if (isGuest) {
-        setProfile(nextProfile);
-        writeCachedProfile(uid, nextProfile);
-        setIsEditing(false);
-        return;
-      }
-
-      // Single source of truth propagation via AuthContext.updateProfile
+      // 2. Propagate server-confirmed values to AuthContext, Firestore, and live caches
       await withTimeout(
         updateAuthContextProfile({
-          display_name: cleanDisplayName,
-          displayName: cleanDisplayName,
-          nickname: cleanDisplayName,
-          ...(cleanUser ? { username: cleanUser } : {}),
-          bio: editBio.trim(),
-          status: editStatus.trim(),
-          customRole: editCustomRole,
+          display_name: nextProfile.displayName,
+          displayName: nextProfile.displayName,
+          nickname: nextProfile.displayName,
+          ...(confirmedUsername ? { username: confirmedUsername } : {}),
+          bio: nextProfile.bio,
+          status: confirmedStatus,
+          role: confirmedRole as any,
+          customRole: confirmedCustomRole || undefined,
           avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
           equippedAvatar: editAvatar,
           photoURL: editAvatar === 'custom' ? profile.photoURL || '' : profile.photoURL || '',
@@ -1791,10 +1978,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           equipped: nextEquippedCosmetics,
         } as any),
         PROFILE_REQUEST_TIMEOUT_MS,
-        'Save profile'
-      );
+        'Sync profile'
+      ).catch(() => {
+        // D1 already persisted authoritatively; continue updating UI state
+      });
 
-      // Sync cosmetics & public profile caches in parallel (non-blocking if one lags)
       void Promise.allSettled([
         wallet.equipMultipleCosmetics({
           avatar: editAvatar !== 'custom' ? editAvatar : null,
@@ -1803,12 +1991,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           effect: editEffect !== 'none' ? editEffect : null,
         }),
         syncPublicProfile(uid, {
-          display_name: cleanDisplayName,
-          displayName: cleanDisplayName,
-          username: cleanUser || profile.username,
-          bio: editBio.trim(),
-          status: editStatus.trim(),
-          customRole: editCustomRole,
+          display_name: nextProfile.displayName,
+          displayName: nextProfile.displayName,
+          username: confirmedUsername,
+          bio: nextProfile.bio,
+          status: confirmedStatus,
+          role: confirmedRole,
+          customRole: confirmedCustomRole,
           avatar: editAvatar === 'custom' ? profile.photoURL || 'custom' : editAvatar,
           equippedAvatar: editAvatar,
           frame: editFrame,
@@ -1818,24 +2007,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           badges: editBadges,
           equipped: nextEquippedCosmetics,
         }),
-        syncProfileToD1Backend(uid, {
-          display_name: cleanDisplayName,
-          displayName: cleanDisplayName,
-          username: cleanUser || profile.username,
-          customRole: editCustomRole,
-          avatar: editAvatar,
-          frame: editFrame,
-          banner: editBanner,
-        }),
       ]);
 
       broadcastPublicProfileUpdate(uid, {
-        display_name: cleanDisplayName,
-        displayName: cleanDisplayName,
-        username: cleanUser || profile.username,
-        customRole: editCustomRole,
-        bio: editBio.trim(),
-        status: editStatus.trim(),
+        display_name: nextProfile.displayName,
+        displayName: nextProfile.displayName,
+        username: confirmedUsername,
+        role: confirmedRole,
+        customRole: confirmedCustomRole || undefined,
+        bio: nextProfile.bio,
+        status: confirmedStatus,
         avatar: editAvatar,
         equippedAvatar: editAvatar,
         frame: editFrame,
@@ -1847,6 +2028,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setProfile(nextProfile);
       writeCachedProfile(uid, nextProfile);
       setIsEditing(false);
+      setSavedToast(true);
+      window.setTimeout(() => setSavedToast(false), 2800);
     } catch (err: any) {
       setEditError(err?.message || 'Failed to save profile changes.');
     } finally {
@@ -2225,16 +2408,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </div>
 
-            {/* Role & Active Status Chips */}
+            {/* Role & Status Chips */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-[var(--bg)] border border-[var(--border)] text-[var(--text)]">
-                <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
-                {profile.customRole || 'Student'}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-emerald-500/10 border border-emerald-600/25 text-emerald-700 dark:text-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                {profile.status?.trim() || 'Active'}
-              </span>
+              <RoleBadge
+                role={profile.role}
+                customRole={profile.customRole}
+                size="md"
+              />
+              {(() => {
+                const statusOpt = getProfileStatusOption(profile.status);
+                return (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold border ${statusOpt.chipClass}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${statusOpt.dotColorClass}`} />
+                    {statusOpt.label}
+                  </span>
+                );
+              })()}
             </div>
 
             {/* Stats Row: Level, Kobans, Followers, Following */}
@@ -2840,20 +3031,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-[2px]"
-            onClick={() => !saving && setIsEditing(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-[2px]"
+            onClick={closeEditModal}
             aria-hidden="true"
           />
-          <div className="relative z-10 w-full sm:max-w-lg max-h-[90dvh] rounded-t-[24px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
+          <div className="relative z-10 w-full sm:max-w-lg max-h-[92dvh] rounded-t-[26px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
             <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
             <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
               <h3 className="text-[17px] font-semibold text-[var(--text)]">Edit profile</h3>
               <button
                 type="button"
                 disabled={saving}
-                onClick={() => setIsEditing(false)}
+                onClick={closeEditModal}
                 aria-label="Close edit profile"
-                className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2861,151 +3052,234 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             <form
               onSubmit={handleSaveProfile}
-              className="p-5 overflow-y-auto overscroll-contain space-y-4 flex-1 pb-[calc(24px+env(safe-area-inset-bottom,0px))]"
+              className="flex-1 min-h-0 flex flex-col overflow-hidden"
             >
-              {editError && (
-                <div className="p-3 rounded-2xl bg-[var(--danger)]/10 border border-[var(--danger-border)] text-[var(--danger)] text-[13px] font-medium flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{editError}</span>
-                </div>
-              )}
-
-              {/* Custom Photo Upload */}
-              <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)]">
-                <BoardlyAvatar
-                  size={60}
-                  uid={profile.uid}
-                  equippedAvatar={editAvatar}
-                  customPhotoURL={profile.photoURL}
-                  equippedFrameId={editFrame}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-semibold text-[var(--text)]">Profile photo</div>
-                  <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-                    Upload a photo or equip a Boardly avatar in your Locker.
-                  </p>
-                  <div className="mt-2">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoUpload}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      disabled={uploadingPhoto}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="min-h-[38px] px-4 rounded-full text-[13px] font-semibold bg-[var(--card)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[var(--text)] cursor-pointer"
-                    >
-                      {uploadingPhoto ? 'Uploading...' : 'Upload photo'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
-                    Display name
-                  </label>
-                  <input
-                    type="text"
-                    value={editDisplayName}
-                    onChange={(e) => setEditDisplayName(e.target.value)}
-                    maxLength={32}
-                    required
-                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
-                    Username
-                  </label>
-                  <div className="min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center focus-within:border-[var(--accent)]">
-                    <span className="text-[var(--text-muted)] text-[15px] mr-1">@</span>
-                    <input
-                      type="text"
-                      value={editUsername}
-                      onChange={(e) =>
-                        setEditUsername(
-                          e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')
-                        )
-                      }
-                      maxLength={20}
-                      className="w-full bg-transparent text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div>
-                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
-                    Status
-                  </label>
-                  <input
-                    type="text"
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    placeholder="Studying for Finals..."
-                    maxLength={50}
-                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
-                    Academic track
-                  </label>
-                  <select
-                    value={editCustomRole}
-                    onChange={(e) => setEditCustomRole(e.target.value)}
-                    className="w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
+              <div className="p-5 overflow-y-auto overscroll-contain space-y-4 flex-1">
+                {editError && (
+                  <div
+                    role="alert"
+                    className="p-3 rounded-2xl bg-[#D71921]/10 border border-[#D71921]/35 text-[#ff5a62] dark:text-[#ff6b72] text-[13px] font-medium flex items-start gap-2"
                   >
-                    {COSMETIC_ROLE_OPTIONS.map((roleOpt) => (
-                      <option key={roleOpt} value={roleOpt}>
-                        {roleOpt}
-                      </option>
-                    ))}
-                  </select>
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                {/* Custom Photo Upload */}
+                <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)]">
+                  <BoardlyAvatar
+                    size={60}
+                    uid={profile.uid}
+                    equippedAvatar={editAvatar}
+                    customPhotoURL={profile.photoURL}
+                    equippedFrameId={editFrame}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-semibold text-[var(--text)]">Profile photo</div>
+                    <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
+                      Upload a photo or equip a Boardly avatar in your Locker.
+                    </p>
+                    <div className="mt-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        disabled={uploadingPhoto}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="min-h-[38px] px-4 rounded-full text-[13px] font-semibold bg-[var(--card)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[var(--text)] cursor-pointer disabled:opacity-50"
+                      >
+                        {uploadingPhoto ? 'Uploading...' : 'Upload photo'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label
+                        htmlFor="edit-profile-display-name"
+                        className="block text-[13px] font-medium text-[var(--text-muted)]"
+                      >
+                        Display name
+                      </label>
+                      <span className="font-inter-num text-[11px] text-[var(--text-muted)]">
+                        {editDisplayName.trim().length}/40
+                      </span>
+                    </div>
+                    <input
+                      id="edit-profile-display-name"
+                      type="text"
+                      value={editDisplayName}
+                      onChange={(e) => {
+                        setEditDisplayName(e.target.value);
+                        if (editError) setEditError('');
+                      }}
+                      maxLength={40}
+                      required
+                      placeholder="Your name"
+                      className={`w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none ${
+                        !displayNameCheck.valid
+                          ? 'border-[#D71921] focus:border-[#D71921]'
+                          : 'border-[var(--border)] focus:border-[var(--accent)]'
+                      }`}
+                    />
+                    {!displayNameCheck.valid && displayNameCheck.error && (
+                      <p className="mt-1.5 text-[12px] text-[#ff5a62] leading-snug">
+                        {displayNameCheck.error}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-profile-username"
+                      className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
+                    >
+                      Username
+                    </label>
+                    <div
+                      className={`min-h-[46px] px-4 rounded-full bg-[var(--bg)] border flex items-center ${
+                        !usernameCheck.valid
+                          ? 'border-[#D71921] focus-within:border-[#D71921]'
+                          : 'border-[var(--border)] focus-within:border-[var(--accent)]'
+                      }`}
+                    >
+                      <span className="text-[var(--text-muted)] text-[15px] mr-1">@</span>
+                      <input
+                        id="edit-profile-username"
+                        type="text"
+                        value={editUsername}
+                        onChange={(e) => {
+                          setEditUsername(
+                            e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, '')
+                          );
+                          if (editError) setEditError('');
+                        }}
+                        maxLength={20}
+                        placeholder="username"
+                        className="w-full bg-transparent text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                      />
+                    </div>
+                    {!usernameCheck.valid && usernameCheck.error && (
+                      <p className="mt-1.5 text-[12px] text-[#ff5a62] leading-snug">
+                        {usernameCheck.error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label
+                      htmlFor="edit-profile-status"
+                      className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
+                    >
+                      Status
+                    </label>
+                    <BoardlySelect
+                      id="edit-profile-status"
+                      ariaLabel="Status"
+                      value={editStatus}
+                      onChange={(val) => {
+                        setEditStatus(normalizeProfileStatus(val));
+                        if (editError) setEditError('');
+                      }}
+                      groups={statusSelectGroups}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="edit-profile-role-track"
+                      className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
+                    >
+                      Role / track
+                    </label>
+                    <BoardlySelect
+                      id="edit-profile-role-track"
+                      ariaLabel="Role / track"
+                      value={editCustomRole}
+                      onChange={(val) => {
+                        setEditCustomRole(val);
+                        if (editError) setEditError('');
+                      }}
+                      groups={roleSelectGroups}
+                      fallbackDisplayLabel={editCustomRole}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label
+                      htmlFor="edit-profile-bio"
+                      className="block text-[13px] font-medium text-[var(--text-muted)]"
+                    >
+                      Bio
+                    </label>
+                    <span
+                      className={`font-inter-num text-[11px] font-medium ${
+                        editBio.length >= 150
+                          ? 'text-[#ff5a62]'
+                          : 'text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {editBio.length}/160
+                    </span>
+                  </div>
+                  <textarea
+                    id="edit-profile-bio"
+                    value={editBio}
+                    onChange={(e) => {
+                      setEditBio(e.target.value.slice(0, 160));
+                      if (editError) setEditError('');
+                    }}
+                    placeholder="Add a short bio..."
+                    rows={3}
+                    maxLength={160}
+                    className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none"
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5">
-                  Bio
-                </label>
-                <textarea
-                  value={editBio}
-                  onChange={(e) => setEditBio(e.target.value)}
-                  placeholder="Add a short bio..."
-                  rows={3}
-                  maxLength={240}
-                  className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-[var(--border)] flex items-center justify-end gap-2.5">
+              {/* Pinned footer clearing mobile safe area */}
+              <div className="shrink-0 px-5 pt-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => setIsEditing(false)}
-                  className="min-h-[44px] px-5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[14px] font-semibold text-[var(--text)] hover:bg-[var(--settings-row-hover)] cursor-pointer"
+                  onClick={closeEditModal}
+                  className="min-h-[44px] px-5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[14px] font-semibold text-[var(--text)] hover:bg-[var(--settings-row-hover)] cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="min-h-[44px] px-6 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold hover:opacity-95 disabled:opacity-50 cursor-pointer"
+                  disabled={saving || uploadingPhoto || !isEditDirty || !isEditFormValid}
+                  className="min-h-[44px] px-6 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold hover:opacity-95 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer transition-opacity"
                 >
                   {saving ? 'Saving...' : 'Save changes'}
                 </button>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Profile Saved Toast */}
+      {savedToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-[calc(84px+env(safe-area-inset-bottom,0px))] sm:bottom-6 left-1/2 -translate-x-1/2 z-[10070] px-4 py-2.5 rounded-full bg-[#16161B] text-white border border-white/15 shadow-2xl flex items-center gap-2 text-[13px] font-semibold"
+        >
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={2.5} />
+          <span>Profile saved</span>
         </div>
       )}
     </div>

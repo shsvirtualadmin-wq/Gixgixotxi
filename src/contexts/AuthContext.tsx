@@ -3381,7 +3381,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: cleanDisplayName,
             username: mergedProfile.username || null,
             shortId: mergedProfile.shortId,
-            role: 'student',
+            role: (mergedProfile.role as any) || 'student',
             customRole: mergedProfile.customRole || null,
             plan: mergedProfile.plan || 'free',
             isGuest: Boolean(isGuest),

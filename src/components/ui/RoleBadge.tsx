@@ -1,5 +1,6 @@
 import React from 'react';
-import { Shield, GraduationCap, BookOpen, Heart, User, Bot } from 'lucide-react';
+import { Shield, ShieldCheck, Crown, GraduationCap, BookOpen, Bot } from 'lucide-react';
+import { resolveRoleBadgeDisplay } from '@/lib/profileRoles';
 
 export interface RoleBadgeProps {
   role?: string | null;
@@ -10,35 +11,9 @@ export interface RoleBadgeProps {
 }
 
 /**
- * Normalizes role text for display.
- */
-function formatRoleName(role?: string | null, customRole?: string | null): string {
-  if (!role) return 'Student';
-  const clean = role.trim();
-  const lower = clean.toLowerCase();
-
-  if (lower === 'superadmin' || lower === 'super admin' || lower === 'admin') {
-    return 'Super Admin';
-  }
-  if (lower === 'bot') {
-    return 'Bot';
-  }
-  if (lower === 'student') return 'Student';
-  if (lower === 'teacher') return 'Teacher';
-  if (lower === 'parent') return 'Parent';
-  if (lower === 'other') {
-    return customRole?.trim() || 'Other';
-  }
-
-  // Capitalize custom role string
-  return clean.charAt(0).toUpperCase() + clean.slice(1);
-}
-
-/**
- * Standardized RoleBadge across Profile, Commons posts, comments, and chats.
- * - Superadmin: Solid deep red pill (#D71921), white text, small shield icon.
- * - Bot: Distinct visible Bot badge with Bot icon.
- * - Other roles: Calm neutral style (light grey in light mode, dark grey in dark mode).
+ * Shared RoleBadge component used across Profile, Commons, Leaderboards, Chat, and Crews.
+ * Canonical display names: Student (or selected student/aspirant/university track),
+ * Teacher, Captain, Admin, and "Super Admin".
  */
 export const RoleBadge: React.FC<RoleBadgeProps> = ({
   role,
@@ -47,28 +22,22 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
   size = 'md',
   className = '',
 }) => {
-  const lower = (role || '').toLowerCase().trim();
-  const lowerCustom = (customRole || '').toLowerCase().trim();
-  const isSuper =
-    isSuperAdmin || lower === 'superadmin' || lower === 'super admin' || lower === 'admin';
-  const isBot = lower === 'bot' || lowerCustom.includes('bot');
-  const displayName = isSuper
-    ? 'Super Admin'
-    : isBot
-    ? 'Bot'
-    : formatRoleName(role, customRole);
+  const { label, kind } = resolveRoleBadgeDisplay({
+    role,
+    customRole,
+    isSuperAdmin,
+  });
 
   const isSmall = size === 'sm';
+  const sizeClass = isSmall
+    ? 'h-[20px] px-2 text-[11px]'
+    : 'h-[26px] px-2.5 text-[12px]';
+  const iconSize = isSmall ? 10 : 12;
 
-  // Super Admin: Solid deep red pill, white text, shield icon
-  if (isSuper) {
+  if (kind === 'superadmin') {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-medium select-none shrink-0 shadow-xs border ${
-          isSmall
-            ? 'h-[20px] px-2 text-[11px]'
-            : 'h-[24px] px-2.5 text-[12.5px]'
-        } ${className}`}
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 shadow-xs border ${sizeClass} ${className}`}
         style={{
           backgroundColor: '#D71921',
           color: '#FFFFFF',
@@ -76,65 +45,67 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
         }}
         title="Super Admin"
       >
-        <Shield size={isSmall ? 10 : 12} className="shrink-0 text-white" />
-        <span className="leading-none">{displayName}</span>
+        <Shield size={iconSize} className="shrink-0 text-white" />
+        <span className="leading-none whitespace-nowrap">{label}</span>
       </span>
     );
   }
 
-  // Bot Badge: Distinct visible Bot pill
-  if (isBot) {
+  if (kind === 'admin') {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${
-          isSmall
-            ? 'h-[20px] px-2 text-[11px]'
-            : 'h-[24px] px-2.5 text-[12.5px]'
-        } bg-sky-500/15 text-sky-400 border-sky-500/40 ${className}`}
-        title={customRole || 'Automated Study Bot'}
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${sizeClass} bg-[#D71921]/14 text-[#D71921] border-[#D71921]/35 dark:bg-[#D71921]/20 dark:text-[#ff6b72] dark:border-[#D71921]/45 ${className}`}
+        title="Admin"
       >
-        <Bot size={isSmall ? 11 : 13} className="shrink-0 text-sky-400" />
-        <span className="leading-none">Bot</span>
+        <ShieldCheck size={iconSize} className="shrink-0" />
+        <span className="leading-none whitespace-nowrap">{label}</span>
       </span>
     );
   }
 
-  // Determine icon for neutral roles
-  const roleType =
-    lower === 'teacher'
-      ? 'teacher'
-      : lower === 'parent'
-      ? 'parent'
-      : lower === 'other' || customRole
-      ? 'other'
-      : 'student';
+  if (kind === 'captain') {
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${sizeClass} bg-amber-500/12 text-amber-700 border-amber-500/35 dark:bg-amber-500/18 dark:text-amber-300 dark:border-amber-500/40 ${className}`}
+        title="Captain"
+      >
+        <Crown size={iconSize} className="shrink-0" />
+        <span className="leading-none whitespace-nowrap">{label}</span>
+      </span>
+    );
+  }
 
-  const renderIcon = () => {
-    const iconSize = isSmall ? 10 : 12;
-    switch (roleType) {
-      case 'teacher':
-        return <BookOpen size={iconSize} className="shrink-0 opacity-80" />;
-      case 'parent':
-        return <Heart size={iconSize} className="shrink-0 opacity-80" />;
-      case 'other':
-        return <User size={iconSize} className="shrink-0 opacity-80" />;
-      case 'student':
-      default:
-        return <GraduationCap size={iconSize + 1} className="shrink-0 opacity-80" />;
-    }
-  };
+  if (kind === 'teacher') {
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${sizeClass} bg-indigo-500/12 text-indigo-700 border-indigo-500/30 dark:bg-indigo-500/18 dark:text-indigo-300 dark:border-indigo-400/35 ${className}`}
+        title="Teacher"
+      >
+        <BookOpen size={iconSize} className="shrink-0" />
+        <span className="leading-none whitespace-nowrap">{label}</span>
+      </span>
+    );
+  }
+
+  if (kind === 'bot') {
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full font-sans font-semibold select-none shrink-0 border ${sizeClass} bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/40 ${className}`}
+        title={customRole || 'Automated Study Bot'}
+      >
+        <Bot size={iconSize + 1} className="shrink-0" />
+        <span className="leading-none whitespace-nowrap">Bot</span>
+      </span>
+    );
+  }
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-sans font-medium select-none shrink-0 border transition-colors ${
-        isSmall
-          ? 'h-[20px] px-2 text-[11px]'
-          : 'h-[24px] px-2.5 text-[12.5px]'
-      } bg-[#E5E7EB] text-[#1F2937] border-[#D1D5DB] dark:bg-[#26262B] dark:text-[#E5E7EB] dark:border-[#383842] ${className}`}
-      title={displayName}
+      className={`inline-flex items-center gap-1.5 rounded-full font-sans font-medium select-none shrink-0 border transition-colors ${sizeClass} bg-[#E5E7EB] text-[#1F2937] border-[#D1D5DB] dark:bg-[#26262B] dark:text-[#E5E7EB] dark:border-[#383842] ${className}`}
+      title={label}
     >
-      {renderIcon()}
-      <span className="leading-none truncate max-w-[140px]">{displayName}</span>
+      <GraduationCap size={iconSize + 1} className="shrink-0 opacity-80" />
+      <span className="leading-none truncate max-w-[160px]">{label}</span>
     </span>
   );
 };

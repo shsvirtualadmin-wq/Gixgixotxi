@@ -14,6 +14,7 @@ import {
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { CrewDashboardSkeleton } from '@/components/ui/Skeleton';
 import {
@@ -24,6 +25,10 @@ import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { updateCrewSettings } from '@/services/crewService';
+import {
+  getPublicProfiles,
+  type PublicUserProfileSummary,
+} from '@/services/publicProfileService';
 import { getPast7PKTDateKeys } from '@/hooks/usePKTDate';
 import { useSmartBack } from '@/utils/homeUrl';
 import { doc, getDoc } from 'firebase/firestore';
@@ -245,6 +250,34 @@ export function CrewDashboardPage() {
       isCancelled = true;
     };
   }, [user]);
+
+  // Enrich crew members with their account role tags via shared public profile cache
+  const [memberProfilesByUid, setMemberProfilesByUid] = useState<
+    Record<string, PublicUserProfileSummary>
+  >({});
+  const crewMemberUidsKey = (crew?.members || [])
+    .map((m) => m.uid)
+    .filter(Boolean)
+    .sort()
+    .join(',');
+
+  useEffect(() => {
+    const uids = crewMemberUidsKey ? crewMemberUidsKey.split(',').filter(Boolean) : [];
+    if (uids.length === 0) return;
+    let cancelled = false;
+    getPublicProfiles(uids)
+      .then((map) => {
+        if (!cancelled && map) {
+          setMemberProfilesByUid(map);
+        }
+      })
+      .catch(() => {
+        // Non-critical role tag enrichment
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [crewMemberUidsKey]);
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
   const crewHasActivePlus = Boolean(
@@ -1082,6 +1115,14 @@ export function CrewDashboardPage() {
                                   listMode
                                 />
                               ) : null}
+
+                              {memberProfilesByUid[m.uid] && (
+                                <RoleBadge
+                                  role={memberProfilesByUid[m.uid].role}
+                                  customRole={memberProfilesByUid[m.uid].customRole}
+                                  size="sm"
+                                />
+                              )}
 
                               {isCurrentUser && (
                                 <span className="cw-chip cw-chip-you">You</span>

@@ -2283,8 +2283,15 @@ export class InMemoryD1Database implements RewardsD1Database {
     try {
       const diskPath = this.getDiskPath();
       if (!diskPath || typeof process === 'undefined') return;
-      const req = typeof require !== 'undefined' ? require : null;
-      const fsMod = req ? req('fs') : null;
+      const getBuiltin = (process as any)?.getBuiltinModule;
+      let fsMod: any = typeof getBuiltin === 'function' ? getBuiltin('fs') : null;
+      if (!fsMod && typeof require !== 'undefined') {
+        try {
+          fsMod = require('fs');
+        } catch {
+          fsMod = null;
+        }
+      }
       if (!fsMod || !fsMod.existsSync(diskPath)) return;
       const raw = JSON.parse(fsMod.readFileSync(diskPath, 'utf8'));
       if (Array.isArray(raw.user_usernames)) {
@@ -2476,9 +2483,17 @@ export class InMemoryD1Database implements RewardsD1Database {
     try {
       const diskPath = this.getDiskPath();
       if (!diskPath || typeof process === 'undefined') return;
-      const req = typeof require !== 'undefined' ? require : null;
-      const fsMod = req ? req('fs') : null;
-      const pathMod = req ? req('path') : null;
+      const getBuiltin = (process as any)?.getBuiltinModule;
+      let fsMod: any = typeof getBuiltin === 'function' ? getBuiltin('fs') : null;
+      let pathMod: any = typeof getBuiltin === 'function' ? getBuiltin('path') : null;
+      if ((!fsMod || !pathMod) && typeof require !== 'undefined') {
+        try {
+          if (!fsMod) fsMod = require('fs');
+          if (!pathMod) pathMod = require('path');
+        } catch {
+          // Ignore bundler shim error
+        }
+      }
       if (!fsMod || !pathMod) return;
       fsMod.mkdirSync(pathMod.dirname(diskPath), { recursive: true });
       const payload = {
@@ -3445,12 +3460,16 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.includes('INTO USER_ROLES')) {
       const uid = String(args[0] ?? '');
       if (!uid) return 0;
-      const email = String(args[1] ?? '');
-      const role = String(args[2] ?? 'student');
+      if (upper.includes('INSERT OR IGNORE') && this.tables.user_roles.has(uid)) {
+        return 0;
+      }
+      const existing = this.tables.user_roles.get(uid);
+      const email = String(args[1] ?? existing?.email ?? '');
+      const role = String(args[2] ?? existing?.role ?? 'student');
       const custom_role = args[3] != null ? String(args[3]) : null;
-      const is_posting_banned = Number(args[4] ?? 0);
+      const is_posting_banned = Number(args[4] ?? existing?.is_posting_banned ?? 0);
       const updated_at = Number(args[5] ?? Date.now());
-      const created_at = Number(args[6] ?? updated_at);
+      const created_at = Number(args[6] ?? existing?.created_at ?? updated_at);
       this.tables.user_roles.set(uid, {
         uid,
         email,
@@ -3729,6 +3748,44 @@ export class InMemoryD1Database implements RewardsD1Database {
             updated_at: updatedAt,
           });
           changes = 1;
+        }
+        return changes;
+      }
+      if (upper.includes('SET USERNAME_LOWER =') && upper.includes('DISPLAY_NAME =')) {
+        const username_lower = String(args[0] ?? '').trim().toLowerCase();
+        const username_display = String(args[1] ?? username_lower).trim();
+        const display_name = String(args[2] ?? '').trim();
+        const avatar = String(args[3] ?? '').trim();
+        const frame = args[4] != null && String(args[4]).trim() ? String(args[4]).trim() : null;
+        const role = String(args[5] ?? '').trim();
+        const custom_role = args[6] != null && String(args[6]).trim() ? String(args[6]).trim() : null;
+        const bio = String(args[7] ?? '');
+        const status = String(args[8] ?? '');
+        const accent = String(args[9] ?? '');
+        const updatedAt = Number(args[10] ?? Date.now());
+        const uid = String(args[11] ?? '');
+        let changes = 0;
+        for (const [oldKey, r] of Array.from(this.tables.user_usernames.entries())) {
+          if (r.uid === uid) {
+            this.tables.user_usernames.delete(oldKey);
+            const nextRow = {
+              ...r,
+              username_lower,
+              username_display,
+              username: username_display,
+              display_name: display_name || r.display_name,
+              avatar,
+              frame,
+              role: role || r.role,
+              custom_role,
+              bio,
+              status,
+              accent,
+              updated_at: updatedAt,
+            };
+            this.tables.user_usernames.set(username_lower, nextRow);
+            changes++;
+          }
         }
         return changes;
       }

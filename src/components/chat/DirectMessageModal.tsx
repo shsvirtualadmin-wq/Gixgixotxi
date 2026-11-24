@@ -26,6 +26,8 @@ import { useWallet } from '@/hooks/useWallet';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
+import { RoleBadge } from '@/components/ui/RoleBadge';
+import { resolveRoleBadgeDisplay } from '@/lib/profileRoles';
 import { useChatUserProfiles, type ChatUserSeed } from '@/hooks/useChatUserProfiles';
 import { useUnreadMessagesState } from '@/hooks/useUnreadMessagesCount';
 import {
@@ -155,18 +157,7 @@ export function formatRoleChipLabel(
   customRole?: string | null,
   isSuperAdmin?: boolean
 ): string {
-  if (isSuperAdmin) return 'Admin';
-  if (!role) return 'Student';
-  const lower = role.trim().toLowerCase();
-  if (lower === 'superadmin' || lower === 'super admin' || lower === 'admin')
-    return 'Admin';
-  if (lower === 'captain' || lower === 'ambassador') return 'Captain';
-  if (lower === 'bot') return 'Bot';
-  if (lower === 'teacher') return 'Teacher';
-  if (lower === 'parent') return 'Parent';
-  if (lower === 'other' && customRole?.trim()) return customRole.trim();
-  if (lower === 'student') return 'Student';
-  return role.charAt(0).toUpperCase() + role.slice(1);
+  return resolveRoleBadgeDisplay({ role, customRole, isSuperAdmin }).label;
 }
 
 function formatFirestoreError(collectionName: string, err: any): string {
@@ -371,11 +362,6 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
     'avatar-1';
   const partnerFrame =
     resolvedPartner?.frame || partner.equippedFrame || partner.frame || null;
-  const partnerRoleLabel = formatRoleChipLabel(
-    resolvedPartner?.role || partner.role,
-    resolvedPartner?.customRole || partner.customRole,
-    resolvedPartner?.isSuperAdmin
-  );
   const partnerProBadge = resolvedPartner?.proBadge || partner.proBadge || null;
   const rawPartnerPlusBadge =
     (resolvedPartner as any)?.plusBadge !== undefined
@@ -801,9 +787,12 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                   PRO
                 </span>
               ) : null}
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 border border-white/15 text-white/85 shrink-0">
-                {partnerRoleLabel}
-              </span>
+              <RoleBadge
+                role={resolvedPartner?.role || partner.role}
+                customRole={resolvedPartner?.customRole || partner.customRole}
+                isSuperAdmin={resolvedPartner?.isSuperAdmin}
+                size="sm"
+              />
             </div>
 
             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">

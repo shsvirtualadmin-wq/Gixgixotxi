@@ -45,6 +45,15 @@ import {
   areUsernamesTooSimilar,
   validateUsernameFormat,
 } from '../../../src/utils/usernameValidation';
+import {
+  evaluateRoleChangePermission,
+  highestStaffRank,
+  normalizeProfileStatus,
+  validateProfileBio,
+  validateProfileDisplayName,
+  validateProfileUsername,
+  type StaffRank,
+} from '../../../src/lib/profileRoles';
 import { TARGET_API_KEY } from '../../../src/lib/firebaseConfig';
 import {
   PENDING_2FA_CHALLENGE_TTL_MS,
@@ -3098,10 +3107,15 @@ export async function handleAuthApiRequest(
     });
   }
 
-  // ─── G1b. POST /api/auth/profile-sync (Sync Live Display Name, Avatar, Bio, Frame to D1) ───
-  if (subPath === 'profile-sync' && request.method === 'POST') {
+  // ─── G1b. POST /api/auth/profile-sync & POST/PATCH /api/auth/profile (Server-Enforced Profile + Role Updates) ───
+  if (
+    (subPath === 'profile-sync' && (request.method === 'POST' || request.method === 'PATCH')) ||
+    (subPath === 'profile' && (request.method === 'POST' || request.method === 'PATCH'))
+  ) {
     let body: {
       uid?: string;
+      targetUid?: string;
+      display_name?: string;
       displayName?: string;
       nickname?: string;
       name?: string;
@@ -3116,6 +3130,7 @@ export async function handleAuthApiRequest(
       status?: string;
       accent?: string;
       email?: string;
+      strictValidation?: boolean;
     } = {};
     try {
       body = (await request.json()) as typeof body;
@@ -3130,45 +3145,91 @@ export async function handleAuthApiRequest(
       tokenVerifierOverride: opts.tokenVerifierOverride,
     }).catch(() => null);
 
-    const isCallerSuperAdmin = Boolean(caller && (caller.isSuperAdmin || caller.role === 'superadmin'));
-    let targetUid = String(body.uid || '').trim();
-    let resolvedEmail = String(body.email || '').trim().toLowerCase();
-
+    // Resolve caller's staff authority strictly from verified auth claims and server DB (NEVER from request body)
+    let callerStaffRank: StaffRank = 'none';
     if (caller) {
-      if (!isCallerSuperAdmin || !targetUid) {
-        targetUid = caller.uid;
+      const claimRank: StaffRank = caller.isSuperAdmin
+        ? 'superadmin'
+        : caller.isAdminOrAbove
+        ? 'admin'
+        : caller.isCaptainOrAbove
+        ? 'captain'
+        : 'none';
+
+      const [callerRoleRow, callerUnameRow] = await Promise.all([
+        db
+          .prepare('SELECT role FROM user_roles WHERE uid = ?1 LIMIT 1')
+          .bind(caller.uid)
+          .first<{ role?: string }>()
+          .catch(() => null),
+        db
+          .prepare('SELECT username_lower, role FROM user_usernames WHERE uid = ?1 LIMIT 1')
+          .bind(caller.uid)
+          .first<{ username_lower?: string; role?: string }>()
+          .catch(() => null),
+      ]);
+
+      const callerIsSeededPkig =
+        String(callerUnameRow?.username_lower || caller.username || '')
+          .trim()
+          .toLowerCase() === 'pkig';
+
+      if (callerIsSeededPkig && !callerRoleRow) {
+        try {
+          await db
+            .prepare(
+              `INSERT OR IGNORE INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+            )
+            .bind(caller.uid, caller.email || '', 'superadmin', 'Superadmin', 0, nowMs, nowMs)
+            .run();
+        } catch {
+          // Non-fatal if table differs
+        }
       }
-      if (caller.email && targetUid === caller.uid) {
-        resolvedEmail = caller.email.toLowerCase();
-      }
+
+      callerStaffRank = highestStaffRank(
+        claimRank,
+        callerRoleRow?.role,
+        callerIsSeededPkig ? 'superadmin' : 'none'
+      );
     }
+
+    const isCallerAdminOrAbove =
+      callerStaffRank === 'superadmin' || callerStaffRank === 'admin';
+    const hasRoleMutationInput =
+      (body.role !== undefined && body.role !== null && String(body.role).trim() !== '') ||
+      (body.customRole !== undefined &&
+        body.customRole !== null &&
+        String(body.customRole).trim() !== '');
+
+    const requestedTargetUid = String(body.targetUid || body.uid || '').trim();
+    if (!caller && (hasRoleMutationInput || body.strictValidation)) {
+      return jsonResponse({ ok: false, error: 'Authentication required.' }, 401);
+    }
+
+    const targetUid = caller
+      ? requestedTargetUid && requestedTargetUid !== caller.uid
+        ? requestedTargetUid
+        : caller.uid
+      : requestedTargetUid;
+
     if (!targetUid) {
       return jsonResponse({ ok: false, error: 'Missing user uid.' }, 400);
     }
 
-    // Strict whitelist: only display_name, avatar, frame, bio, status, and accent may be written by normal users.
-    // Only an authenticated real superadmin can write role or custom_role.
-    const displayName = String((body as any).display_name ?? body.displayName ?? '').trim();
-    const hasAvatarProp =
-      body.avatar !== undefined || body.equippedAvatar !== undefined || body.photoURL !== undefined;
-    const avatarVal = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
-    const frame = body.frame !== undefined ? (body.frame ? String(body.frame).trim() : null) : undefined;
-    const bio = body.bio !== undefined ? String(body.bio) : undefined;
-    const statusText = body.status !== undefined ? String(body.status) : undefined;
-    const accent = body.accent !== undefined ? String(body.accent) : undefined;
-    const rawUsername = String(body.username || '').trim();
+    const isSelf = Boolean(!caller || targetUid === caller.uid);
+    if (caller && !isSelf && !isCallerAdminOrAbove) {
+      return jsonResponse(
+        { ok: false, error: 'You do not have permission to edit another user’s profile.' },
+        403
+      );
+    }
 
-    const rawRequestedRole = isCallerSuperAdmin && body.role ? String(body.role).trim().toLowerCase() : '';
-    const requestedRole =
-      rawRequestedRole === 'admin' || rawRequestedRole === 'captain' || rawRequestedRole === 'student'
-        ? rawRequestedRole
-        : '';
-    const requestedCustomRole =
-      isCallerSuperAdmin && body.customRole !== undefined
-        ? body.customRole
-          ? String(body.customRole).trim()
-          : null
-        : undefined;
+    let resolvedEmail = String(body.email || '').trim().toLowerCase();
+    if (caller && caller.email && isSelf) {
+      resolvedEmail = caller.email.toLowerCase();
+    }
 
     const existingRow = await db
       .prepare(
@@ -3191,17 +3252,144 @@ export async function handleAuthApiRequest(
         accent?: string;
       }>();
 
-    let fallbackUsernameDisplay = existingRow?.username_display || '';
-    let fallbackUsernameLower = existingRow?.username_lower || '';
+    const roleRow = await db
+      .prepare('SELECT role, custom_role, email FROM user_roles WHERE uid = ?1 LIMIT 1')
+      .bind(targetUid)
+      .first<{ role?: string; custom_role?: string | null; email?: string }>()
+      .catch(() => null);
+
+    // Seed pkig as superadmin in user_roles if not yet present
+    const targetIsPkig =
+      String(existingRow?.username_lower || '').trim().toLowerCase() === 'pkig';
+    const existingRole =
+      roleRow?.role || existingRow?.role || (targetIsPkig ? 'superadmin' : 'student');
+    const existingCustomRole =
+      roleRow?.custom_role ??
+      existingRow?.custom_role ??
+      (targetIsPkig ? 'Superadmin' : null);
+
+    // Enforce server-side role / track RBAC
+    const roleEval = evaluateRoleChangePermission({
+      callerStaffRank,
+      targetExistingRole: existingRole,
+      targetExistingCustomRole: existingCustomRole,
+      requestedRole: body.role,
+      requestedCustomRole: body.customRole,
+      isSelf,
+    });
+
+    if (!roleEval.allowed) {
+      return jsonResponse(
+        { ok: false, error: roleEval.error || 'Forbidden role change.' },
+        roleEval.status
+      );
+    }
+
+    // Validate display name (2..40 chars, reserved brand check for non-admins)
+    const rawDisplayNameInput =
+      body.display_name !== undefined
+        ? body.display_name
+        : body.displayName !== undefined
+        ? body.displayName
+        : undefined;
+    let nextDisplayName = existingRow?.display_name || '';
+    if (rawDisplayNameInput !== undefined) {
+      const check = validateProfileDisplayName(
+        String(rawDisplayNameInput ?? ''),
+        isCallerAdminOrAbove
+      );
+      if (!check.valid) {
+        const isReservedErr = Boolean(check.error && check.error.includes('reserved'));
+        return jsonResponse(
+          { ok: false, error: check.error || 'Invalid display name.' },
+          isReservedErr ? 403 : 400
+        );
+      }
+      nextDisplayName = check.clean;
+    }
+
+    // Validate bio (max 160 chars)
+    let nextBio = existingRow?.bio ?? '';
+    if (body.bio !== undefined) {
+      const bioCheck = validateProfileBio(String(body.bio ?? ''));
+      if (!bioCheck.valid) {
+        return jsonResponse({ ok: false, error: bioCheck.error || 'Bio is too long.' }, 400);
+      }
+      nextBio = bioCheck.clean.trim();
+    }
+
+    // Validate status (active | busy | away | invisible)
+    let nextStatus = existingRow?.status ?? 'active';
+    if (body.status !== undefined) {
+      const rawStatus = String(body.status ?? '').trim().toLowerCase();
+      if (
+        body.strictValidation &&
+        rawStatus &&
+        !['active', 'busy', 'away', 'invisible'].includes(rawStatus)
+      ) {
+        return jsonResponse(
+          { ok: false, error: 'Status must be active, busy, away, or invisible.' },
+          400
+        );
+      }
+      nextStatus = normalizeProfileStatus(rawStatus || nextStatus);
+    }
+
+    // Validate username (3..20 chars, lowercase a-z0-9._, unique, reserved brand check)
+    let nextUsernameDisplay = existingRow?.username_display || '';
+    let nextUsernameLower = existingRow?.username_lower || '';
+    let usernameChanged = false;
+    const rawUsernameInput =
+      body.username !== undefined ? String(body.username ?? '').trim().replace(/^@+/, '') : '';
+
+    if (rawUsernameInput) {
+      const candidateLower = rawUsernameInput.toLowerCase();
+      if (!existingRow || candidateLower !== existingRow.username_lower) {
+        const uCheck = validateProfileUsername(candidateLower, isCallerAdminOrAbove);
+        if (!uCheck.valid) {
+          const isReservedErr = Boolean(uCheck.error && uCheck.error.includes('reserved'));
+          return jsonResponse(
+            { ok: false, error: uCheck.error || 'Invalid username.' },
+            isReservedErr ? 403 : 400
+          );
+        }
+
+        // Uniqueness check across user_usernames and guest_accounts (excluding targetUid)
+        const [takenRegistered, takenGuest] = await Promise.all([
+          db
+            .prepare('SELECT uid FROM user_usernames WHERE username_lower = ?1 LIMIT 1')
+            .bind(uCheck.clean)
+            .first<{ uid: string }>()
+            .catch(() => null),
+          db
+            .prepare('SELECT uid FROM guest_accounts WHERE username_lower = ?1 LIMIT 1')
+            .bind(uCheck.clean)
+            .first<{ uid: string }>()
+            .catch(() => null),
+        ]);
+
+        if (
+          (takenRegistered && takenRegistered.uid !== targetUid) ||
+          (takenGuest && takenGuest.uid !== targetUid)
+        ) {
+          return jsonResponse(
+            { ok: false, error: 'This username is already taken.' },
+            409
+          );
+        }
+
+        nextUsernameLower = uCheck.clean;
+        nextUsernameDisplay = uCheck.clean;
+        usernameChanged = Boolean(existingRow && uCheck.clean !== existingRow.username_lower);
+      }
+    }
 
     if (!existingRow) {
-      const cleanU = (
-        rawUsername.replace(/^@+/, '') ||
-        `user_${targetUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
-      ).trim();
-      const lowerU = cleanU.toLowerCase();
-      fallbackUsernameDisplay = cleanU;
-      fallbackUsernameLower = lowerU;
+      const cleanU =
+        nextUsernameLower ||
+        `user_${targetUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`.toLowerCase();
+      nextUsernameDisplay = cleanU;
+      nextUsernameLower = cleanU;
       try {
         await db
           .prepare(
@@ -3209,7 +3397,7 @@ export async function handleAuthApiRequest(
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
           )
           .bind(
-            lowerU,
+            cleanU,
             cleanU,
             targetUid,
             targetUid.startsWith('guest_') ? 'guest' : 'registered',
@@ -3221,58 +3409,116 @@ export async function handleAuthApiRequest(
       } catch {
         // Ignore if username taken
       }
+    } else if (usernameChanged) {
+      try {
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO username_history (username_lower, username_display, uid, changed_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)`
+          )
+          .bind(
+            existingRow.username_lower,
+            existingRow.username_display,
+            targetUid,
+            nowMs,
+            nowMs + 14 * 24 * 60 * 60 * 1000
+          )
+          .run();
+      } catch {
+        // Non-fatal if username_history table unavailable
+      }
     }
 
-    const roleRow = await db
-      .prepare('SELECT role, custom_role FROM user_roles WHERE uid = ?1 LIMIT 1')
-      .bind(targetUid)
-      .first<{ role?: string; custom_role?: string | null }>()
-      .catch(() => null);
+    const hasAvatarProp =
+      body.avatar !== undefined || body.equippedAvatar !== undefined || body.photoURL !== undefined;
+    const avatarVal = String(body.avatar ?? body.equippedAvatar ?? body.photoURL ?? '').trim();
+    const frame = body.frame !== undefined ? (body.frame ? String(body.frame).trim() : null) : undefined;
+    const accent = body.accent !== undefined ? String(body.accent) : undefined;
 
-    const existingNonSuperRole = roleRow?.role || existingRow?.role || 'student';
-    const trustedExistingRole =
-      existingNonSuperRole === 'superadmin' || existingNonSuperRole === 'super_admin'
-        ? 'student'
-        : existingNonSuperRole;
-
-    const nextDisplayName = displayName || existingRow?.display_name || '';
     const nextAvatar = hasAvatarProp ? avatarVal : (existingRow?.avatar || '');
     const nextFrame = frame !== undefined ? frame : (existingRow?.frame ?? null);
-    const nextRole = requestedRole || trustedExistingRole;
-    const nextCustomRole =
-      requestedCustomRole !== undefined
-        ? requestedCustomRole
-        : (roleRow?.custom_role ?? existingRow?.custom_role ?? null);
-    const nextBio = bio !== undefined ? bio : (existingRow?.bio ?? '');
-    const nextStatus = statusText !== undefined ? statusText : (existingRow?.status ?? '');
+    const nextRole = roleEval.nextRole;
+    const nextCustomRole = roleEval.nextCustomRole;
     const nextAccent = accent !== undefined ? accent : (existingRow?.accent ?? '');
 
-    await db
-      .prepare(
-        `UPDATE user_usernames
-         SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
-         WHERE uid = ?10`
-      )
-      .bind(
-        nextDisplayName,
-        nextAvatar,
-        nextFrame,
-        nextRole,
-        nextCustomRole,
-        nextBio,
-        nextStatus,
-        nextAccent,
-        nowMs,
-        targetUid
-      )
-      .run();
+    if (usernameChanged) {
+      await db
+        .prepare(
+          `UPDATE user_usernames
+           SET username_lower = ?1, username_display = ?2, display_name = ?3, avatar = ?4, frame = ?5, role = ?6, custom_role = ?7, bio = ?8, status = ?9, accent = ?10, updated_at = ?11
+           WHERE uid = ?12`
+        )
+        .bind(
+          nextUsernameLower,
+          nextUsernameDisplay,
+          nextDisplayName,
+          nextAvatar,
+          nextFrame,
+          nextRole,
+          nextCustomRole,
+          nextBio,
+          nextStatus,
+          nextAccent,
+          nowMs,
+          targetUid
+        )
+        .run();
+    } else {
+      await db
+        .prepare(
+          `UPDATE user_usernames
+           SET display_name = ?1, avatar = ?2, frame = ?3, role = ?4, custom_role = ?5, bio = ?6, status = ?7, accent = ?8, updated_at = ?9
+           WHERE uid = ?10`
+        )
+        .bind(
+          nextDisplayName,
+          nextAvatar,
+          nextFrame,
+          nextRole,
+          nextCustomRole,
+          nextBio,
+          nextStatus,
+          nextAccent,
+          nowMs,
+          targetUid
+        )
+        .run();
+    }
+
+    // Keep user_roles in sync whenever role changes or a user_roles record already exists
+    if (roleEval.roleChanged || roleRow || nextRole !== 'student') {
+      try {
+        await db
+          .prepare(
+            `INSERT INTO user_roles (uid, email, role, custom_role, is_posting_banned, updated_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(uid) DO UPDATE SET
+               role = excluded.role,
+               custom_role = excluded.custom_role,
+               updated_at = excluded.updated_at`
+          )
+          .bind(
+            targetUid,
+            resolvedEmail || roleRow?.email || existingRow?.email || '',
+            nextRole,
+            nextCustomRole,
+            0,
+            nowMs,
+            nowMs
+          )
+          .run();
+      } catch {
+        // Non-fatal if user_roles table not present in minimal mock
+      }
+    }
 
     return jsonResponse({
       ok: true,
       profile: {
         uid: targetUid,
-        username: fallbackUsernameDisplay,
-        usernameLower: fallbackUsernameLower,
+        username: nextUsernameDisplay,
+        usernameLower: nextUsernameLower,
+        display_name: nextDisplayName,
         displayName: nextDisplayName,
         avatar: nextAvatar,
         frame: nextFrame,
@@ -3305,10 +3551,22 @@ export async function handleAuthApiRequest(
         .first<any>();
 
       if (activeRow && activeRow.uid) {
-        const [badgeMap, plusBadgeMap] = await Promise.all([
-          resolveProBadgesBatch([activeRow.uid], db, env, nowMs),
-          resolvePlusBadgesBatch([activeRow.uid], db, env, nowMs),
+        const [badgeMap, plusBadgeMap, activeRoleRow] = await Promise.all([
+          resolveProBadgesBatch([activeRow.uid], db, env, nowMs).catch(() => new Map<string, string | null>()),
+          resolvePlusBadgesBatch([activeRow.uid], db, env, nowMs).catch(() => new Map<string, number | null>()),
+          db
+            .prepare('SELECT role, custom_role FROM user_roles WHERE uid = ?1 LIMIT 1')
+            .bind(activeRow.uid)
+            .first<{ role?: string; custom_role?: string | null }>()
+            .catch(() => null),
         ]);
+        const isPkig = String(activeRow.username_lower || '').toLowerCase() === 'pkig';
+        const resolvedRole =
+          activeRoleRow?.role || activeRow.role || (isPkig ? 'superadmin' : 'student');
+        const resolvedCustomRole =
+          activeRoleRow?.custom_role ??
+          activeRow.custom_role ??
+          (isPkig ? 'Superadmin' : null);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3322,8 +3580,8 @@ export async function handleAuthApiRequest(
             displayName: activeRow.display_name || '',
             avatar: activeRow.avatar || '',
             frame: activeRow.frame || null,
-            role: activeRow.role || 'student',
-            customRole: activeRow.custom_role || null,
+            role: resolvedRole,
+            customRole: resolvedCustomRole,
             bio: activeRow.bio || '',
             status: activeRow.status || '',
             accent: activeRow.accent || '',
@@ -3375,8 +3633,8 @@ export async function handleAuthApiRequest(
           .first<any>();
 
         const [badgeMap, plusBadgeMap] = await Promise.all([
-          resolveProBadgesBatch([historyRow.uid], db, env, nowMs),
-          resolvePlusBadgesBatch([historyRow.uid], db, env, nowMs),
+          resolveProBadgesBatch([historyRow.uid], db, env, nowMs).catch(() => new Map<string, string | null>()),
+          resolvePlusBadgesBatch([historyRow.uid], db, env, nowMs).catch(() => new Map<string, number | null>()),
         ]);
         const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
         return jsonResponse({
@@ -3448,8 +3706,8 @@ export async function handleAuthApiRequest(
         .bind(...uids)
         .all<any>()
         .catch(() => ({ results: [] })),
-      resolveProBadgesBatch(uids, db, env, nowMs),
-      resolvePlusBadgesBatch(uids, db, env, nowMs),
+      resolveProBadgesBatch(uids, db, env, nowMs).catch(() => new Map<string, string | null>()),
+      resolvePlusBadgesBatch(uids, db, env, nowMs).catch(() => new Map<string, number | null>()),
     ]);
 
     const roleByUid = new Map<string, { role?: string; custom_role?: string | null }>();
@@ -3483,9 +3741,11 @@ export async function handleAuthApiRequest(
           .map((s) => s.trim())
           .filter(Boolean)
       );
-      const trustedRole = superUids.has(uidStr)
-        ? 'superadmin'
-        : rInfo?.role || u.role || 'student';
+      const isPkigRow = String(u.username_lower || '').toLowerCase() === 'pkig';
+      const trustedRole =
+        rInfo?.role ||
+        u.role ||
+        (superUids.has(uidStr) || isPkigRow ? 'superadmin' : 'student');
       const uname = u.username_display || u.username || u.username_lower || '';
       profiles[uidStr] = {
         uid: uidStr,
@@ -3495,7 +3755,7 @@ export async function handleAuthApiRequest(
         avatar: u.avatar || '',
         frame: u.frame || null,
         role: trustedRole,
-        customRole: rInfo?.custom_role ?? u.custom_role ?? null,
+        customRole: rInfo?.custom_role ?? u.custom_role ?? (isPkigRow ? 'Superadmin' : null),
         bio: u.bio || '',
         status: u.status || '',
         accent: u.accent || '',

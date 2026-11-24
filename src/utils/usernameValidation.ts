@@ -160,8 +160,8 @@ export function validateNickname(
     return { valid: false, error: 'Nickname must be at least 2 characters.' };
   }
 
-  if (trimmed.length > 30) {
-    return { valid: false, error: 'Nickname cannot exceed 30 characters.' };
+  if (trimmed.length > 40) {
+    return { valid: false, error: 'Display name cannot exceed 40 characters.' };
   }
 
   // Letters, numbers, spaces, and basic punctuation only

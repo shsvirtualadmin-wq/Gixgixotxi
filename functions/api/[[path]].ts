@@ -9,6 +9,7 @@ import {
 import { getSharedLocalD1Database } from '../_utils/firestoreRestAdmin';
 import { handleAiMentorsRequest } from './ai.js';
 import { handlePlusBadgeRequest } from './plus-badge';
+import { handleAuthApiRequest } from './auth/[[path]]';
 import { onRequest as handlePublicAdsRequest } from './ads/[[path]]';
 import { onRequest as handleAdminAdsRequest } from './admin/ads/[[path]]';
 
@@ -41,6 +42,30 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     return handlePlusBadgeRequest({
       request,
       env,
+      tokenVerifierOverride: context.tokenVerifierOverride,
+    });
+  }
+
+  if (
+    (path === '/api/profile' || path === '/api/auth/profile' || path === '/api/auth/profile-sync') &&
+    (request.method === 'POST' || request.method === 'PATCH')
+  ) {
+    const rewrittenUrl = new URL(request.url);
+    rewrittenUrl.pathname = '/api/auth/profile-sync';
+    const proxiedReq = new Request(rewrittenUrl.toString(), request);
+    return handleAuthApiRequest({
+      request: proxiedReq,
+      env: env as any,
+      dbOverride: env.DB as any,
+      tokenVerifierOverride: context.tokenVerifierOverride,
+    });
+  }
+
+  if (path.startsWith('/api/auth/')) {
+    return handleAuthApiRequest({
+      request,
+      env: env as any,
+      dbOverride: env.DB as any,
       tokenVerifierOverride: context.tokenVerifierOverride,
     });
   }
@@ -221,6 +246,8 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     path.startsWith('/api/admin/legacy-bank') ||
     path.startsWith('/api/admin/users/search') ||
     path.startsWith('/api/announcements') ||
+    path.startsWith('/api/followers') ||
+    path.startsWith('/api/following') ||
     path.startsWith('/api/follows') ||
     path.startsWith('/api/questions') ||
     path.startsWith('/api/posts');
