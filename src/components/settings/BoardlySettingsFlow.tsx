@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -226,6 +226,44 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     mapRouteParamToSection(initialSubPage)
   );
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Account header avatar wrapper measurement so BoardlyAvatar + frames scale cleanly with clamp(100px, 27vw, 116px)
+  const accountAvatarWrapRef = useRef<HTMLDivElement | null>(null);
+  const [accountAvatarPx, setAccountAvatarPx] = useState<number>(() => {
+    if (typeof window === 'undefined') return 108;
+    return Math.round(Math.min(116, Math.max(100, window.innerWidth * 0.27)));
+  });
+
+  useEffect(() => {
+    if (section !== 'account') return;
+    const el = accountAvatarWrapRef.current;
+
+    const syncSize = () => {
+      const measured = el ? el.getBoundingClientRect().width : 0;
+      if (measured > 0) {
+        const next = Math.round(measured);
+        setAccountAvatarPx((prev) => (prev === next ? prev : next));
+      } else if (typeof window !== 'undefined') {
+        const fallback = Math.round(Math.min(116, Math.max(100, window.innerWidth * 0.27)));
+        setAccountAvatarPx((prev) => (prev === fallback ? prev : fallback));
+      }
+    };
+
+    syncSize();
+
+    if (el && typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(syncSize);
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', syncSize);
+      return () => window.removeEventListener('resize', syncSize);
+    }
+
+    return undefined;
+  }, [section]);
 
   // Sheets
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -674,28 +712,32 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             className="group relative flex flex-col items-center cursor-pointer"
             aria-label="Open your profile"
           >
-            <div className="relative">
+            <div
+              ref={accountAvatarWrapRef}
+              className="relative flex h-[clamp(100px,27vw,116px)] w-[clamp(100px,27vw,116px)] shrink-0 items-center justify-center"
+            >
               <BoardlyAvatar
                 uid={user?.uid}
                 src={equippedLoadout.photoURL || undefined}
                 equippedAvatar={equippedLoadout.avatar}
                 equippedFrameId={equippedLoadout.frame}
                 name={currentDisplayName}
-                size="xl"
+                size={accountAvatarPx}
+                priority={10}
               />
               <span
-                className="absolute -right-1 -bottom-1 flex h-8 w-8 items-center justify-center rounded-full shadow-sm"
+                className="absolute -right-[2px] -bottom-[2px] z-30 flex h-10 w-10 items-center justify-center rounded-full shadow-sm"
                 style={{
                   backgroundColor: 'var(--card)',
                   border: '1px solid var(--border)',
                   color: 'var(--text)',
                 }}
               >
-                <Pencil className="h-3.5 w-3.5" />
+                <Pencil className="h-4 w-4" />
               </span>
             </div>
             <span
-              className="mt-3 text-[20px] font-semibold leading-tight group-hover:underline"
+              className="mt-5 text-[20px] font-semibold leading-tight group-hover:underline"
               style={{ color: 'var(--text)' }}
             >
               {currentDisplayName}
