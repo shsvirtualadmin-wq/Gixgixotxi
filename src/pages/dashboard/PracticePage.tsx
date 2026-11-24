@@ -65,7 +65,10 @@ import {
   getMultiSourceQuestionCounts,
 } from '@/services/multiSourceQuestionBank';
 
+import { useLanguage } from '@/contexts/LanguageContext';
+
 const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
+  const { t } = useLanguage();
   const [timeToMidnight, setTimeToMidnight] = useState('');
 
   useEffect(() => {
@@ -92,11 +95,12 @@ const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
     return () => clearInterval(interval);
   }, []);
 
-  return <>{timeToMidnight || 'Calculating...'}</>;
+  return <span className="ltr-nums">{timeToMidnight || t('common.loading')}</span>;
 });
 
 export function PracticePage() {
-  const { user, profile, university } = useUserProfile();
+  const { user, university } = useUserProfile();
+  const { t, formatNumber } = useLanguage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -158,7 +162,7 @@ export function PracticePage() {
 
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
-  const testsLeft = isPro ? 'Unlimited' : Math.max(0, FREE_DAILY_TESTS - todayAttempts);
+  const testsLeft = isPro ? t('common.unlimited') : formatNumber(Math.max(0, FREE_DAILY_TESTS - todayAttempts));
 
   // Fetch today's usage from Server + read-only Firestore usage doc (request.auth.uid == user.uid)
   useEffect(() => {
@@ -278,7 +282,7 @@ export function PracticePage() {
       });
       const list = Array.isArray(res?.mcqs) ? res.mcqs : [];
       if (list.length === 0) {
-        setLaunchError(`No MCQs found for ${opts.label} in ${activeD1Uni.name} yet.`);
+        setLaunchError(t('dashboard.noMcqsForFilter'));
         return;
       }
       setD1PracticeTitle(`${activeD1Uni.name} · ${opts.label}`);
@@ -287,7 +291,7 @@ export function PracticePage() {
       setD1SelectedAnswers({});
       setD1PracticeOpen(true);
     } catch {
-      setLaunchError('Could not load university practice questions right now. Please try again.');
+      setLaunchError(t('common.somethingWrong'));
     } finally {
       setD1LoadingPractice(false);
     }
@@ -304,7 +308,7 @@ export function PracticePage() {
     }
   ) => {
     if (!user) {
-      setLaunchError('Please sign in to start a practice test session.');
+      setLaunchError(t('auth.signInToContinue'));
       return;
     }
     if (launching) return;
@@ -312,7 +316,7 @@ export function PracticePage() {
     setLaunching(true);
     setLaunchingType(type);
     setLaunchError(null);
-    setLaunchStatus('Preparing your questions...');
+    setLaunchStatus(t('dashboard.preparingTest'));
 
     // 15-second safety timeout
     if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
@@ -322,9 +326,7 @@ export function PracticePage() {
       setLaunching(false);
       setLaunchingType(null);
       setLaunchStatus(null);
-      setLaunchError(
-        'Setting up your test session took longer than expected. Please check your connection and tap Try Again.'
-      );
+      setLaunchError(t('common.networkError'));
     }, 15000);
 
     let count = 10;
@@ -437,35 +439,35 @@ export function PracticePage() {
         return;
       }
 
-      setLaunchError('Could not start your test session. Please check your connection and try again.');
+      setLaunchError(t('common.networkError'));
     }
   };
 
   return (
-    <DashboardErrorBoundary fallbackTitle="Practice Cockpit encountered an issue">
+    <DashboardErrorBoundary fallbackTitle={t('common.somethingWrong')}>
       <div className="flex flex-col gap-6 max-w-[1000px] mx-auto pb-8">
         {/* ── Top Header Banner ── */}
         <Card className="p-6 sm:p-7">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <Badge color="muted">Daily Practice Hub</Badge>
+            <div className="text-start">
+              <Badge color="muted">{t('nav.practice')}</Badge>
               <h1
                 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text)] mt-2"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Entrance Drill Engine
+                {t('dashboard.startPractice')}
               </h1>
               <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
-                Authentic entrance test simulations with verified negative marking rules &amp; timed pacing.
+                {t('dashboard.universitiesSubtitle')}
               </p>
             </div>
 
-            <div className="flex items-center gap-6 self-start sm:self-auto border-t sm:border-t-0 sm:border-l border-[var(--border)] pt-4 sm:pt-0 sm:pl-6 shrink-0">
+            <div className="flex items-center gap-6 self-start sm:self-auto border-t sm:border-t-0 sm:border-s border-[var(--border)] pt-4 sm:pt-0 sm:ps-6 shrink-0">
               <div>
                 <div className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider">
-                  TESTS LEFT
+                  {t('dashboard.dailyLimits')}
                 </div>
-                <div className="font-doto text-2xl sm:text-3xl font-bold text-[var(--text)] mt-0.5">
+                <div className="font-doto text-2xl sm:text-3xl font-bold text-[var(--text)] mt-0.5 ltr-nums">
                   {testsLeft}
                 </div>
               </div>
@@ -473,7 +475,7 @@ export function PracticePage() {
               <div>
                 <div className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider flex items-center gap-1">
                   <Clock size={12} className="text-[var(--red)]" />
-                  <span>PKT Midnight Reset</span>
+                  <span>{t('settings.resetsAtMidnight')}</span>
                 </div>
                 <div className="font-doto text-sm sm:text-base font-bold text-[var(--text)] mt-0.5">
                   <PKTMidnightCountdown />
@@ -511,7 +513,7 @@ export function PracticePage() {
                 onClick={() => setLaunchError(null)}
                 className="text-xs font-semibold text-[var(--accent)] hover:underline shrink-0 cursor-pointer"
               >
-                Dismiss
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -531,17 +533,17 @@ export function PracticePage() {
               ) : (
                 <Building2 size={17} className="text-[var(--accent)] shrink-0" />
               )}
-              <div className="min-w-0">
+              <div className="min-w-0 text-start">
                 <div className="flex items-center gap-2">
                   <h2
                     className="text-lg font-bold text-[var(--text)] truncate"
                     style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                   >
-                    University Subject &amp; Topic Bank
+                    {t('dashboard.universitiesTitle')}
                   </h2>
                 </div>
                 <p className="text-xs text-[var(--muted)] mt-0.5">
-                  Select a LIVE university to practice its subjects and topics, or run a mixed university practice session.
+                  {t('dashboard.browseBySubject')}
                 </p>
               </div>
             </div>
@@ -557,7 +559,7 @@ export function PracticePage() {
               >
                 {(d1Universities || []).map((u) => (
                   <option key={u.id} value={u.slug}>
-                    {u.name} ({u.mcq_count > 0 ? `${u.mcq_count} MCQs · LIVE` : 'Coming Soon'})
+                    {u.name} ({u.mcq_count > 0 ? `${t('dashboard.mcqsCount', { count: formatNumber(u.mcq_count) })} · ${t('common.live')}` : t('common.comingSoon')})
                   </option>
                 ))}
               </select>
@@ -568,15 +570,15 @@ export function PracticePage() {
                   disabled={d1LoadingPractice}
                   onClick={() =>
                     startD1UniversityPractice({
-                      label: 'Mixed University Practice',
+                      label: t('dashboard.diffMixed'),
                     })
                   }
                   className="relative overflow-hidden btn-red px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <span>
                     {d1LoadingPractice
-                      ? 'Preparing test...'
-                      : `Practice Mixed (${activeD1Uni.mcq_count})`}
+                      ? t('dashboard.preparingTest')
+                      : `${t('dashboard.practiceNow')} (${formatNumber(activeD1Uni.mcq_count)})`}
                   </span>
                   {d1LoadingPractice && <ButtonLineLoader />}
                 </button>
@@ -588,16 +590,16 @@ export function PracticePage() {
             <LineLoader context="universities" variant="section" />
           ) : !activeD1Uni || activeD1Uni.mcq_count === 0 || (d1SubjectsTree || []).length === 0 ? (
             <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div>
+              <div className="text-start">
                 <span className="font-bold text-[var(--text)]">
-                  {activeD1Uni?.name || 'Selected University'} — Coming Soon (0 MCQs)
+                  {activeD1Uni?.name || ''} — {t('common.comingSoon')}
                 </span>
                 <p className="text-[var(--muted)] mt-0.5">
-                  This university bank will unlock automatically as soon as MCQs are added in the Admin Question Bank.
+                  {t('dashboard.noMcqsForFilter')}
                 </p>
               </div>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] shrink-0">
-                Coming Soon
+                {t('common.comingSoon')}
               </span>
             </div>
           ) : (
@@ -613,7 +615,7 @@ export function PracticePage() {
                       : 'bg-[var(--surface-2)] text-[var(--text)] border-[var(--border)]'
                   }`}
                 >
-                  All Subjects ({activeD1Uni.mcq_count})
+                  {t('dashboard.allSubjects')} (<span className="ltr-nums">{formatNumber(activeD1Uni.mcq_count)}</span>)
                 </button>
                 {(d1SubjectsTree || []).map((s) => (
                   <button
@@ -643,27 +645,27 @@ export function PracticePage() {
                       <div>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold text-[var(--text)]">{s.subject}</span>
-                          <span className="text-[10px] font-mono font-bold text-[var(--accent)]">
-                            {s.total} MCQs
+                          <span className="text-[10px] font-mono font-bold text-[var(--accent)] ltr-nums">
+                            {t('dashboard.mcqsCount', { count: formatNumber(s.total) })}
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2.5">
-                          {(s.topics || []).map((t) => (
+                          {(s.topics || []).map((topicItem) => (
                             <button
-                              key={t.topic}
+                              key={topicItem.topic}
                               type="button"
                               onClick={() =>
                                 startD1UniversityPractice({
                                   subject: s.subject,
-                                  topic: t.topic,
-                                  label: `${s.subject} · ${t.topic}`,
+                                  topic: topicItem.topic,
+                                  label: `${s.subject} · ${topicItem.topic}`,
                                 })
                               }
                               className="px-2 py-1 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--accent)] text-[11px] text-[var(--text)] flex items-center gap-1 cursor-pointer"
                             >
                               <Layers size={10} className="text-[var(--accent)]" />
-                              <span>{t.topic}</span>
-                              <span className="font-mono text-[10px] text-[var(--muted)]">({t.count})</span>
+                              <span>{topicItem.topic}</span>
+                              <span className="font-mono text-[10px] text-[var(--muted)] ltr-nums">({formatNumber(topicItem.count)})</span>
                             </button>
                           ))}
                         </div>
@@ -674,13 +676,13 @@ export function PracticePage() {
                         onClick={() =>
                           startD1UniversityPractice({
                             subject: s.subject,
-                            label: `${s.subject} (All Topics)`,
+                            label: `${s.subject} (${t('dashboard.allTopics')})`,
                           })
                         }
                         className="w-full py-1.5 px-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--accent)] text-xs font-bold text-[var(--text)] flex items-center justify-between cursor-pointer"
                       >
-                        <span>Practice {s.subject}</span>
-                        <ArrowRight size={13} className="text-[var(--accent)]" />
+                        <span>{t('dashboard.practiceNow')}: {s.subject}</span>
+                        <ArrowRight size={13} className="text-[var(--accent)] rtl-mirror" />
                       </button>
                     </div>
                   ))}
@@ -693,7 +695,7 @@ export function PracticePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Card 1: 10-Minute Sprint */}
           <Card className="justify-between p-6 flex flex-col">
-            <div className="space-y-3">
+            <div className="space-y-3 text-start">
               <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
                 <Zap size={22} className="text-[var(--text)]" />
               </div>
@@ -702,18 +704,18 @@ export function PracticePage() {
                   className="text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
-                  10-Minute Sprint
+                  {t('dashboard.tenMinSprint')}
                 </h2>
                 <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
-                  10 mixed questions under strict 60s per-question pacing to build speed and accuracy.
+                  {t('dashboard.quickPractice')} · <span className="ltr-nums">10</span> · <span className="ltr-nums">10m</span>
                 </p>
               </div>
-              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                <span>10 Questions</span>
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)] ltr-nums">
+                <span>{t('dashboard.mcqsCount', { count: formatNumber(10) })}</span>
                 <span>·</span>
-                <span>10 Minutes</span>
+                <span>10 min</span>
                 <span>·</span>
-                <span>Standard (+1.0 / 0.0)</span>
+                <span>+1.0 / 0.0</span>
               </div>
             </div>
 
@@ -725,21 +727,21 @@ export function PracticePage() {
             >
               {launchingType === 'sprint' ? (
                 <>
-                  <span>Starting Sprint...</span>
+                  <span>{t('dashboard.preparingTest')}</span>
                   <ButtonLineLoader />
                 </>
               ) : (
                 <>
-                  <span>Start Sprint</span>
-                  <ArrowRight size={16} />
+                  <span>{t('dashboard.startNow')}</span>
+                  <ArrowRight size={16} className="rtl-mirror" />
                 </>
               )}
             </button>
           </Card>
 
-          {/* Card 2: Full Mock Test (Formerly Full Past Paper Mock) */}
+          {/* Card 2: Full Mock Test */}
           <Card className="justify-between p-6 flex flex-col">
-            <div className="space-y-3.5">
+            <div className="space-y-3.5 text-start">
               <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
                 <BookOpen size={22} className="text-[var(--text)]" />
               </div>
@@ -748,10 +750,10 @@ export function PracticePage() {
                   className="text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
-                  Full Mock Test
+                  {t('dashboard.fullMock')}
                 </h2>
                 <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
-                  Authentic full-length practice paper matched to comprehensive curriculum and marking scheme.
+                  {t('dashboard.universitiesSubtitle')}
                 </p>
               </div>
 
@@ -759,21 +761,21 @@ export function PracticePage() {
               <div className="pt-1">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                    Test Track:
+                    {t('settings.targetUniversity')}:
                   </span>
                   <button
                     type="button"
                     onClick={() => setTrackPickerOpen(true)}
                     className="text-[11px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
                   >
-                    Change Track
+                    {t('common.edit')}
                   </button>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setTrackPickerOpen(true)}
-                  className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-2.5 text-left hover:border-[var(--text-muted)] transition-colors cursor-pointer"
+                  className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-2.5 text-start hover:border-[var(--text-muted)] transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <UniversityLogoBox
@@ -796,7 +798,7 @@ export function PracticePage() {
                       </p>
                     </div>
                   </div>
-                  <ChevronRight size={14} className="text-[var(--muted)] shrink-0" />
+                  <ChevronRight size={14} className="text-[var(--muted)] shrink-0 rtl-mirror" />
                 </button>
               </div>
 
@@ -804,21 +806,20 @@ export function PracticePage() {
               <div className="space-y-2 pt-1 border-t border-[var(--border)]">
                 <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                   <div className="p-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                    <span className="text-[var(--muted)] block text-[10px]">Questions:</span>
-                    <strong className="text-[var(--text)] font-semibold font-mono">
-                      {currentUniversityCriteria.totalQuestions} MCQs
+                    <span className="text-[var(--muted)] block text-[10px]">{t('dashboard.questionCount')}:</span>
+                    <strong className="text-[var(--text)] font-semibold font-mono ltr-nums">
+                      {t('dashboard.mcqsCount', { count: formatNumber(currentUniversityCriteria.totalQuestions) })}
                     </strong>
                   </div>
                   <div className="p-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)]">
-                    <span className="text-[var(--muted)] block text-[10px]">Time Allowed:</span>
-                    <strong className="text-[var(--text)] font-semibold font-mono">
-                      {currentUniversityCriteria.durationMinutes} Mins
+                    <span className="text-[var(--muted)] block text-[10px]">{t('dashboard.timeLimit')}:</span>
+                    <strong className="text-[var(--text)] font-semibold font-mono ltr-nums">
+                      {formatNumber(currentUniversityCriteria.durationMinutes)} min
                     </strong>
                   </div>
                 </div>
 
                 <div className="p-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-[11px]">
-                  <span className="text-[10px] text-[var(--muted)] block">Marking Scheme:</span>
                   <span
                     className={`font-semibold text-[11px] ${
                       currentUniversityCriteria.hasNegativeMarking
@@ -831,7 +832,6 @@ export function PracticePage() {
                 </div>
 
                 <div className="text-[10px] text-[var(--muted)] leading-tight pt-1">
-                  <span className="font-semibold text-[var(--text)]">Split: </span>
                   {currentUniversityCriteria.subjectsSplit
                     .map((s) => `${s.name} (${s.count})`)
                     .join(' · ')}
@@ -847,21 +847,21 @@ export function PracticePage() {
             >
               {launchingType === 'full' ? (
                 <>
-                  <span>Starting Mock Test...</span>
+                  <span>{t('dashboard.preparingTest')}</span>
                   <ButtonLineLoader />
                 </>
               ) : (
                 <>
-                  <span>Start Full Mock Test</span>
-                  <ArrowRight size={16} />
+                  <span>{t('dashboard.startTest')}</span>
+                  <ArrowRight size={16} className="rtl-mirror" />
                 </>
               )}
             </button>
           </Card>
 
-          {/* Card 3: Focused Chapter Drill (Rebuilt with step-by-step popup) */}
+          {/* Card 3: Focused Chapter Drill */}
           <Card className="justify-between p-6 flex flex-col">
-            <div className="space-y-3.5">
+            <div className="space-y-3.5 text-start">
               <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
                 <Target size={22} className="text-[var(--text)]" />
               </div>
@@ -870,29 +870,29 @@ export function PracticePage() {
                   className="text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
-                  Focused Chapter Drill
+                  {t('dashboard.chapterDrill')}
                 </h2>
                 <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
-                  Multi-step focused generator. Choose subject, specific chapter(s) with accuracy diagnostic, question count, and difficulty.
+                  {t('dashboard.browseBySubject')}
                 </p>
               </div>
 
               {/* Current Configuration Summary */}
               <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] space-y-1.5 text-xs">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-[var(--muted)]">Subject:</span>
+                  <span className="text-[var(--muted)]">{t('dashboard.subjects')}:</span>
                   <strong className="text-[var(--text)] font-semibold capitalize">{drillSubject}</strong>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-[var(--muted)]">Chapters:</span>
-                  <strong className="text-[var(--text)] font-semibold truncate max-w-[150px]">
-                    {drillChapters.length} Selected
+                  <span className="text-[var(--muted)]">{t('dashboard.questionCount')}:</span>
+                  <strong className="text-[var(--text)] font-semibold ltr-nums">
+                    {formatNumber(drillCount)}
                   </strong>
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-[var(--muted)]">Parameters:</span>
+                  <span className="text-[var(--muted)]">{t('dashboard.difficulty')}:</span>
                   <strong className="text-[var(--text)] font-semibold">
-                    {drillCount} MCQs · {drillDifficulty.toUpperCase()}
+                    {t(`dashboard.diff${drillDifficulty.charAt(0).toUpperCase()}${drillDifficulty.slice(1)}` as const)}
                   </strong>
                 </div>
               </div>
@@ -909,13 +909,13 @@ export function PracticePage() {
             >
               {launchingType === 'drill' ? (
                 <>
-                  <span>Starting Drill...</span>
+                  <span>{t('dashboard.preparingTest')}</span>
                   <ButtonLineLoader />
                 </>
               ) : (
                 <>
                   <Sliders size={16} />
-                  <span>Configure &amp; Start Drill</span>
+                  <span>{t('dashboard.setupTest')}</span>
                 </>
               )}
             </button>
@@ -934,19 +934,18 @@ export function PracticePage() {
             >
               {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
-                <div>
-                  <h3
-                    className="text-lg font-bold text-[var(--text)] font-dot"
-                  >
-                    Select Test Track
+                <div className="text-start">
+                  <h3 className="text-lg font-bold text-[var(--text)] font-dot">
+                    {t('settings.targetUniversity')}
                   </h3>
                   <p className="text-xs text-[var(--muted)] mt-0.5">
-                    Official test criteria, negative marking rules, and subject-wise distributions.
+                    {t('dashboard.universitiesSubtitle')}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setTrackPickerOpen(false)}
+                  aria-label={t('common.close')}
                   className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   <X size={16} />
@@ -954,7 +953,7 @@ export function PracticePage() {
               </div>
 
               {/* Tracks List */}
-              <div className="space-y-3 overflow-y-auto max-h-[60vh] pr-1">
+              <div className="space-y-3 overflow-y-auto max-h-[60vh] pe-1">
                 {TARGET_UNIVERSITY_CRITERIA.map((criteria) => {
                   const isSelected = selectedUniversity === criteria.name || selectedUniversity === criteria.id;
                   return (
@@ -964,7 +963,7 @@ export function PracticePage() {
                         setSelectedUniversity(criteria.name);
                         setTrackPickerOpen(false);
                       }}
-                      className={`p-4 rounded-[20px] transition-all cursor-pointer flex flex-col gap-2.5 ${
+                      className={`p-4 rounded-[20px] transition-all cursor-pointer flex flex-col gap-2.5 text-start ${
                         isSelected
                           ? 'glass-row border-[var(--accent)] ring-1 ring-[var(--accent)]'
                           : 'glass-row hover:border-[var(--glass-border-hover)]'
@@ -987,7 +986,7 @@ export function PracticePage() {
                             <span className="font-bold text-sm text-[var(--text)]">
                               {criteria.name}
                             </span>
-                            <span className="ml-2 text-[10px] font-mono px-2 py-0.5 rounded-full glass-pill text-[var(--muted)]">
+                            <span className="ms-2 text-[10px] font-mono px-2 py-0.5 rounded-full glass-pill text-[var(--muted)]">
                               {criteria.badge}
                             </span>
                           </div>
@@ -1010,11 +1009,11 @@ export function PracticePage() {
 
                       {/* Criteria Highlights: MCQs, Time, Split */}
                       <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--glass-border)] text-[10px]">
-                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)]">
-                          {criteria.totalQuestions} MCQs
+                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)] ltr-nums">
+                          {t('dashboard.mcqsCount', { count: formatNumber(criteria.totalQuestions) })}
                         </span>
-                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)]">
-                          {criteria.durationMinutes} Minutes
+                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)] ltr-nums">
+                          {formatNumber(criteria.durationMinutes)} min
                         </span>
                         <span className="text-[var(--muted)] truncate max-w-[280px]">
                           {criteria.subjectsSplit.map((s) => `${s.name}: ${s.count}`).join(' · ')}
@@ -1032,7 +1031,7 @@ export function PracticePage() {
                   onClick={() => setTrackPickerOpen(false)}
                   className="btn-secondary px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
                 >
-                  Close
+                  {t('common.close')}
                 </button>
               </div>
             </div>
@@ -1048,24 +1047,23 @@ export function PracticePage() {
             >
               {/* Modal Top Header with Steps Indicator */}
               <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
-                <div>
+                <div className="text-start">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-dot font-bold uppercase tracking-wider text-[var(--accent)]">
-                      Step {drillStep} of 2
+                    <span className="text-[10px] font-dot font-bold uppercase tracking-wider text-[var(--accent)] ltr-nums">
+                      {formatNumber(drillStep)} / 2
                     </span>
                     <span className="text-[10px] text-[var(--muted)]">·</span>
-                    <span className="text-[10px] text-[var(--muted)]">Practice Drill</span>
+                    <span className="text-[10px] text-[var(--muted)]">{t('dashboard.chapterDrill')}</span>
                   </div>
-                  <h3
-                    className="text-lg font-bold text-[var(--text)] font-dot"
-                  >
-                    {drillStep === 1 ? 'Choose Subject' : `${formatSubjectName(drillSubject)} Drill Settings`}
+                  <h3 className="text-lg font-bold text-[var(--text)] font-dot">
+                    {drillStep === 1 ? t('dashboard.subjects') : `${formatSubjectName(drillSubject)} · ${t('dashboard.setupTest')}`}
                   </h3>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setDrillModalOpen(false)}
+                  aria-label={t('common.close')}
                   className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   <X size={16} />
@@ -1075,8 +1073,8 @@ export function PracticePage() {
               {/* ── STEP 1: SELECT SUBJECT ── */}
               {drillStep === 1 && (
                 <div className="space-y-4">
-                  <p className="text-xs text-[var(--muted)]">
-                    Pick a subject to drill. Next, configure your question count and difficulty to start immediately.
+                  <p className="text-xs text-[var(--muted)] text-start">
+                    {t('dashboard.browseBySubject')}
                   </p>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -1091,7 +1089,7 @@ export function PracticePage() {
                             setDrillChapters([sub.slug]);
                             setDrillStep(2);
                           }}
-                          className={`p-4 rounded-2xl border text-left flex flex-col justify-between gap-3 transition-all cursor-pointer ${
+                          className={`p-4 rounded-2xl border text-start flex flex-col justify-between gap-3 transition-all cursor-pointer ${
                             isSelected
                               ? 'border-[var(--accent)] bg-[var(--surface-2)] shadow-xs'
                               : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]'
@@ -1099,10 +1097,10 @@ export function PracticePage() {
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-bold text-[var(--text)]">{sub.name}</span>
-                            <ChevronRight size={14} className="text-[var(--muted)]" />
+                            <ChevronRight size={14} className="text-[var(--muted)] rtl-mirror" />
                           </div>
                           <span className="text-[11px] text-[var(--muted)]">
-                            {isSubjectPoolSupported(sub.slug) ? 'Dedicated Pool' : 'Question Bank'}
+                            {isSubjectPoolSupported(sub.slug) ? t('nav.mcqs') : t('dashboard.subjects')}
                           </span>
                         </button>
                       );
@@ -1113,10 +1111,10 @@ export function PracticePage() {
 
               {/* ── STEP 2: NUMBER OF MCQS + DIFFICULTY + START ── */}
               {drillStep === 2 && (
-                <div className="space-y-5">
+                <div className="space-y-5 text-start">
                   <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[var(--muted)]">Subject:</span>
+                      <span className="text-[var(--muted)]">{t('dashboard.subjects')}:</span>
                       <strong className="text-[var(--text)] font-semibold capitalize font-mono text-sm">
                         {formatSubjectName(drillSubject)}
                       </strong>
@@ -1126,13 +1124,13 @@ export function PracticePage() {
                       onClick={() => setDrillStep(1)}
                       className="text-[11px] text-[var(--accent)] hover:underline font-semibold cursor-pointer"
                     >
-                      Change Subject
+                      {t('common.edit')}
                     </button>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-[var(--text)] uppercase tracking-wider mb-2">
-                      Number of Questions:
+                      {t('dashboard.questionCount')}:
                     </label>
                     <div className="grid grid-cols-4 gap-2">
                       {[10, 20, 30, 40].map((num) => (
@@ -1140,13 +1138,13 @@ export function PracticePage() {
                           key={num}
                           type="button"
                           onClick={() => setDrillCount(num)}
-                          className={`py-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          className={`py-3 rounded-xl border text-center transition-all cursor-pointer ltr-nums ${
                             drillCount === num
                               ? 'border-[var(--accent)] bg-[var(--surface-2)] text-[var(--text)] font-bold ring-1 ring-[var(--accent)]'
                               : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
                           }`}
                         >
-                          <span className="block text-sm">{num}</span>
+                          <span className="block text-sm">{formatNumber(num)}</span>
                           <span className="block text-[10px] text-[var(--muted)]">{num}m</span>
                         </button>
                       ))}
@@ -1155,7 +1153,7 @@ export function PracticePage() {
 
                   <div>
                     <label className="block text-xs font-bold text-[var(--text)] uppercase tracking-wider mb-2">
-                      Difficulty Level:
+                      {t('dashboard.difficulty')}:
                     </label>
                     <div className="grid grid-cols-4 gap-2">
                       {(['easy', 'medium', 'hard', 'mixed'] as const).map((diff) => (
@@ -1163,13 +1161,13 @@ export function PracticePage() {
                           key={diff}
                           type="button"
                           onClick={() => setDrillDifficulty(diff)}
-                          className={`py-3 rounded-xl border text-center capitalize text-xs transition-all cursor-pointer ${
+                          className={`py-3 rounded-xl border text-center text-xs transition-all cursor-pointer ${
                             drillDifficulty === diff
                               ? 'border-[var(--accent)] bg-[var(--surface-2)] text-[var(--text)] font-bold ring-1 ring-[var(--accent)]'
                               : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
                           }`}
                         >
-                          {diff}
+                          {t(`dashboard.diff${diff.charAt(0).toUpperCase()}${diff.slice(1)}` as const)}
                         </button>
                       ))}
                     </div>
@@ -1181,8 +1179,8 @@ export function PracticePage() {
                       onClick={() => setDrillStep(1)}
                       className="btn-outline px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
                     >
-                      <ChevronLeft size={14} />
-                      <span>Back</span>
+                      <ChevronLeft size={14} className="rtl-mirror" />
+                      <span>{t('common.back')}</span>
                     </button>
 
                     <button
@@ -1198,8 +1196,8 @@ export function PracticePage() {
                       className="btn-red px-6 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-md"
                     >
                       <Sparkles size={14} />
-                      <span>Start Drill</span>
-                      <ArrowRight size={14} />
+                      <span>{t('dashboard.startNow')}</span>
+                      <ArrowRight size={14} className="rtl-mirror" />
                     </button>
                   </div>
                 </div>
@@ -1233,9 +1231,9 @@ export function PracticePage() {
                             eager
                           />
                         )}
-                        <div className="min-w-0">
+                        <div className="min-w-0 text-start">
                           <span className="text-[10px] font-mono uppercase font-bold text-[var(--accent)]">
-                            University MCQ Practice
+                            {t('nav.practice')}
                           </span>
                           <h3 className="text-base sm:text-lg font-bold text-[var(--text)] truncate">
                             {d1PracticeTitle}
@@ -1243,12 +1241,13 @@ export function PracticePage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)]">
-                          Score: {correctCount}/{answeredCount}
+                        <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] ltr-nums">
+                          {t('test.score')}: {formatNumber(correctCount)}/{formatNumber(answeredCount)}
                         </span>
                         <button
                           type="button"
                           onClick={() => setD1PracticeOpen(false)}
+                          aria-label={t('common.close')}
                           className="p-1.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
                         >
                           <X size={16} />
@@ -1264,8 +1263,8 @@ export function PracticePage() {
 
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-[var(--surface-2)] border border-[var(--border)]">
-                          Q {d1PracticeIndex + 1} / {d1PracticeMcqs.length}
+                        <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-[var(--surface-2)] border border-[var(--border)] ltr-nums">
+                          {formatNumber(d1PracticeIndex + 1)} / {formatNumber(d1PracticeMcqs.length)}
                         </span>
                         <span className="px-2.5 py-0.5 rounded-full font-mono text-[10px] bg-[var(--surface-2)] border border-[var(--border)]">
                           {currentQ.subject} · {currentQ.topic}
@@ -1285,21 +1284,21 @@ export function PracticePage() {
                             details: `Flagged from ${d1PracticeTitle}`,
                             reported_by: user?.uid || 'student',
                           });
-                          setD1ReportToast('Question reported to Admin Question Bank.');
+                          setD1ReportToast(t('test.reportSubmitted'));
                           setTimeout(() => setD1ReportToast(null), 3000);
                         }}
                         className="text-[11px] text-[var(--muted)] hover:text-[var(--accent)] flex items-center gap-1 cursor-pointer"
                       >
                         <Flag size={12} />
-                        <span>Report</span>
+                        <span>{t('common.report')}</span>
                       </button>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-sm sm:text-base leading-relaxed">
+                    <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-sm sm:text-base leading-relaxed" dir="ltr">
                       <MathText text={currentQ.question} block />
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2.5">
+                    <div className="grid grid-cols-1 gap-2.5" dir="ltr">
                       {(() => {
                         const cleanOpts = repairSplitOrGarbledMcqOptions([
                           currentQ.option_a,
@@ -1371,12 +1370,12 @@ export function PracticePage() {
                             }
                           >
                             {chosen === currentQ.correct_answer
-                              ? 'Correct!'
-                              : `Incorrect — Correct Answer is ${currentQ.correct_answer}`}
+                              ? t('test.correct')
+                              : `${t('test.incorrect')} — ${t('test.correctAnswer')}: ${currentQ.correct_answer}`}
                           </span>
                         </div>
                         {currentQ.explanation && (
-                          <div className="text-[var(--text)] pt-1">
+                          <div className="text-[var(--text)] pt-1" dir="ltr">
                             <MathText text={currentQ.explanation} block />
                           </div>
                         )}
@@ -1390,8 +1389,8 @@ export function PracticePage() {
                         onClick={() => setD1PracticeIndex((i) => Math.max(0, i - 1))}
                         className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-bold disabled:opacity-40 flex items-center gap-1 cursor-pointer"
                       >
-                        <ChevronLeft size={14} />
-                        <span>Previous</span>
+                        <ChevronLeft size={14} className="rtl-mirror" />
+                        <span>{t('test.previous')}</span>
                       </button>
 
                       <button
@@ -1402,8 +1401,8 @@ export function PracticePage() {
                         }
                         className="btn-red px-5 py-2 rounded-xl text-xs font-bold disabled:opacity-40 flex items-center gap-1 cursor-pointer"
                       >
-                        <span>Next Question</span>
-                        <ChevronRight size={14} />
+                        <span>{t('test.next')}</span>
+                        <ChevronRight size={14} className="rtl-mirror" />
                       </button>
                     </div>
                   </>

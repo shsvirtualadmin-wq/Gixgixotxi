@@ -25,7 +25,8 @@ import {
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { useTheme } from '@/hooks/useTheme';
 import { calculateCartTotals } from '@/lib/storeCartPricing';
-import { CATEGORY_SHORT_LABEL, RARITY_ACCENT } from './StoreCard';
+import { RARITY_ACCENT } from './StoreCard';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface CartDrawerProps {
   open: boolean;
@@ -74,6 +75,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   onViewCollection,
 }) => {
   const { isDark } = useTheme();
+  const { t, formatNumber } = useLanguage();
   const [expandedItemIds, setExpandedItemIds] = useState<Record<string, boolean>>({});
   const [conflictDetailsOpen, setConflictDetailsOpen] = useState(false);
 
@@ -93,7 +95,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   const duplicateCategories = useMemo(() => {
     const counts: Record<string, string[]> = {};
     for (const item of uniqueCartItems) {
-      const label = CATEGORY_SHORT_LABEL[item.type];
+      const label = t(`store.cat_${item.type}`);
       if (!counts[label]) counts[label] = [];
       counts[label].push(item.name);
     }
@@ -104,7 +106,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         newestName: names[names.length - 1],
         count: names.length,
       }));
-  }, [uniqueCartItems]);
+  }, [uniqueCartItems, t]);
 
   const [isClosing, setIsClosing] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -235,16 +237,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   const subtotal = cartTotals.subtotal;
-  const pkrEquivalent = (subtotal / 10).toLocaleString(undefined, {
-    minimumFractionDigits: subtotal % 10 === 0 ? 0 : 1,
-    maximumFractionDigits: 1,
-  });
+  const pkrEquivalent = formatNumber(subtotal / 10);
   const canAfford = cartTotals.canAfford;
   const deficit = cartTotals.deficit;
   const rawBalanceAfter = cartTotals.balanceAfterPurchase;
   // Never display a stale/false "Insufficient Kobans" error banner when the real total is affordable
   const resolvedBannerError = !canAfford
-    ? cartTotals.insufficientBannerMessage
+    ? t('cart.needMoreKobans', { amount: formatNumber(deficit) })
     : errorMessage && !/insufficient\s+kobans/i.test(errorMessage)
     ? errorMessage
     : null;
@@ -273,7 +272,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={completedOrder ? 'Purchase Complete' : `Your Cart (${cartItems.length})`}
+        aria-label={
+          completedOrder
+            ? t('cart.purchaseComplete')
+            : t('cart.yourCartCount', { count: formatNumber(cartItems.length) })
+        }
         className="fixed inset-x-0 bottom-0 sm:inset-0 z-[1110] flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none"
       >
         <div
@@ -299,7 +302,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             onPointerUp={handleGrabberPointerUp}
             onPointerCancel={handleGrabberPointerUp}
             className="pt-3 pb-1.5 flex justify-center shrink-0 cursor-grab active:cursor-grabbing select-none touch-none"
-            aria-label="Drag handle to dismiss"
+            aria-label={t('common.close')}
           >
             <div className="ios-sheet-grabber !my-0" />
           </div>
@@ -322,21 +325,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <ShoppingBag className="w-5 h-5" />
                 )}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 text-start">
                 <div
                   style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   className={`text-base sm:text-lg leading-tight truncate ${primaryTextClass}`}
                 >
                   {completedOrder
-                    ? 'Purchase Complete'
-                    : `Your Cart (${uniqueCartItems.length})`}
+                    ? t('cart.purchaseComplete')
+                    : t('cart.yourCartCount', { count: formatNumber(uniqueCartItems.length) })}
                 </div>
                 <p className={`text-xs font-medium truncate ${mutedTextClass}`}>
                   {completedOrder
-                    ? `${completedOrder.purchasedItems.length} ${
-                        completedOrder.purchasedItems.length === 1 ? 'item' : 'items'
-                      } unlocked in your collection`
-                    : 'Instant multi-item checkout'}
+                    ? completedOrder.purchasedItems.length === 1
+                      ? t('cart.itemUnlockedSingle')
+                      : t('cart.itemsUnlockedCount', {
+                          count: formatNumber(completedOrder.purchasedItems.length),
+                        })
+                    : t('cart.instantCheckout')}
                 </p>
               </div>
             </div>
@@ -353,14 +358,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       : 'text-black/70 hover:text-[#D71921] hover:bg-black/[0.05]'
                   }`}
                 >
-                  Clear cart
+                  {t('cart.clearCart')}
                 </button>
               )}
               <button
                 type="button"
                 disabled={processing}
                 onClick={handleCloseWithSlide}
-                aria-label="Close cart"
+                aria-label={t('common.close')}
                 className="ios-circle-btn disabled:opacity-50 cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -373,7 +378,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             <div className="p-5 sm:p-6 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
               {/* Green Success Banner */}
               <div
-                className={`p-4 rounded-[24px] border flex items-start gap-3 ${
+                className={`p-4 rounded-[24px] border flex items-start gap-3 text-start ${
                   isDark
                     ? 'bg-emerald-500/15 border-emerald-400/35'
                     : 'bg-[#ECFDF5] border-emerald-600/30'
@@ -393,16 +398,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     }`}
                     style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   >
-                    All items unlocked &amp; receipt emailed
+                    {t('cart.allUnlockedTitle')}
                   </p>
                   <p className={secondaryTextClass}>
-                    Your new cosmetics are ready. Equip them all right now or view them in your collection.
+                    {t('cart.allUnlockedDesc')}
                   </p>
                 </div>
               </div>
 
-              {/* Purchased items list: 48px thumbnail, name, type, gold LEGENDARY tag, price */}
-              <div className="space-y-2.5 max-h-[260px] overflow-y-auto overscroll-contain pr-1 stagger-list">
+              {/* Purchased items list */}
+              <div className="space-y-2.5 max-h-[260px] overflow-y-auto overscroll-contain pe-1 stagger-list">
                 {completedOrder.purchasedItems.map((entry) => {
                   const fullItem =
                     getCosmeticById(entry.id) ||
@@ -424,7 +429,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       key={entry.id}
                       className={`p-3 rounded-[22px] border ${rowSurfaceClass} flex items-center justify-between gap-3`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0 text-start">
                         <CartItemThumbnail
                           item={fullItem}
                           userDisplayName={userDisplayName}
@@ -436,7 +441,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           </p>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className={`text-[11px] font-medium ${mutedTextClass}`}>
-                              {CATEGORY_SHORT_LABEL[entry.type]}
+                              {t(`store.cat_${entry.type}`)}
                             </span>
                             <span
                               style={{
@@ -449,7 +454,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                                   : `${rarityStyle.badgeBg} ${rarityStyle.badgeText} ${rarityStyle.badgeBorder}`
                               }`}
                             >
-                              {isLegendary ? 'LEGENDARY' : rarityStyle.label}
+                              {t(`store.rarity_${fullItem.rarity}`)}
                             </span>
                           </div>
                         </div>
@@ -461,9 +466,9 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             fontFamily: "'Doto', var(--font-dot), monospace",
                             fontWeight: 800,
                           }}
-                          className={`text-xs sm:text-sm tabular-nums ${primaryTextClass}`}
+                          className={`text-xs sm:text-sm tabular-nums ltr-nums ${primaryTextClass}`}
                         >
-                          {entry.pricePaid.toLocaleString()}
+                          {formatNumber(entry.pricePaid)}
                         </span>
                       </div>
                     </div>
@@ -475,29 +480,29 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <div className={`p-4 rounded-[24px] border ${rowSurfaceClass} space-y-2 text-xs`}>
                 <div className="flex items-center justify-between">
                   <span className={`font-semibold ${secondaryTextClass}`}>
-                    Total Spent
+                    {t('cart.totalSpent')}
                   </span>
                   <span
                     style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
-                    className={`inline-flex items-center gap-1.5 tabular-nums ${primaryTextClass}`}
+                    className={`inline-flex items-center gap-1.5 tabular-nums ltr-nums ${primaryTextClass}`}
                   >
                     <KobanIcon size={14} />
-                    {completedOrder.totalPaid.toLocaleString()} Kobans
+                    {formatNumber(completedOrder.totalPaid)} Kobans
                   </span>
                 </div>
                 <div className="dotted-divider my-1" aria-hidden="true" />
                 <div className="flex items-center justify-between">
                   <span className={`font-semibold ${secondaryTextClass}`}>
-                    New Wallet Balance
+                    {t('cart.newBalance')}
                   </span>
                   <span
                     style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
-                    className={`inline-flex items-center gap-1.5 text-sm tabular-nums ${
+                    className={`inline-flex items-center gap-1.5 text-sm tabular-nums ltr-nums ${
                       isDark ? 'text-emerald-400' : 'text-emerald-700'
                     }`}
                   >
                     <KobanIcon size={14} />
-                    {completedOrder.newBalance.toLocaleString()} Kobans
+                    {formatNumber(completedOrder.newBalance)} Kobans
                   </span>
                 </div>
               </div>
@@ -515,14 +520,14 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   ) : (
                     <Sparkles className="w-4 h-4" />
                   )}
-                  <span>Equip now</span>
+                  <span>{t('cart.equipNow')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={onViewCollection}
                   className={`btn-secondary flex-1 min-h-[52px] rounded-full ${primaryTextClass} text-xs sm:text-sm font-bold inline-flex items-center justify-center transition-all cursor-pointer`}
                 >
-                  View collection
+                  {t('cart.viewCollection')}
                 </button>
               </div>
             </div>
@@ -539,10 +544,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   className={`text-base ${primaryTextClass}`}
                 >
-                  Your cart is empty
+                  {t('cart.emptyTitle')}
                 </p>
                 <p className={`text-xs mt-1 ${mutedTextClass}`}>
-                  Tap the &ldquo;+&rdquo; button on any store card to add multiple cosmetics and buy them together.
+                  {t('cart.emptyDesc')}
                 </p>
               </div>
             </div>
@@ -553,7 +558,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 {/* Flagged items notice */}
                 {flaggedItemsNotice.length > 0 && (
                   <div
-                    className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs ${
+                    className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs text-start ${
                       isDark
                         ? 'bg-amber-500/15 border-amber-500/35 text-white'
                         : 'bg-[#FFFBEB] border-amber-500/40 text-[#111114]'
@@ -570,15 +575,15 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           isDark ? 'text-amber-300' : 'text-amber-800'
                         }`}
                       >
-                        Updated your cart before charging:
+                        {t('cart.updatedCartNotice')}
                       </p>
                       <ul className={`mt-1 space-y-0.5 text-[11px] ${secondaryTextClass}`}>
                         {flaggedItemsNotice.map((f) => (
                           <li key={f.id}>
                             • <strong>{f.name}</strong> (
                             {f.reason === 'already_owned'
-                              ? 'already owned'
-                              : 'currently unavailable'}
+                              ? t('cart.alreadyOwned')
+                              : t('cart.currentlyUnavailable')}
                             )
                           </li>
                         ))}
@@ -590,7 +595,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 {/* Compact Same-Slot Notice */}
                 {duplicateCategories.length > 0 && (
                   <div
-                    className={`px-3.5 py-2.5 rounded-2xl border text-xs ${
+                    className={`px-3.5 py-2.5 rounded-2xl border text-xs text-start ${
                       isDark
                         ? 'bg-blue-500/15 border-blue-400/35 text-white'
                         : 'bg-[#EAF2FF] border-[#9EC5FE] text-[#111114]'
@@ -605,8 +610,12 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         />
                         <p className="text-xs font-medium truncate">
                           {duplicateCategories.length === 1
-                            ? `Multiple ${duplicateCategories[0].category} items in cart`
-                            : `${duplicateCategories.length} slots have multiple items in cart`}
+                            ? t('cart.multipleCategoryItems', {
+                                category: duplicateCategories[0].category,
+                              })
+                            : t('cart.multipleSlotsNotice', {
+                                count: formatNumber(duplicateCategories.length),
+                              })}
                         </p>
                       </div>
                       <button
@@ -618,7 +627,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             : 'text-blue-800 hover:bg-blue-900/10'
                         }`}
                       >
-                        <span>{conflictDetailsOpen ? 'Hide' : 'Details'}</span>
+                        <span>{conflictDetailsOpen ? t('common.hide') : t('common.details')}</span>
                         {conflictDetailsOpen ? (
                           <ChevronUp className="w-3.5 h-3.5" />
                         ) : (
@@ -635,13 +644,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             : 'border-blue-900/15 text-[#111114]'
                         }`}
                       >
-                        Both items in{' '}
-                        <strong>
-                          {duplicateCategories.map((d) => d.category).join(', ')}
-                        </strong>{' '}
-                        will be added to your collection, and tapping{' '}
-                        <strong>Equip now</strong> will equip the newest one (
-                        {duplicateCategories.map((d) => d.newestName).join(', ')}).
+                        {t('cart.duplicateSlotExplanation', {
+                          categories: duplicateCategories.map((d) => d.category).join(', '),
+                          newest: duplicateCategories.map((d) => d.newestName).join(', '),
+                        })}
                       </p>
                     )}
                   </div>
@@ -651,7 +657,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 {resolvedBannerError && (
                   <div
                     role="alert"
-                    className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs ${
+                    className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs text-start ${
                       isDark
                         ? 'bg-[#D71921]/20 border-[#D71921]/45 text-[#FF8A92]'
                         : 'bg-[#FEF2F2] border-[#D71921]/30 text-[#B91C1C]'
@@ -686,7 +692,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                               type="button"
                               onClick={() => toggleExpandName(item.id)}
                               title={item.name}
-                              className={`text-left w-full text-xs sm:text-[13px] font-bold leading-snug ${primaryTextClass} ${
+                              className={`text-start w-full text-xs sm:text-[13px] font-bold leading-snug ${primaryTextClass} ${
                                 isNameExpanded
                                   ? 'whitespace-normal break-words'
                                   : 'truncate block'
@@ -696,7 +702,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                             </button>
                             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                               <span className={`text-[11px] font-medium ${mutedTextClass}`}>
-                                {CATEGORY_SHORT_LABEL[item.type]}
+                                {t(`store.cat_${item.type}`)}
                               </span>
                               <span
                                 style={{
@@ -709,7 +715,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                                     : `${rarityStyle.badgeBg} ${rarityStyle.badgeText} ${rarityStyle.badgeBorder}`
                                 }`}
                               >
-                                {isLegendary ? 'LEGENDARY' : rarityStyle.label}
+                                {t(`store.rarity_${item.rarity}`)}
                               </span>
                             </div>
                           </div>
@@ -723,16 +729,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                                 fontFamily: "'Doto', var(--font-dot), monospace",
                                 fontWeight: 800,
                               }}
-                              className={`text-xs sm:text-sm tabular-nums ${primaryTextClass}`}
+                              className={`text-xs sm:text-sm tabular-nums ltr-nums ${primaryTextClass}`}
                             >
-                              {itemPrice.toLocaleString()}
+                              {formatNumber(itemPrice)}
                             </span>
                           </div>
                           <button
                             type="button"
                             disabled={processing}
                             onClick={() => onRemoveItem(item.id)}
-                            aria-label={`Remove ${item.name} from cart`}
+                            aria-label={t('store.removeFromCart')}
                             className="ios-circle-btn text-white/70 hover:text-[#FF6B75] disabled:opacity-50 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -751,18 +757,21 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <div className={`p-4 rounded-[24px] border ${rowSurfaceClass} space-y-2 text-xs`}>
                   <div className="flex items-baseline justify-between gap-2">
                     <span className={`font-semibold ${secondaryTextClass}`}>
-                      Subtotal ({uniqueCartItems.length}{' '}
-                      {uniqueCartItems.length === 1 ? 'item' : 'items'})
+                      {uniqueCartItems.length === 1
+                        ? t('cart.subtotalSingle')
+                        : t('cart.subtotalCount', {
+                            count: formatNumber(uniqueCartItems.length),
+                          })}
                     </span>
-                    <div className="text-right">
+                    <div className="text-end">
                       <div
                         style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
-                        className={`inline-flex items-center gap-1 text-sm tabular-nums ${primaryTextClass}`}
+                        className={`inline-flex items-center gap-1 text-sm tabular-nums ltr-nums ${primaryTextClass}`}
                       >
                         <KobanIcon size={15} />
-                        <span>{subtotal.toLocaleString()} Kobans</span>
+                        <span>{formatNumber(subtotal)} Kobans</span>
                       </div>
-                      <p className={`text-[11px] font-medium ${mutedTextClass}`}>
+                      <p className={`text-[11px] font-medium ltr-nums ${mutedTextClass}`}>
                         PKR {pkrEquivalent} · 10 Kobans = PKR 1
                       </p>
                     </div>
@@ -772,24 +781,24 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
 
                   <div className="flex items-center justify-between gap-2">
                     <span className={`font-semibold ${secondaryTextClass}`}>
-                      Current Balance
+                      {t('cart.currentBalance')}
                     </span>
                     <span
                       style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
-                      className={`inline-flex items-center gap-1 tabular-nums ${primaryTextClass}`}
+                      className={`inline-flex items-center gap-1 tabular-nums ltr-nums ${primaryTextClass}`}
                     >
                       <KobanIcon size={13} />
-                      {cartTotals.currentBalance.toLocaleString()} Kobans
+                      {formatNumber(cartTotals.currentBalance)} Kobans
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
                     <span className={`font-semibold ${secondaryTextClass}`}>
-                      Balance After Purchase
+                      {t('cart.balanceAfter')}
                     </span>
                     <span
                       style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
-                      className={`inline-flex items-center gap-1 tabular-nums ${
+                      className={`inline-flex items-center gap-1 tabular-nums ltr-nums ${
                         canAfford
                           ? isDark
                             ? 'text-emerald-400'
@@ -800,7 +809,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       }`}
                     >
                       <KobanIcon size={13} />
-                      {rawBalanceAfter.toLocaleString()} Kobans
+                      {formatNumber(rawBalanceAfter)} Kobans
                     </span>
                   </div>
 
@@ -811,7 +820,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                           isDark ? 'text-[#FF6B75]' : 'text-[#D91422]'
                         }`}
                       >
-                        You need {deficit.toLocaleString()} more Kobans
+                        {t('cart.needMoreKobans', { amount: formatNumber(deficit) })}
                       </span>
                     </div>
                   )}
@@ -828,13 +837,13 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     {processing ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Processing Checkout…</span>
+                        <span>{t('cart.processingCheckout')}</span>
                       </>
                     ) : (
                       <>
                         <KobanIcon size={16} />
                         <span>
-                          Buy all for {subtotal.toLocaleString()} Kobans
+                          {t('cart.buyAllFor', { amount: formatNumber(subtotal) })}
                         </span>
                       </>
                     )}
@@ -846,7 +855,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     className="btn-primary w-full min-h-[52px] rounded-full text-white text-sm font-bold inline-flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <KobanIcon size={16} />
-                    <span>Get more Kobans</span>
+                    <span>{t('store.getMoreKobans')}</span>
                   </button>
                 )}
               </div>

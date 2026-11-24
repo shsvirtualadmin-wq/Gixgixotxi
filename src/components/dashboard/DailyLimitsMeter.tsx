@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { fetchDailyUsageFromServer } from '@/services/testLimits';
@@ -31,6 +32,7 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
   onError,
 }: Props) {
   const { user, profileLoading } = useAuth();
+  const { t, formatNumber } = useLanguage();
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -121,30 +123,33 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
 
   if (isUnlimitedPlan) {
     return (
-      <div className="py-1 space-y-0.5">
+      <div className="py-1 space-y-0.5 text-start">
         <span
           className="text-sm sm:text-base font-bold text-[var(--text)] block"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
-          Unlimited practice
+          {t('plans.unlimitedPractice')}
         </span>
         <span className="text-[11px] text-[var(--muted)] font-medium block">
-          No daily limit
+          {t('dashboard.unlimitedTests')}
         </span>
       </div>
     );
   }
 
-  // If the user has a daily limit, show "X of Y questions used today" with a thin progress bar
+  // If the user has a daily limit, show usage with a thin progress bar
   const used = Number(usage?.questionsUsed ?? usage?.testsStarted ?? usage?.practiceAttempts ?? 0);
   const max = Number(usage?.questionsDailyLimit ?? FREE_DAILY_TESTS ?? 3);
   const pct = Math.min(100, Math.max(0, Math.round((used / max) * 100)));
 
   return (
-    <div className="w-full space-y-2 py-1">
+    <div className="w-full space-y-2 py-1 text-start">
       <div className="flex items-center justify-between text-xs">
         <span className="text-[var(--text)] font-medium">
-          <strong className="font-semibold text-[var(--text)]">{used} of {max}</strong> questions used today
+          <strong className="font-semibold text-[var(--text)] ltr-nums">
+            {formatNumber(used)} / {formatNumber(max)}
+          </strong>{' '}
+          {t('settings.dailyTestsUsed')}
         </span>
       </div>
 
@@ -157,7 +162,7 @@ export const DailyLimitsMeter = memo(function DailyLimitsMeter({
       </div>
 
       <div className="text-[10px] text-[var(--muted)]">
-        Resets daily at 00:00 PKT
+        {t('settings.resetsAtMidnight')}
       </div>
     </div>
   );

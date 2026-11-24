@@ -21,7 +21,6 @@ import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { ProLockedStateCard } from '@/components/plans/ProLockedStateCard';
 import { SettingsSheet } from '@/components/settings/SettingsSheet';
 import {
-  REFUND_POLICY_TEXT,
   buildPlansCatalog,
   calculatePlanExpiryPkt,
   getProPlanById,
@@ -42,6 +41,7 @@ import {
   mapPlanActivationError,
   type ValidatedProCoupon,
 } from '@/services/proSubscriptionService';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface ProCheckoutSheetProps {
   open: boolean;
@@ -85,6 +85,7 @@ export function ProCheckoutSheet({
   onStartPracticing,
 }: ProCheckoutSheetProps) {
   const { isGuest } = useAuth();
+  const { t, formatPKR, formatNumber } = useLanguage();
   const { planStatus, refreshPlanStatus } = useEffectivePlan();
   const { config: plansConfig } = usePlansConfig();
   const catalog = useMemo(() => buildPlansCatalog(plansConfig), [plansConfig]);
@@ -199,7 +200,7 @@ export function ProCheckoutSheet({
         setCouponError(null);
       } catch (err: any) {
         setAppliedCoupon(null);
-        setCouponError(mapPlanActivationError(err, 'Not valid for this item'));
+        setCouponError(mapPlanActivationError(err, t('plans.couponNotValidForItem')));
       } finally {
         setCouponLoading(false);
       }
@@ -209,7 +210,7 @@ export function ProCheckoutSheet({
   const handleApplyCoupon = async () => {
     const clean = couponInput.trim().toUpperCase();
     if (!clean) {
-      setCouponError('Invalid coupon');
+      setCouponError(t('plans.invalidCoupon'));
       return;
     }
     setCouponLoading(true);
@@ -241,7 +242,7 @@ export function ProCheckoutSheet({
       }
     } catch (err: any) {
       setAppliedCoupon(null);
-      setCouponError(mapPlanActivationError(err, 'Invalid coupon'));
+      setCouponError(mapPlanActivationError(err, t('plans.invalidCoupon')));
     } finally {
       setCouponLoading(false);
     }
@@ -351,20 +352,17 @@ export function ProCheckoutSheet({
     }
 
     if (!uid) {
-      setErrorMsg('Please sign in again');
+      setErrorMsg(t('auth.signInAgain'));
       return;
     }
 
     if (hasPendingProRequest || planStatus.state === 'pending') {
-      setErrorMsg(
-        planStatus.blockReason ||
-          'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while a payment is awaiting verification.'
-      );
+      setErrorMsg(planStatus.blockReason || t('plans.pendingPaymentBlock'));
       return;
     }
 
     if (!eligibility.allowed) {
-      setErrorMsg(eligibility.reason || 'You cannot purchase this plan right now.');
+      setErrorMsg(eligibility.reason || t('plans.cannotPurchaseNow'));
       return;
     }
 
@@ -396,7 +394,7 @@ export function ProCheckoutSheet({
 
         onCloseRef.current();
       } catch (err: any) {
-        setErrorMsg(mapPlanActivationError(err, "Couldn't activate. Try again"));
+        setErrorMsg(mapPlanActivationError(err, t('plans.couldNotActivate')));
       } finally {
         submitLockRef.current = false;
         setSubmitting(false);
@@ -405,14 +403,17 @@ export function ProCheckoutSheet({
     }
 
     if (!paymentOption) {
-      setErrorMsg('Choose a payment method to continue.');
+      setErrorMsg(t('plans.choosePaymentMethod'));
       return;
     }
 
     if (paymentOption === 'kobans') {
       if (!hasEnoughKobans) {
         setErrorMsg(
-          `You need ${neededKobans.toLocaleString()} more Kobans to purchase ${plan.name}.`
+          t('plans.needMoreKobansForPlan', {
+            amount: formatNumber(neededKobans),
+            planName: plan.name,
+          })
         );
         return;
       }
@@ -453,7 +454,9 @@ export function ProCheckoutSheet({
         setErrorMsg(
           mapPlanActivationError(
             err,
-            `Could not complete ${isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro'} activation. Please try again.`
+            t('plans.activationFailed', {
+              tier: isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro',
+            })
           )
         );
       } finally {
@@ -462,7 +465,7 @@ export function ProCheckoutSheet({
       }
     } else {
       if (cleanTid.length < 5) {
-        setErrorMsg('Please enter your Transaction ID (at least 5 characters) from your receipt.');
+        setErrorMsg(t('plans.enterValidTid'));
         return;
       }
 
@@ -498,9 +501,7 @@ export function ProCheckoutSheet({
           planId: plan.id,
         });
       } catch (err: any) {
-        setErrorMsg(
-          mapPlanActivationError(err, 'Could not submit payment request. Please try again.')
-        );
+        setErrorMsg(mapPlanActivationError(err, t('plans.submitPaymentError')));
       } finally {
         submitLockRef.current = false;
         setSubmitting(false);
@@ -518,12 +519,15 @@ export function ProCheckoutSheet({
         style={{ backgroundColor: 'var(--accent)' }}
       >
         {submitting ? (
-          <ButtonLineLoader label="Processing…" />
+          <ButtonLineLoader label={t('common.processing')} />
         ) : isFreeCouponActivation ? (
           <>
             <Sparkles className="h-4 w-4 shrink-0" />
             <span>
-              Activate {isPlusCheckout ? 'Plus' : 'Pro'} Pass Free ({appliedCoupon?.code})
+              {t('plans.activateFreePass', {
+                tier: isPlusCheckout ? 'Plus' : 'Pro',
+                code: appliedCoupon?.code || '',
+              })}
             </span>
           </>
         ) : paymentOption === 'kobans' ? (
@@ -533,13 +537,15 @@ export function ProCheckoutSheet({
             ) : (
               <Zap className="h-4 w-4 shrink-0" />
             )}
-            <span>Pay with Kobans ({effectiveKobans.toLocaleString()} Kobans)</span>
+            <span className="ltr-nums">
+              {t('plans.payWithKobansCount', { amount: formatNumber(effectiveKobans) })}
+            </span>
           </>
         ) : (
           <>
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span className="tabular-nums">
-              Submit payment · PKR {effectivePkr.toLocaleString()}
+            <span className="tabular-nums ltr-nums">
+              {t('plans.submitPaymentPrice', { price: formatPKR(effectivePkr) })}
             </span>
           </>
         )}
@@ -573,41 +579,51 @@ export function ProCheckoutSheet({
                 style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                Instant activation
+                {t('plans.instantActivation')}
               </span>
               <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
-                {completedState.planTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'} activated
-                until {completedState.newExpiryLabel}
+                {t('plans.activatedUntil', {
+                  tier: completedState.planTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro',
+                  date: completedState.newExpiryLabel,
+                })}
               </h3>
               <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
                 {completedState.extraCreditDays && completedState.extraCreditDays > 0
-                  ? `Includes +${completedState.extraCreditDays} bonus Plus days credited from your unused Pro pass.`
+                  ? t('plans.includesBonusDays', {
+                      days: formatNumber(completedState.extraCreditDays),
+                    })
                   : completedState.wasExtension && completedState.previousExpiryLabel
-                  ? `Extended from ${completedState.previousExpiryLabel} to ${completedState.newExpiryLabel}.`
-                  : `Your ${completedState.planName} (${completedState.durationDays} days) is now active.`}
+                  ? t('plans.extendedFromTo', {
+                      from: completedState.previousExpiryLabel,
+                      to: completedState.newExpiryLabel,
+                    })
+                  : t('plans.planNowActive', {
+                      planName: completedState.planName,
+                      days: formatNumber(completedState.durationDays),
+                    })}
               </p>
 
               <div
-                className="mt-3 space-y-2 rounded-[24px] p-4 text-left text-[14px]"
+                className="mt-3 space-y-2 rounded-[24px] p-4 text-start text-[14px]"
                 style={{
                   backgroundColor: 'var(--bg)',
                   border: '1px solid var(--border)',
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span style={{ color: 'var(--text-muted)' }}>Kobans spent</span>
-                  <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
-                    -{(completedState.kobansSpent ?? 0).toLocaleString()} Kobans
+                  <span style={{ color: 'var(--text-muted)' }}>{t('plans.kobansSpent')}</span>
+                  <span className="font-semibold tabular-nums ltr-nums" style={{ color: 'var(--accent)' }}>
+                    -{formatNumber(completedState.kobansSpent ?? 0)} Kobans
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span style={{ color: 'var(--text-muted)' }}>Remaining balance</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{t('plans.remainingBalance')}</span>
                   <span
-                    className="inline-flex items-center gap-1 font-semibold tabular-nums"
+                    className="inline-flex items-center gap-1 font-semibold tabular-nums ltr-nums"
                     style={{ color: 'var(--text)' }}
                   >
                     <KobanIcon size={14} decorative />
-                    <span>{(completedState.balanceAfter ?? 0).toLocaleString()} Kobans</span>
+                    <span>{formatNumber(completedState.balanceAfter ?? 0)} Kobans</span>
                   </span>
                 </div>
               </div>
@@ -619,16 +635,17 @@ export function ProCheckoutSheet({
                 style={{ backgroundColor: 'var(--koban-bg)', color: 'var(--koban)' }}
               >
                 <Clock className="h-3.5 w-3.5" />
-                Verification queued
+                {t('plans.verificationQueued')}
               </span>
               <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
-                Request received
+                {t('plans.requestReceived')}
               </h3>
               <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                We received your PKR {completedState.pkrAmount?.toLocaleString()} payment reference
-                (TID: <strong style={{ color: 'var(--text)' }}>{completedState.tid}</strong>) for{' '}
-                {completedState.planName}. Payments are verified manually and plans are activated
-                within 24 hours.
+                {t('plans.requestReceivedBody', {
+                  amount: formatPKR(completedState.pkrAmount ?? 0),
+                  tid: completedState.tid || '',
+                  planName: completedState.planName,
+                })}
               </p>
             </div>
           )}
@@ -644,8 +661,8 @@ export function ProCheckoutSheet({
                 className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-full text-[15px] font-semibold text-white cursor-pointer"
                 style={{ backgroundColor: 'var(--accent)' }}
               >
-                <span>Start practicing</span>
-                <ArrowRight className="h-4 w-4" />
+                <span>{t('plans.startPracticing')}</span>
+                <ArrowRight className="h-4 w-4 rtl-mirror" />
               </button>
             ) : (
               <button
@@ -654,7 +671,7 @@ export function ProCheckoutSheet({
                 className="flex min-h-[50px] w-full items-center justify-center rounded-full text-[15px] font-semibold text-white cursor-pointer"
                 style={{ backgroundColor: 'var(--accent)' }}
               >
-                Done
+                {t('common.done')}
               </button>
             )}
           </div>
@@ -673,7 +690,7 @@ export function ProCheckoutSheet({
           {/* 1. Pass Switch (Monthly | Annual for selected tier) */}
           <div
             role="tablist"
-            aria-label="Choose pass duration"
+            aria-label={t('plans.choosePassDuration')}
             className="grid grid-cols-2 gap-1.5 rounded-full p-1.5"
             style={{
               backgroundColor: 'var(--bg)',
@@ -691,7 +708,7 @@ export function ProCheckoutSheet({
                   role="tab"
                   aria-selected={active}
                   onClick={() => void handleSelectPlan(pid)}
-                  className="min-h-[44px] rounded-full px-3 text-[13px] font-semibold transition-colors cursor-pointer"
+                  className="min-h-[44px] rounded-full px-3 text-[13px] font-semibold transition-colors cursor-pointer ltr-nums"
                   style={
                     active
                       ? { backgroundColor: 'var(--accent)', color: '#ffffff' }
@@ -699,8 +716,13 @@ export function ProCheckoutSheet({
                   }
                 >
                   {isAnn
-                    ? `Annual (−${discountPercent}%) · PKR ${p.price_pkr.toLocaleString()}`
-                    : `Monthly · PKR ${p.price_pkr.toLocaleString()}`}
+                    ? t('plans.annualTabPrice', {
+                        percent: formatNumber(discountPercent),
+                        price: formatPKR(p.price_pkr),
+                      })
+                    : t('plans.monthlyTabPrice', {
+                        price: formatPKR(p.price_pkr),
+                      })}
                 </button>
               );
             })}
@@ -721,10 +743,10 @@ export function ProCheckoutSheet({
               style={{ borderBottom: '1px solid var(--border)' }}
             >
               <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                Plan
+                {t('plans.planLabel')}
               </span>
               <span
-                className="inline-flex items-center gap-1.5 text-right text-[14px] font-semibold"
+                className="inline-flex items-center gap-1.5 text-end text-[14px] font-semibold"
                 style={{ color: isPlusCheckout ? 'var(--koban)' : 'var(--text)' }}
               >
                 {isPlusCheckout && <Sparkles className="h-3.5 w-3.5" />}
@@ -737,31 +759,31 @@ export function ProCheckoutSheet({
               style={{ borderBottom: '1px solid var(--border)' }}
             >
               <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                Price and Koban equivalent
+                {t('plans.priceAndKobanEquivalent')}
               </span>
               <span
-                className="text-right text-[14px] font-semibold tabular-nums"
+                className="text-end text-[14px] font-semibold tabular-nums ltr-nums"
                 style={{ color: 'var(--text)' }}
               >
                 {appliedCoupon && effectivePkr < displayOriginalPkr && (
                   <span
-                    className="mr-1.5 text-[12px] font-normal line-through tabular-nums"
+                    className="me-1.5 text-[12px] font-normal line-through tabular-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    PKR {displayOriginalPkr.toLocaleString()}
+                    {formatPKR(displayOriginalPkr)}
                   </span>
                 )}
-                PKR {effectivePkr.toLocaleString()} ·{' '}
+                {formatPKR(effectivePkr)} ·{' '}
                 {appliedCoupon && effectiveKobans < displayOriginalKobans && (
                   <span
-                    className="mr-1 text-[12px] font-normal line-through tabular-nums"
+                    className="me-1 text-[12px] font-normal line-through tabular-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    {displayOriginalKobans.toLocaleString()}
+                    {formatNumber(displayOriginalKobans)}
                   </span>
                 )}
                 <span style={{ color: 'var(--koban)' }}>
-                  {effectiveKobans.toLocaleString()} Kobans
+                  {formatNumber(effectiveKobans)} Kobans
                 </span>
               </span>
             </div>
@@ -779,17 +801,15 @@ export function ProCheckoutSheet({
                   className="text-[13px] font-semibold"
                   style={{ color: 'var(--koban)' }}
                 >
-                  Current Pro pass ({expiryPreview.replacedProDaysRemaining || planStatus.daysLeft}{' '}
-                  {(expiryPreview.replacedProDaysRemaining || planStatus.daysLeft) === 1
-                    ? 'day'
-                    : 'days'}{' '}
-                  left)
+                  {t('plans.currentProPassDaysLeft', {
+                    days: formatNumber(expiryPreview.replacedProDaysRemaining || planStatus.daysLeft),
+                  })}
                 </span>
                 <span
-                  className="text-right text-[13px] font-bold"
+                  className="text-end text-[13px] font-bold"
                   style={{ color: 'var(--koban)' }}
                 >
-                  Replaced by Plus (not stacked)
+                  {t('plans.replacedByPlusNotStacked')}
                 </span>
               </div>
             )}
@@ -801,25 +821,34 @@ export function ProCheckoutSheet({
               >
                 <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">
                   <Tag className="h-3.5 w-3.5" />
-                  Coupon ({appliedCoupon.code})
+                  {t('plans.couponCodeBadge', { code: appliedCoupon.code })}
                 </span>
-                <span className="text-[13px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                <span className="text-[13px] font-semibold tabular-nums ltr-nums text-emerald-600 dark:text-emerald-400">
                   {appliedCoupon.couponType === 'kob' && appliedCoupon.bonusKobans > 0
-                    ? `+${appliedCoupon.bonusKobans.toLocaleString()} Kobans bonus`
+                    ? t('plans.bonusKobansDiscount', {
+                        amount: formatNumber(appliedCoupon.bonusKobans),
+                      })
                     : appliedCoupon.couponType === 'flat' && displayDiscountPkr > 0
-                      ? `−PKR ${displayDiscountPkr.toLocaleString()}`
-                      : `−${appliedCoupon.percentOff}% (−PKR ${displayDiscountPkr.toLocaleString()})`}
+                      ? `−${formatPKR(displayDiscountPkr)}`
+                      : `−${formatNumber(appliedCoupon.percentOff)}% (−${formatPKR(displayDiscountPkr)})`}
                 </span>
               </div>
             )}
 
             <div className="flex items-center justify-between gap-3 px-4 py-3.5">
               <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                New expiry date
+                {t('plans.newExpiryDate')}
               </span>
-              <span className="text-right text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                {expiryPreview.newExpiryLabel} ({expiryPreview.daysAdded} days
-                {expiryPreview.isSameTierExtension ? ' added' : ''})
+              <span className="text-end text-[14px] font-semibold ltr-nums" style={{ color: 'var(--text)' }}>
+                {expiryPreview.isSameTierExtension
+                  ? t('plans.expiryDaysAdded', {
+                      date: expiryPreview.newExpiryLabel,
+                      days: formatNumber(expiryPreview.daysAdded),
+                    })
+                  : t('plans.expiryDaysTotal', {
+                      date: expiryPreview.newExpiryLabel,
+                      days: formatNumber(expiryPreview.daysAdded),
+                    })}
               </span>
             </div>
           </div>
@@ -832,7 +861,7 @@ export function ProCheckoutSheet({
                 className="text-[13px] font-medium"
                 style={{ color: 'var(--text-muted)' }}
               >
-                Coupon code
+                {t('plans.couponCode')}
               </label>
               {appliedCoupon && (
                 <button
@@ -842,7 +871,7 @@ export function ProCheckoutSheet({
                   className="text-[13px] font-medium underline cursor-pointer"
                   style={{ color: 'var(--danger)' }}
                 >
-                  Remove
+                  {t('common.remove')}
                 </button>
               )}
             </div>
@@ -850,6 +879,7 @@ export function ProCheckoutSheet({
               <input
                 id="pro-coupon-input"
                 type="text"
+                dir="ltr"
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
@@ -866,7 +896,7 @@ export function ProCheckoutSheet({
                     void handleApplyCoupon();
                   }
                 }}
-                placeholder="Enter promo code"
+                placeholder={t('plans.enterPromoCode')}
                 className="h-[48px] min-w-0 flex-1 rounded-full px-4 text-[14px] uppercase outline-none placeholder:normal-case placeholder:text-[var(--placeholder)] disabled:opacity-65"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -886,7 +916,7 @@ export function ProCheckoutSheet({
                     color: 'var(--text)',
                   }}
                 >
-                  {couponLoading ? 'Checking…' : 'Apply'}
+                  {couponLoading ? t('plans.checking') : t('common.apply')}
                 </button>
               ) : (
                 <span
@@ -894,7 +924,7 @@ export function ProCheckoutSheet({
                   style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
                 >
                   <Check className="h-4 w-4" />
-                  Applied
+                  {t('plans.applied')}
                 </span>
               )}
             </div>
@@ -906,8 +936,10 @@ export function ProCheckoutSheet({
                 <Check className="h-3.5 w-3.5 shrink-0" />
                 <span>
                   {appliedCoupon.couponType === 'kob' && appliedCoupon.bonusKobans > 0
-                    ? `Coupon applied · +${appliedCoupon.bonusKobans.toLocaleString()} Kobans credited on approval`
-                    : `Coupon applied · ${appliedCoupon.label}`}
+                    ? t('plans.couponAppliedBonus', {
+                        amount: formatNumber(appliedCoupon.bonusKobans),
+                      })
+                    : t('plans.couponAppliedLabel', { label: appliedCoupon.label })}
                 </span>
               </p>
             )}
@@ -922,7 +954,7 @@ export function ProCheckoutSheet({
           {!isFreeCouponActivation && (
             <div className="space-y-2.5">
               <div className="px-1 text-[13px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                Payment method
+                {t('plans.paymentMethod')}
               </div>
 
               {/* Option A: Pay with Kobans (Instant) */}
@@ -978,42 +1010,44 @@ export function ProCheckoutSheet({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
-                          Pay with Kobans
+                          {t('plans.payWithKobans')}
                         </span>
                         <span
                           className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
                           style={{ backgroundColor: 'rgba(16, 185, 129, 0.14)', color: '#10b981' }}
                         >
-                          Instant
+                          {t('plans.instant')}
                         </span>
                       </div>
 
                       <div className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                        Your balance:{' '}
+                        {t('plans.yourBalanceLabel')}{' '}
                         {!isBalanceReady ? (
                           <span
                             className="inline-block h-3.5 w-14 align-middle animate-pulse rounded-full"
                             style={{ backgroundColor: 'var(--skeleton)' }}
-                            aria-label="Loading Kobans balance"
+                            aria-label={t('plans.loadingKobansBalance')}
                           />
                         ) : (
-                          <strong style={{ color: 'var(--text)' }}>
-                            {safeBalance.toLocaleString()} Kobans
+                          <strong className="ltr-nums" style={{ color: 'var(--text)' }}>
+                            {formatNumber(safeBalance)} Kobans
                           </strong>
                         )}
                         {hasEnoughKobans && (
-                          <span> · After: {balanceAfterKobans.toLocaleString()}</span>
+                          <span className="ltr-nums">
+                            {' '}· {t('plans.afterBalance', { amount: formatNumber(balanceAfterKobans) })}
+                          </span>
                         )}
                       </div>
                     </div>
                   </div>
 
                   <span
-                    className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold tabular-nums"
+                    className="inline-flex shrink-0 items-center gap-1 text-[13px] font-semibold tabular-nums ltr-nums"
                     style={{ color: 'var(--koban)' }}
                   >
                     <KobanIcon size={14} decorative />
-                    {effectiveKobans.toLocaleString()}
+                    {formatNumber(effectiveKobans)}
                   </span>
                 </div>
 
@@ -1026,7 +1060,7 @@ export function ProCheckoutSheet({
                     }}
                   >
                     <span className="text-[13px] font-medium" style={{ color: 'var(--koban)' }}>
-                      You need {neededKobans.toLocaleString()} more Kobans
+                      {t('plans.needMoreKobans', { amount: formatNumber(neededKobans) })}
                     </span>
                     <button
                       type="button"
@@ -1038,7 +1072,7 @@ export function ProCheckoutSheet({
                       style={{ backgroundColor: 'var(--accent)' }}
                     >
                       <KobanIcon size={13} decorative />
-                      <span>Get Kobans</span>
+                      <span>{t('kobans.getKobans')}</span>
                     </button>
                   </div>
                 )}
@@ -1089,19 +1123,19 @@ export function ProCheckoutSheet({
 
                     <div className="min-w-0">
                       <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
-                        Pay with {PAYMENT_METHODS_PAIR_LABEL}
+                        {t('plans.payWithMethods', { methods: PAYMENT_METHODS_PAIR_LABEL })}
                       </div>
                       <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                        Manually verified within 24 hours
+                        {t('plans.manuallyVerified24h')}
                       </p>
                     </div>
                   </div>
 
                   <span
-                    className="shrink-0 text-[14px] font-semibold tabular-nums"
+                    className="shrink-0 text-[14px] font-semibold tabular-nums ltr-nums"
                     style={{ color: 'var(--text)' }}
                   >
-                    PKR {effectivePkr.toLocaleString()}
+                    {formatPKR(effectivePkr)}
                   </span>
                 </div>
 
@@ -1149,19 +1183,19 @@ export function ProCheckoutSheet({
                       }}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span style={{ color: 'var(--text-muted)' }}>Exact amount</span>
-                        <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>
-                          PKR {effectivePkr.toLocaleString()}
+                        <span style={{ color: 'var(--text-muted)' }}>{t('plans.exactAmount')}</span>
+                        <span className="font-semibold tabular-nums ltr-nums" style={{ color: 'var(--accent)' }}>
+                          {formatPKR(effectivePkr)}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between gap-2">
                         <span style={{ color: 'var(--text-muted)' }}>
-                          {activePkrConfig.displayName} account
+                          {t('plans.methodAccount', { method: activePkrConfig.displayName })}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <span
-                            className="font-semibold select-all tabular-nums"
+                            className="font-semibold select-all tabular-nums ltr-nums"
                             style={{ color: 'var(--text)' }}
                           >
                             {activePkrConfig.accountNumber}
@@ -1181,12 +1215,12 @@ export function ProCheckoutSheet({
                             {copiedField === 'accountNumber' ? (
                               <>
                                 <Check className="h-3 w-3" />
-                                Copied
+                                {t('common.copied')}
                               </>
                             ) : (
                               <>
                                 <Copy className="h-3 w-3" />
-                                Copy
+                                {t('common.copy')}
                               </>
                             )}
                           </button>
@@ -1194,7 +1228,7 @@ export function ProCheckoutSheet({
                       </div>
 
                       <div className="flex items-center justify-between gap-2">
-                        <span style={{ color: 'var(--text-muted)' }}>Account title</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{t('plans.accountTitle')}</span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold select-all" style={{ color: 'var(--text)' }}>
                             {activePkrConfig.accountTitle}
@@ -1214,12 +1248,12 @@ export function ProCheckoutSheet({
                             {copiedField === 'accountTitle' ? (
                               <>
                                 <Check className="h-3 w-3" />
-                                Copied
+                                {t('common.copied')}
                               </>
                             ) : (
                               <>
                                 <Copy className="h-3 w-3" />
-                                Copy
+                                {t('common.copy')}
                               </>
                             )}
                           </button>
@@ -1230,20 +1264,21 @@ export function ProCheckoutSheet({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="pro-tid-input"
-                        className="block pl-1 text-[13px] font-medium"
+                        className="block ps-1 text-[13px] font-medium"
                         style={{ color: 'var(--text)' }}
                       >
-                        Transaction ID (TID)
+                        {t('plans.transactionIdTid')}
                       </label>
                       <input
                         id="pro-tid-input"
                         type="text"
+                        dir="ltr"
                         value={tidInput}
                         onChange={(e) => {
                           setTidInput(e.target.value);
                           if (errorMsg) setErrorMsg(null);
                         }}
-                        placeholder="e.g. 04291847291"
+                        placeholder={t('plans.tidPlaceholder')}
                         className="h-[48px] w-full rounded-full px-4 text-[14px] outline-none placeholder:text-[var(--placeholder)]"
                         style={{
                           backgroundColor: 'var(--card)',
@@ -1274,23 +1309,23 @@ export function ProCheckoutSheet({
           )}
 
           <p className="px-1 text-[12px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            {REFUND_POLICY_TEXT} By continuing you agree to our{' '}
+            {t('plans.refundPolicy')} {t('plans.agreeToTermsPrefix')}{' '}
             <Link
               to="/terms"
               onClick={onClose}
               className="underline"
               style={{ color: 'var(--accent)' }}
             >
-              Terms of Service
+              {t('settings.termsOfService')}
             </Link>{' '}
-            and{' '}
+            {t('common.and')}{' '}
             <Link
               to="/privacy"
               onClick={onClose}
               className="underline"
               style={{ color: 'var(--accent)' }}
             >
-              Privacy Policy
+              {t('settings.privacyPolicy')}
             </Link>
             .
           </p>

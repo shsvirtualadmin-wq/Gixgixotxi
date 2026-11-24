@@ -54,6 +54,11 @@ import {
   validateProfileUsername,
   type StaffRank,
 } from '../../../src/lib/profileRoles';
+import {
+  getEffectiveUserPlan,
+  getPlan,
+  type PlanTier,
+} from '../../../src/lib/planTier';
 import { TARGET_API_KEY } from '../../../src/lib/firebaseConfig';
 import {
   PENDING_2FA_CHALLENGE_TTL_MS,
@@ -909,7 +914,14 @@ export interface HandleAuthApiRequestOptions {
   request: Request;
   env?: AuthWorkerEnv;
   dbOverride?: RewardsD1Database;
-  storeOverride?: { setDoc: (path: string, data: Record<string, unknown>, merge?: boolean) => Promise<void> } | null;
+  storeOverride?: {
+    setDoc?: (path: string, data: Record<string, unknown>, merge?: boolean) => Promise<void>;
+    getDoc?: (path: string) => Promise<Record<string, any> | null>;
+  } | null;
+  firestoreStoreOverride?: {
+    setDoc?: (path: string, data: Record<string, unknown>, merge?: boolean) => Promise<void>;
+    getDoc?: (path: string) => Promise<Record<string, any> | null>;
+  } | null;
   tokenVerifierOverride?: (
     authHeader: string | null | undefined
   ) => Promise<VerifiedFirebaseToken | null>;
@@ -1186,7 +1198,7 @@ function switchSessionJsonResponse(
       if (expectedHost && originHost === expectedHost) {
         headers['Access-Control-Allow-Origin'] = origin;
         headers['Access-Control-Allow-Credentials'] = 'true';
-        headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
+        headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS';
         headers['Access-Control-Allow-Headers'] =
           'Content-Type, Authorization, X-Requested-With, X-Device-Id';
       }
@@ -1194,7 +1206,7 @@ function switchSessionJsonResponse(
       // Ignore invalid Origin header
     }
   }
-  return new Response(JSON.stringify(body), { status, headers });
+  return new Response(status === 204 ? null : JSON.stringify(body), { status, headers });
 }
 
 async function mintFirebaseCustomToken(
@@ -4949,6 +4961,316 @@ export async function handleAuthApiRequest(
     });
   }
 
+  // Helper: Resolve live user profile & canonical plan tier from Firestore + D1
+  const resolveLiveSavedAccountProfile = async (
+    targetUid: string,
+    fallbackEmail = ''
+  ): Promise<{
+    uid: string;
+    email: string;
+    displayName: string;
+    username: string;
+    role: string;
+    planTier: PlanTier;
+    isSuperAdmin: boolean;
+    equippedAvatar: string | null;
+    equippedFrameId: string | null;
+  }> => {
+    const [roleRow, unameRow] = await Promise.all([
+      db
+        .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ uid: string; email?: string; role?: string }>()
+        .catch(() => null),
+      db
+        .prepare(
+          'SELECT uid, email, role, username_display, display_name FROM user_usernames WHERE uid = ?1 LIMIT 1'
+        )
+        .bind(targetUid)
+        .first<{
+          uid: string;
+          email?: string;
+          role?: string;
+          username_display?: string;
+          display_name?: string;
+        }>()
+        .catch(() => null),
+    ]);
+
+    const fsProjectId = resolveTargetFirestoreProjectId(
+      env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID
+    );
+    const fsDbId = resolveTargetFirestoreDatabaseId(
+      env?.FIREBASE_DATABASE_ID ||
+        env?.VITE_FIREBASE_DATABASE_ID ||
+        env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
+        DEFAULT_FIRESTORE_DATABASE_ID
+    );
+
+    const customReader = opts.storeOverride?.getDoc || opts.firestoreStoreOverride?.getDoc || null;
+    let firestoreAdapter: FirestoreRestAdapter | null = null;
+    if (!customReader) {
+      const sa = parseServiceAccountFromEnv(env);
+      if (sa) {
+        firestoreAdapter = new FirestoreRestAdapter(sa, fsProjectId, fsDbId);
+      }
+    }
+
+    const readDoc = async (docPath: string): Promise<Record<string, any> | null> => {
+      if (customReader) return customReader(docPath);
+      if (firestoreAdapter) return firestoreAdapter.getDoc(docPath);
+      return null;
+    };
+
+    const userDoc = await readDoc(`users/${targetUid}`);
+    let crewDoc: Record<string, any> | null = null;
+    const crewId = typeof userDoc?.crewId === 'string' ? userDoc.crewId.trim() : '';
+    if (crewId) {
+      crewDoc = await readDoc(`crews/${crewId}`).catch(() => null);
+    }
+
+    const resolvedEmail = String(
+      userDoc?.email || fallbackEmail || roleRow?.email || unameRow?.email || ''
+    )
+      .trim()
+      .toLowerCase();
+
+    const isSuperAdminAccount =
+      DEFAULT_SUPERADMIN_UIDS.includes(targetUid) ||
+      (Boolean(resolvedEmail) && DEFAULT_SUPERADMIN_EMAILS.includes(resolvedEmail)) ||
+      Boolean(userDoc?.isSuperAdmin);
+
+    const dbRole = String(userDoc?.role || roleRow?.role || unameRow?.role || '')
+      .trim()
+      .toLowerCase();
+
+    const resolvedRole = isSuperAdminAccount
+      ? 'super_admin'
+      : dbRole === 'super_admin' || dbRole === 'superadmin'
+      ? 'super_admin'
+      : dbRole === 'admin'
+      ? 'admin'
+      : dbRole === 'captain'
+      ? 'captain'
+      : dbRole === 'teacher'
+      ? 'teacher'
+      : 'student';
+
+    let planTier: PlanTier;
+    if (userDoc) {
+      const hasExplicitPlanField = Boolean(
+        userDoc.plan ||
+          userDoc.planTier ||
+          userDoc.subscriptionTier ||
+          userDoc.tier ||
+          userDoc.subscription?.plan ||
+          userDoc.subscription?.tier ||
+          userDoc.subscription?.planTier ||
+          userDoc.subscription?.status ||
+          userDoc.billing?.plan ||
+          userDoc.entitlements?.plan ||
+          userDoc.isPro === true ||
+          userDoc.isPlus === true ||
+          userDoc.plusActive === true
+      );
+      if (hasExplicitPlanField || crewDoc) {
+        planTier = getEffectiveUserPlan(userDoc, crewDoc, nowMs);
+      } else if (isSuperAdminAccount) {
+        planTier = 'plus';
+      } else {
+        planTier = getPlan(userDoc, nowMs);
+      }
+    } else if (isSuperAdminAccount) {
+      planTier = 'plus';
+    } else if (resolvedRole === 'captain') {
+      planTier = 'pro';
+    } else {
+      planTier = 'free';
+    }
+
+    const resolvedUsername = String(
+      userDoc?.username || unameRow?.username_display || ''
+    ).trim();
+    const resolvedDisplayName = String(
+      userDoc?.displayName ||
+        userDoc?.name ||
+        unameRow?.display_name ||
+        resolvedUsername ||
+        (resolvedEmail.includes('@') ? resolvedEmail.split('@')[0] : '')
+    ).trim();
+
+    const equippedAvatar =
+      typeof userDoc?.equippedAvatar === 'string' && userDoc.equippedAvatar.trim()
+        ? userDoc.equippedAvatar.trim()
+        : typeof userDoc?.avatarUrl === 'string' && userDoc.avatarUrl.trim()
+        ? userDoc.avatarUrl.trim()
+        : typeof userDoc?.photoURL === 'string' && userDoc.photoURL.trim()
+        ? userDoc.photoURL.trim()
+        : null;
+
+    const equippedFrameId =
+      typeof userDoc?.equippedFrameId === 'string' && userDoc.equippedFrameId.trim()
+        ? userDoc.equippedFrameId.trim()
+        : typeof userDoc?.equippedCosmetics?.profileFrame === 'string' &&
+          userDoc.equippedCosmetics.profileFrame.trim()
+        ? userDoc.equippedCosmetics.profileFrame.trim()
+        : null;
+
+    return {
+      uid: targetUid,
+      email: resolvedEmail,
+      displayName: resolvedDisplayName,
+      username: resolvedUsername,
+      role: resolvedRole,
+      planTier,
+      isSuperAdmin: isSuperAdminAccount,
+      equippedAvatar,
+      equippedFrameId,
+    };
+  };
+
+  // ─── Multi-Account Switch Session: Live status & canonical plan tier for saved accounts in device vault ───
+  if (subPath === 'switch-session/accounts' && request.method === 'GET') {
+    if (!isValidSwitchCsrfRequest(request)) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, error: 'Invalid request origin.', code: 'CSRF_REJECTED' },
+        403
+      );
+    }
+
+    const rawVaultCookie = extractSwitchVaultCookieFromRequest(request);
+    const vault = await decryptSwitchVault(rawVaultCookie, secret);
+
+    // Optional: include the currently authenticated caller's own UID even if not yet registered in the vault
+    let callerUid: string | null = null;
+    let callerEmail = '';
+    const maybeAuthHeader = request.headers.get('Authorization');
+    if (maybeAuthHeader && maybeAuthHeader.startsWith('Bearer ')) {
+      const pId =
+        env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+      const vFn =
+        opts.tokenVerifierOverride ||
+        ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, pId));
+      const vTok = await vFn(maybeAuthHeader).catch(() => null);
+      if (vTok && vTok.uid && !vTok.uid.startsWith('guest_')) {
+        callerUid = vTok.uid;
+        callerEmail = String(vTok.email || '').trim().toLowerCase();
+      }
+    }
+
+    const candidateUids = new Set<string>(Object.keys(vault));
+    if (callerUid) {
+      candidateUids.add(callerUid);
+    }
+
+    const accounts: Array<{
+      uid: string;
+      email?: string;
+      displayName?: string;
+      username?: string;
+      role?: string;
+      planTier: PlanTier | null;
+      isSuperAdmin?: boolean;
+      equippedAvatar?: string | null;
+      equippedFrameId?: string | null;
+      sessionStatus: 'active' | 'expired' | 'error';
+      expiresAt?: number | null;
+      error?: string | null;
+    }> = [];
+
+    for (const targetUid of candidateUids) {
+      if (!targetUid || targetUid.length > 128 || targetUid.startsWith('guest_')) {
+        continue;
+      }
+
+      const slot = vault[targetUid];
+      const isCallerOwnUid = Boolean(callerUid && callerUid === targetUid);
+
+      try {
+        let sessionValid = false;
+        let rowEmail = isCallerOwnUid ? callerEmail : '';
+        let expiresAt: number | null = null;
+
+        if (slot && slot.sid && slot.tok) {
+          const row = await db
+            .prepare(
+              `SELECT session_id, user_id, token_hash, email, expires_at, revoked_at
+               FROM device_account_sessions
+               WHERE session_id = ?1 AND user_id = ?2
+               LIMIT 1`
+            )
+            .bind(slot.sid, targetUid)
+            .first<{
+              session_id: string;
+              user_id: string;
+              token_hash: string;
+              email: string;
+              expires_at: number;
+              revoked_at: number | null;
+            }>()
+            .catch(() => null);
+
+          if (row) {
+            rowEmail = String(row.email || rowEmail || '').trim().toLowerCase();
+            expiresAt = Number(row.expires_at || 0) || null;
+            const expectedHash = await hashSwitchSessionToken(secret, slot.sid, targetUid, slot.tok);
+            sessionValid = Boolean(
+              row.user_id === targetUid &&
+                row.revoked_at === null &&
+                Number(row.expires_at) > nowMs &&
+                constantTimeEqual(expectedHash, String(row.token_hash || ''))
+            );
+          }
+        }
+
+        if (!sessionValid && !isCallerOwnUid) {
+          accounts.push({
+            uid: targetUid,
+            email: rowEmail,
+            planTier: null,
+            sessionStatus: 'expired',
+            expiresAt,
+          });
+          continue;
+        }
+
+        const live = await resolveLiveSavedAccountProfile(targetUid, rowEmail);
+        accounts.push({
+          uid: live.uid,
+          email: live.email,
+          displayName: live.displayName,
+          username: live.username,
+          role: live.role,
+          planTier: live.planTier,
+          isSuperAdmin: live.isSuperAdmin,
+          equippedAvatar: live.equippedAvatar,
+          equippedFrameId: live.equippedFrameId,
+          sessionStatus: 'active',
+          expiresAt,
+        });
+      } catch (accountErr: any) {
+        accounts.push({
+          uid: targetUid,
+          email: isCallerOwnUid ? callerEmail : '',
+          planTier: null,
+          sessionStatus: 'error',
+          error: accountErr?.message || 'Failed to load account status.',
+        });
+      }
+    }
+
+    return switchSessionJsonResponse(
+      request,
+      {
+        ok: true,
+        accounts,
+        refreshedAt: nowMs,
+      },
+      200
+    );
+  }
+
   // ─── Multi-Account Switch Session: Exchange stored device session for instant sign-in ───
   if (subPath === 'switch-session/exchange' && request.method === 'POST') {
     if (!isValidSwitchCsrfRequest(request)) {
@@ -5075,36 +5397,22 @@ export async function handleAuthApiRequest(
       .run()
       .catch(() => {});
 
-    // Resolve target account's authoritative role for immediate client routing
-    const [roleRow, unameRow] = await Promise.all([
-      db
-        .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
-        .bind(targetUid)
-        .first<{ uid: string; email?: string; role?: string }>()
-        .catch(() => null),
-      db
-        .prepare('SELECT uid, email, role, username_display, display_name FROM user_usernames WHERE uid = ?1 LIMIT 1')
-        .bind(targetUid)
-        .first<{ uid: string; email?: string; role?: string; username_display?: string; display_name?: string }>()
-        .catch(() => null),
-    ]);
+    // Resolve target account's authoritative role and live plan tier for immediate client routing & UI consistency
+    let liveProfile: Awaited<ReturnType<typeof resolveLiveSavedAccountProfile>> | null = null;
+    try {
+      liveProfile = await resolveLiveSavedAccountProfile(targetUid, targetEmail);
+    } catch {
+      liveProfile = null;
+    }
 
-    const resolvedEmail = targetEmail || String(roleRow?.email || unameRow?.email || '').trim().toLowerCase();
+    const resolvedEmail = liveProfile?.email || targetEmail;
     const isSuperAdminAccount =
-      DEFAULT_SUPERADMIN_UIDS.includes(targetUid) ||
-      (Boolean(resolvedEmail) && DEFAULT_SUPERADMIN_EMAILS.includes(resolvedEmail));
-    const dbRole = String(roleRow?.role || unameRow?.role || '').trim().toLowerCase();
-    const resolvedRole = isSuperAdminAccount
-      ? 'super_admin'
-      : dbRole === 'super_admin' || dbRole === 'superadmin'
-      ? 'super_admin'
-      : dbRole === 'admin'
-      ? 'admin'
-      : dbRole === 'captain'
-      ? 'captain'
-      : dbRole === 'teacher'
-      ? 'teacher'
-      : 'student';
+      liveProfile?.isSuperAdmin ??
+      (DEFAULT_SUPERADMIN_UIDS.includes(targetUid) ||
+        (Boolean(resolvedEmail) && DEFAULT_SUPERADMIN_EMAILS.includes(resolvedEmail)));
+    const resolvedRole = liveProfile?.role || (isSuperAdminAccount ? 'super_admin' : 'student');
+    const resolvedPlanTier: PlanTier =
+      liveProfile?.planTier || (isSuperAdminAccount ? 'plus' : 'free');
 
     // Update ONLY this account's slot inside the encrypted HttpOnly vault cookie
     vault[targetUid] = {
@@ -5120,7 +5428,10 @@ export async function handleAuthApiRequest(
         ok: true,
         uid: targetUid,
         email: resolvedEmail,
+        displayName: liveProfile?.displayName || '',
+        username: liveProfile?.username || '',
         role: resolvedRole,
+        planTier: resolvedPlanTier,
         sessionId: slot.sid,
         expiresAt: nextExpiresAt,
         customToken,

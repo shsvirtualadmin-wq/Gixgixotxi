@@ -137,7 +137,7 @@ export async function deleteCrewD1(crewId: string): Promise<void> {
 export async function getCrewMembersD1(crewId: string): Promise<D1CrewMember[]> {
   const data = await api.get<{ members: D1CrewMember[] }>(
     `/api/crews/${encodeURIComponent(crewId)}/members`,
-    { requireAuth: true }
+    { requireAuth: true, silentErrorToast: true }
   );
   return data.members || [];
 }

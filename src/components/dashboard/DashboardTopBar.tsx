@@ -4,6 +4,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Sun, Moon, ArrowLeft, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
@@ -33,14 +34,25 @@ interface Props {
   title?: string;
 }
 
-const SUBPAGE_TITLE_MAP: Record<string, string> = {
-  '/rewards': 'Rewards',
-  '/leaderboard': 'Leaderboard',
-  '/grand-line': 'Grand Line',
-  '/grand-line/about': 'Grand Line',
-  '/grand-line/leaderboard': 'Leaderboard',
+const SUBPAGE_TITLE_KEY_MAP: Record<string, string> = {
+  '/rewards': 'nav.rewards',
+  '/leaderboard': 'grandLine.leaderboard',
+  '/grand-line': 'nav.grandLine',
+  '/grand-line/about': 'nav.grandLine',
+  '/grand-line/leaderboard': 'grandLine.leaderboard',
+  '/pricing': 'nav.plansBilling',
+  '/mcqs': 'nav.mcqs',
+  '/subjects': 'dashboard.subjects',
+  '/contact': 'settings.contactSupport',
+  '/terms': 'settings.termsOfService',
+  '/privacy': 'settings.privacyPolicy',
+  '/commons/about': 'nav.commons',
+  '/about': 'settings.aboutBoardly',
+  '/search': 'common.search',
+};
+
+const SUBPAGE_FALLBACK_MAP: Record<string, string> = {
   '/arena': 'Live Arena',
-  '/pricing': 'Pricing',
   '/captains': 'Captains',
   '/nakama-captains': 'Captains',
   '/captain/leaderboard': 'Standings',
@@ -50,22 +62,14 @@ const SUBPAGE_TITLE_MAP: Record<string, string> = {
   '/crew/apply': 'Crew Apply',
   '/material': 'Material',
   '/study-material': 'Material',
-  '/mcqs': 'MCQs',
-  '/subjects': 'Subjects',
   '/kobans': 'Kobans',
   '/about-kobans': 'Kobans',
-  '/contact': 'Contact',
-  '/terms': 'Terms',
-  '/privacy': 'Privacy',
   '/guidelines': 'Guidelines',
   '/commons/guidelines': 'Guidelines',
-  '/commons/about': 'Commons',
-  '/about': 'About',
   '/features': 'Features',
   '/how-it-works': 'How It Works',
   '/faq': 'FAQ',
   '/verify': 'Verify',
-  '/search': 'Search',
 };
 
 export function DashboardTopBar({
@@ -75,42 +79,45 @@ export function DashboardTopBar({
 }: Props) {
   const { signOutUser, isAdmin, isGuest, authStatus, profileLoading } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { t, isRtl } = useLanguage();
   const { user, profile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
   const handleBack = useSmartBack();
 
+  const mappedTitleKey = SUBPAGE_TITLE_KEY_MAP[location.pathname];
   const autoSubPageTitle =
     title ||
-    SUBPAGE_TITLE_MAP[location.pathname] ||
+    (mappedTitleKey ? t(mappedTitleKey) : undefined) ||
+    SUBPAGE_FALLBACK_MAP[location.pathname] ||
     (location.pathname.startsWith('/grand-line/')
-      ? 'Grand Line'
+      ? t('nav.grandLine')
       : location.pathname.startsWith('/tests/')
-      ? 'Grand Line'
+      ? t('nav.grandLine')
       : location.pathname.startsWith('/material/') ||
         location.pathname.startsWith('/study-material/')
       ? 'Material'
       : location.pathname.startsWith('/mcqs/') ||
         location.pathname.startsWith('/subjects/') ||
         location.pathname.startsWith('/practice/')
-      ? 'Practice'
+      ? t('nav.practice')
       : location.pathname.startsWith('/captains/')
       ? 'Captain'
       : location.pathname.startsWith('/crew/') &&
         location.pathname !== '/crew/my' &&
         location.pathname !== '/crew/dashboard'
-      ? 'Crew'
+      ? t('nav.crew')
       : location.pathname.startsWith('/join/')
-      ? 'Join Crew'
+      ? t('nav.crew')
       : location.pathname.startsWith('/verify/')
       ? 'Verify'
       : location.pathname.startsWith('/u/') ||
         location.pathname.startsWith('/profile/') ||
         location.pathname.startsWith('/user/') ||
         location.pathname.startsWith('/users/')
-      ? 'Profile'
+      ? t('nav.profile')
       : location.pathname.startsWith('/store/')
-      ? 'Store'
+      ? t('nav.store')
       : undefined);
 
   const shouldShowBackArrow =
@@ -121,7 +128,7 @@ export function DashboardTopBar({
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; right: number }>({
+  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; right?: number; left?: number }>({
     top: 72,
     right: 16,
   });
@@ -140,27 +147,41 @@ export function DashboardTopBar({
       setIsMobileViewport(mobile);
       if (!mobile && avatarBtnRef.current) {
         const rect = avatarBtnRef.current.getBoundingClientRect();
-        setDropdownCoords({
-          top: Math.round(rect.bottom + 10),
-          right: Math.max(12, Math.round(window.innerWidth - rect.right)),
-        });
+        setDropdownCoords(
+          isRtl
+            ? {
+                top: Math.round(rect.bottom + 10),
+                left: Math.max(12, Math.round(rect.left)),
+              }
+            : {
+                top: Math.round(rect.bottom + 10),
+                right: Math.max(12, Math.round(window.innerWidth - rect.right)),
+              }
+        );
       }
     };
     updateViewport();
     window.addEventListener('resize', updateViewport);
     return () => window.removeEventListener('resize', updateViewport);
-  }, []);
+  }, [isRtl]);
 
   // Recompute dropdown position whenever menu opens on desktop
   useEffect(() => {
     if (menuOpen && !isMobileViewport && avatarBtnRef.current) {
       const rect = avatarBtnRef.current.getBoundingClientRect();
-      setDropdownCoords({
-        top: Math.round(rect.bottom + 10),
-        right: Math.max(12, Math.round(window.innerWidth - rect.right)),
-      });
+      setDropdownCoords(
+        isRtl
+          ? {
+              top: Math.round(rect.bottom + 10),
+              left: Math.max(12, Math.round(rect.left)),
+            }
+          : {
+              top: Math.round(rect.bottom + 10),
+              right: Math.max(12, Math.round(window.innerWidth - rect.right)),
+            }
+      );
     }
-  }, [menuOpen, isMobileViewport]);
+  }, [menuOpen, isMobileViewport, isRtl]);
 
   // Escape key closes desktop dropdown
   useEffect(() => {
@@ -243,8 +264,8 @@ export function DashboardTopBar({
               <button
                 type="button"
                 onClick={handleBack}
-                aria-label="Go back"
-                title="Go back"
+                aria-label={t('nav.goBack')}
+                title={t('nav.goBack')}
                 className="w-9 h-9 min-w-[36px] min-h-[36px] sm:w-10 sm:h-10 rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
               >
                 <ArrowLeft size={18} strokeWidth={2} />
@@ -268,7 +289,7 @@ export function DashboardTopBar({
                       fontWeight: 800,
                       color: 'var(--cw-red-text)',
                     }}
-                    aria-label="Boardly Dashboard"
+                    aria-label={`Boardly ${t('nav.dashboard')}`}
                   >
                     Boardly
                   </Link>
@@ -281,7 +302,7 @@ export function DashboardTopBar({
                       size="sm"
                       animated
                       priority
-                      className="ml-0.5 shrink-0"
+                      className="ms-0.5 shrink-0"
                     />
                   </span>
                 ) : isPro && !effectivePlan.isPlus && effectiveProBadge ? (
@@ -291,7 +312,7 @@ export function DashboardTopBar({
                       size="sm"
                       animated
                       priority
-                      className="ml-0.5 shrink-0"
+                      className="ms-0.5 shrink-0"
                     />
                   </span>
                 ) : null}
@@ -301,33 +322,33 @@ export function DashboardTopBar({
                 <button
                   type="button"
                   onClick={() => navigate('/admin')}
-                  className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-left cursor-pointer w-fit whitespace-nowrap"
+                  className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-start cursor-pointer w-fit whitespace-nowrap"
                   style={{
                     fontFamily: 'var(--font-heading)',
                     color: 'var(--cw-red-text)',
                   }}
                 >
-                  Admin Portal
+                  {t('nav.adminPanel')}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Right side: AI Mentors (desktop), Coin chip, Theme toggle, and Profile avatar */}
-          <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {/* End side: AI Mentors (desktop), Coin chip, Theme toggle, and Profile avatar */}
+          <div className="flex items-center gap-2 shrink-0 ms-auto">
             {/* Desktop (1024px+) AI Mentors navigation item */}
             <button
               type="button"
               data-testid="topbar-ai-mentors-btn"
               onClick={() => {
                 if (!user) {
-                  requireAuth('chat with Boardly AI Mentors');
+                  requireAuth(t('nav.aiMentors'));
                   return;
                 }
                 navigate('/dashboard/ai');
               }}
-              aria-label="Open Boardly AI Mentors"
-              title="Boardly AI Mentors"
+              aria-label={t('nav.aiMentors')}
+              title={t('nav.aiMentors')}
               className="hidden lg:inline-flex items-center gap-1.5 h-10 px-3.5 rounded-full dashboard-topbar-icon-btn text-[13px] font-semibold hover:opacity-90 transition-opacity cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Sparkles size={15} strokeWidth={2.1} className="text-[var(--accent)]" />
@@ -336,7 +357,7 @@ export function DashboardTopBar({
 
             {/* Kobans Wallet Chip */}
             <div
-              title="Boardly Store & Kobans Wallet"
+              title={t('nav.store')}
               className="flex items-center justify-end shrink-0 whitespace-nowrap transition-transform hover:scale-105"
             >
               <KobanChip balance={kobanBalance} loading={!balanceLoaded} />
@@ -347,8 +368,8 @@ export function DashboardTopBar({
               type="button"
               data-testid="rewards-theme-toggle"
               onClick={toggleTheme}
-              aria-label="Toggle theme"
-              title="Toggle theme"
+              aria-label={t('nav.switchTheme')}
+              title={t('nav.switchTheme')}
               className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full dashboard-topbar-icon-btn flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer shrink-0"
             >
               {theme === 'dark' ? (
@@ -363,8 +384,8 @@ export function DashboardTopBar({
               ref={avatarBtnRef}
               type="button"
               onClick={handleOpenProfile}
-              aria-label="Open profile"
-              title="Open profile"
+              aria-label={t('nav.viewProfile')}
+              title={t('nav.viewProfile')}
               className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-full overflow-visible shrink-0 flex items-center justify-center self-center cursor-pointer hover:opacity-90 transition-opacity"
               style={{
                 width: 36,
@@ -427,7 +448,9 @@ export function DashboardTopBar({
               style={{
                 position: 'fixed',
                 top: `${dropdownCoords.top}px`,
-                right: `${dropdownCoords.right}px`,
+                ...(dropdownCoords.left !== undefined
+                  ? { left: `${dropdownCoords.left}px` }
+                  : { right: `${dropdownCoords.right ?? 16}px` }),
               }}
               className="z-10 glass avatar-dropdown-panel allow-backdrop-blur p-3.5"
             >

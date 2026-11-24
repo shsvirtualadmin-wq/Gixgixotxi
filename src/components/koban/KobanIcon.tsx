@@ -2,6 +2,7 @@ import React, { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { useKobanStyle } from '@/contexts/KobanStyleContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useSmoothMode } from '@/utils/smoothMode';
 import {
   DEFAULT_KOBAN_STYLE,
@@ -622,13 +623,11 @@ export const KobanAmount: React.FC<KobanAmountProps> = React.memo(({
   animated = false,
   className = '',
 }) => {
+  const { formatNumber, formatPKR } = useLanguage();
   const resolvedVal = value ?? amount ?? 0;
   const safeVal = Math.max(0, Math.floor(Number(resolvedVal) || 0));
-  const formatted = safeVal.toLocaleString();
-  const pkr = (safeVal / 10).toLocaleString(undefined, {
-    minimumFractionDigits: safeVal % 10 === 0 ? 0 : 1,
-    maximumFractionDigits: 1,
-  });
+  const formatted = formatNumber(safeVal);
+  const pkrFormatted = formatPKR(safeVal / 10);
 
   const resolvedIconSize: KobanIconSize = iconSize ?? (
     size === 'xs' ? 14 :
@@ -641,14 +640,14 @@ export const KobanAmount: React.FC<KobanAmountProps> = React.memo(({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 font-mono tabular-nums font-bold ${className}`}
-      title={`${formatted} Kobans (PKR ${pkr})`}
+      className={`inline-flex items-center gap-1.5 font-mono tabular-nums font-bold ltr-nums ${className}`}
+      title={`${formatted} Kobans (${pkrFormatted})`}
     >
       <KobanIcon size={resolvedIconSize} animated={animated} decorative />
       <span>{formatted}</span>
       {showLabel && <span className="text-[0.85em] opacity-85 font-semibold">Kobans</span>}
       {showPkrEquivalent && (
-        <span className="text-[0.75em] font-normal opacity-60 ml-0.5">(PKR {pkr})</span>
+        <span className="text-[0.75em] font-normal opacity-60 ms-0.5">({pkrFormatted})</span>
       )}
     </span>
   );
@@ -677,6 +676,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
   styleOverride,
   className = '',
 }) => {
+  const { t, formatNumber } = useLanguage();
   const isUnloaded = loading || balance === null;
   const numericBalance = balance ?? 0;
   const [displayBalance, setDisplayBalance] = React.useState<number | null>(balance);
@@ -716,8 +716,8 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
   const shownBalance = displayBalance ?? balance;
   const accessibleLabel =
     isUnloaded || shownBalance === null
-      ? 'Loading Kobans balance'
-      : `Kobans balance: ${shownBalance.toLocaleString()}`;
+      ? t('common.loading')
+      : `${t('dashboard.kobanBalance')}: ${formatNumber(shownBalance)}`;
 
   const content = (
     <>
@@ -729,7 +729,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
         className={`shrink-0 ${isBumping ? 'scale-110 transition-transform' : ''}`}
       />
       <span
-        className={`font-mono tabular-nums text-xs max-[399px]:text-[11px] font-bold tracking-tight transition-colors inline-flex items-center justify-center min-w-[26px] ${
+        className={`font-mono tabular-nums ltr-nums text-xs max-[399px]:text-[11px] font-bold tracking-tight transition-colors inline-flex items-center justify-center min-w-[26px] ${
           isBumping ? 'text-[#FFD66B]' : 'text-[var(--text)]'
         }`}
       >
@@ -739,7 +739,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
             aria-hidden="true"
           />
         ) : (
-          shownBalance.toLocaleString()
+          formatNumber(shownBalance)
         )}
       </span>
       {showPlus && (
@@ -760,7 +760,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
         type="button"
         onClick={onClick}
         className={baseClasses}
-        title="Your Kobans Balance — Click to get more"
+        title={t('nav.getKobans')}
         aria-label={accessibleLabel}
       >
         {content}
@@ -772,7 +772,7 @@ export const KobanChip: React.FC<KobanChipProps> = React.memo(({
     <Link
       to={to}
       className={baseClasses}
-      title="Your Kobans Balance — Open Boardly Store"
+      title={t('nav.store')}
       aria-label={accessibleLabel}
     >
       {content}
@@ -794,7 +794,7 @@ export const KobanStack: React.FC<{ count?: 1 | 2 | 3; size?: number; className?
         <span
           key={idx}
           style={{
-            marginLeft: idx === 0 ? 0 : -Math.round(size * 0.35),
+            marginInlineStart: idx === 0 ? 0 : -Math.round(size * 0.35),
             zIndex: count - idx,
           }}
           className="inline-flex"

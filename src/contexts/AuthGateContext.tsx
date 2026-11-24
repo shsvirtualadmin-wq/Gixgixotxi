@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
-import { X, Lock, Mail, UserPlus, UserCheck, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Mail, UserPlus, UserCheck, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { Logo } from '@/components/ui/Logo';
+import { useLanguage } from './LanguageContext';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 
@@ -23,6 +23,7 @@ const AuthGateContext = createContext<AuthGateContextValue | null>(null);
 
 export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, signInWithGoogle, signInAsGuest, checkUsernameAvailability } = useAuth();
+  const { t } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -323,7 +324,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               aria-hidden="true"
             />
             <div
-              className={`glass glass-panel ios-bottom-sheet relative z-10 w-full max-w-md px-6 pt-3 pb-7 sm:p-8 text-left ${
+              className={`glass glass-panel ios-bottom-sheet relative z-10 w-full max-w-md px-6 pt-3 pb-7 sm:p-8 text-start ${
                 isClosing ? 'is-closing' : ''
               }`}
               style={
@@ -361,7 +362,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-primary)]"
                     style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   >
-                    COMMONS
+                    {t('nav.commons')}
                   </span>
                 </div>
 
@@ -369,7 +370,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   type="button"
                   onClick={closeSignInModal}
                   className="ios-circle-btn text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                  aria-label="Close sign in prompt"
+                  aria-label={t('common.close')}
                 >
                   <X size={18} />
                 </button>
@@ -403,21 +404,18 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     className="inline-flex items-center gap-1.5 min-h-[44px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                   >
                     <ArrowLeft size={15} />
-                    <span>Back</span>
+                    <span>{t('common.back')}</span>
                   </button>
 
                   <div>
                     <h2
                       id="auth-gate-title"
-                      className="text-xl sm:text-2xl text-[var(--text-primary)] tracking-tight mb-1.5"
-                      style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                      className="text-xl sm:text-2xl text-[var(--text-primary)] tracking-tight mb-1.5 font-extrabold"
                     >
-                      Continue as guest
+                      {t('auth.continueAsGuest')}
                     </h2>
                     <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
-                      Pick a unique username to{' '}
-                      <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span>{' '}
-                      and return right to this page.
+                      {t('auth.guestPickUsername', { action: actionLabel })}
                     </p>
                   </div>
 
@@ -434,29 +432,29 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           htmlFor="authgate-guest-username"
                           className="text-xs font-semibold text-[var(--text-primary)]"
                         >
-                          Username
+                          {t('auth.usernameLabel')}
                         </label>
                         {guestCheck.status === 'checking' && (
                           <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                            Checking...
+                            {t('auth.checking')}
                           </span>
                         )}
                         {guestCheck.status === 'available' && (
                           <span className="text-[11px] font-mono font-bold text-emerald-400 inline-flex items-center gap-1">
                             <CheckCircle2 size={12} />
-                            <span>Available</span>
+                            <span>{t('auth.available')}</span>
                           </span>
                         )}
                         {(guestCheck.status === 'taken' || guestCheck.status === 'invalid') && (
                           <span className="text-[11px] font-mono font-bold text-[#EF4444] inline-flex items-center gap-1">
                             <AlertCircle size={12} />
-                            <span>{guestCheck.status === 'taken' ? 'Taken' : 'Invalid'}</span>
+                            <span>{guestCheck.status === 'taken' ? t('auth.taken') : t('auth.invalid')}</span>
                           </span>
                         )}
                       </div>
 
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm">
+                        <span className="absolute start-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm">
                           @
                         </span>
                         <input
@@ -468,7 +466,8 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           maxLength={20}
                           autoFocus
                           autoComplete="off"
-                          className="w-full h-12 pl-9 pr-4 rounded-full bg-white/[0.06] border border-white/[0.18] font-mono text-sm text-[var(--text-primary)] focus:outline-none"
+                          dir="ltr"
+                          className="w-full h-12 ps-9 pe-4 rounded-full bg-white/[0.06] border border-white/[0.18] font-mono text-sm text-[var(--text-primary)] focus:outline-none"
                         />
                       </div>
 
@@ -479,30 +478,30 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           </p>
                         )}
                       <p className="text-[11px] text-[var(--text-muted)]">
-                        3–20 characters: letters, numbers, dots (<code className="font-mono">.</code>), underscores (<code className="font-mono">_</code>).
+                        {t('auth.usernameRules')}
                       </p>
                     </div>
 
                     <div className="p-3 rounded-2xl bg-white/[0.05] border border-white/[0.14] text-[11px] text-[var(--text-muted)] leading-relaxed">
-                      You&apos;ll stay signed in on this device.
+                      {t('auth.guestStaySignedIn')}
                     </div>
 
                     <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-                      By continuing you agree to our{' '}
+                      {t('auth.agreePrefix')}{' '}
                       <Link
                         to="/terms"
                         onClick={closeSignInModal}
                         className="underline text-[var(--text-primary)] hover:text-[#D71921]"
                       >
-                        Terms of Service
+                        {t('settings.termsOfService')}
                       </Link>{' '}
-                      and{' '}
+                      {t('auth.and')}{' '}
                       <Link
                         to="/privacy"
                         onClick={closeSignInModal}
                         className="underline text-[var(--text-primary)] hover:text-[#D71921]"
                       >
-                        Privacy Policy
+                        {t('settings.privacyPolicy')}
                       </Link>
                       .
                     </p>
@@ -512,7 +511,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       disabled={!canSubmitGuest}
                       className="btn-primary relative overflow-hidden w-full min-h-[52px] px-5 rounded-full text-sm font-semibold cursor-pointer disabled:opacity-60"
                     >
-                      <span>{guestBusy ? 'Starting guest session...' : 'Continue as guest'}</span>
+                      <span>{guestBusy ? t('auth.startingGuest') : t('auth.continueAsGuest')}</span>
                       {guestBusy && <ButtonLineLoader />}
                     </button>
 
@@ -520,7 +519,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       data-testid="authgate-guest-temporary-notice"
                       className="text-[11px] text-[var(--text-muted)] leading-relaxed"
                     >
-                      Guest accounts are temporary. If you log out or clear your browser data, you can&apos;t get back into this account. Create a free account to keep your progress and use rewards and Pro.
+                      {t('auth.guestTempNotice')}
                     </p>
                   </form>
                 </div>
@@ -528,16 +527,13 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 <>
                   <h2
                     id="auth-gate-title"
-                    className="text-2xl sm:text-[26px] text-[var(--text-primary)] tracking-tight mb-2"
-                    style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                    className="text-2xl sm:text-[26px] text-[var(--text-primary)] tracking-tight mb-2 font-extrabold"
                   >
-                    Sign in to continue
+                    {t('auth.signInToContinue')}
                   </h2>
 
                   <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
-                    Sign in or continue as a guest to{' '}
-                    <span className="text-[var(--text-primary)] font-semibold">{actionLabel}</span>.
-                    You will stay right on this page.
+                    {t('auth.signInSubtitle', { action: actionLabel })}
                   </p>
 
                   {errorMsg && (
@@ -572,7 +568,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                           d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                         />
                       </svg>
-                      <span>{googleBusy ? 'Logging in...' : 'Continue with Google'}</span>
+                      <span>{googleBusy ? t('auth.loggingIn') : t('auth.continueWithGoogle')}</span>
                       {googleBusy && <ButtonLineLoader />}
                     </button>
 
@@ -586,17 +582,16 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       className="btn-secondary w-full min-h-[52px] flex items-center justify-center gap-2.5 px-5 rounded-full text-[var(--text-primary)] font-semibold text-sm cursor-pointer"
                     >
                       <UserCheck size={16} className="text-[#D71921]" />
-                      <span>Continue as guest</span>
+                      <span>{t('auth.continueAsGuest')}</span>
                     </button>
 
                     {/* Dotted OR divider */}
                     <div className="flex items-center gap-3 py-1.5" aria-hidden="true">
                       <div className="flex-1 dotted-divider" />
                       <span
-                        className="text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
-                        style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
+                        className="text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)] font-extrabold"
                       >
-                        OR
+                        {t('common.or')}
                       </span>
                       <div className="flex-1 dotted-divider" />
                     </div>
@@ -609,7 +604,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                         className="btn-secondary w-full min-h-[50px] rounded-full flex items-center justify-center gap-2 px-4 text-sm font-semibold"
                       >
                         <Mail size={15} />
-                        <span>Sign in</span>
+                        <span>{t('nav.signIn')}</span>
                       </Link>
 
                       <Link
@@ -618,7 +613,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                         className="btn-primary w-full min-h-[50px] rounded-full flex items-center justify-center gap-2 px-4 text-sm font-semibold"
                       >
                         <UserPlus size={15} />
-                        <span>Create account</span>
+                        <span>{t('nav.createAccount')}</span>
                       </Link>
                     </div>
 
@@ -629,7 +624,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                         onClick={closeSignInModal}
                         className="w-full min-h-[48px] px-4 rounded-full text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.06] transition-colors cursor-pointer"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>

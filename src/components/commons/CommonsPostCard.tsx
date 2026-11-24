@@ -51,6 +51,7 @@ import {
 } from '@/services/publicProfileService';
 import { CommonsImageAttachment } from './CommonsImageAttachment';
 import { CommonsImageViewerModal } from './CommonsImageViewerModal';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 function shouldBlockCardNavigation(e: React.MouseEvent): boolean {
   if (typeof document !== 'undefined') {
@@ -115,6 +116,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   onDeletePost,
   onAuthorClick,
 }: CommonsPostCardProps) {
+  const { t, formatNumber } = useLanguage();
   const { openProfile } = useProfileModal();
   const { requireAuth } = useAuthGate();
   const { isDark } = useTheme();
@@ -231,12 +233,12 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   if (isHidden) {
     return (
       <div className="rounded-2xl border border-border bg-surface-muted/50 p-4 text-center text-xs text-muted flex items-center justify-between">
-        <span>Post hidden from your feed.</span>
+        <span>{t('commons.postHidden')}</span>
         <button
           onClick={() => setIsHidden(false)}
           className="text-accent font-semibold hover:underline cursor-pointer"
         >
-          Undo
+          {t('commons.undo')}
         </button>
       </div>
     );
@@ -372,14 +374,20 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
   // Stats row content
   const statsParts: string[] = [];
-  if (upvotes > 0) statsParts.push(`👍 ${upvotes}`);
+  if (upvotes > 0) statsParts.push(`👍 ${formatNumber(upvotes)}`);
   if (post.commentCount && post.commentCount > 0) {
     statsParts.push(
-      `${post.commentCount} ${post.commentCount === 1 ? 'comment' : 'comments'}`
+      post.commentCount === 1
+        ? t('commons.commentSingle')
+        : t('commons.commentsCount', { count: formatNumber(post.commentCount) })
     );
   }
   if (localShares > 0) {
-    statsParts.push(`${localShares} ${localShares === 1 ? 'share' : 'shares'}`);
+    statsParts.push(
+      localShares === 1
+        ? t('commons.shareSingle')
+        : t('commons.sharesCount', { count: formatNumber(localShares) })
+    );
   }
 
   const handleAuthorClick = (e?: React.MouseEvent) => {
@@ -408,7 +416,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       {isPinned && (
         <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-[var(--glass-border)] font-sans">
           <Pin size={13} className="fill-current text-accent" />
-          <span>Pinned</span>
+          <span>{t('commons.pinned')}</span>
         </div>
       )}
 
@@ -450,7 +458,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           <div className="min-w-0 flex-1">
             {post.isAnonymous ? (
               <div className="min-w-0">
-                <span className="text-[15px] font-bold text-primary">Anonymous</span>
+                <span className="text-[15px] font-bold text-primary">{t('commons.anonymous')}</span>
                 <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5 flex-wrap">
                   <Link
                     to={postPermalink}
@@ -463,7 +471,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
                     <EyeOff size={12} />
-                    <span>Anonymous</span>
+                    <span>{t('commons.anonymous')}</span>
                   </span>
                   <span aria-hidden="true">·</span>
                   <span
@@ -531,7 +539,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
                     <Globe size={12} />
-                    <span>Public</span>
+                    <span>{t('commons.public')}</span>
                   </span>
                   <span aria-hidden="true">·</span>
                   <span
@@ -566,7 +574,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
           {menuOpen && (
             <div
-              className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-border-strong floating-blur backdrop-blur-lg py-1.5 shadow-xl animate-in fade-in zoom-in-95"
+              className="absolute end-0 top-10 z-20 w-44 rounded-xl border border-border-strong floating-blur backdrop-blur-lg py-1.5 shadow-xl animate-in fade-in zoom-in-95"
               onMouseLeave={() => setMenuOpen(false)}
               onClick={(e) => e.stopPropagation()}
             >
@@ -577,10 +585,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   setMenuOpen(false);
                   void handleSave(e);
                 }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-primary text-left transition-colors cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-primary text-start transition-colors cursor-pointer"
               >
                 <Bookmark size={14} className={isSaved ? 'text-accent fill-current' : ''} />
-                <span>{isSaved ? 'Unsave post' : 'Save post'}</span>
+                <span>{isSaved ? t('commons.unsavePost') : t('commons.savePost')}</span>
               </button>
 
               <button
@@ -590,10 +598,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   setMenuOpen(false);
                   setIsHidden(true);
                 }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-primary text-left transition-colors cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-primary text-start transition-colors cursor-pointer"
               >
                 <EyeOff size={14} />
-                <span>Hide post</span>
+                <span>{t('commons.hidePost')}</span>
               </button>
 
               <button
@@ -603,10 +611,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                   setMenuOpen(false);
                   requireAuth('report this post', () => onOpenReport(post));
                 }}
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-accent text-left transition-colors cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-accent text-start transition-colors cursor-pointer"
               >
                 <Flag size={14} />
-                <span>Report post</span>
+                <span>{t('commons.reportPost')}</span>
               </button>
 
               {canDelete && onDeletePost && (
@@ -617,10 +625,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                     setMenuOpen(false);
                     onDeletePost(post.id);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-accent hover:bg-accent-soft text-left transition-colors cursor-pointer border-t border-border mt-1"
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-accent hover:bg-accent-soft text-start transition-colors cursor-pointer border-t border-border mt-1"
                 >
                   <Trash2 size={14} />
-                  <span>Delete post</span>
+                  <span>{t('commons.deletePost')}</span>
                 </button>
               )}
             </div>
@@ -661,7 +669,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               }}
               className="text-xs font-semibold text-accent hover:underline mt-1.5 cursor-pointer block font-sans"
             >
-              See more
+              {t('commons.seeMore')}
             </button>
           )}
         </div>
@@ -719,7 +727,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           {copied && (
             <span className="text-[11px] text-accent font-semibold flex items-center gap-1">
               <Check size={12} />
-              <span>Link copied!</span>
+              <span>{t('commons.linkCopied')}</span>
             </span>
           )}
         </div>
@@ -739,13 +747,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               ? 'text-accent font-bold bg-accent-soft'
               : 'text-secondary hover:text-primary hover:bg-surface-muted'
           }`}
-          title={currentUserId ? 'Like post' : 'Sign in to like'}
+          title={t('commons.like')}
         >
           <ThumbsUp
             size={15}
             className={`shrink-0 ${hasVoted ? 'fill-current text-accent' : ''}`}
           />
-          <span className="truncate">Like</span>
+          <span className="truncate">{t('commons.like')}</span>
         </button>
 
         {/* Comment (Opens Permalink Post Detail Page) */}
@@ -755,7 +763,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
         >
           <MessageSquare size={15} className="shrink-0" />
-          <span className="truncate">Comment</span>
+          <span className="truncate">{t('commons.comment')}</span>
         </Link>
 
         {/* Share */}
@@ -763,14 +771,14 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           type="button"
           onClick={handleShare}
           className="flex-1 min-w-0 flex items-center justify-center gap-1.5 sm:gap-2 px-1.5 sm:px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
-          title="Copy post permalink"
+          title={t('commons.copyLink')}
         >
           {copied ? (
             <Check size={15} className="shrink-0 text-accent" />
           ) : (
             <Share2 size={15} className="shrink-0" />
           )}
-          <span className="truncate">{copied ? 'Copied!' : 'Share'}</span>
+          <span className="truncate">{copied ? t('common.copied') : t('common.share')}</span>
         </button>
 
         {/* Save Bookmark */}
@@ -782,7 +790,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               ? 'text-accent bg-accent-soft'
               : 'text-muted hover:text-primary hover:bg-surface-muted'
           }`}
-          title={isSaved ? 'Saved' : 'Save post'}
+          title={isSaved ? t('commons.bookmarked') : t('commons.savePost')}
         >
           <Bookmark size={15} className={isSaved ? 'fill-current text-accent' : ''} />
         </button>
@@ -808,6 +816,7 @@ function FileAttachmentChip({
   currentUserId?: string | null;
   onRequireAuth: () => void;
 }) {
+  const { t } = useLanguage();
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const fileName = file?.name || 'attachment';
@@ -835,7 +844,7 @@ function FileAttachmentChip({
       await downloadCommonsAttachment(file);
     } catch (err: any) {
       console.error('[CommonsPostCard] Failed to download attachment:', err);
-      setDownloadError(err?.message || 'Download failed, try again');
+      setDownloadError(err?.message || t('common.somethingWrong'));
     } finally {
       setDownloading(false);
     }
@@ -850,7 +859,7 @@ function FileAttachmentChip({
           </div>
           <div className="min-w-0">
             <p className="text-xs font-semibold text-primary truncate">{file.name}</p>
-            <p className="text-[10px] text-muted">{formatSize(file.size)}</p>
+            <p className="text-[10px] text-muted ltr-nums">{formatSize(file.size)}</p>
           </div>
         </div>
 
@@ -862,7 +871,7 @@ function FileAttachmentChip({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer disabled:opacity-60"
           >
             <Download size={13} />
-            <span>{downloading ? 'Downloading...' : 'Download'}</span>
+            <span>{downloading ? t('commons.downloading') : t('commons.download')}</span>
           </button>
         ) : (
           <button
@@ -871,7 +880,7 @@ function FileAttachmentChip({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer"
           >
             <Download size={13} />
-            <span>Sign in to Download</span>
+            <span>{t('commons.signInToDownload')}</span>
           </button>
         )}
       </div>

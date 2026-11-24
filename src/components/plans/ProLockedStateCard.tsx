@@ -9,6 +9,7 @@ import {
   Lock,
 } from 'lucide-react';
 import type { UnifiedPlanStatusResult } from '@/config/plans';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ProLockedStateCardProps {
   planStatus: UnifiedPlanStatusResult;
@@ -19,12 +20,14 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
   planStatus,
   compact = false,
 }) => {
+  const { t, formatPKR } = useLanguage();
+
   if (planStatus.state === 'active') {
     const expiryDisplay =
       planStatus.expiryDateTimeFormatted ||
       planStatus.expiryFormatted ||
-      'Active membership';
-    const timeLeftDisplay = planStatus.timeLeftLabel || 'Active';
+      t('plans.activeMembership');
+    const timeLeftDisplay = planStatus.timeLeftLabel || t('plans.active');
     const isPlus = planStatus.isPersonalPlus || planStatus.isSuperAdmin;
 
     return (
@@ -56,13 +59,13 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
                 }`}
               >
                 <CheckCircle2 className="w-3 h-3" />
-                Active Membership
+                {t('plans.activeMembership')}
               </div>
               <h3 className="text-lg sm:text-xl font-black text-[var(--text-primary)] tracking-tight">
-                {isPlus ? 'You already have Plus, which includes Pro' : 'You already have Boardly Pro'}
+                {isPlus ? t('plans.alreadyHavePlus') : t('plans.alreadyHavePro')}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
-                Your <span className="font-bold text-[var(--text-primary)]">{planStatus.planName}</span> is currently active on your account with full unlimited access.
+                {t('plans.activePlanDesc', { planName: planStatus.planName })}
               </p>
             </div>
           </div>
@@ -77,7 +80,7 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              Active Plan
+              {t('plans.activePlan')}
             </div>
             <div className="mt-1 text-sm font-black text-[var(--text-primary)]">
               {planStatus.planName}
@@ -87,9 +90,9 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <Calendar className="w-3.5 h-3.5 text-emerald-500" />
-              Exact Expiry Date
+              {t('plans.exactExpiryDate')}
             </div>
-            <div className="mt-1 text-sm font-black text-[var(--text-primary)]">
+            <div className="mt-1 text-sm font-black text-[var(--text-primary)] ltr-nums">
               {expiryDisplay}
             </div>
           </div>
@@ -97,7 +100,7 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <Clock className="w-3.5 h-3.5 text-emerald-500" />
-              Time Remaining
+              {t('plans.timeRemaining')}
             </div>
             <div className="mt-1 text-sm font-black text-emerald-600 dark:text-emerald-400">
               {timeLeftDisplay}
@@ -108,9 +111,7 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-3.5 py-2.5 text-xs text-[var(--text-secondary)]">
           <Lock className="w-4 h-4 text-[var(--text-muted)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            {isPlus
-              ? 'You already have Plus, which includes Pro. You can renew Boardly Plus to extend your current expiry date.'
-              : 'You already have Boardly Pro active. You can upgrade to Boardly Plus anytime — your unused Pro days are credited to Plus.'}
+            {isPlus ? t('plans.alreadyHavePlusNote') : t('plans.alreadyHaveProNote')}
           </p>
         </div>
       </div>
@@ -136,21 +137,20 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
             <div>
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-black uppercase tracking-widest mb-1.5">
                 <Clock className="w-3 h-3" />
-                Verification In Progress · Purchase Locked
+                {t('plans.verificationInProgressLocked')}
               </div>
               <h3 className="text-lg sm:text-xl font-black text-[var(--text-primary)] tracking-tight">
-                Your payment is being verified. This usually takes up to 24 hours.
+                {t('plans.paymentVerifyingTitle')}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
-                We have received your payment submission for{' '}
-                <span className="font-bold text-[var(--text-primary)]">{req.planName}</span>. Our team verifies payments manually and will activate your plan as soon as verification completes.
+                {t('plans.paymentSubmissionReceived', { planName: req.planName })}
               </p>
             </div>
           </div>
 
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs font-extrabold shrink-0 self-start">
             <ShieldCheck className="w-3.5 h-3.5" />
-            Awaiting Verification
+            {t('plans.awaitingVerification')}
           </span>
         </div>
 
@@ -158,19 +158,19 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <Crown className="w-3.5 h-3.5 text-amber-500" />
-              Submitted Plan
+              {t('plans.submittedPlan')}
             </div>
             <div className="mt-1 text-sm font-black text-[var(--text-primary)]">
-              {req.planName} (PKR {req.amountPkr.toLocaleString()})
+              {req.planName} (<span className="ltr-nums">{formatPKR(req.amountPkr)}</span>)
             </div>
           </div>
 
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <Calendar className="w-3.5 h-3.5 text-amber-500" />
-              Submitted Date
+              {t('plans.submittedDate')}
             </div>
-            <div className="mt-1 text-sm font-black text-[var(--text-primary)]">
+            <div className="mt-1 text-sm font-black text-[var(--text-primary)] ltr-nums">
               {req.submittedFormatted}
             </div>
           </div>
@@ -178,9 +178,9 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
           <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/80 p-3.5">
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-              Payment Reference
+              {t('plans.paymentReference')}
             </div>
-            <div className="mt-1 text-sm font-mono font-bold text-[var(--text-primary)] truncate">
+            <div className="mt-1 text-sm font-mono font-bold text-[var(--text-primary)] truncate ltr-nums">
               {methodLabel}{req.tid ? ` · TID ${req.tid}` : ''}
             </div>
           </div>
@@ -189,7 +189,7 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]/60 px-3.5 py-2.5 text-xs text-[var(--text-secondary)]">
           <Lock className="w-4 h-4 text-[var(--text-muted)] shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            To prevent duplicate charges, starting another purchase is disabled while your payment is being verified. You will receive an in-app notification and email as soon as your plan is activated.
+            {t('plans.duplicateChargeNote')}
           </p>
         </div>
       </div>

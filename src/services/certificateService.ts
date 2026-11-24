@@ -165,6 +165,7 @@ export async function fetchMyCertificates(): Promise<StudentCertificateRecord[]>
       const data = await apiFetch<{ certificates: StudentCertificateRecord[] }>(endpoint, {
         requireAuth: true,
         timeoutMs: 8000,
+        silentErrorToast: true,
       });
       return Array.isArray(data?.certificates)
         ? data.certificates.map(normalizeCertificateRecord)
@@ -176,6 +177,13 @@ export async function fetchMyCertificates(): Promise<StudentCertificateRecord[]>
       }
     }
   }
+  console.error('[Boardly Certificates] fetchMyCertificates failed', {
+    fn: 'fetchMyCertificates',
+    url: endpoint,
+    status: lastErr?.status ?? null,
+    code: lastErr?.code ?? null,
+    message: lastErr?.message || String(lastErr),
+  });
   throw lastErr;
 }
 

@@ -10,6 +10,7 @@ import {
   removeSavedAccount,
   upsertSavedAccount,
 } from '../utils/savedAccounts';
+import { formatPlanLabel } from '../lib/planTier';
 
 function createMemoryStorage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
   const map = new Map<string, string>();
@@ -122,12 +123,16 @@ async function callAuth(params: {
   db: InMemoryD1Database;
   jar: CookieJar;
   path: string;
+  method?: 'GET' | 'POST';
   bearerUid?: string;
   body?: Record<string, unknown>;
   nowMs: number;
   origin?: string;
   omitCsrfHeader?: boolean;
+  storeGetDoc?: (docPath: string) => Promise<Record<string, any> | null>;
+  customTokenMinterOverride?: (uid: string, nowMs: number) => Promise<string | null>;
 }) {
+  const method = params.method || 'POST';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Host: 'boardly.cfd',
@@ -147,17 +152,20 @@ async function callAuth(params: {
   }
 
   const req = new Request(`https://boardly.cfd${params.path}`, {
-    method: 'POST',
+    method,
     headers,
-    body: JSON.stringify(params.body ?? {}),
+    ...(method !== 'GET' ? { body: JSON.stringify(params.body ?? {}) } : {}),
   });
 
   const res = await handleAuthApiRequest({
     request: req,
     env: { OTP_HMAC_SECRET: 'test-unit-secret-key-for-account-switch-tests' },
     dbOverride: params.db,
+    ...(params.storeGetDoc ? { storeOverride: { getDoc: params.storeGetDoc } } : {}),
     tokenVerifierOverride: makeRoleVerifier(TEST_USERS),
-    customTokenMinterOverride: async (uid, nowMs) => `mock_custom_token.${uid}.${nowMs}`,
+    customTokenMinterOverride:
+      params.customTokenMinterOverride ??
+      (async (uid, nowMs) => `mock_custom_token.${uid}.${nowMs}`),
     nowMsOverride: params.nowMs,
   });
 
@@ -479,4 +487,220 @@ test('(e) Security: CSRF cross-origin POST without header is rejected with 403',
   });
   assert.equal(csrfBlocked.status, 403);
   assert.equal(csrfBlocked.json.code, 'CSRF_REJECTED');
+});
+
+test('(f) Live saved-accounts plan refresh resolves Admin with Plus as Boardly Plus (never stale Boardly Pro)', async () => {
+  const db = new InMemoryD1Database();
+  const jar = new CookieJar();
+  const storage = createMemoryStorage();
+  const t0 = Date.UTC(2026, 10, 24, 15, 0, 0);
+  await seedUsersInD1(db, t0);
+
+  // Simulate legacy stale localStorage entry that had "Boardly Pro" saved previously
+  storage.setItem(
+    'boardly_saved_accounts_v1',
+    JSON.stringify([
+      {
+        uid: 'uid_admin',
+        email: 'shsvirtualadmin@gmail.com',
+        displayName: 'Admin',
+        role: 'super_admin',
+        planLabel: 'Boardly Pro',
+        lastUsedAt: t0 - 60_000,
+      },
+    ])
+  );
+
+  // Reading saved accounts must strip stale planLabel so "Boardly Pro" never leaks from localStorage
+  const sanitized = getSavedAccounts(storage);
+  assert.equal(sanitized.length, 1);
+  assert.equal(sanitized[0].planLabel, undefined);
+
+  // Upserting must also never persist planLabel into localStorage
+  upsertSavedAccount(
+    {
+      uid: 'uid_admin',
+      email: 'shsvirtualadmin@gmail.com',
+      displayName: 'Admin',
+      planLabel: 'Boardly Pro',
+    },
+    storage
+  );
+  const afterUpsert = getSavedAccounts(storage);
+  assert.equal(afterUpsert[0].planLabel, undefined);
+
+  // Register both admin and student into HttpOnly vault
+  for (const uid of ['uid_admin', 'uid_student1'] as const) {
+    const reg = await callAuth({
+      db,
+      jar,
+      path: '/api/auth/switch-session/register',
+      bearerUid: uid,
+      nowMs: t0,
+    });
+    assert.equal(reg.status, 200);
+  }
+
+  // Live Firestore records: admin has Boardly Plus, student has Boardly Plus
+  const mockDocs: Record<string, Record<string, any>> = {
+    'users/uid_admin': {
+      uid: 'uid_admin',
+      email: 'shsvirtualadmin@gmail.com',
+      displayName: 'SHS Admin',
+      role: 'super_admin',
+      plan: 'plus',
+      isPlus: true,
+    },
+    'users/uid_student1': {
+      uid: 'uid_student1',
+      email: 'amina@boardly.cfd',
+      displayName: 'Amina',
+      role: 'student',
+      plan: 'plus',
+      isPlus: true,
+    },
+  };
+
+  const accountsRes = await callAuth({
+    db,
+    jar,
+    method: 'GET',
+    path: '/api/auth/switch-session/accounts',
+    bearerUid: 'uid_student1',
+    nowMs: t0 + 5_000,
+    storeGetDoc: async (docPath) => mockDocs[docPath] ?? null,
+  });
+
+  assert.equal(accountsRes.status, 200);
+  assert.equal(accountsRes.json.ok, true);
+  const adminAccount = accountsRes.json.accounts.find((a: any) => a.uid === 'uid_admin');
+  const studentAccount = accountsRes.json.accounts.find((a: any) => a.uid === 'uid_student1');
+  assert.ok(adminAccount);
+  assert.ok(studentAccount);
+  assert.equal(adminAccount.sessionStatus, 'active');
+  assert.equal(adminAccount.planTier, 'plus');
+  assert.equal(formatPlanLabel(adminAccount.planTier), 'Boardly Plus');
+  assert.equal(studentAccount.planTier, 'plus');
+  assert.equal(formatPlanLabel(studentAccount.planTier), 'Boardly Plus');
+
+  // Exchange also returns canonical live planTier ('plus')
+  const exchangeRes = await callAuth({
+    db,
+    jar,
+    method: 'POST',
+    path: '/api/auth/switch-session/exchange',
+    body: { uid: 'uid_admin' },
+    nowMs: t0 + 10_000,
+    storeGetDoc: async (docPath) => mockDocs[docPath] ?? null,
+  });
+  assert.equal(exchangeRes.status, 200);
+  assert.equal(exchangeRes.json.planTier, 'plus');
+  assert.equal(formatPlanLabel(exchangeRes.json.planTier), 'Boardly Plus');
+});
+
+test('(g) Per-account error and expiry isolation in GET /api/auth/switch-session/accounts never fails the whole list', async () => {
+  const db = new InMemoryD1Database();
+  const jar = new CookieJar();
+  const t0 = Date.UTC(2026, 10, 24, 16, 0, 0);
+  await seedUsersInD1(db, t0);
+
+  const regAdmin = await callAuth({
+    db,
+    jar,
+    path: '/api/auth/switch-session/register',
+    bearerUid: 'uid_admin',
+    nowMs: t0,
+  });
+  const regStudent1 = await callAuth({
+    db,
+    jar,
+    path: '/api/auth/switch-session/register',
+    bearerUid: 'uid_student1',
+    nowMs: t0,
+  });
+  const regStudent2 = await callAuth({
+    db,
+    jar,
+    path: '/api/auth/switch-session/register',
+    bearerUid: 'uid_student2',
+    nowMs: t0,
+  });
+  assert.equal(regAdmin.status, 200);
+  assert.equal(regStudent1.status, 200);
+  assert.equal(regStudent2.status, 200);
+
+  // Expire ONLY uid_student2
+  const student2Row = db.tables.device_account_sessions.get(regStudent2.json.sessionId);
+  assert.ok(student2Row);
+  student2Row!.expires_at = t0 - 1000;
+
+  // Simulate Firestore failure ONLY for uid_admin while uid_student1 succeeds
+  const accountsRes = await callAuth({
+    db,
+    jar,
+    method: 'GET',
+    path: '/api/auth/switch-session/accounts',
+    bearerUid: 'uid_student1',
+    nowMs: t0 + 5_000,
+    storeGetDoc: async (docPath) => {
+      if (docPath === 'users/uid_admin') {
+        throw new Error('Firestore permission denied for test');
+      }
+      if (docPath === 'users/uid_student1') {
+        return { uid: 'uid_student1', email: 'amina@boardly.cfd', plan: 'plus', isPlus: true };
+      }
+      return null;
+    },
+  });
+
+  assert.equal(accountsRes.status, 200);
+  assert.equal(accountsRes.json.ok, true);
+  const byUid = Object.fromEntries(accountsRes.json.accounts.map((a: any) => [a.uid, a]));
+  assert.equal(byUid.uid_student1.sessionStatus, 'active');
+  assert.equal(byUid.uid_student1.planTier, 'plus');
+  assert.equal(byUid.uid_admin.sessionStatus, 'error');
+  assert.equal(byUid.uid_student2.sessionStatus, 'expired');
+});
+
+test('(h) Genuine switch failure returns 503 SWITCH_UNAVAILABLE (not misclassified as expired) and GET accounts blocks cross-origin CSRF', async () => {
+  const db = new InMemoryD1Database();
+  const jar = new CookieJar();
+  const t0 = Date.UTC(2026, 10, 24, 17, 0, 0);
+  await seedUsersInD1(db, t0);
+
+  const regAdmin = await callAuth({
+    db,
+    jar,
+    path: '/api/auth/switch-session/register',
+    bearerUid: 'uid_admin',
+    nowMs: t0,
+  });
+  assert.equal(regAdmin.status, 200);
+
+  // Simulate genuine server failure (custom token minter unavailable -> 503)
+  const failedSwitch = await callAuth({
+    db,
+    jar,
+    method: 'POST',
+    path: '/api/auth/switch-session/exchange',
+    body: { uid: 'uid_admin' },
+    nowMs: t0 + 5_000,
+    customTokenMinterOverride: async () => null,
+  });
+  assert.equal(failedSwitch.status, 503);
+  assert.equal(failedSwitch.json.code, 'SWITCH_UNAVAILABLE');
+  assert.notEqual(failedSwitch.json.code, 'SWITCH_SESSION_EXPIRED');
+
+  // Cross-origin CSRF without X-Requested-With on GET /switch-session/accounts is rejected with 403
+  const csrfGetBlocked = await callAuth({
+    db,
+    jar,
+    method: 'GET',
+    path: '/api/auth/switch-session/accounts',
+    nowMs: t0 + 6_000,
+    origin: 'https://evil.example.com',
+    omitCsrfHeader: true,
+  });
+  assert.equal(csrfGetBlocked.status, 403);
+  assert.equal(csrfGetBlocked.json.code, 'CSRF_REJECTED');
 });

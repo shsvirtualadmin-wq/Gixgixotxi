@@ -32,14 +32,15 @@ import {
   normalizeInventoryItemId,
   type LockerCategoryTab,
 } from '@/lib/inventorySource';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-const CATEGORY_TABS: Array<{ id: LockerCategoryTab; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'avatar', label: 'Avatars' },
-  { id: 'frame', label: 'Frames' },
-  { id: 'banner', label: 'Banners' },
-  { id: 'nameplate', label: 'Nameplates' },
-  { id: 'effect', label: 'Effects' },
+const CATEGORY_TABS: Array<{ id: LockerCategoryTab; labelKey: string }> = [
+  { id: 'all', labelKey: 'common.all' },
+  { id: 'avatar', labelKey: 'store.tabAvatars' },
+  { id: 'frame', labelKey: 'store.tabFrames' },
+  { id: 'banner', labelKey: 'store.tabBanners' },
+  { id: 'nameplate', labelKey: 'store.tabNameplates' },
+  { id: 'effect', labelKey: 'store.tabEffects' },
 ];
 
 const RARITY_TOKEN_STYLES: Record<
@@ -91,6 +92,7 @@ function deriveDeterministicShortId(uid: string): string {
 
 export const LockerPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t, formatNumber } = useLanguage();
   const { user, profile, authStatus } = useAuth();
   const wallet = useWallet();
 
@@ -271,11 +273,11 @@ export const LockerPage: React.FC = () => {
           }));
           showToast(
             target.type === 'avatar'
-              ? 'Reset to starter avatar'
-              : `Unequipped ${target.name}`
+              ? t('locker.resetStarterAvatar')
+              : t('store.unequippedItem', { name: target.name })
           );
         } catch (err: any) {
-          showToast(err?.message || 'Failed to unequip item');
+          showToast(err?.message || t('locker.failedUnequip'));
         } finally {
           setSavingEquip(false);
         }
@@ -289,9 +291,9 @@ export const LockerPage: React.FC = () => {
           ...prev,
           [target.type]: target.id,
         }));
-        showToast(`Equipped ${target.name}`);
+        showToast(t('store.equippedItem', { name: target.name }));
       } catch (err: any) {
-        showToast(err?.message || 'Failed to equip item');
+        showToast(err?.message || t('locker.failedEquip'));
       } finally {
         setSavingEquip(false);
       }
@@ -303,6 +305,7 @@ export const LockerPage: React.FC = () => {
       canUnequipItem,
       wallet,
       starterAvatarKey,
+      t,
     ]
   );
 
@@ -322,9 +325,9 @@ export const LockerPage: React.FC = () => {
     setSavingEquip(true);
     try {
       await wallet.equipMultipleCosmetics(previewEquipped);
-      showToast('Loadout saved to profile');
+      showToast(t('locker.loadoutSaved'));
     } catch (err: any) {
-      showToast(err?.message || 'Failed to save loadout');
+      showToast(err?.message || t('locker.failedSaveLoadout'));
     } finally {
       setSavingEquip(false);
     }
@@ -339,7 +342,7 @@ export const LockerPage: React.FC = () => {
       nameplate: equippedLoadout.nameplate,
       effect: equippedLoadout.effect,
     });
-    showToast('Preview reset to equipped loadout');
+    showToast(t('locker.previewReset'));
   };
 
   // Keyboard navigation on desktop
@@ -484,13 +487,13 @@ export const LockerPage: React.FC = () => {
   );
   const actionButtonLabel = savingEquip
     ? selectedIsEquipped
-      ? 'Unequipping…'
-      : 'Equipping…'
+      ? t('locker.unequipping')
+      : t('locker.equipping')
     : selectedIsEquipped
     ? selectedCanUnequip
-      ? 'Unequip'
-      : 'Equipped'
-    : 'Equip';
+      ? t('locker.unequip')
+      : t('store.equipped')
+    : t('locker.equip');
 
   return (
     <div
@@ -558,11 +561,11 @@ export const LockerPage: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/profile')}
-            aria-label="Back to profile"
+            aria-label={t('common.back')}
             className="w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 hover:bg-[var(--settings-row-hover)]"
             style={{ color: 'var(--text)' }}
           >
-            <ChevronLeft className="w-5 h-5" strokeWidth={2.1} />
+            <ChevronLeft className="w-5 h-5 rtl-mirror" strokeWidth={2.1} />
           </button>
 
           <h1
@@ -572,7 +575,7 @@ export const LockerPage: React.FC = () => {
               fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
             }}
           >
-            Locker
+            {t('locker.title')}
           </h1>
 
           <button
@@ -586,7 +589,7 @@ export const LockerPage: React.FC = () => {
             }}
           >
             <ShoppingBag className="w-4 h-4" style={{ color: 'var(--accent)' }} />
-            <span>Store</span>
+            <span>{t('nav.store')}</span>
           </button>
         </header>
 
@@ -616,7 +619,7 @@ export const LockerPage: React.FC = () => {
               }}
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         )}
@@ -679,7 +682,7 @@ export const LockerPage: React.FC = () => {
                       className="w-2 h-2 rounded-full"
                       style={{ backgroundColor: hasUnsavedPreview ? 'var(--accent)' : '#10b981' }}
                     />
-                    {hasUnsavedPreview ? 'Previewing' : 'Equipped'}
+                    {hasUnsavedPreview ? t('store.previewing') : t('store.equipped')}
                   </span>
                   <span
                     className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-semibold"
@@ -693,12 +696,12 @@ export const LockerPage: React.FC = () => {
                       <span
                         className="inline-block h-3.5 w-14 animate-pulse rounded-full"
                         style={{ backgroundColor: 'var(--skeleton)' }}
-                        aria-label="Loading equipped count"
+                        aria-label={t('common.loading')}
                       />
                     ) : hasLoadError ? (
                       '—'
                     ) : (
-                      `${equippedCount} equipped`
+                      t('locker.equippedCount', { count: formatNumber(equippedCount) })
                     )}
                   </span>
                 </div>
@@ -760,10 +763,10 @@ export const LockerPage: React.FC = () => {
                   className="mt-1 inline-flex items-center gap-1.5 text-[13px]"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  <span>Level {levelInfo.level.toLocaleString()}</span>
+                  <span className="ltr-nums">{t('profile.level', { level: formatNumber(levelInfo.level) })}</span>
                   <span>·</span>
                   <span
-                    className="inline-flex items-center gap-1 font-semibold"
+                    className="inline-flex items-center gap-1 font-semibold ltr-nums"
                     style={{ color: 'var(--koban)' }}
                   >
                     <KobanIcon size={14} decorative />
@@ -771,10 +774,10 @@ export const LockerPage: React.FC = () => {
                       <span
                         className="inline-block h-3.5 w-10 animate-pulse rounded-full"
                         style={{ backgroundColor: 'var(--skeleton)' }}
-                        aria-label="Loading Kobans balance"
+                        aria-label={t('common.loading')}
                       />
                     ) : (
-                      <span>{wallet.kobanBalance.toLocaleString()} Kobans</span>
+                      <span>{formatNumber(wallet.kobanBalance)} Kobans</span>
                     )}
                   </span>
                 </div>
@@ -788,37 +791,37 @@ export const LockerPage: React.FC = () => {
                   }}
                 >
                   <div>
-                    <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                      Lv {levelInfo.level}
+                    <div className="text-[14px] font-semibold ltr-nums" style={{ color: 'var(--text)' }}>
+                      Lv {formatNumber(levelInfo.level)}
                     </div>
                     <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                      Rank
+                      {t('locker.rank')}
                     </div>
                   </div>
                   <div className="border-x" style={{ borderColor: 'var(--border)' }}>
-                    <div className="text-[14px] font-semibold" style={{ color: 'var(--koban)' }}>
+                    <div className="text-[14px] font-semibold ltr-nums" style={{ color: 'var(--koban)' }}>
                       {isLoadingInventory ? (
                         <span
                           className="inline-block h-3.5 w-8 animate-pulse rounded-full align-middle"
                           style={{ backgroundColor: 'var(--skeleton)' }}
-                          aria-label="Loading owned count"
+                          aria-label={t('common.loading')}
                         />
                       ) : hasLoadError ? (
                         '—'
                       ) : (
-                        ownedItems.length.toLocaleString()
+                        formatNumber(ownedItems.length)
                       )}
                     </div>
                     <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                      Owned
+                      {t('store.owned')}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
+                    <div className="text-[14px] font-semibold ltr-nums" style={{ color: 'var(--text)' }}>
                       #{shortId}
                     </div>
                     <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                      ID tag
+                      {t('locker.idTag')}
                     </div>
                   </div>
                 </div>
@@ -839,7 +842,7 @@ export const LockerPage: React.FC = () => {
                 }}
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>Reset preview</span>
+                <span>{t('locker.resetPreview')}</span>
               </button>
               <button
                 type="button"
@@ -853,7 +856,7 @@ export const LockerPage: React.FC = () => {
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-                <span>Save loadout</span>
+                <span>{t('locker.saveLoadout')}</span>
               </button>
             </div>
           </div>
@@ -863,7 +866,7 @@ export const LockerPage: React.FC = () => {
             {/* Scrollable Pill Row on mobile, wraps cleanly on desktop — AA contrast, zero overlapping or clipped text */}
             <div
               role="tablist"
-              aria-label="Locker categories"
+              aria-label={t('locker.title')}
               className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1 lg:flex-wrap lg:overflow-visible"
             >
               {CATEGORY_TABS.map((cat) => {
@@ -890,7 +893,7 @@ export const LockerPage: React.FC = () => {
                           }
                     }
                   >
-                    {cat.label}
+                    {t(cat.labelKey)}
                   </button>
                 );
               })}
@@ -906,17 +909,17 @@ export const LockerPage: React.FC = () => {
               >
                 {isLoadingInventory ? (
                   <>
-                    <span>Owned items</span>
+                    <span>{t('locker.ownedItems')}</span>
                     <span
                       className="inline-block h-3.5 w-7 animate-pulse rounded-full"
                       style={{ backgroundColor: 'var(--skeleton)' }}
-                      aria-label="Loading owned items count"
+                      aria-label={t('common.loading')}
                     />
                   </>
                 ) : hasLoadError ? (
-                  <span>Owned items</span>
+                  <span>{t('locker.ownedItems')}</span>
                 ) : (
-                  <span>Owned items ({filteredItems.length})</span>
+                  <span>{t('locker.ownedItemsCount', { count: formatNumber(filteredItems.length) })}</span>
                 )}
               </h2>
               {hasUnsavedPreview && (
@@ -926,7 +929,7 @@ export const LockerPage: React.FC = () => {
                   className="text-[13px] font-medium cursor-pointer hover:underline lg:hidden"
                   style={{ color: 'var(--accent)' }}
                 >
-                  Reset preview
+                  {t('locker.resetPreview')}
                 </button>
               )}
             </div>
@@ -972,10 +975,10 @@ export const LockerPage: React.FC = () => {
                   <AlertCircle className="w-6 h-6" style={{ color: 'var(--danger)' }} />
                   <div className="space-y-1 max-w-sm">
                     <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
-                      Couldn&apos;t load your Locker items
+                      {t('locker.loadErrorTitle')}
                     </div>
                     <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                      {wallet.walletError || 'Please check your connection and try again.'}
+                      {wallet.walletError || t('locker.loadErrorDesc')}
                     </p>
                   </div>
                   <button
@@ -985,7 +988,7 @@ export const LockerPage: React.FC = () => {
                     style={{ backgroundColor: 'var(--accent)' }}
                   >
                     <RefreshCw className="w-4 h-4" />
-                    <span>Retry</span>
+                    <span>{t('common.retry')}</span>
                   </button>
                 </div>
               ) : (
@@ -1014,8 +1017,8 @@ export const LockerPage: React.FC = () => {
                         {/* Check badge on equipped item */}
                         {isEquipped && (
                           <span
-                            title="Equipped"
-                            className="absolute top-2.5 right-2.5 z-10 w-5 h-5 rounded-full text-white flex items-center justify-center"
+                            title={t('store.equipped')}
+                            className="absolute top-2.5 end-2.5 z-10 w-5 h-5 rounded-full text-white flex items-center justify-center"
                             style={{ backgroundColor: 'var(--accent)' }}
                           >
                             <Check className="w-3 h-3 stroke-[3]" />
@@ -1031,7 +1034,7 @@ export const LockerPage: React.FC = () => {
                             border: `1px solid ${rToken.border}`,
                           }}
                         >
-                          {rToken.label}
+                          {t(`store.rarity_${item.rarity || 'common'}`)}
                         </span>
 
                         {/* Thumbnail */}
@@ -1071,7 +1074,7 @@ export const LockerPage: React.FC = () => {
                       <Plus className="w-5 h-5" />
                     </div>
                     <span className="text-[13px] font-semibold leading-snug">
-                      Get more in Store
+                      {t('locker.getMoreInStore')}
                     </span>
                   </button>
                 </>
@@ -1098,13 +1101,13 @@ export const LockerPage: React.FC = () => {
                         border: `1px solid ${RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].border}`,
                       }}
                     >
-                      {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label}
+                      {t(`store.rarity_${selectedItem.rarity || 'common'}`)}
                     </span>
                     <span
-                      className="text-[12px] capitalize"
+                      className="text-[12px]"
                       style={{ color: 'var(--text-muted)' }}
                     >
-                      {selectedItem.type}
+                      {t(`store.cat_${selectedItem.type}`)}
                     </span>
                   </div>
                   <h3
@@ -1158,12 +1161,12 @@ export const LockerPage: React.FC = () => {
               boxShadow: '0 8px 24px -6px rgba(0, 0, 0, 0.22)',
             }}
           >
-            <div className="min-w-0 pl-1">
+            <div className="min-w-0 ps-1">
               <div
-                className="text-[12px] capitalize truncate"
+                className="text-[12px] truncate"
                 style={{ color: 'var(--text-muted)' }}
               >
-                {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label} · {selectedItem.type}
+                {t(`store.rarity_${selectedItem.rarity || 'common'}`)} · {t(`store.cat_${selectedItem.type}`)}
               </div>
               <div className="text-[15px] font-semibold truncate" style={{ color: 'var(--text)' }}>
                 {selectedItem.name}

@@ -88,6 +88,7 @@ export interface UserProfile {
   plus_badge_visible?: boolean;
   plus_badge_id?: number | null;
   adFreeEnabled?: boolean;
+  appLanguage?: string;
   notificationPrefs?: {
     emailKobanReceipts?: boolean;
     emailArenaStarts?: boolean;

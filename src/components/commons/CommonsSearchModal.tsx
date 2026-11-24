@@ -25,6 +25,7 @@ import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import { useTheme } from '@/hooks/useTheme';
 import { LineLoader } from '@/components/ui/LineLoader';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface CommonsSearchModalProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ export function CommonsSearchModal({
   onOpenReport,
   onOpenUserProfile,
 }: CommonsSearchModalProps) {
+  const { t, isRtl, formatNumber } = useLanguage();
   const { openProfile } = useProfileModal();
   const { isDark } = useTheme();
   const nowMs = useSharedNow();
@@ -239,7 +241,7 @@ export function CommonsSearchModal({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search Commons..."
+                placeholder={t('commons.searchPlaceholder')}
                 className="flex-1 text-base sm:text-sm bg-transparent border-none text-primary placeholder:text-muted focus:outline-none"
               />
               {searchQuery && (
@@ -251,8 +253,8 @@ export function CommonsSearchModal({
                     inputRef.current?.focus();
                   }}
                   className="w-7 h-7 rounded-full bg-white/[0.08] flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer"
-                  title="Clear input"
-                  aria-label="Clear search query"
+                  title={t('common.clear')}
+                  aria-label={t('common.clear')}
                 >
                   <X size={14} />
                 </button>
@@ -263,16 +265,16 @@ export function CommonsSearchModal({
               type="button"
               onClick={onClose}
               className="min-h-[48px] px-4 rounded-full glass-pill flex items-center justify-center text-xs sm:text-sm font-semibold text-muted hover:text-primary transition-colors cursor-pointer shrink-0"
-              title="Cancel search"
+              title={t('common.cancel')}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
 
           {/* Segmented Control in a Glass Track: Posts vs People */}
           <div
             role="tablist"
-            aria-label="Search category"
+            aria-label={t('common.search')}
             className="ios-seg-track w-full grid grid-cols-2 items-center"
           >
             <div
@@ -280,9 +282,11 @@ export function CommonsSearchModal({
               className="ios-seg-thumb"
               style={{
                 width: 'calc((100% - 8px) / 2)',
+                left: isRtl ? 'auto' : '4px',
+                right: isRtl ? '4px' : 'auto',
                 transform:
                   activeTab === 'people'
-                    ? 'translate3d(100%, 0, 0)'
+                    ? `translate3d(${isRtl ? '-100%' : '100%'}, 0, 0)`
                     : 'translate3d(0%, 0, 0)',
               }}
             >
@@ -300,7 +304,7 @@ export function CommonsSearchModal({
               className={`ios-seg-btn gap-1.5 ${activeTab === 'posts' ? 'is-active' : ''}`}
             >
               <BookOpen size={14} />
-              <span>{hasQuery ? `Posts (${postResults.length})` : 'Posts'}</span>
+              <span>{hasQuery ? `${t('common.posts')} (${formatNumber(postResults.length)})` : t('common.posts')}</span>
             </button>
 
             <button
@@ -314,7 +318,7 @@ export function CommonsSearchModal({
               className={`ios-seg-btn gap-1.5 ${activeTab === 'people' ? 'is-active' : ''}`}
             >
               <User size={14} />
-              <span>{hasQuery ? `People (${peopleResults.length})` : 'People'}</span>
+              <span>{hasQuery ? `${t('commons.searchPeople')} (${formatNumber(peopleResults.length)})` : t('commons.searchPeople')}</span>
             </button>
           </div>
 
@@ -334,29 +338,29 @@ export function CommonsSearchModal({
                   className="text-xl sm:text-2xl text-primary tracking-tight"
                   style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                 >
-                  Search Commons
+                  {t('commons.searchTitle')}
                 </h3>
                 <p className="text-xs sm:text-sm text-muted max-w-sm mx-auto leading-relaxed">
-                  Find study material, formulas, past papers, doubts or classmates.
+                  {t('commons.searchSubtitle')}
                 </p>
               </div>
 
               {/* RECENT searches chips + Clear */}
               {recentSearches.length > 0 && (
-                <div className="text-left max-w-lg mx-auto space-y-2.5">
+                <div className="text-start max-w-lg mx-auto space-y-2.5">
                   <div className="flex items-center justify-between px-1">
                     <span
                       className="text-[11px] uppercase tracking-[0.14em] text-muted flex items-center gap-1.5"
                       style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                     >
-                      <Clock size={12} className="text-[#D71921]" /> RECENT
+                      <Clock size={12} className="text-[#D71921]" /> {t('commons.recentSearches')}
                     </span>
                     <button
                       type="button"
                       onClick={clearRecentSearches}
                       className="min-h-[32px] px-2.5 rounded-full text-muted hover:text-[#D71921] cursor-pointer text-xs font-semibold transition-colors"
                     >
-                      Clear
+                      {t('common.clear')}
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -376,13 +380,13 @@ export function CommonsSearchModal({
               )}
 
               {/* TRY suggestion chips */}
-              <div className="text-left max-w-lg mx-auto space-y-2.5">
+              <div className="text-start max-w-lg mx-auto space-y-2.5">
                 <div className="flex items-center justify-between px-1">
                   <span
                     className="text-[11px] uppercase tracking-[0.14em] text-muted flex items-center gap-1.5"
                     style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" /> TRY
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" /> {t('commons.trySearching')}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -406,7 +410,7 @@ export function CommonsSearchModal({
               <LineLoader
                 variant="section"
                 context="generic"
-                message={`Searching for "${debouncedQuery}"...`}
+                message={t('commons.searchingFor', { query: debouncedQuery })}
               />
             </div>
           ) : activeTab === 'posts' ? (
@@ -417,10 +421,10 @@ export function CommonsSearchModal({
                   className="text-base text-primary"
                   style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
                 >
-                  No results for "{debouncedQuery}"
+                  {t('commons.noSearchResults', { query: debouncedQuery })}
                 </p>
                 <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
-                  Try checking your spelling, using fewer keywords, or searching by author name or topic.
+                  {t('commons.noSearchPostsHint')}
                 </p>
               </div>
             ) : (
@@ -477,7 +481,7 @@ export function CommonsSearchModal({
                         <div className="flex items-center gap-1.5 min-w-0">
                           {post.isAnonymous ? (
                             <span className="flex items-center gap-1 font-medium text-muted">
-                              <EyeOff size={12} /> Anonymous
+                              <EyeOff size={12} /> {t('commons.anonymous')}
                             </span>
                           ) : (
                             <div className="flex items-center gap-1.5 min-w-0">
@@ -497,8 +501,8 @@ export function CommonsSearchModal({
                           )}
                         </div>
                         <span className="text-[11px] text-accent font-semibold group-hover:underline flex items-center gap-0.5 shrink-0">
-                          <span>View post</span>
-                          <ChevronRight size={12} />
+                          <span>{t('commons.viewPost')}</span>
+                          <ChevronRight size={12} className="rtl-mirror" />
                         </span>
                       </div>
                     </Link>
@@ -510,10 +514,10 @@ export function CommonsSearchModal({
           peopleResults.length === 0 ? (
             <div className="py-12 text-center space-y-2">
               <p className="text-sm font-semibold text-primary">
-                No results for "{debouncedQuery}"
+                {t('commons.noSearchResults', { query: debouncedQuery })}
               </p>
               <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
-                Try searching by first name, nickname, or username.
+                {t('commons.noSearchPeopleHint')}
               </p>
             </div>
           ) : (
@@ -569,7 +573,7 @@ export function CommonsSearchModal({
 
                   <ArrowRight
                     size={16}
-                    className="text-muted group-hover:text-accent group-hover:translate-x-1 transition-all shrink-0 ml-2"
+                    className="rtl-mirror text-muted group-hover:text-accent transition-all shrink-0 ms-2"
                   />
                 </div>
               ))}

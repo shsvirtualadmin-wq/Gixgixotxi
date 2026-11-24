@@ -53,12 +53,12 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
   const content = (
     <>
       {leadingElement ? (
-        <span className="mr-4 flex shrink-0 items-center justify-center">
+        <span className="me-4 flex shrink-0 items-center justify-center">
           {leadingElement}
         </span>
       ) : icon ? (
         <span
-          className="mr-4 flex h-6 w-6 shrink-0 items-center justify-center [&>svg]:h-6 [&>svg]:w-6"
+          className="me-4 flex h-6 w-6 shrink-0 items-center justify-center [&>svg]:h-6 [&>svg]:w-6"
           style={{ color: textColor }}
           aria-hidden="true"
         >
@@ -66,7 +66,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
         </span>
       ) : null}
 
-      <span className="min-w-0 flex-1 py-3 text-left">
+      <span className="min-w-0 flex-1 py-3 text-start">
         <span
           className="block text-[16px] font-normal leading-snug"
           style={{ color: textColor }}
@@ -84,7 +84,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
       </span>
 
       <span
-        className={`ml-auto pl-3 flex items-center justify-end gap-2 ${
+        className={`ms-auto ps-3 flex items-center justify-end gap-2 ${
           actionValue ? 'flex-none shrink-0' : 'min-w-0 max-w-[65%] shrink'
         }`}
       >
@@ -101,8 +101,8 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
           <span
             className={
               actionValue
-                ? 'whitespace-nowrap flex-none text-right text-[14px] sm:text-[15px] leading-snug'
-                : 'min-w-0 break-words text-right text-[14px] sm:text-[15px] leading-snug'
+                ? 'whitespace-nowrap flex-none text-end text-[14px] sm:text-[15px] leading-snug'
+                : 'min-w-0 break-words text-end text-[14px] sm:text-[15px] leading-snug'
             }
             style={{
               color: actionValue ? 'var(--accent)' : 'var(--text-muted)',
@@ -165,7 +165,7 @@ export const SettingsRow: React.FC<SettingsRowProps> = ({
           className="pointer-events-none h-px"
           style={{
             backgroundColor: 'var(--border)',
-            marginLeft: hasLeading ? '60px' : '20px',
+            marginInlineStart: hasLeading ? '60px' : '20px',
           }}
         />
       )}
@@ -228,7 +228,7 @@ export const SettingsProgressRow: React.FC<SettingsProgressRowProps> = ({
       {!isLast && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 ml-5 h-px"
+          className="pointer-events-none absolute inset-x-0 bottom-0 ms-5 h-px"
           style={{ backgroundColor: 'var(--border)' }}
         />
       )}

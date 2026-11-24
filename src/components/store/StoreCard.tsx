@@ -9,6 +9,7 @@ import {
 } from '@/components/koban/CosmeticRenderers';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { PriceRow } from './PriceRow';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export const RARITY_ACCENT: Record<
   CosmeticRarity,
@@ -108,6 +109,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   onEnterSelectionMode,
 }) => {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const { t } = useLanguage();
   const [isInViewport, setIsInViewport] = useState(false);
   const [showAnimatedTip, setShowAnimatedTip] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
@@ -186,7 +188,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           handleCardClick();
         }
       }}
-      className={`group relative rounded-2xl overflow-hidden flex flex-col h-full text-left select-none cursor-pointer transition-all duration-200 bg-[var(--bg-card)] border ${
+      className={`group relative rounded-2xl overflow-hidden flex flex-col h-full text-start select-none cursor-pointer transition-all duration-200 bg-[var(--bg-card)] border ${
         selectionMode && isSelected
           ? 'border-[#E11D2A] ring-2 ring-[#E11D2A]/30'
           : isEquipped
@@ -197,7 +199,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Subtle Rarity Top Edge Line (Unified system — no heavy red outer glow) */}
       <div className={`h-[3px] w-full shrink-0 ${rarityStyle.topEdgeClass}`} />
 
-      {/* Top Badge Bar — Separated from artwork so NEW (top-left) and Animated sparkle (top-right, 44x44 tap target) never cover artwork */}
+      {/* Top Badge Bar — Separated from artwork so NEW (top-start) and Animated sparkle (top-end, 44x44 tap target) never cover artwork */}
       <div className="flex items-center justify-between px-2.5 pt-2 pb-1 min-h-[34px] bg-[#0B0C11] dark-surface-preserve border-b border-white/[0.06]">
         <div className="flex items-center gap-1.5 min-w-0">
           {selectionMode && (
@@ -219,26 +221,26 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           )}
           {item.isNew ? (
             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-[#E11D2A] text-white leading-none">
-              NEW
+              {t('store.newBadge')}
             </span>
           ) : (
             <span className="text-[10px] font-semibold text-white/55 truncate">
-              {CATEGORY_SHORT_LABEL[item.type]}
+              {t(`store.cat_${item.type}`)}
             </span>
           )}
         </div>
 
-        {/* Right: Animated Sparkle with 44x44px tap target */}
+        {/* End: Animated Sparkle with 44x44px tap target */}
         <div className="relative flex items-center">
           <button
             type="button"
-            aria-label="Animated item"
-            title="Animated cosmetic preview"
+            aria-label={t('store.animatedItem')}
+            title={t('store.animatedPreview')}
             onClick={(e) => {
               e.stopPropagation();
               setShowAnimatedTip((prev) => !prev);
             }}
-            className="-my-2 -mr-2 w-11 h-11 inline-flex items-center justify-center text-amber-300/90 hover:text-amber-200 transition-colors"
+            className="-my-2 -me-2 w-11 h-11 inline-flex items-center justify-center text-amber-300/90 hover:text-amber-200 transition-colors"
           >
             <span className="w-6 h-6 rounded-full bg-white/10 border border-white/15 flex items-center justify-center">
               <Sparkles className="w-3 h-3 text-amber-300" />
@@ -250,9 +252,9 @@ export const StoreCard: React.FC<StoreCardProps> = ({
                 e.stopPropagation();
                 setShowAnimatedTip(false);
               }}
-              className="absolute right-8 top-1 z-20 whitespace-nowrap px-2 py-0.5 rounded-md text-[10px] font-bold bg-black/85 text-white border border-white/15 shadow-md"
+              className="absolute end-8 top-1 z-20 whitespace-nowrap px-2 py-0.5 rounded-md text-[10px] font-bold bg-black/85 text-white border border-white/15 shadow-md"
             >
-              Animated FX
+              {t('store.animatedFx')}
             </span>
           )}
         </div>
@@ -352,10 +354,10 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             <span
               className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider border ${rarityStyle.badgeBg} ${rarityStyle.badgeText} ${rarityStyle.badgeBorder}`}
             >
-              {rarityStyle.label}
+              {t(`store.rarity_${item.rarity}`)}
             </span>
             <span className="text-[10px] font-medium text-[var(--text-muted)] truncate">
-              {CATEGORY_SHORT_LABEL[item.type]}
+              {t(`store.cat_${item.type}`)}
             </span>
           </div>
 

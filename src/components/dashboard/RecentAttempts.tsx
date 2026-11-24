@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { D1UniversityAttemptRecord } from '@/services/universityMcqService';
 
 interface Props {
@@ -24,6 +25,7 @@ export const RecentAttempts = memo(function RecentAttempts({
   attempts,
   onRetakeUniversity,
 }: Props) {
+  const { t, formatNumber, formatDate } = useLanguage();
   const allAttempts = useMemo(
     () => (Array.isArray(attempts) ? attempts : []),
     [attempts]
@@ -52,21 +54,21 @@ export const RecentAttempts = memo(function RecentAttempts({
   return (
     <section
       className="space-y-3"
-      aria-label="Recent Attempts"
+      aria-label={t('dashboard.recentAttempts')}
       data-testid="recent-attempts-section"
     >
       <div className="flex items-center justify-between gap-2 px-1">
         <h2
           className="text-base sm:text-lg font-black tracking-tight truncate"
-          style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+          style={{ color: 'var(--text)' }}
         >
-          Recent Attempts
+          {t('dashboard.recentAttempts')}
         </h2>
         <span
-          className="text-[11px] font-bold uppercase tracking-wider shrink-0"
+          className="text-[11px] font-bold uppercase tracking-wider shrink-0 ltr-nums"
           style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
         >
-          LATEST {safeAttempts.length}
+          {formatNumber(safeAttempts.length)}
         </span>
       </div>
 
@@ -82,15 +84,15 @@ export const RecentAttempts = memo(function RecentAttempts({
         >
           <span
             className="text-[10px] font-bold uppercase tracking-wider truncate"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-muted)' }}
           >
-            Attempts
+            {t('dashboard.testsCompleted')}
           </span>
           <span
-            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            className="text-sm sm:text-base font-black tabular-nums shrink-0 ltr-nums"
             style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
           >
-            {summary.count}
+            {formatNumber(summary.count)}
           </span>
         </div>
 
@@ -104,15 +106,15 @@ export const RecentAttempts = memo(function RecentAttempts({
         >
           <span
             className="text-[10px] font-bold uppercase tracking-wider truncate"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-muted)' }}
           >
-            Avg Acc
+            {t('dashboard.accuracy')}
           </span>
           <span
-            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            className="text-sm sm:text-base font-black tabular-nums shrink-0 ltr-nums"
             style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
           >
-            {summary.avgAccuracy}%
+            {formatNumber(summary.avgAccuracy)}%
           </span>
         </div>
 
@@ -126,15 +128,15 @@ export const RecentAttempts = memo(function RecentAttempts({
         >
           <span
             className="text-[10px] font-bold uppercase tracking-wider truncate"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-muted)' }}
           >
-            Best
+            {t('commons.sortTop')}
           </span>
           <span
-            className="text-sm sm:text-base font-black tabular-nums shrink-0"
+            className="text-sm sm:text-base font-black tabular-nums shrink-0 ltr-nums"
             style={{ fontFamily: 'var(--font-dot)', color: 'var(--accent)' }}
           >
-            {summary.bestAccuracy}%
+            {formatNumber(summary.bestAccuracy)}%
           </span>
         </div>
       </div>
@@ -153,13 +155,13 @@ export const RecentAttempts = memo(function RecentAttempts({
             className="text-xs sm:text-sm font-bold truncate"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
           >
-            No university attempts yet
+            {t('test.noResultsYet')}
           </p>
           <p
             className="text-xs truncate mt-0.5"
             style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
           >
-            Tap any live university tile above to start a practice test.
+            {t('dashboard.noRecentAttempts')}
           </p>
         </div>
       ) : (
@@ -168,7 +170,7 @@ export const RecentAttempts = memo(function RecentAttempts({
             const mins = Math.max(1, Math.round(Number(a.durationSeconds || 60) / 60));
             const pct = Math.max(0, Math.min(100, Math.round(Number(a.accuracy) || 0)));
             const isRetry = pct < 10;
-            const badgeText = isRetry ? 'RETRY' : 'KEEP GOING';
+            const badgeText = isRetry ? t('common.retry') : t('test.retakeTest');
             const r = 22;
             const circ = 2 * Math.PI * r;
             const dashOffset = circ - (pct / 100) * circ;
@@ -283,15 +285,14 @@ export const RecentAttempts = memo(function RecentAttempts({
                     <span
                       className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
                       style={{
-                        fontFamily: 'var(--font-mono)',
                         backgroundColor: 'var(--pill-chip-bg)',
                         color: 'var(--text-muted)',
                       }}
                     >
-                      {a.correctCount}/{a.totalQuestions} correct
+                      <span className="ltr-nums">{formatNumber(a.correctCount)}/{formatNumber(a.totalQuestions)}</span>&nbsp;{t('test.correct')}
                     </span>
                     <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ltr-nums"
                       style={{
                         fontFamily: 'var(--font-mono)',
                         backgroundColor: 'var(--pill-chip-bg)',
@@ -303,12 +304,11 @@ export const RecentAttempts = memo(function RecentAttempts({
                     <span
                       className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium truncate"
                       style={{
-                        fontFamily: 'var(--font-mono)',
                         backgroundColor: 'var(--pill-chip-bg)',
                         color: 'var(--text-muted)',
                       }}
                     >
-                      {formatAttemptDate(a.createdAt)}
+                      {a.createdAt ? formatDate(a.createdAt, { month: 'short', day: 'numeric' }) : formatAttemptDate(a.createdAt)}
                     </span>
                   </div>
                 </div>

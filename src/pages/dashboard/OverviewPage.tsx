@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
@@ -24,7 +25,7 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { getPlanDisplayLabel } from '@/config/postLimits';
+import { formatPlanLabel } from '@/lib/planTier';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import {
@@ -179,6 +180,7 @@ const UniversityCardLogo = memo(function UniversityCardLogo({
 
 const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
   const { smoothMode } = useSmoothMode();
+  const { formatNumber } = useLanguage();
   const target = Math.max(0, Math.floor(Number(value) || 0));
   const [displayVal, setDisplayVal] = useState<number>(() => (smoothMode ? target : 0));
 
@@ -205,7 +207,7 @@ const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
     return () => cancelAnimationFrame(rafId);
   }, [target, smoothMode]);
 
-  return <>{displayVal.toLocaleString()}</>;
+  return <span className="ltr-nums">{formatNumber(displayVal)}</span>;
 });
 
 const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
@@ -270,10 +272,13 @@ export function OverviewPage() {
     location.pathname === '/menu' ||
     location.pathname === '/dashboard/menu';
   const { user, profile, streak, loading: profileLoading } = useUserProfile();
+  const { t, formatNumber } = useLanguage();
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
   const isPlus = effectivePlan.isPlus;
-  const currentPlanLabel = getPlanDisplayLabel(effectivePlan.plan);
+  const currentPlanLabel = formatPlanLabel(effectivePlan.plan, {
+    freeLabel: t('common.free'),
+  });
 
   // Safety cleanup on mount to remove any leftover scroll lock on body/html
   useEffect(() => {
@@ -881,26 +886,40 @@ export function OverviewPage() {
         />
       </section>
 
-      {/* c) Greeting: "Salam, <name>! Ready to practice today?" */}
-      <section aria-label="Student Greeting">
+      {/* c) Greeting */}
+      <section aria-label={t('nav.dashboard')}>
         <h1
-          className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight leading-tight"
-          style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+          className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight leading-tight text-start"
+          style={{ color: 'var(--text)' }}
         >
-          {firstName ? (
-            `Salam, ${firstName}! Ready to practice today?`
-          ) : profileLoading ? (
-            <>
-              Salam,{' '}
-              <span
-                className="inline-block align-middle h-6 w-28 animate-pulse rounded-full bg-[var(--border)]"
-                aria-label="Loading name"
-              />
-              ! Ready to practice today?
-            </>
-          ) : (
-            'Salam! Ready to practice today?'
-          )}
+          {(() => {
+            const hour = new Date().getHours();
+            const greetingKey =
+              hour < 12
+                ? 'dashboard.greetingMorning'
+                : hour < 17
+                ? 'dashboard.greetingAfternoon'
+                : 'dashboard.greetingEvening';
+            if (firstName) {
+              return (
+                <>
+                  {t(greetingKey, { name: firstName })}! {t('dashboard.readyToPractice')}
+                </>
+              );
+            }
+            if (profileLoading) {
+              return (
+                <>
+                  <span
+                    className="inline-block align-middle h-6 w-28 animate-pulse rounded-full bg-[var(--border)] me-2"
+                    aria-label={t('common.loading')}
+                  />
+                  {t('dashboard.readyToPractice')}
+                </>
+              );
+            }
+            return t('dashboard.readyToPractice');
+          })()}
         </h1>
       </section>
 
@@ -917,21 +936,21 @@ export function OverviewPage() {
           <section
             id="choose-university-section"
             className="space-y-3"
-            aria-label="Choose your university"
+            aria-label={t('dashboard.universitiesTitle')}
           >
             <div className="flex items-center justify-between gap-2 flex-wrap px-4 sm:px-5">
-              <div className="space-y-0.5">
+              <div className="space-y-0.5 text-start">
                 <h2
                   className="text-base sm:text-lg font-black tracking-tight"
-                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                  style={{ color: 'var(--text)' }}
                 >
-                  Choose your university
+                  {t('dashboard.universitiesTitle')}
                 </h2>
                 <p
                   className="text-xs"
                   style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
                 >
-                  Swipe live universities and tap to start the official test pattern
+                  {t('dashboard.universitiesSubtitle')}
                 </p>
               </div>
             </div>
@@ -961,7 +980,7 @@ export function OverviewPage() {
                       className="text-sm font-bold"
                       style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
                     >
-                      Could not load universities
+                      {t('common.somethingWrong')}
                     </p>
                     <p
                       className="text-xs max-w-md mx-auto"
@@ -981,7 +1000,7 @@ export function OverviewPage() {
                     }}
                   >
                     <RefreshCw size={13} />
-                    <span>Retry</span>
+                    <span>{t('common.retry')}</span>
                   </button>
                 </div>
               </div>
@@ -999,13 +1018,7 @@ export function OverviewPage() {
                     className="text-sm font-bold"
                     style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
                   >
-                    No universities configured yet
-                  </p>
-                  <p
-                    className="text-xs"
-                    style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-                  >
-                    Universities added in the Admin Question Bank will appear here automatically.
+                    {t('common.noResults')}
                   </p>
                 </div>
               </div>
@@ -1049,7 +1062,7 @@ export function OverviewPage() {
 
                               <span className="uni-lg-live-pill">
                                 <span className="uni-lg-live-dot" aria-hidden="true" />
-                                <span>LIVE</span>
+                                <span>{t('common.live')}</span>
                               </span>
                             </div>
 
@@ -1070,7 +1083,7 @@ export function OverviewPage() {
                               <div className="uni-lg-count">
                                 <CountUpMcq value={mcqCount} />
                               </div>
-                              <div className="uni-lg-mcqs-label">MCQS</div>
+                              <div className="uni-lg-mcqs-label">{t('nav.mcqs')}</div>
                               <div className="uni-lg-name" title={uni.name}>
                                 {uni.name}
                               </div>
@@ -1078,7 +1091,7 @@ export function OverviewPage() {
 
                             {/* 4. Start test glass pill with 40px white arrow circle */}
                             <div className="uni-lg-cta">
-                              <span>Start test</span>
+                              <span>{t('dashboard.startTest')}</span>
                               <span className="uni-lg-cta-circle" aria-hidden="true">
                                 <ArrowRight size={17} strokeWidth={2.4} />
                               </span>
@@ -1123,9 +1136,10 @@ export function OverviewPage() {
                       onClick={() => setShowAllSoonUnis((prev) => !prev)}
                       aria-expanded={showAllSoonUnis}
                       className="uni-lg-glass-pill text-xs font-bold"
-                      style={{ fontFamily: 'var(--font-mono)' }}
                     >
-                      <span>{soonUniversities.length} more coming soon</span>
+                      <span>
+                        <span className="ltr-nums">{formatNumber(soonUniversities.length)}</span> · {t('dashboard.comingSoonBank')}
+                      </span>
                       <span aria-hidden="true">{showAllSoonUnis ? '▴' : '▾'}</span>
                     </button>
 
@@ -1160,48 +1174,50 @@ export function OverviewPage() {
           {/* e) Stats bento (2×2): questions solved, 7-day streak, daily limit, current plan */}
           <section
             className="grid grid-cols-2 gap-3 sm:gap-3.5 px-4 sm:px-5"
-            aria-label="Stats Bento"
+            aria-label={t('profile.stats')}
             data-testid="stats-bento-grid"
           >
-            <div className="uni-lg-glass-tile">
+            <div className="uni-lg-glass-tile text-start">
               <span
                 className="text-[10.5px] font-bold uppercase tracking-wider"
-                style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+                style={{ color: 'var(--text-muted)' }}
               >
-                Questions Solved
+                {t('dashboard.questionsSolved')}
               </span>
               <div className="space-y-0.5">
                 <div
-                  className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
+                  className="text-2xl sm:text-3xl font-black tabular-nums leading-none ltr-nums"
                   style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
                 >
-                  {d1Stats.questionsSolved.toLocaleString()}
+                  {formatNumber(d1Stats.questionsSolved)}
                 </div>
                 <p
                   className="text-[11px] truncate"
                   style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
                 >
-                  University question bank
+                  {t('dashboard.universitiesTitle')}
                 </p>
               </div>
             </div>
 
-            <div className="uni-lg-glass-tile">
+            <div className="uni-lg-glass-tile text-start">
               <div className="flex items-center justify-between gap-1">
                 <span
                   className="text-[10.5px] font-bold uppercase tracking-wider"
-                  style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+                  style={{ color: 'var(--text-muted)' }}
                 >
-                  7-Day Streak
+                  {t('dashboard.studyStreak')}
                 </span>
                 <Flame size={14} className="shrink-0" style={{ color: 'var(--accent)' }} />
               </div>
               <div className="space-y-1.5">
                 <div
-                  className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
-                  style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+                  className="text-xl sm:text-2xl font-black tabular-nums leading-none"
+                  style={{ color: 'var(--text)' }}
                 >
-                  {safeStreak} {safeStreak === 1 ? 'Day' : 'Days'}
+                  {safeStreak === 1
+                    ? t('dashboard.streakDay')
+                    : t('dashboard.streakDays', { count: formatNumber(safeStreak) })}
                 </div>
                 <div className="flex items-center gap-1" aria-hidden="true">
                   {Array.from({ length: 7 }).map((_, i) => (
@@ -1219,7 +1235,7 @@ export function OverviewPage() {
             </div>
 
         <div
-          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px]"
+          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px] text-start"
           style={{
             backgroundColor: 'var(--pill-card-bg)',
             border: '1px solid var(--pill-card-border)',
@@ -1228,26 +1244,26 @@ export function OverviewPage() {
         >
           <span
             className="text-[10.5px] font-bold uppercase tracking-wider"
-            style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-muted)' }}
           >
-            Daily Limit
+            {t('dashboard.dailyLimits')}
           </span>
           <div className="space-y-0.5">
             <div
-              className="text-2xl sm:text-3xl font-black tabular-nums leading-none"
-              style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+              className="text-xl sm:text-2xl font-black tabular-nums leading-none ltr-nums"
+              style={{ color: 'var(--text)' }}
             >
-              {isPro ? 'Unlimited' : `${testsRemaining} / ${FREE_DAILY_TESTS}`}
+              {isPro ? t('common.unlimited') : `${formatNumber(Number(testsRemaining))} / ${formatNumber(FREE_DAILY_TESTS)}`}
             </div>
             <p
               className="text-[11px] truncate"
               style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
             >
               {isPro ? (
-                'No daily cap'
+                t('dashboard.unlimitedTests')
               ) : (
                 <>
-                  Resets in <PKTMidnightCountdown />
+                  <PKTMidnightCountdown />
                 </>
               )}
             </p>
@@ -1255,7 +1271,7 @@ export function OverviewPage() {
         </div>
 
         <div
-          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px]"
+          className="rounded-[24px] p-4 flex flex-col justify-between gap-2 min-h-[108px] text-start"
           style={{
             backgroundColor: 'var(--pill-card-bg)',
             border: '1px solid var(--pill-card-border)',
@@ -1265,9 +1281,9 @@ export function OverviewPage() {
           <div className="flex items-center justify-between gap-1">
             <span
               className="text-[10.5px] font-bold uppercase tracking-wider"
-              style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
+              style={{ color: 'var(--text-muted)' }}
             >
-              Current Plan
+              {t('plans.yourPlan')}
             </span>
             {isPro && (
               <Crown
@@ -1279,24 +1295,17 @@ export function OverviewPage() {
           </div>
           <div className="space-y-0.5">
             <div
-              className="text-2xl sm:text-3xl font-black leading-none"
-              style={{ fontFamily: 'var(--font-dot)', color: isPlus ? '#F59E0B' : 'var(--text)' }}
+              className="text-xl sm:text-2xl font-black leading-none"
+              style={{ color: isPlus ? '#F59E0B' : 'var(--text)' }}
             >
               {currentPlanLabel}
             </div>
-            {isPlus ? (
+            {isPlus || isPro ? (
               <p
                 className="text-[11px] truncate"
                 style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
               >
-                All universities &amp; unlimited posts
-              </p>
-            ) : isPro ? (
-              <p
-                className="text-[11px] truncate"
-                style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
-              >
-                All live universities unlocked
+                {t('plans.unlimitedPractice')}
               </p>
             ) : (
               <Link
@@ -1304,7 +1313,7 @@ export function OverviewPage() {
                 className="inline-flex items-center gap-1 min-h-[44px] -my-2.5 py-2.5 text-[11px] font-bold hover:underline"
                 style={{ fontFamily: 'var(--font-heading)', color: 'var(--accent)' }}
               >
-                <span>Upgrade to Pro</span>
+                <span>{t('plans.upgradeToPro')}</span>
                 <ArrowRight size={11} />
               </Link>
             )}
@@ -1451,11 +1460,11 @@ export function OverviewPage() {
                     {/* 2. PROGRESS: large question number on left, "Answered X/Y" on right, 2-row dot strip below */}
                     <section className="nt-progress" aria-label="Test progress">
                       <div className="nt-progress-row">
-                        <span className="nt-progress-qnum nt-doto">
+                        <span className="nt-progress-qnum nt-doto ltr-nums">
                           {currentIndex + 1} / {testMcqs.length}
                         </span>
                         <span className="nt-progress-answered">
-                          Answered {answeredCount}/{testMcqs.length}
+                          {t('test.answered')} <span className="ltr-nums">{answeredCount}/{testMcqs.length}</span>
                         </span>
                       </div>
 
@@ -1523,7 +1532,7 @@ export function OverviewPage() {
                             size={12}
                             fill={flaggedMap[currentMcq.id] ? 'currentColor' : 'none'}
                           />
-                          <span>{flaggedMap[currentMcq.id] ? 'Flagged' : 'Flag'}</span>
+                          <span>{flaggedMap[currentMcq.id] ? t('test.flagged') : t('test.flag')}</span>
                         </button>
                       </div>
 
@@ -1593,8 +1602,8 @@ export function OverviewPage() {
                       type="button"
                       disabled={currentIndex === 0}
                       onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-                      aria-label="Previous question"
-                      title="Previous question"
+                      aria-label={t('test.previous')}
+                      title={t('test.previous')}
                       className="nt-btn-prev"
                     >
                       <ChevronLeft size={18} />
@@ -1609,7 +1618,7 @@ export function OverviewPage() {
                         }
                         className="nt-btn-next"
                       >
-                        <span>Next</span>
+                        <span>{t('test.next')}</span>
                         <ChevronRight size={16} />
                       </button>
 
@@ -1619,7 +1628,7 @@ export function OverviewPage() {
                         onClick={() => setConfirmSubmitOpen(true)}
                         className="nt-btn-submit"
                       >
-                        <span>{submittingTest ? 'Submitting...' : 'Finish & Submit'}</span>
+                        <span>{submittingTest ? t('common.submitting') : t('test.finishTest')}</span>
                         {submittingTest && <ButtonLineLoader />}
                       </button>
                     </div>
@@ -1680,15 +1689,14 @@ export function OverviewPage() {
                             size="md"
                             eager
                           />
-                          <div className="space-y-0.5 min-w-0">
+                          <div className="space-y-0.5 min-w-0 text-start">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                              Official Test Configuration
+                              {t('dashboard.setupTest')}
                             </span>
                             <h3
                               className="text-lg sm:text-xl font-bold text-[var(--text)] truncate"
-                              style={{ fontFamily: 'var(--font-dot)' }}
                             >
-                              {activeUni.name} Entry Test
+                              {activeUni.name}
                             </h3>
                             <p className="text-xs sm:text-sm text-[var(--text-muted)] truncate">
                               {getUniversityTestSpec(activeUni).patternLabel}
@@ -1699,21 +1707,21 @@ export function OverviewPage() {
                         <div className="grid grid-cols-3 gap-3">
                           <div className="cockpit-subrow p-3.5 space-y-1">
                             <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                              Available Pool
+                              {t('nav.mcqs')}
                             </span>
                             <div
-                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums ltr-nums"
                               style={{ fontFamily: 'var(--font-heading)' }}
                             >
-                              {Number(activeUni.mcq_count || 0).toLocaleString()} MCQs
+                              {t('dashboard.mcqsCount', { count: formatNumber(Number(activeUni.mcq_count || 0)) })}
                             </div>
                           </div>
                           <div className="cockpit-subrow p-3.5 space-y-1">
                             <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                              Duration
+                              {t('dashboard.timeLimit')}
                             </span>
                             <div
-                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums ltr-nums"
                               style={{ fontFamily: 'var(--font-heading)' }}
                             >
                               {formatDurationClock(
@@ -1723,10 +1731,10 @@ export function OverviewPage() {
                           </div>
                           <div className="cockpit-subrow p-3.5 space-y-1">
                             <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                              Marking
+                              {t('test.score')}
                             </span>
                             <div
-                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums"
+                              className="text-sm sm:text-base font-bold text-[var(--text)] tabular-nums ltr-nums"
                               style={{ fontFamily: 'var(--font-heading)' }}
                             >
                               {getUniversityTestSpec(activeUni).markingLabel}
@@ -1736,10 +1744,10 @@ export function OverviewPage() {
 
                         <div className="space-y-2.5">
                           <label
-                            className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
+                            className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider text-start"
                             style={{ fontFamily: 'var(--font-heading)' }}
                           >
-                            Select Subject Scope
+                            {t('dashboard.subjects')}
                           </label>
                           {loadingTopics ? (
                             <div className="flex flex-wrap gap-2" aria-hidden="true">
@@ -1762,7 +1770,7 @@ export function OverviewPage() {
                                     : 'cockpit-uni-pill--soon'
                                 }`}
                               >
-                                Full Pattern ({activeUni.mcq_count})
+                                {t('dashboard.allSubjects')} ({formatNumber(Number(activeUni.mcq_count || 0))})
                               </button>
                               {uniTopicsTree.map((s) => (
                                 <button
@@ -1778,7 +1786,7 @@ export function OverviewPage() {
                                       : 'cockpit-uni-pill--soon'
                                   }`}
                                 >
-                                  {s.subject} ({s.total})
+                                  {s.subject} ({formatNumber(s.total)})
                                 </button>
                               ))}
                             </div>
@@ -1788,10 +1796,10 @@ export function OverviewPage() {
                         {selectedSubject !== 'all' && (
                           <div className="space-y-2.5">
                             <label
-                              className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider"
+                              className="block text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider text-start"
                               style={{ fontFamily: 'var(--font-heading)' }}
                             >
-                              Select Chapter / Topic
+                              {t('dashboard.topics')}
                             </label>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1803,23 +1811,23 @@ export function OverviewPage() {
                                     : 'cockpit-uni-pill--soon'
                                 }`}
                               >
-                                All Topics
+                                {t('dashboard.allTopics')}
                               </button>
                               {(
                                 uniTopicsTree.find((x) => x.subject === selectedSubject)?.topics ||
                                 []
-                              ).map((t) => (
+                              ).map((topicItem) => (
                                 <button
-                                  key={t.topic}
+                                  key={topicItem.topic}
                                   type="button"
-                                  onClick={() => setSelectedTopic(t.topic)}
+                                  onClick={() => setSelectedTopic(topicItem.topic)}
                                   className={`cockpit-uni-pill min-h-[36px] px-3 cursor-pointer ${
-                                    selectedTopic === t.topic
+                                    selectedTopic === topicItem.topic
                                       ? 'cockpit-uni-pill--live'
                                       : 'cockpit-uni-pill--soon'
                                   }`}
                                 >
-                                  {t.topic} ({t.count})
+                                  {topicItem.topic} ({formatNumber(topicItem.count)})
                                 </button>
                               ))}
                             </div>
@@ -1839,7 +1847,7 @@ export function OverviewPage() {
                             onClick={() => setActiveUni(null)}
                             className="inline-flex items-center justify-center min-h-[48px] px-5 py-2.5 rounded-full text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                           >
-                            Cancel
+                            {t('common.cancel')}
                           </button>
                           <button
                             type="button"
@@ -1853,7 +1861,7 @@ export function OverviewPage() {
                             }
                             className="relative overflow-hidden inline-flex items-center justify-center gap-2 min-h-[48px] px-6 py-2.5 rounded-full text-xs sm:text-sm font-semibold bg-[var(--accent)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-75"
                           >
-                            <span>Start {activeUni.name} Test</span>
+                            <span>{t('dashboard.startTest')}</span>
                             <ArrowRight size={15} />
                           </button>
                         </div>
@@ -1868,49 +1876,50 @@ export function OverviewPage() {
                             <Award size={24} />
                           </div>
                           <div className="space-y-1">
-                            <h3
-                              className="text-lg sm:text-2xl font-bold text-[var(--text)]"
-                              style={{ fontFamily: 'var(--font-dot)' }}
-                            >
-                              {activeUni.name} Test Complete
+                            <h3 className="text-lg sm:text-2xl font-bold text-[var(--text)]">
+                              {activeUni.name} — {t('test.resultsTitle')}
                             </h3>
                             <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                              Official Score Breakdown & Verified Answer Key
+                              {testResultSummary.accuracy >= 80
+                                ? t('test.greatJob')
+                                : testResultSummary.accuracy >= 50
+                                ? t('test.keepPracticing')
+                                : t('test.needsWork')}
                             </p>
                           </div>
 
                           <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
                             <div className="cockpit-subrow p-3">
                               <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                                Accuracy
+                                {t('dashboard.accuracy')}
                               </div>
                               <div
-                                className="text-base sm:text-lg font-bold text-[var(--accent)] tabular-nums"
+                                className="text-base sm:text-lg font-bold text-[var(--accent)] tabular-nums ltr-nums"
                                 style={{ fontFamily: 'var(--font-heading)' }}
                               >
-                                {testResultSummary.accuracy}%
+                                {formatNumber(testResultSummary.accuracy)}%
                               </div>
                             </div>
                             <div className="cockpit-subrow p-3">
                               <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                                Correct
+                                {t('test.correct')}
                               </div>
                               <div
-                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
+                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums ltr-nums"
                                 style={{ fontFamily: 'var(--font-heading)' }}
                               >
-                                {testResultSummary.correctCount}/{testResultSummary.totalQuestions}
+                                {formatNumber(testResultSummary.correctCount)}/{formatNumber(testResultSummary.totalQuestions)}
                               </div>
                             </div>
                             <div className="cockpit-subrow p-3">
                               <div className="text-[10px] font-semibold uppercase text-[var(--text-muted)]">
-                                Net Score
+                                {t('test.score')}
                               </div>
                               <div
-                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums"
+                                className="text-base sm:text-lg font-bold text-[var(--text)] tabular-nums ltr-nums"
                                 style={{ fontFamily: 'var(--font-heading)' }}
                               >
-                                {testResultSummary.score}/{testResultSummary.maxScore}
+                                {formatNumber(testResultSummary.score)}/{formatNumber(testResultSummary.maxScore)}
                               </div>
                             </div>
                           </div>
@@ -1918,7 +1927,7 @@ export function OverviewPage() {
                           <div className="flex items-center justify-center gap-2.5 flex-wrap pt-2">
                             <PdfDownloadButton
                               onDownload={handleDownloadResultsPdf}
-                              label="Download Results & Answer Key (PDF)"
+                              label="PDF"
                               variant="primary"
                             />
                             <button
@@ -1926,14 +1935,14 @@ export function OverviewPage() {
                               onClick={() => setTestStage('overview')}
                               className="inline-flex items-center justify-center min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold cockpit-subrow text-[var(--text)] cursor-pointer"
                             >
-                              New Filter
+                              {t('test.retakeTest')}
                             </button>
                             <button
                               type="button"
                               onClick={() => setActiveUni(null)}
                               className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] cursor-pointer"
                             >
-                              Back to Cockpit
+                              {t('test.backToDashboard')}
                             </button>
                           </div>
                         </div>
@@ -1996,21 +2005,21 @@ export function OverviewPage() {
               className="fixed inset-0 z-[120] bg-black/75 flex items-center justify-center p-4"
               role="dialog"
               aria-modal="true"
-              aria-label="Confirm test submission"
+              aria-label={t('test.confirmSubmitTitle')}
             >
-              <div className="cockpit-surface-card w-full max-w-md p-5 sm:p-6 space-y-4">
+              <div className="cockpit-surface-card w-full max-w-md p-5 sm:p-6 space-y-4 text-start">
                 <div className="flex items-start justify-between gap-3">
                   <h4
                     className="text-base sm:text-lg font-bold text-[var(--text)]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    Submit {activeUni.name} Test?
+                    {t('test.confirmSubmitTitle')}
                   </h4>
                   <button
                     type="button"
                     onClick={() => setConfirmSubmitOpen(false)}
                     className="w-8 h-8 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-[var(--text-muted)] cursor-pointer"
-                    aria-label="Close confirmation"
+                    aria-label={t('common.close')}
                   >
                     <X size={15} />
                   </button>
@@ -2018,34 +2027,29 @@ export function OverviewPage() {
 
                 <div className="grid grid-cols-3 gap-2.5 text-center">
                   <div className="cockpit-subrow p-3">
-                    <div className="text-[10px] uppercase text-[var(--text-muted)]">Answered</div>
-                    <div className="text-base font-bold text-emerald-500 tabular-nums">
-                      {answeredCount}
+                    <div className="text-[10px] uppercase text-[var(--text-muted)]">{t('test.answered')}</div>
+                    <div className="text-base font-bold text-emerald-500 tabular-nums ltr-nums">
+                      {formatNumber(answeredCount)}
                     </div>
                   </div>
                   <div className="cockpit-subrow p-3">
-                    <div className="text-[10px] uppercase text-[var(--text-muted)]">Unanswered</div>
-                    <div className="text-base font-bold text-[var(--accent)] tabular-nums">
-                      {unansweredCount}
+                    <div className="text-[10px] uppercase text-[var(--text-muted)]">{t('test.unanswered')}</div>
+                    <div className="text-base font-bold text-[var(--accent)] tabular-nums ltr-nums">
+                      {formatNumber(unansweredCount)}
                     </div>
                   </div>
                   <div className="cockpit-subrow p-3">
-                    <div className="text-[10px] uppercase text-[var(--text-muted)]">Flagged</div>
-                    <div className="text-base font-bold text-amber-500 tabular-nums">
-                      {flaggedCount}
+                    <div className="text-[10px] uppercase text-[var(--text-muted)]">{t('test.flagged')}</div>
+                    <div className="text-base font-bold text-amber-500 tabular-nums ltr-nums">
+                      {formatNumber(flaggedCount)}
                     </div>
                   </div>
                 </div>
 
-                {unansweredCount > 0 ? (
-                  <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                    You still have <strong className="text-[var(--text)]">{unansweredCount} unanswered {unansweredCount === 1 ? 'question' : 'questions'}</strong>. Are you sure you want to finish and submit now?
-                  </p>
-                ) : (
-                  <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                    You have answered all {testMcqs.length} questions. Ready to calculate your final score?
-                  </p>
-                )}
+                <p className="text-xs sm:text-sm text-[var(--text-muted)]">
+                  {t('test.confirmSubmitDesc', { answered: formatNumber(answeredCount), total: formatNumber(testMcqs.length) })}
+                  {unansweredCount > 0 ? ` ${t('test.unansweredWarning', { count: formatNumber(unansweredCount) })}` : ''}
+                </p>
 
                 <div className="flex items-center justify-end gap-2.5 pt-2">
                   <button
@@ -2053,7 +2057,7 @@ export function OverviewPage() {
                     onClick={() => setConfirmSubmitOpen(false)}
                     className="min-h-[44px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer"
                   >
-                    Review Questions
+                    {t('test.reviewAnswers')}
                   </button>
                   <button
                     type="button"
@@ -2061,7 +2065,7 @@ export function OverviewPage() {
                     onClick={() => void submitUniversityD1Test()}
                     className="min-h-[44px] px-5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold cursor-pointer"
                   >
-                    {submittingTest ? 'Submitting...' : 'Confirm & Submit'}
+                    {submittingTest ? t('common.submitting') : t('test.submitNow')}
                   </button>
                 </div>
               </div>
@@ -2074,17 +2078,17 @@ export function OverviewPage() {
               className="fixed inset-0 z-[120] bg-black/75 flex items-center justify-center p-4"
               role="dialog"
               aria-modal="true"
-              aria-label="Confirm exit test"
+              aria-label={t('test.exitConfirmTitle')}
             >
-              <div className="cockpit-surface-card w-full max-w-md p-5 sm:p-6 space-y-4">
+              <div className="cockpit-surface-card w-full max-w-md p-5 sm:p-6 space-y-4 text-start">
                 <h4
                   className="text-base sm:text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  Leave test in progress?
+                  {t('test.exitConfirmTitle')}
                 </h4>
                 <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-                  You have answered <strong className="text-[var(--text)]">{answeredCount} of {testMcqs.length}</strong> questions ({unansweredCount} unanswered). Leaving now will discard this unsubmitted attempt.
+                  {t('test.exitConfirmDesc')}
                 </p>
                 <div className="flex items-center justify-end gap-2.5 pt-2">
                   <button
@@ -2092,14 +2096,14 @@ export function OverviewPage() {
                     onClick={() => setConfirmExitOpen(false)}
                     className="min-h-[44px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer"
                   >
-                    Continue Test
+                    {t('test.stayInTest')}
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmAbandonTest}
                     className="min-h-[44px] px-5 py-2 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-bold cursor-pointer"
                   >
-                    Leave Test
+                    {t('test.leaveNow')}
                   </button>
                 </div>
               </div>

@@ -35,10 +35,12 @@ import {
 } from '@/services/universityMcqService';
 import type { D1UniversityRow } from '@/constants/d1Universities';
 import { useBodyScrollLock } from '@/utils/scrollLock';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const { user, isGuest, profile, updateLocalProfile } = useAuth();
+  const { t, isRtl } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -480,10 +482,10 @@ export function TestRunnerPage() {
       } else if (key === 'F') {
         e.preventDefault();
         handleToggleFlag();
-      } else if (key === 'P' || e.key === 'ArrowLeft') {
+      } else if (key === 'P' || e.key === (isRtl ? 'ArrowRight' : 'ArrowLeft')) {
         e.preventDefault();
         setCurrentIndex((i) => Math.max(0, i - 1));
-      } else if (key === 'N' || e.key === 'ArrowRight') {
+      } else if (key === 'N' || e.key === (isRtl ? 'ArrowLeft' : 'ArrowRight')) {
         e.preventDefault();
         setCurrentIndex((i) => Math.min(questions.length - 1, i + 1));
       }
@@ -497,6 +499,7 @@ export function TestRunnerPage() {
     questions.length,
     paletteOpen,
     confirmModalOpen,
+    isRtl,
   ]);
 
   if (loading) {
@@ -550,16 +553,16 @@ export function TestRunnerPage() {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <ErrorState
-          title={isNoQuestions ? 'Not enough questions yet' : 'Could not load practice session'}
+          title={isNoQuestions ? t('dashboard.noMcqsForFilter') : t('common.somethingWrong')}
           error={
             isNoQuestions
-              ? { message: 'Not enough questions have been published for this test track yet. Please choose another subject or check back soon.' }
+              ? { message: t('dashboard.noMcqsForFilter') }
               : error
           }
           path={error?.path}
           onRetry={() => setRetryCount((c) => c + 1)}
           onBack={() => navigate('/dashboard/practice')}
-          backLabel="Back to Practice Vault"
+          backLabel={t('common.back')}
         />
       </div>
     );
@@ -622,22 +625,18 @@ export function TestRunnerPage() {
                 className={`nt-chip nt-chip--timer ${
                   isTimerUrgent ? 'nt-chip--timer-urgent' : ''
                 }`}
-                aria-label="Time remaining"
+                aria-label={t('test.timeLeft')}
               >
                 <Clock size={14} className="text-[#d71921] shrink-0" />
-                <span className="nt-doto">{formatTimerText(secondsRemaining)}</span>
+                <span className="nt-doto ltr-nums">{formatTimerText(secondsRemaining)}</span>
               </div>
             )}
 
             <button
               type="button"
               onClick={handleDownloadPdf}
-              title={
-                isPro || isAdmin
-                  ? 'Download test questions as PDF'
-                  : 'Download test questions as PDF (Pro Feature)'
-              }
-              aria-label="Download PDF"
+              title="PDF"
+              aria-label="PDF"
               className="nt-chip nt-chip--icon"
             >
               <Download size={16} />
@@ -652,8 +651,8 @@ export function TestRunnerPage() {
                   navigate('/dashboard/practice');
                 }
               }}
-              title="Close test"
-              aria-label="Close test"
+              title={t('test.exitTest')}
+              aria-label={t('test.exitTest')}
               className="nt-chip nt-chip--icon"
             >
               <X size={17} />
@@ -679,18 +678,18 @@ export function TestRunnerPage() {
         />
       </main>
 
-      {/* 5. BOTTOM DOCK: pinned, frosted-glass bar with square Previous icon button, Next button, and red Finish & Submit button */}
+      {/* 5. BOTTOM DOCK: pinned, frosted-glass bar */}
       <footer className="nt-bottom-dock">
         <div className="nt-bottom-dock-inner">
           <button
             type="button"
             disabled={currentIndex === 0}
             onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-            aria-label="Previous question"
-            title="Previous question"
+            aria-label={t('test.previous')}
+            title={t('test.previous')}
             className="nt-btn-prev"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={18} className="rtl-mirror" />
           </button>
 
           <div className="nt-dock-right">
@@ -700,8 +699,8 @@ export function TestRunnerPage() {
               onClick={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
               className="nt-btn-next"
             >
-              <span>Next</span>
-              <ChevronRight size={16} />
+              <span>{t('test.next')}</span>
+              <ChevronRight size={16} className="rtl-mirror" />
             </button>
 
             <button
@@ -710,7 +709,7 @@ export function TestRunnerPage() {
               onClick={() => setConfirmModalOpen(true)}
               className="nt-btn-submit"
             >
-              <span>{submitting ? 'Submitting...' : 'Finish & Submit'}</span>
+              <span>{submitting ? t('common.submitting') : t('test.submitTest')}</span>
               {submitting && <ButtonLineLoader />}
             </button>
           </div>
@@ -742,7 +741,7 @@ export function TestRunnerPage() {
 
       {/* Success Notification Toast */}
       {pdfSuccessMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl floating-blur backdrop-blur-lg border border-[var(--border)] text-[var(--text)] text-xs font-semibold shadow-2xl animate-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-6 end-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl floating-blur backdrop-blur-lg border border-[var(--border)] text-[var(--text)] text-xs font-semibold shadow-2xl animate-in slide-in-from-bottom duration-200">
           <Check size={16} className="text-emerald-500 shrink-0" />
           <span>{pdfSuccessMessage}</span>
         </div>
@@ -755,9 +754,9 @@ export function TestRunnerPage() {
             <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center">
               <AlertCircle size={20} />
             </div>
-            <div>
+            <div className="text-start">
               <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                Hourly Download Limit
+                {t('settings.usageLimits')}
               </h3>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed mt-1.5">
                 {pdfLimitMessage}
@@ -769,7 +768,7 @@ export function TestRunnerPage() {
                 onClick={() => setPdfLimitMessage(null)}
                 className="btn-red px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
               >
-                Understood
+                {t('common.ok')}
               </button>
             </div>
           </div>
@@ -790,32 +789,27 @@ export function TestRunnerPage() {
               variant="popup"
               accent="indigo-blue"
               illustrationId="boy-books"
-              chip="BOARDLY PRO EXCLUSIVE"
-              headline="Unlock PDF Exam Exports"
-              description="Download complete, printable entrance test papers with full question stems, 4-choice options, and official answer keys for offline paper practice."
-              highlights={[
-                '1 Full Test PDF export per hour',
-                'Formatted for crisp standard A4 physical printing',
-                'Includes complete official answer key appendix',
-              ]}
-              ctaLabel="Upgrade to Pro"
+              chip="Boardly Pro"
+              headline={t('plans.upgradeToPro')}
+              description={t('plans.unlimitedPractice')}
+              ctaLabel={t('plans.upgradeToPro')}
               onAction={() => {
                 setPdfUpgradeModalOpen(false);
                 navigate('/dashboard/plans');
               }}
               secondaryAction={{
-                label: 'Maybe Later',
+                label: t('common.close'),
                 onClick: () => setPdfUpgradeModalOpen(false),
               }}
               onDismiss={() => setPdfUpgradeModalOpen(false)}
               dismissible
-              infoText="Boardly Pro upgrade prompt shown when requesting offline PDF test export on a Free account."
+              infoText={t('settings.plansBillingSub')}
             />
           </div>
         </div>
       )}
 
-      {/* ── LEAVE-TEST MIDWAY WARNING POPUP (Requirement 7) ── */}
+      {/* ── LEAVE-TEST MIDWAY WARNING POPUP ── */}
       {leaveWarningOpen && (
         <div className="fixed inset-0 z-[100] overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl sm:rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
@@ -823,18 +817,15 @@ export function TestRunnerPage() {
               <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">
                 <AlertCircle size={20} />
               </div>
-              <div>
+              <div className="text-start">
                 <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--text)]">
-                  Leave Test Session?
+                  {t('test.exitConfirmTitle')}
                 </h3>
-                <span className="text-[11px] font-mono text-[var(--text-muted)] uppercase tracking-wider">
-                  Test In Progress
-                </span>
               </div>
             </div>
 
-            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
-              If you leave now, this test will be counted as one of your daily attempts.
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed text-start">
+              {t('test.exitConfirmDesc')}
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -843,7 +834,7 @@ export function TestRunnerPage() {
                 onClick={() => setLeaveWarningOpen(false)}
                 className="btn-outline px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
               >
-                Stay
+                {t('test.stayInTest')}
               </button>
               <button
                 type="button"
@@ -853,7 +844,7 @@ export function TestRunnerPage() {
                 }}
                 className="btn-red px-5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
               >
-                Leave Test
+                {t('test.leaveNow')}
               </button>
             </div>
           </div>

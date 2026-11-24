@@ -25,6 +25,7 @@ import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
 import { formatPostLimitReachedMessage } from '@/config/postLimits';
 import type { CommonsPost, CommonsPostType, CommonsFileAttachment } from '@/types/commons';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type WizardPostType =
   | 'notes'
@@ -92,50 +93,50 @@ export interface PostingWizardModalProps {
 
 const MATERIAL_TYPES: {
   id: WizardPostType;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
   {
     id: 'notes',
-    label: 'Notes',
-    desc: 'Handwritten or typed chapter notes and study summaries',
+    labelKey: 'commons.typeNotes',
+    descKey: 'commons.typeNotesDesc',
     icon: FileText,
   },
   {
     id: 'past_paper',
-    label: 'Past Paper',
-    desc: 'Previous years official board or university exam papers',
+    labelKey: 'commons.typePastPaper',
+    descKey: 'commons.typePastPaperDesc',
     icon: Archive,
   },
   {
     id: 'solved_paper',
-    label: 'Solved Paper',
-    desc: 'Step-by-step solutions and marking schemes for exams',
+    labelKey: 'commons.typeSolvedPaper',
+    descKey: 'commons.typeSolvedPaperDesc',
     icon: CheckCircle2,
   },
   {
     id: 'formula_sheet',
-    label: 'Formula Sheet',
-    desc: 'Quick equations, reactions, and revision cheat sheets',
+    labelKey: 'commons.typeFormulaSheet',
+    descKey: 'commons.typeFormulaSheetDesc',
     icon: Calculator,
   },
   {
     id: 'question',
-    label: 'Doubt / Question',
-    desc: 'Ask the community for help solving a tough concept',
+    labelKey: 'commons.typeDoubt',
+    descKey: 'commons.typeDoubtDesc',
     icon: HelpCircle,
   },
   {
     id: 'resource_link',
-    label: 'Resource Link',
-    desc: 'Share helpful study websites, playlists, or drives',
+    labelKey: 'commons.typeResourceLink',
+    descKey: 'commons.typeResourceLinkDesc',
     icon: Link2,
   },
   {
     id: 'discussion',
-    label: 'Discussion',
-    desc: 'Start an academic study discussion or exam strategy thread',
+    labelKey: 'commons.typeDiscussion',
+    descKey: 'commons.typeDiscussionDesc',
     icon: MessageSquare,
   },
 ];
@@ -209,6 +210,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
   initialAnonymous,
   initialStep,
 }) => {
+  const { t, formatNumber } = useLanguage();
   const [step, setStep] = useState<1 | 2>(initialStep || 1);
   const [type, setType] = useState<WizardPostType>(initialType || 'notes');
   const [board, setBoard] = useState<WizardBoardType>('Federal Board');
@@ -450,7 +452,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
       data-modal-layer="true"
       role="dialog"
       aria-modal="true"
-      aria-label="Share Study Resource"
+      aria-label={t('commons.shareResource')}
       className="boardly-modal-backdrop fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
       {/* Click outside to close */}
@@ -471,19 +473,19 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
         <header className="px-5 pt-2 pb-3.5 flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full bg-[#D71921] shadow-[0_0_10px_#D71921] shrink-0" />
-            <h2 className="font-doto-title text-[14px] sm:text-[15px] tracking-[0.12em] text-[var(--text)] truncate">
-              SHARE STUDY RESOURCE
+            <h2 className="font-doto-title text-[14px] sm:text-[15px] tracking-[0.12em] text-[var(--text)] truncate uppercase">
+              {t('commons.shareResource')}
             </h2>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] font-inter-num">
-              Step {step} of 2
+              {t('commons.stepOf', { current: formatNumber(step), total: formatNumber(2) })}
             </span>
             <button
               type="button"
               onClick={() => !isSubmitting && onClose()}
-              aria-label="Close modal"
+              aria-label={t('common.close')}
               className="press-scale w-11 h-11 rounded-full bg-[var(--surface-2)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -505,11 +507,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-emerald-500 dark:text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-bounce">
               <Check className="w-8 h-8 stroke-[3]" />
             </div>
-            <h3 className="mt-4 font-doto-title text-lg tracking-[0.14em] text-[var(--text)]">
-              PUBLISHED
+            <h3 className="mt-4 font-doto-title text-lg tracking-[0.14em] text-[var(--text)] uppercase">
+              {t('commons.postPublished')}
             </h3>
             <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              Your study resource is now live for the community.
+              {t('commons.publishedDesc')}
             </p>
           </div>
         )}
@@ -528,7 +530,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
           {step === 1 ? (
             <div className="space-y-3">
               <p className="text-[15px] font-bold text-[var(--text)]">
-                What type of material are you sharing?
+                {t('commons.chooseMaterialType')}
               </p>
 
               {/* 7 Options in One Grouped List */}
@@ -541,7 +543,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                       key={item.id}
                       type="button"
                       onClick={() => setType(item.id)}
-                      className={`press-scale w-full text-left rounded-[22px] p-3.5 flex items-center justify-between gap-3.5 transition-all cursor-pointer ${
+                      className={`press-scale w-full text-start rounded-[22px] p-3.5 flex items-center justify-between gap-3.5 transition-all cursor-pointer ${
                         selected
                           ? 'bg-[#D71921]/15 border-2 border-[#D71921] shadow-[0_0_24px_rgba(215,25,33,0.28)]'
                           : 'bg-[var(--surface-2)] hover:bg-[var(--border)]/40 border border-[var(--border)]'
@@ -559,10 +561,10 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                         </div>
                         <div className="min-w-0">
                           <div className="text-[15px] font-bold text-[var(--text)] truncate">
-                            {item.label}
+                            {t(item.labelKey)}
                           </div>
                           <div className="text-[12px] text-[var(--text-secondary)] truncate mt-0.5">
-                            {item.desc}
+                            {t(item.descKey)}
                           </div>
                         </div>
                       </div>
@@ -586,11 +588,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* "Material type: NOTES [Change]" chip */}
               <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)]">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-doto-title text-[11px] tracking-[0.12em] text-[var(--text-secondary)]">
-                    MATERIAL TYPE:
+                  <span className="font-doto-title text-[11px] tracking-[0.12em] text-[var(--text-secondary)] uppercase">
+                    {t('commons.materialType')}:
                   </span>
                   <span className="font-doto-title text-[12px] tracking-[0.14em] text-[#D71921] dark:text-[#ff6b72] uppercase truncate">
-                    {selectedTypeObj.label}
+                    {t(selectedTypeObj.labelKey)}
                   </span>
                 </div>
                 <button
@@ -598,15 +600,15 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   onClick={() => setStep(1)}
                   className="min-h-[36px] px-3 rounded-full text-xs font-bold text-[var(--text)] bg-[var(--surface)] hover:bg-[var(--border)] border border-[var(--border)] cursor-pointer"
                 >
-                  Change
+                  {t('commons.change')}
                 </button>
               </div>
 
               {/* Board / Class / Subject selectors */}
               <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
-                    SUBJECT
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1 uppercase">
+                    {t('commons.subject')}
                   </label>
                   <select
                     value={subject}
@@ -622,12 +624,12 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
-                    BOARD
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1 uppercase">
+                    {t('commons.board')}
                   </label>
                   <select
                     value={board}
-                    onChange={(e) => setBoard(e.target.value as BoardType)}
+                    onChange={(e) => setBoard(e.target.value as WizardBoardType)}
                     className="w-full min-h-[44px] px-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] outline-none"
                   >
                     {BOARDS.map((b) => (
@@ -639,12 +641,12 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1">
-                    CLASS
+                  <label className="block font-doto-title text-[9px] tracking-[0.12em] text-[var(--text-secondary)] mb-1 uppercase">
+                    {t('commons.classLabel')}
                   </label>
                   <select
                     value={classLevel}
-                    onChange={(e) => setClassLevel(e.target.value as ClassLevel)}
+                    onChange={(e) => setClassLevel(e.target.value as WizardClassLevel)}
                     className="w-full min-h-[44px] px-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] outline-none"
                   >
                     {CLASSES.map((c) => (
@@ -659,13 +661,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Floating Label Title Input with Required Marker */}
               <div className="search-pill-wrapper relative rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 pt-5 pb-2.5 transition-all">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                  Title <span className="text-[#D71921]">*</span>
+                  {t('commons.titleLabel')} <span className="text-[#D71921]">*</span>
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Chapter 4 Rotational & Circular Motion Notes"
+                  placeholder={t('commons.postTitlePlaceholder')}
                   maxLength={140}
                   required
                   className="w-full mt-0.5 text-[14px] font-medium text-[var(--text)] placeholder:text-[var(--text-muted)]"
@@ -675,13 +677,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Floating Label Description Input with Required Marker */}
               <div className="search-pill-wrapper relative rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 pt-5 pb-3 transition-all">
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
-                  Description <span className="text-[#D71921]">*</span>
+                  {t('commons.descriptionLabel')} <span className="text-[#D71921]">*</span>
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
-                  placeholder="Describe what chapters, key topics, or solved questions are included..."
+                  placeholder={t('commons.postBodyPlaceholder')}
                   required
                   className="w-full mt-1 bg-transparent border-0 outline-none text-[14px] text-[var(--text)] placeholder:text-[var(--text-muted)] resize-none"
                 />
@@ -690,11 +692,11 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Attach Files Drop Zone (dashed, dot texture, "0/5 files", thumbnails with remove buttons, per-file upload progress) */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
-                    ATTACH FILES
+                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)] uppercase">
+                    {t('commons.attachFiles')}
                   </span>
-                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)]">
-                    {files.length}/{MAX_FILES} files
+                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)] ltr-nums">
+                    {t('commons.filesCount', { count: formatNumber(files.length), max: formatNumber(MAX_FILES) })}
                   </span>
                 </div>
 
@@ -722,10 +724,10 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                     <Upload className="w-5 h-5" />
                   </div>
                   <div className="text-sm font-bold text-[var(--text)]">
-                    Tap to select photos or documents
+                    {t('commons.tapSelectFiles')}
                   </div>
                   <div className="text-xs text-[var(--text-secondary)]">
-                    PDF, PNG, JPG, WEBP up to 10 MB each
+                    {t('commons.filesHint')}
                   </div>
                 </button>
 
@@ -788,10 +790,10 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               {/* Tags as Chips with an Add Input ("0/8") */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
-                    TAGS
+                  <span className="font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)] uppercase">
+                    {t('commons.tagsLabel')}
                   </span>
-                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)]">
+                  <span className="text-xs font-semibold font-inter-num text-[var(--text-secondary)] ltr-nums">
                     {tagsList.length}/{MAX_TAGS}
                   </span>
                 </div>
@@ -810,7 +812,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                             onClick={() =>
                               setTagsList((prev) => prev.filter((t) => t !== tag))
                             }
-                            aria-label={`Remove tag ${tag}`}
+                            aria-label={t('common.remove')}
                             className="hover:opacity-75 cursor-pointer"
                           >
                             <X className="w-3 h-3" />
@@ -827,7 +829,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                         value={tagDraft}
                         onChange={(e) => setTagDraft(e.target.value)}
                         onKeyDown={handleTagKeyDown}
-                        placeholder="Add a tag (e.g., physics, ch4) and press Enter"
+                        placeholder={t('commons.addTagPlaceholder')}
                         className="flex-1 text-xs text-[var(--text)] placeholder:text-[var(--text-muted)] px-2 py-1.5"
                       />
                       <button
@@ -837,7 +839,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                         className="min-h-[36px] px-3 rounded-full text-xs font-bold bg-[var(--surface)] hover:bg-[var(--border)] text-[var(--text)] border border-[var(--border)] disabled:opacity-40 inline-flex items-center gap-1 cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        Add
+                        {t('commons.add')}
                       </button>
                     </div>
                   )}
@@ -846,8 +848,8 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
 
               {/* Post Visibility as an iOS Segmented Control (Public / Anonymous) with explanation underneath */}
               <div className="space-y-2">
-                <span className="block font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)]">
-                  POST VISIBILITY
+                <span className="block font-doto-title text-[11px] tracking-[0.14em] text-[var(--text)] uppercase">
+                  {t('commons.postVisibility')}
                 </span>
                 <div className="relative p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 h-12">
                   <button
@@ -860,7 +862,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                     }`}
                   >
                     <Globe className="w-3.5 h-3.5" />
-                    Public
+                    {t('commons.public')}
                   </button>
                   <button
                     type="button"
@@ -872,13 +874,13 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                     }`}
                   >
                     <EyeOff className="w-3.5 h-3.5" />
-                    Anonymous
+                    {t('commons.anonymous')}
                   </button>
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] px-1">
                   {isAnonymous
-                    ? 'Your name and profile are hidden from other students on this resource.'
-                    : 'Shows your profile name, avatar, and academic badge to the community.'}
+                    ? t('commons.anonVisibilityDesc')
+                    : t('commons.publicVisibilityDesc')}
                 </p>
               </div>
 
@@ -891,8 +893,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                   className="w-5 h-5 rounded accent-[#D71921] shrink-0 cursor-pointer"
                 />
                 <span className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  I confirm this study material follows Boardly community guidelines and
-                  contains no spam or copyrighted exam leaks.
+                  {t('commons.guidelinesConfirm')}
                 </span>
               </label>
             </div>
@@ -907,7 +908,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
               onClick={() => setStep(2)}
               className="boardly-red-pill press-scale w-full h-[52px] rounded-full text-sm font-bold tracking-wide flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>Continue</span>
+              <span>{t('common.continue')}</span>
             </button>
           ) : (
             <div className="flex items-center gap-2.5">
@@ -917,7 +918,7 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 disabled={isSubmitting}
                 className="boardly-glass-pill press-scale h-[52px] px-5 rounded-full text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
               >
-                Back
+                {t('common.back')}
               </button>
               <button
                 type="button"
@@ -928,17 +929,17 @@ export const PostingWizardModal: React.FC<PostingWizardModalProps> = ({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Publishing...</span>
+                    <span>{t('commons.publishing')}</span>
                   </>
                 ) : quota.limitReached ? (
                   <>
                     <AlertCircle className="w-4 h-4" />
-                    <span>Daily Limit Reached</span>
+                    <span>{t('commons.dailyLimitReached')}</span>
                   </>
                 ) : (
                   <>
                     <Upload className="w-4 h-4" />
-                    <span>Publish Resource</span>
+                    <span>{t('commons.publishResource')}</span>
                   </>
                 )}
               </button>

@@ -15,6 +15,7 @@ import { getPublicProfiles } from '@/services/publicProfileService';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -36,6 +37,7 @@ export function CommonsCommentsDrawer({
   onClose,
   currentUser,
 }: CommonsCommentsDrawerProps) {
+  const { t, formatNumber } = useLanguage();
   const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
   const nowMs = useSharedNow();
@@ -91,7 +93,7 @@ export function CommonsCommentsDrawer({
           }
         })
         .catch(() => {
-          if (active) setError('Failed to load comments.');
+          if (active) setError(t('commons.failedLoadComments'));
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -100,7 +102,7 @@ export function CommonsCommentsDrawer({
         active = false;
       };
     }
-  }, [post, isOpen]);
+  }, [post, isOpen, t]);
 
   if (!isOpen || !post) return null;
 
@@ -176,7 +178,7 @@ export function CommonsCommentsDrawer({
         <div className="px-5 py-3.5 border-b border-[var(--glass-border)] flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-sm font-bold text-primary font-dot">
-              Comments ({comments.length})
+              {t('commons.commentsTitle')} (<span className="ltr-nums">{formatNumber(comments.length)}</span>)
             </h3>
             <p className="text-xs text-muted truncate max-w-[260px] sm:max-w-md mt-0.5">
               {post.title}
@@ -184,6 +186,7 @@ export function CommonsCommentsDrawer({
           </div>
           <button
             onClick={onClose}
+            aria-label={t('common.close')}
             className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer"
           >
             <X size={16} />
@@ -197,12 +200,12 @@ export function CommonsCommentsDrawer({
               <LineLoader
                 variant="section"
                 context="generic"
-                message="Loading comments..."
+                message={t('commons.loadingComments')}
               />
             </div>
           ) : comments.length === 0 ? (
             <div className="py-12 text-center text-xs text-muted">
-              No comments yet. Share your thoughts or ask a question!
+              {t('commons.noComments')}
             </div>
           ) : (
             comments.map((comment) => {
@@ -229,7 +232,7 @@ export function CommonsCommentsDrawer({
                         }
                       }}
                       className="shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
-                      title="View profile"
+                      title={t('nav.viewProfile')}
                     >
                       <BoardlyAvatar
                         uid={comment.authorUid}
@@ -251,7 +254,7 @@ export function CommonsCommentsDrawer({
                     <div className="bg-surface-muted rounded-2xl px-3.5 py-2.5 border border-border inline-block max-w-full min-w-0 overflow-x-hidden">
                       <div className="flex items-center gap-1.5 flex-wrap mb-1 min-w-0">
                         {comment.isAnonymous ? (
-                          <span className="font-bold text-muted">Anonymous</span>
+                          <span className="font-bold text-muted">{t('commons.anonymous')}</span>
                         ) : (
                           <>
                             <button
@@ -262,7 +265,7 @@ export function CommonsCommentsDrawer({
                                   openProfile(comment.authorUid);
                                 }
                               }}
-                              className="font-bold text-primary hover:underline truncate max-w-full cursor-pointer text-left"
+                              className="font-bold text-primary hover:underline truncate max-w-full cursor-pointer text-start"
                             >
                               {getDisplayName({
                                 displayName: comment.authorName,
@@ -303,7 +306,7 @@ export function CommonsCommentsDrawer({
                     </div>
 
                     {/* Like / Reply under each comment */}
-                    <div className="flex items-center gap-3 mt-1 ml-2 text-[11px] text-muted font-medium">
+                    <div className="flex items-center gap-3 mt-1 ms-2 text-[11px] text-muted font-medium">
                       <span>{formatCommentTime(comment.createdAt)}</span>
 
                       <button
@@ -314,7 +317,7 @@ export function CommonsCommentsDrawer({
                         }`}
                       >
                         <ThumbsUp size={11} className={isLiked ? 'fill-current' : ''} />
-                        <span>{isLiked ? 'Liked' : 'Like'}</span>
+                        <span>{isLiked ? t('commons.liked') : t('commons.like')}</span>
                       </button>
 
                       <button
@@ -322,7 +325,7 @@ export function CommonsCommentsDrawer({
                         onClick={() =>
                           handleReplyTo(
                             comment.isAnonymous
-                              ? 'Anonymous'
+                              ? t('commons.anonymous')
                               : getDisplayName({
                                   displayName: comment.authorName,
                                   username: (comment as any).authorUsername,
@@ -332,7 +335,7 @@ export function CommonsCommentsDrawer({
                         className="hover:underline hover:text-primary cursor-pointer flex items-center gap-1"
                       >
                         <Reply size={11} />
-                        <span>Reply</span>
+                        <span>{t('commons.reply')}</span>
                       </button>
                     </div>
                   </div>
@@ -363,7 +366,7 @@ export function CommonsCommentsDrawer({
                 className="w-3.5 h-3.5 rounded border-border bg-surface text-accent cursor-pointer accent-red-600"
               />
               <span className="flex items-center gap-1">
-                <EyeOff size={13} /> Comment anonymously
+                <EyeOff size={13} /> {t('commons.commentAnonymously')}
               </span>
             </label>
           </div>
@@ -376,8 +379,8 @@ export function CommonsCommentsDrawer({
               onChange={(e) => setNewText(e.target.value)}
               placeholder={
                 currentUser
-                  ? 'Write a helpful comment...'
-                  : 'Sign in to join the discussion'
+                  ? t('commons.addCommentPlaceholder')
+                  : t('commons.signInToComment')
               }
               disabled={!currentUser || submitting}
               className="flex-1 px-3.5 py-2.5 text-sm sm:text-xs bg-surface border border-border rounded-xl text-primary placeholder:text-muted focus:outline-none disabled:opacity-50 transition-colors"
@@ -391,11 +394,11 @@ export function CommonsCommentsDrawer({
             >
               {submitting ? (
                 <>
-                  <span>Posting...</span>
+                  <span>{t('commons.posting')}</span>
                   <ButtonLineLoader />
                 </>
               ) : (
-                <Send size={15} />
+                <Send size={15} className="rtl-mirror" />
               )}
             </button>
           </div>

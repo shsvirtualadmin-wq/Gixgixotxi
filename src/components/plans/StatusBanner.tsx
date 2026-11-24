@@ -7,6 +7,8 @@ import {
 import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { formatPaymentMethodLabel } from '@/constants/branding';
 import type { PaymentRequest } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPlanLabel } from '@/lib/planTier';
 
 export interface StatusBannerProps {
   planId: 'free' | 'pro' | 'plus' | 'crew';
@@ -38,6 +40,7 @@ export function StatusBanner({
   compact = false,
 }: StatusBannerProps) {
   const { config: plansConfig } = usePlansConfig();
+  const { t, formatPKR, formatNumber } = useLanguage();
   const catalog = buildPlansCatalog(plansConfig);
 
   const proSummary = getProStatusSummary(
@@ -68,20 +71,20 @@ export function StatusBanner({
   const monthlyPricePkr = catalog.pro_monthly.price_pkr;
 
   const badgeLabel = isPlusActive
-    ? planStatus?.planName || 'Boardly Plus'
+    ? planStatus?.planName || formatPlanLabel('plus')
     : isProActive
-    ? planStatus?.planName || 'Boardly Pro'
+    ? planStatus?.planName || formatPlanLabel('pro')
     : isPending
-    ? 'Verification Pending'
+    ? t('plans.verificationPending')
     : planId === 'crew'
-    ? 'Nakama Crew'
-    : 'Free Tier';
+    ? t('plans.nakamaCrew')
+    : t('plans.freeTier');
 
   const statusPillText =
     planStatus?.state === 'active' && planStatus.expiryFormatted
       ? planStatus.expiryFormatted.startsWith('Active') || planStatus.expiryFormatted === 'Unlimited'
         ? planStatus.timeLeftLabel
-        : `Active until ${planStatus.expiryFormatted} (${planStatus.timeLeftLabel})`
+        : t('plans.activeUntilWithTime', { date: planStatus.expiryFormatted, timeLeft: planStatus.timeLeftLabel })
       : proSummary.statusText;
 
   return (
@@ -100,7 +103,7 @@ export function StatusBanner({
         <div className="space-y-1.5 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--muted)]">
-              Current Plan
+              {t('plans.currentPlan')}
             </span>
             <span
               className={`inline-flex items-center gap-1 text-[11px] font-mono uppercase px-2.5 py-0.5 rounded-md font-bold border ${
@@ -141,30 +144,22 @@ export function StatusBanner({
           <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
             {isPlusActive ? (
               <span>
-                Everything in Boardly Pro plus {plansConfig.plus.aiCreditsPerDay} AI Mentor credits
-                per day (2x Pro), Deep &amp; Max thinking, and the Plus badge are active on your account.
+                {t('plans.bannerPlusActive', { credits: formatNumber(plansConfig.plus.aiCreditsPerDay) })}
               </span>
             ) : isProActive ? (
               <span>
-                Unlimited practice tests, Arena mocks, {plansConfig.pro.aiCreditsPerDay} AI Mentor
-                credits/day with Deep &amp; Max thinking, and full analytics are active. Upgrade to
-                Plus anytime for {plansConfig.plus.aiCreditsPerDay} AI credits/day — unused Pro days
-                are credited.
+                {t('plans.bannerProActive', {
+                  proCredits: formatNumber(plansConfig.pro.aiCreditsPerDay),
+                  plusCredits: formatNumber(plansConfig.plus.aiCreditsPerDay),
+                })}
               </span>
             ) : isPending ? (
-              <span>
-                Your payment is being verified. This usually takes up to 24 hours. Purchase options
-                are locked while verification is in progress.
-              </span>
+              <span>{t('plans.bannerPending')}</span>
             ) : planId === 'crew' ? (
-              <span>
-                Crew-shared practice perks are active. Upgrade to Boardly Pro or Plus for personal
-                unlimited tests and expanded daily AI Mentor credits.
-              </span>
+              <span>{t('plans.bannerCrew')}</span>
             ) : (
               <span>
-                You are on the Free plan (2 practice tests/day, {plansConfig.free.aiCreditsPerDay} AI
-                Mentor credits/day). Upgrade to Boardly Pro or Plus for unlimited tests and Deep &amp; Max AI.
+                {t('plans.bannerFree', { credits: formatNumber(plansConfig.free.aiCreditsPerDay) })}
               </span>
             )}
           </p>
@@ -177,7 +172,9 @@ export function StatusBanner({
             className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-[var(--red)] hover:bg-[#d62d23] text-[#FFFFFF] font-heading font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 shrink-0 shadow-[0_6px_20px_rgba(232,52,42,0.28)] transition-all duration-200 cursor-pointer"
           >
             <Zap size={15} className="shrink-0 text-[#FFFFFF]" />
-            <span className="text-[#FFFFFF]">Upgrade to Pro, PKR {monthlyPricePkr}/mo</span>
+            <span className="text-[#FFFFFF] ltr-nums">
+              {t('plans.upgradeToProPrice', { price: formatPKR(monthlyPricePkr) })}
+            </span>
           </button>
         )}
 
@@ -192,7 +189,7 @@ export function StatusBanner({
             className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl text-[#FFFFFF] font-heading font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 shrink-0 shadow-[0_6px_20px_rgba(217,119,6,0.28)] hover:brightness-110 transition-all duration-200 cursor-pointer"
           >
             <Sparkles size={15} className="shrink-0 text-[#FFFFFF]" />
-            <span className="text-[#FFFFFF]">Upgrade to Plus</span>
+            <span className="text-[#FFFFFF]">{t('plans.upgradeToPlus')}</span>
           </button>
         )}
       </div>
@@ -203,10 +200,10 @@ export function StatusBanner({
           <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="font-heading font-bold text-xs sm:text-sm text-[var(--text)]">
-                Your payment is being verified. This usually takes up to 24 hours.
+                {t('plans.paymentVerifyingTitle')}
               </p>
               <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 font-bold">
-                Pending Verification
+                {t('plans.pendingVerification')}
               </span>
             </div>
             <p className="text-xs text-[var(--muted)]">
@@ -214,9 +211,9 @@ export function StatusBanner({
                 (String(pendingProRequest.plan || '').startsWith('plus')
                   ? 'Boardly Plus'
                   : 'Boardly Pro')}{' '}
-              · PKR {(pendingProRequest.amount_pkr ?? pendingProRequest.amount).toLocaleString()}{' '}
-              via {formatPaymentMethodLabel(pendingProRequest.method)} · TID:{' '}
-              <span className="font-mono font-semibold text-[var(--text)]">
+              · <span className="ltr-nums">{formatPKR(pendingProRequest.amount_pkr ?? pendingProRequest.amount)}</span>{' '}
+              {t('plans.viaMethod', { method: formatPaymentMethodLabel(pendingProRequest.method) })} · TID:{' '}
+              <span className="font-mono font-semibold text-[var(--text)] ltr-nums">
                 {pendingProRequest.TID || pendingProRequest.transactionId}
               </span>
             </p>
@@ -229,15 +226,14 @@ export function StatusBanner({
           <XCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
           <div className="space-y-1 min-w-0 flex-1">
             <p className="font-heading font-bold text-xs sm:text-sm text-[var(--text)]">
-              Previous payment request could not be verified
+              {t('plans.previousPaymentRejected')}
             </p>
             <p className="text-xs text-[var(--muted)]">
-              Reason:{' '}
+              {t('plans.reasonLabel')}{' '}
               <span className="text-[var(--text)] font-medium">
-                {latestRejectedProRequest.rejectionReason ||
-                  'Transaction ID could not be verified on our payment portal.'}
+                {latestRejectedProRequest.rejectionReason || t('plans.defaultRejectionReason')}
               </span>{' '}
-              (TID: {latestRejectedProRequest.TID || latestRejectedProRequest.transactionId})
+              (<span className="ltr-nums">TID: {latestRejectedProRequest.TID || latestRejectedProRequest.transactionId}</span>)
             </p>
           </div>
         </div>

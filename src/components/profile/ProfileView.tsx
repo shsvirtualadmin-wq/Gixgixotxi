@@ -55,8 +55,8 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
 import { usePlusBadge } from '@/contexts/PlusBadgeContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { getPlanDisplayLabel, getUserPlanTier } from '@/config/postLimits';
-import type { PlanTier } from '@/lib/planTier';
+import { getUserPlanTier } from '@/config/postLimits';
+import { formatPlanLabel, type PlanTier } from '@/lib/planTier';
 import { getCosmeticById, type CosmeticRarity } from '@/data/cosmeticsCatalog';
 import { useWallet } from '@/hooks/useWallet';
 import { normalizeProBadgeDesign, type ProBadgeDesignId } from '@/lib/proBadgeDesigns';
@@ -79,6 +79,7 @@ import { getDisplayName, getUsernameHandle, getRawUsername } from '@/utils/displ
 import { getEquippedLoadout } from '@/utils/userStateSource';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { ProfilePostsSection } from './ProfilePostsSection';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const PROFILE_REQUEST_TIMEOUT_MS = 8000;
 const FOLLOW_LIST_PAGE_SIZE = 50;
@@ -553,6 +554,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const wallet = useWallet();
   const liveEffectivePlan = useEffectivePlan();
   const { effectivePlusBadgeId: myEffectivePlusBadgeId } = usePlusBadge();
+  const { t, isRtl, formatNumber } = useLanguage();
 
   const uid = targetUid || propData?.uid || currentUser?.uid || '';
   const isOwnProfile =
@@ -1366,11 +1368,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return next;
       });
     } catch {
-      setFollowsError('Could not refresh follower counts.');
+      setFollowsError(t('profile.followsRefreshError'));
     } finally {
       setFollowsSyncing(false);
     }
-  }, [uid, isGuest, previewMode, currentUser, isOwnProfile]);
+  }, [uid, isGuest, previewMode, currentUser, isOwnProfile, t]);
 
   useEffect(() => {
     void loadFollows();
@@ -1614,7 +1616,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const endpoint = type === 'followers' ? '/api/followers' : '/api/following';
     const url = `${endpoint}?uid=${encodeURIComponent(uid)}&limit=${FOLLOW_LIST_PAGE_SIZE}&offset=${offset}`;
     const fallbackErrorMsg =
-      type === 'followers' ? "Couldn't load followers" : "Couldn't load following";
+      type === 'followers' ? t('profile.loadFollowersError') : t('profile.loadFollowingError');
 
     try {
       const response = await fetch(url, {
@@ -1765,11 +1767,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     const file = e.target.files?.[0];
     if (!file || !currentUser || !uid) return;
     if (!file.type.startsWith('image/')) {
-      setEditError('Please select a valid image file (PNG, JPG, WEBP).');
+      setEditError(t('profile.invalidImageError'));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setEditError('Image must be under 5MB.');
+      setEditError(t('profile.imageUnder5mbError'));
       return;
     }
 
@@ -2096,21 +2098,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <button
           type="button"
           onClick={handleBack}
-          aria-label="Go back"
+          aria-label={t('common.back')}
           className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
         >
-          <ChevronLeft size={20} strokeWidth={2} />
+          <ChevronLeft size={20} strokeWidth={2} className="rtl-mirror" />
         </button>
 
         <h1 className="text-[17px] font-semibold text-[var(--text)] truncate select-none">
-          Profile
+          {t('profile.title')}
         </h1>
 
         {isOwnProfile ? (
           <button
             type="button"
             onClick={() => navigate('/settings')}
-            aria-label="Open settings"
+            aria-label={t('nav.settings')}
             className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
           >
             <Settings size={19} strokeWidth={1.9} />
@@ -2119,7 +2121,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <button
             type="button"
             onClick={handleShareProfile}
-            aria-label="Share profile"
+            aria-label={t('profile.shareProfile')}
             className="w-10 h-10 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] transition-colors cursor-pointer shrink-0"
           >
             {copiedToast ? (
@@ -2155,19 +2157,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="space-y-1">
               <h2 className="text-[16px] font-semibold text-[var(--text)]">
-                {basicsError ? "Couldn't load profile" : 'Profile not found'}
+                {basicsError ? t('profile.couldNotLoad') : t('profile.notFound')}
               </h2>
               <p className="text-[13px] text-[var(--text-muted)] leading-relaxed max-w-sm">
-                {basicsError || 'This student profile could not be found or is unavailable.'}
+                {basicsError || t('profile.notFoundDesc')}
               </p>
             </div>
             <button
               type="button"
-              onClick={() => setReloadToken((t) => t + 1)}
+              onClick={() => setReloadToken((tok) => tok + 1)}
               className="min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity cursor-pointer"
             >
               <RefreshCw size={15} />
-              <span>Retry</span>
+              <span>{t('common.retry')}</span>
             </button>
           </div>
         </div>
@@ -2215,7 +2217,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return 'free';
   })();
 
-  const targetPlanLabel = getPlanDisplayLabel(targetPlan);
+  const targetPlanLabel = formatPlanLabel(targetPlan, { freeLabel: t('common.free') });
   const isTargetPlus = targetPlan === 'plus';
   const isTargetPro = targetPlan === 'pro' || targetPlan === 'plus';
 
@@ -2286,11 +2288,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const TABS: { id: ProfileTabId; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'loadout', label: 'Loadout' },
-    { id: 'badges', label: 'Badges' },
+    { id: 'overview', label: t('profile.overview') },
+    { id: 'loadout', label: t('profile.loadout') },
+    { id: 'badges', label: t('profile.badges') },
   ];
-  const activeTabIndex = Math.max(0, TABS.findIndex((t) => t.id === activeTab));
+  const activeTabIndex = Math.max(0, TABS.findIndex((tab) => tab.id === activeTab));
 
   return (
     <div className="relative min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
@@ -2451,22 +2453,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Stats Row: Level, Kobans, Followers, Following */}
-            <div className="mt-4 rounded-[22px] bg-[var(--bg)] border border-[var(--border)] p-2.5 grid grid-cols-4 items-center text-center divide-x divide-[var(--border)]">
+            <div className="mt-4 rounded-[22px] bg-[var(--bg)] border border-[var(--border)] p-2.5 grid grid-cols-4 items-center text-center divide-x rtl:divide-x-reverse divide-[var(--border)]">
               <div className="px-1 py-1">
-                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
-                  {levelInfo.level.toLocaleString()}
+                <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
+                  {formatNumber(levelInfo.level)}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
-                  Level
+                  {t('profile.level')}
                 </div>
               </div>
 
               <div className="px-1 py-1">
                 <div
-                  className="font-inter-num text-[17px] sm:text-[18px] font-bold"
+                  className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold"
                   style={{ color: 'var(--koban)' }}
                 >
-                  {kobanDisplayCount.toLocaleString()}
+                  {formatNumber(kobanDisplayCount)}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
                   Kobans
@@ -2478,15 +2480,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 onClick={() => openFollowList('followers')}
                 className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
-                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
+                <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
                   {followsSyncing && followersCount === 0 ? (
                     <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
                   ) : (
-                    followersCount.toLocaleString()
+                    formatNumber(followersCount)
                   )}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
-                  Followers
+                  {t('profile.followers')}
                 </div>
               </button>
 
@@ -2495,15 +2497,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 onClick={() => openFollowList('following')}
                 className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
-                <div className="font-inter-num text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
+                <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
                   {followsSyncing && followingCount === 0 ? (
                     <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
                   ) : (
-                    followingCount.toLocaleString()
+                    formatNumber(followingCount)
                   )}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
-                  Following
+                  {t('profile.following')}
                 </div>
               </button>
             </div>
@@ -2516,7 +2518,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onClick={() => void loadFollows()}
                   className="text-[var(--accent)] font-medium hover:underline cursor-pointer"
                 >
-                  Retry
+                  {t('common.retry')}
                 </button>
               </div>
             )}
@@ -2535,7 +2537,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   WebkitMaskSize: '4px 4px',
                 }}
               />
-              <span className="font-mono text-[12px] font-semibold tracking-wider text-[var(--text-muted)] shrink-0">
+              <span className="font-mono ltr-nums text-[12px] font-semibold tracking-wider text-[var(--text-muted)] shrink-0">
                 ID #{canonicalShortId}
               </span>
             </div>
@@ -2551,8 +2553,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--accent)] text-white inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:opacity-95 active:scale-[0.98] transition cursor-pointer"
                     >
                       <Edit2 className="w-4 h-4 shrink-0" />
-                      <span className="hidden min-[400px]:inline">Edit profile</span>
-                      <span className="min-[400px]:hidden">Edit</span>
+                      <span className="hidden min-[400px]:inline truncate">{t('profile.editProfile')}</span>
+                      <span className="min-[400px]:hidden truncate">{t('common.edit')}</span>
                     </button>
 
                     <button
@@ -2561,7 +2563,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer"
                     >
                       <Package className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                      <span>Locker</span>
+                      <span className="truncate">{t('nav.locker')}</span>
                     </button>
 
                     <button
@@ -2570,7 +2572,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:bg-[var(--settings-row-hover)] active:scale-[0.98] transition cursor-pointer"
                     >
                       <ShoppingBag className="w-4 h-4 shrink-0" style={{ color: 'var(--koban)' }} />
-                      <span>Store</span>
+                      <span className="truncate">{t('nav.store')}</span>
                     </button>
                   </>
                 ) : (
@@ -2589,7 +2591,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="min-h-[46px] px-2.5 sm:px-3 rounded-full bg-[var(--accent)] text-white inline-flex items-center justify-center gap-1.5 text-[13px] font-semibold whitespace-nowrap hover:opacity-95 active:scale-[0.98] transition cursor-pointer"
                     >
                       <MessageSquare className="w-4 h-4 shrink-0" />
-                      <span>Message</span>
+                      <span className="truncate">{t('profile.message')}</span>
                     </button>
 
                     <button
@@ -2601,12 +2603,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {isFollowing ? (
                         <>
                           <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          <span>Following</span>
+                          <span className="truncate">{t('profile.following')}</span>
                         </>
                       ) : (
                         <>
                           <UserPlus className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                          <span>Follow</span>
+                          <span className="truncate">{t('profile.follow')}</span>
                         </>
                       )}
                     </button>
@@ -2619,12 +2621,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {copiedToast ? (
                         <>
                           <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                          <span>Copied</span>
+                          <span className="truncate">{t('common.copied')}</span>
                         </>
                       ) : (
                         <>
                           <Share2 className="w-4 h-4 shrink-0" />
-                          <span>Share</span>
+                          <span className="truncate">{t('common.share')}</span>
                         </>
                       )}
                     </button>
@@ -2646,7 +2648,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }`}
                 >
                   <Ban className="w-3.5 h-3.5" />
-                  {profile.isBanned ? 'Unban User' : 'Ban User'}
+                  {profile.isBanned ? t('profile.unbanUser') : t('profile.banUser')}
                 </button>
               </div>
             )}
@@ -2656,7 +2658,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {/* 2. SEGMENTED TABS: Overview, Loadout, Badges */}
         <div
           role="tablist"
-          aria-label="Profile sections"
+          aria-label={t('profile.sectionsLabel')}
           className="relative p-1 rounded-full bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] grid grid-cols-3 items-center h-[48px]"
         >
           <div
@@ -2664,24 +2666,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="pointer-events-none absolute top-1 bottom-1 rounded-full bg-[var(--accent)] transition-transform duration-200 ease-out"
             style={{
               width: 'calc((100% - 8px) / 3)',
-              left: '4px',
-              transform: `translateX(${activeTabIndex * 100}%)`,
+              left: isRtl ? 'auto' : '4px',
+              right: isRtl ? '4px' : 'auto',
+              transform: `translateX(${isRtl ? -activeTabIndex * 100 : activeTabIndex * 100}%)`,
             }}
           />
-          {TABS.map((t) => {
-            const active = activeTab === t.id;
+          {TABS.map((tab) => {
+            const active = activeTab === tab.id;
             return (
               <button
-                key={t.id}
+                key={tab.id}
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setActiveTab(t.id)}
-                className={`relative z-10 h-full rounded-full text-[13px] font-semibold transition-colors cursor-pointer ${
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative z-10 h-full rounded-full text-[13px] font-semibold transition-colors cursor-pointer px-1 truncate ${
                   active ? 'text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
-                {t.label}
+                {tab.label}
               </button>
             );
           })}
@@ -2691,16 +2694,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {activeTab === 'overview' && (
           <div className="space-y-4">
             {/* About me card */}
-            <div className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5">
+            <div className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5 text-start">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[14px] font-medium text-[var(--text-muted)]">About me</h3>
+                <h3 className="text-[14px] font-medium text-[var(--text-muted)]">{t('profile.aboutMe')}</h3>
                 {isOwnProfile && !previewMode && (
                   <button
                     type="button"
                     onClick={openEditAction}
                     className="text-[13px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
                   >
-                    Edit
+                    {t('common.edit')}
                   </button>
                 )}
               </div>
@@ -2714,9 +2717,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   type="button"
                   onClick={() => isOwnProfile && !previewMode && openEditAction()}
                   disabled={!isOwnProfile || previewMode}
-                  className="w-full text-left rounded-2xl p-3.5 border border-dashed border-[var(--border)] bg-[var(--bg)] text-[14px] text-[var(--text-muted)] hover:border-[var(--text-muted)] transition-colors cursor-pointer disabled:cursor-default"
+                  className="w-full text-start rounded-2xl p-3.5 border border-dashed border-[var(--border)] bg-[var(--bg)] text-[14px] text-[var(--text-muted)] hover:border-[var(--text-muted)] transition-colors cursor-pointer disabled:cursor-default"
                 >
-                  {isOwnProfile ? 'Add a bio...' : 'No bio added yet.'}
+                  {isOwnProfile ? t('profile.addBioPlaceholder') : t('profile.noBio')}
                 </button>
               )}
             </div>
@@ -2748,10 +2751,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {activeTab === 'loadout' && (
           <div className="rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5 space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <h3 className="text-[16px] font-semibold text-[var(--text)]">Equipped loadout</h3>
+              <div className="text-start">
+                <h3 className="text-[16px] font-semibold text-[var(--text)]">{t('profile.equippedLoadout')}</h3>
                 <p className="text-[13px] text-[var(--text-muted)] mt-0.5">
-                  Cosmetic items active on this student profile.
+                  {t('profile.equippedLoadoutDesc')}
                 </p>
               </div>
               {isOwnProfile && (
@@ -2761,7 +2764,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   className="min-h-[40px] px-4 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 hover:opacity-95 transition cursor-pointer"
                 >
                   <Package className="w-3.5 h-3.5" />
-                  <span>Open Locker</span>
+                  <span>{t('profile.openLocker')}</span>
                 </button>
               )}
             </div>
@@ -2769,43 +2772,51 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 {
-                  slot: 'Avatar',
+                  key: 'avatar',
+                  slot: t('profile.slotAvatar'),
                   item: getCosmeticById(profile.equippedAvatar),
                   fallback:
-                    profile.equippedAvatar === 'custom' ? 'Custom Photo' : 'Default Avatar',
+                    profile.equippedAvatar === 'custom'
+                      ? t('profile.customPhoto')
+                      : t('profile.defaultAvatar'),
                 },
                 {
-                  slot: 'Avatar Frame',
+                  key: 'frame',
+                  slot: t('profile.slotFrame'),
                   item: getCosmeticById(equippedFrameId),
-                  fallback: 'No Frame Equipped',
+                  fallback: t('profile.noFrameEquipped'),
                 },
                 {
-                  slot: 'Profile Banner',
+                  key: 'banner',
+                  slot: t('profile.slotBanner'),
                   item: getCosmeticById(equippedBannerId),
-                  fallback: 'Default Banner',
+                  fallback: t('profile.defaultBanner'),
                 },
                 {
-                  slot: 'Nameplate',
+                  key: 'nameplate',
+                  slot: t('profile.slotNameplate'),
                   item: getCosmeticById(equippedNameplateId),
-                  fallback: 'Standard Gold Nameplate',
+                  fallback: t('profile.defaultNameplate'),
                 },
                 {
-                  slot: 'Title',
+                  key: 'title',
+                  slot: t('profile.slotTitle'),
                   item: getCosmeticById(equippedTitleId),
                   fallback: 'Boardly Rookie',
                 },
                 {
-                  slot: 'Profile Effect',
+                  key: 'effect',
+                  slot: t('profile.slotEffect'),
                   item: getCosmeticById(equippedEffectId),
-                  fallback: 'No Effect Equipped',
+                  fallback: t('profile.noEffectEquipped'),
                 },
               ].map((entry) => {
                 const rarity: CosmeticRarity = entry.item?.rarity || 'common';
                 const rStyle = RARITY_BADGE_TOKENS[rarity];
                 return (
                   <div
-                    key={entry.slot}
-                    className="rounded-2xl p-3.5 bg-[var(--bg)] border border-[var(--border)] flex items-center justify-between gap-3"
+                    key={entry.key}
+                    className="rounded-2xl p-3.5 bg-[var(--bg)] border border-[var(--border)] flex items-center justify-between gap-3 text-start"
                   >
                     <div className="min-w-0">
                       <div className="text-[12px] font-medium text-[var(--text-muted)]">
@@ -2819,7 +2830,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize border shrink-0"
                       style={rStyle}
                     >
-                      {rarity}
+                      {t(`store.rarity_${rarity}`)}
                     </span>
                   </div>
                 );
@@ -2831,9 +2842,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         {activeTab === 'badges' && (
           <div className="rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-[16px] font-semibold text-[var(--text)]">Achievement badges</h3>
+              <h3 className="text-[16px] font-semibold text-[var(--text)]">{t('profile.achievementBadges')}</h3>
               <span className="text-[13px] font-medium text-[var(--text-muted)]">
-                {(profile.equippedBadges || ['first_login']).length} unlocked
+                {t('profile.badgesUnlocked', {
+                  count: formatNumber((profile.equippedBadges || ['first_login']).length),
+                })}
               </span>
             </div>
 
@@ -2844,7 +2857,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 return (
                   <div
                     key={badge.id}
-                    className={`rounded-2xl p-3.5 border transition-colors ${
+                    className={`rounded-2xl p-3.5 border transition-colors text-start ${
                       unlocked
                         ? 'bg-[var(--bg)] border-[var(--border)]'
                         : 'bg-[var(--bg)]/60 border-dashed border-[var(--border)]'
@@ -2864,7 +2877,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize border"
                         style={rStyle}
                       >
-                        {badge.rarity}
+                        {t(`store.rarity_${badge.rarity || 'common'}`)}
                       </span>
                     </div>
                     <div
@@ -2890,7 +2903,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={followListModal}
+          aria-label={followListModal === 'followers' ? t('profile.followers') : t('profile.following')}
           className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div
@@ -2902,19 +2915,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
             <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="text-[16px] font-semibold text-[var(--text)] capitalize">
-                  {followListModal}
+                <h3 className="text-[16px] font-semibold text-[var(--text)]">
+                  {followListModal === 'followers' ? t('profile.followers') : t('profile.following')}
                 </h3>
                 {!followListLoading && followListTotal !== null && (
-                  <span className="font-inter-num text-[12px] font-semibold text-[var(--text-muted)]">
-                    {followListTotal.toLocaleString()}
+                  <span className="font-inter-num ltr-nums text-[12px] font-semibold text-[var(--text-muted)]">
+                    {formatNumber(followListTotal)}
                   </span>
                 )}
               </div>
               <button
                 type="button"
                 onClick={closeFollowListModal}
-                aria-label="Close list"
+                aria-label={t('common.close')}
                 className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2922,7 +2935,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="p-4 overflow-y-auto overscroll-contain space-y-2 flex-1 pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
               {followListLoading ? (
-                <div className="space-y-2.5 py-2 animate-pulse" aria-busy="true" aria-label={`Loading ${followListModal}`}>
+                <div className="space-y-2.5 py-2 animate-pulse" aria-busy="true" aria-label={t('common.loading')}>
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-14 rounded-2xl bg-[var(--bg)] border border-[var(--border)]" />
                   ))}
@@ -2935,14 +2948,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     onClick={() => void openFollowList(followListModal)}
                     className="px-4 py-2 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold cursor-pointer"
                   >
-                    Retry
+                    {t('common.retry')}
                   </button>
                 </div>
               ) : followListUsers.length === 0 ? (
                 <div className="py-10 text-center text-[var(--text-muted)] text-[14px]">
                   {followListModal === 'followers'
-                    ? 'No followers yet.'
-                    : 'Not following anyone yet.'}
+                    ? t('profile.noFollowers')
+                    : t('profile.noFollowing')}
                 </div>
               ) : (
                 <>
@@ -2960,7 +2973,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           closeFollowListModal();
                           navigate(`/profile?uid=${encodeURIComponent(u.uid)}`);
                         }}
-                        className="w-full flex items-center justify-between gap-2 p-3 rounded-2xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] cursor-pointer transition-colors text-left"
+                        className="w-full flex items-center justify-between gap-2 p-3 rounded-2xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] cursor-pointer transition-colors text-start"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <BoardlyAvatar
@@ -2982,14 +2995,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               ) : null}
                             </div>
                             <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)] truncate">
-                              {uHandle && <span className="truncate">{uHandle}</span>}
+                              {uHandle && <span className="truncate ltr-nums">{uHandle}</span>}
                               {uHandle && <span aria-hidden="true">·</span>}
-                              <span className="font-inter-num shrink-0">Lv {u.level}</span>
+                              <span className="font-inter-num ltr-nums shrink-0">
+                                {t('profile.levelShort', { level: formatNumber(u.level) })}
+                              </span>
                             </div>
                           </div>
                         </div>
                         <span className="text-[13px] font-semibold text-[var(--accent)] shrink-0">
-                          View
+                          {t('common.view')}
                         </span>
                       </button>
                     );
@@ -3003,7 +3018,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void openFollowList(followListModal, { append: true })}
                         className="px-4 py-1.5 rounded-full bg-[var(--accent)] text-white text-[12px] font-semibold cursor-pointer"
                       >
-                        Retry
+                        {t('common.retry')}
                       </button>
                     </div>
                   )}
@@ -3016,7 +3031,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => void openFollowList(followListModal, { append: true })}
                         className="w-full py-2.5 rounded-xl bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text)] transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                       >
-                        {followListLoadingMore ? 'Loading...' : 'Load more'}
+                        {followListLoadingMore ? t('common.loading') : t('common.loadMore')}
                       </button>
                     </div>
                   )}
@@ -3049,7 +3064,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Edit profile"
+          aria-label={t('profile.editProfile')}
           className="fixed inset-0 z-[10020] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div
@@ -3060,12 +3075,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="relative z-10 w-full sm:max-w-lg max-h-[92dvh] rounded-t-[26px] sm:rounded-[28px] bg-[var(--card)] border border-[var(--border)] shadow-2xl flex flex-col overflow-hidden">
             <div className="sm:hidden w-9 h-1 rounded-full bg-[var(--border)] mx-auto mt-2.5 shrink-0" />
             <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
-              <h3 className="text-[17px] font-semibold text-[var(--text)]">Edit profile</h3>
+              <h3 className="text-[17px] font-semibold text-[var(--text)]">{t('profile.editProfile')}</h3>
               <button
                 type="button"
                 disabled={saving}
                 onClick={closeEditModal}
-                aria-label="Close edit profile"
+                aria-label={t('common.close')}
                 className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50"
               >
                 <X className="w-4 h-4" />
@@ -3076,7 +3091,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               onSubmit={handleSaveProfile}
               className="flex-1 min-h-0 flex flex-col overflow-hidden"
             >
-              <div className="p-5 overflow-y-auto overscroll-contain space-y-4 flex-1">
+              <div className="p-5 overflow-y-auto overscroll-contain space-y-4 flex-1 text-start">
                 {editError && (
                   <div
                     role="alert"
@@ -3097,9 +3112,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     equippedFrameId={editFrame}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-[var(--text)]">Profile photo</div>
+                    <div className="text-[14px] font-semibold text-[var(--text)]">{t('profile.profilePhoto')}</div>
                     <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-                      Upload a photo or equip a Boardly avatar in your Locker.
+                      {t('profile.profilePhotoDesc')}
                     </p>
                     <div className="mt-2">
                       <input
@@ -3115,7 +3130,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => fileInputRef.current?.click()}
                         className="min-h-[38px] px-4 rounded-full text-[13px] font-semibold bg-[var(--card)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] text-[var(--text)] cursor-pointer disabled:opacity-50"
                       >
-                        {uploadingPhoto ? 'Uploading...' : 'Upload photo'}
+                        {uploadingPhoto ? t('profile.uploading') : t('profile.uploadPhoto')}
                       </button>
                     </div>
                   </div>
@@ -3128,9 +3143,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         htmlFor="edit-profile-display-name"
                         className="block text-[13px] font-medium text-[var(--text-muted)]"
                       >
-                        Display name
+                        {t('profile.displayName')}
                       </label>
-                      <span className="font-inter-num text-[11px] text-[var(--text-muted)]">
+                      <span className="font-inter-num ltr-nums text-[11px] text-[var(--text-muted)]">
                         {editDisplayName.trim().length}/40
                       </span>
                     </div>
@@ -3144,8 +3159,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       }}
                       maxLength={40}
                       required
-                      placeholder="Your name"
-                      className={`w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none ${
+                      placeholder={t('profile.yourNamePlaceholder')}
+                      className={`w-full min-h-[46px] px-4 rounded-full bg-[var(--bg)] border text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none text-start ${
                         !displayNameCheck.valid
                           ? 'border-[#D71921]'
                           : 'border-[var(--border)]'
@@ -3163,9 +3178,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       htmlFor="edit-profile-username"
                       className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
                     >
-                      Username
+                      {t('profile.username')}
                     </label>
                     <div
+                      dir="ltr"
                       className={`min-h-[46px] px-4 rounded-full bg-[var(--bg)] border flex items-center ${
                         !usernameCheck.valid
                           ? 'border-[#D71921]'
@@ -3202,11 +3218,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       htmlFor="edit-profile-status"
                       className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
                     >
-                      Status
+                      {t('profile.status')}
                     </label>
                     <BoardlySelect
                       id="edit-profile-status"
-                      ariaLabel="Status"
+                      ariaLabel={t('profile.status')}
                       value={editStatus}
                       onChange={(val) => {
                         setEditStatus(normalizeProfileStatus(val));
@@ -3221,11 +3237,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       htmlFor="edit-profile-role-track"
                       className="block text-[13px] font-medium text-[var(--text-muted)] mb-1.5"
                     >
-                      Role / track
+                      {t('profile.roleTrack')}
                     </label>
                     <BoardlySelect
                       id="edit-profile-role-track"
-                      ariaLabel="Role / track"
+                      ariaLabel={t('profile.roleTrack')}
                       value={editCustomRole}
                       onChange={(val) => {
                         setEditCustomRole(val);
@@ -3243,10 +3259,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       htmlFor="edit-profile-bio"
                       className="block text-[13px] font-medium text-[var(--text-muted)]"
                     >
-                      Bio
+                      {t('profile.bio')}
                     </label>
                     <span
-                      className={`font-inter-num text-[11px] font-medium ${
+                      className={`font-inter-num ltr-nums text-[11px] font-medium ${
                         editBio.length >= 150
                           ? 'text-[#ff5a62]'
                           : 'text-[var(--text-muted)]'
@@ -3262,10 +3278,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       setEditBio(e.target.value.slice(0, 160));
                       if (editError) setEditError('');
                     }}
-                    placeholder="Add a short bio..."
+                    placeholder={t('profile.bioPlaceholder')}
                     rows={3}
                     maxLength={160}
-                    className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none resize-none"
+                    className="w-full p-3.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[15px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none resize-none text-start"
                   />
                 </div>
               </div>
@@ -3278,14 +3294,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onClick={closeEditModal}
                   className="min-h-[44px] px-5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[14px] font-semibold text-[var(--text)] hover:bg-[var(--settings-row-hover)] cursor-pointer disabled:opacity-50"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={saving || uploadingPhoto || !isEditDirty || !isEditFormValid}
                   className="min-h-[44px] px-6 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold hover:opacity-95 disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer transition-opacity"
                 >
-                  {saving ? 'Saving...' : 'Save changes'}
+                  {saving ? t('common.saving') : t('common.saveChanges')}
                 </button>
               </div>
             </form>
@@ -3301,7 +3317,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           className="fixed bottom-[calc(84px+env(safe-area-inset-bottom,0px))] sm:bottom-6 left-1/2 -translate-x-1/2 z-[10070] px-4 py-2.5 rounded-full bg-[#16161B] text-white border border-white/15 shadow-2xl flex items-center gap-2 text-[13px] font-semibold"
         >
           <Check className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={2.5} />
-          <span>Profile saved</span>
+          <span>{t('profile.profileSaved')}</span>
         </div>
       )}
     </div>

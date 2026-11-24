@@ -284,11 +284,21 @@ export async function apiRequest<T = any>(
     const rawMsg = isAbort
       ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}).`
       : networkErr?.message || 'Network error while contacting server.';
-    console.error(`[API Network Error] ${method} ${url}:`, rawMsg, networkErr);
+    console.error(`[API Network Error] apiRequest ${method} ${url}:`, {
+      fn: 'apiRequest',
+      method,
+      url,
+      status: 0,
+      code: isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR',
+      message: rawMsg,
+      silentErrorToast,
+      error: networkErr,
+    });
     const safeMsg = FRIENDLY_ERROR_MESSAGE;
     const wrappedErr: ApiError = new Error(safeMsg);
     wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
-    wrappedErr.rawMessage = safeMsg;
+    wrappedErr.rawMessage = rawMsg;
+    (wrappedErr as ApiError & { url?: string }).url = url;
     if (!silentErrorToast) showApiToast(safeMsg, 'error');
     throw wrappedErr;
   } finally {
@@ -306,8 +316,6 @@ export async function apiRequest<T = any>(
   }
 
   if (!response.ok) {
-    console.error(`[API Error] ${method} ${url} -> HTTP ${response.status}:`, rawText || data);
-
     const rawServerError =
       typeof data?.error === 'string' && data.error.trim()
         ? data.error.trim()
@@ -316,6 +324,17 @@ export async function apiRequest<T = any>(
         : `HTTP ${response.status} ${response.statusText || ''}`.trim();
     const serverCode =
       typeof data?.code === 'string' && data.code.trim() ? data.code.trim() : undefined;
+
+    console.error(`[API Error] apiRequest ${method} ${url} -> HTTP ${response.status}:`, {
+      fn: 'apiRequest',
+      method,
+      url,
+      status: response.status,
+      code: serverCode || `HTTP_${response.status}`,
+      message: rawServerError,
+      silentErrorToast,
+      body: rawText ? rawText.slice(0, 500) : data,
+    });
 
     const isSigningOutActive =
       typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut);
@@ -357,7 +376,8 @@ export async function apiRequest<T = any>(
     const err: ApiError = new Error(safeUserMessage);
     err.status = response.status;
     err.code = serverCode || `HTTP_${response.status}`;
-    err.rawMessage = safeUserMessage;
+    err.rawMessage = rawServerError;
+    (err as ApiError & { url?: string }).url = url;
     err.attemptId = data?.attemptId;
     err.attempt = data?.attempt;
     err.data = data;

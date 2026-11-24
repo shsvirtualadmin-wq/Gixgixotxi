@@ -29,12 +29,14 @@ import { routes } from '@/utils/routes';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 import { AdSlot } from '@/components/AdSlot';
 import { AD_SLOTS } from '@/config/ads';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
 
 export function TestResultPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const { user } = useAuth();
+  const { t, formatNumber } = useLanguage();
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
 
@@ -122,11 +124,11 @@ export function TestResultPage() {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <ErrorState
-          title="Could not load test results"
+          title={t('common.somethingWrong')}
           error={error}
           onRetry={() => setRetryCount((c) => c + 1)}
           onBack={() => navigate('/dashboard/practice')}
-          backLabel="Return to Practice"
+          backLabel={t('common.back')}
         />
       </div>
     );
@@ -165,11 +167,11 @@ export function TestResultPage() {
       {/* Hero Scorecard */}
       <div className="glass-panel glass-animated-border rounded-[32px] p-5 sm:p-8 flex flex-col items-center text-center gap-4 w-full max-w-full min-w-0">
         <span className="section-chip break-words max-w-full text-center">
-          Session Complete · {attempt.subject ?? 'Practice Drill'}
+          {t('test.resultsTitle')} · {attempt.subject ?? t('nav.practice')}
         </span>
 
         {/* Big percentage & score */}
-        <div className="flex items-baseline justify-center gap-3 flex-wrap max-w-full">
+        <div className="flex items-baseline justify-center gap-3 flex-wrap max-w-full ltr-nums">
           <span
             className="font-dot tabular-nums text-5xl sm:text-7xl font-extrabold leading-none"
             style={{
@@ -184,19 +186,19 @@ export function TestResultPage() {
               backgroundClip: 'text',
             }}
           >
-            {percentage}%
+            {formatNumber(percentage)}%
           </span>
           <span className="font-dot text-xl sm:text-2xl font-bold text-[var(--text-muted)]">
-            ({score} / {attempt.maxMarks || total})
+            ({formatNumber(score)} / {formatNumber(attempt.maxMarks || total)})
           </span>
         </div>
 
         <p className="text-sm sm:text-base text-[var(--text-muted)] max-w-md break-words px-2 leading-relaxed">
           {percentage >= 75
-            ? 'Outstanding performance! You are on track for top entrance test percentiles.'
+            ? t('test.greatJob')
             : percentage >= 50
-            ? 'Solid effort! Focus on the missed topics below to convert traps into points.'
-            : 'Review the step-by-step explanations below to master the core concepts.'}
+            ? t('test.keepPracticing')
+            : t('test.needsWork')}
         </p>
 
         {(() => {
@@ -249,32 +251,32 @@ export function TestResultPage() {
         {/* Key Metrics Row: 2-column grid on mobile, 4-column on desktop */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl mt-2 min-w-0">
           <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
-            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--success)]">{correctCount}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">Correct</p>
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--success)] ltr-nums">{formatNumber(correctCount)}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">{t('test.correct')}</p>
           </div>
 
           <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
-            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--danger)]">{wrongCount}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">Incorrect</p>
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--danger)] ltr-nums">{formatNumber(wrongCount)}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">{t('test.incorrect')}</p>
           </div>
 
           <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
-            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text-muted)]">{unansweredCount}</p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">Skipped</p>
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text-muted)] ltr-nums">{formatNumber(unansweredCount)}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">{t('test.skipped')}</p>
           </div>
 
           <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
-            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text)]">
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text)] ltr-nums">
               {formatTime(attempt.timeTakenSeconds)}
             </p>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">Time Spent</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">{t('test.timeTaken')}</p>
           </div>
         </div>
 
         {/* Action CTAs: stacked full-width on mobile */}
         <div className="flex flex-col sm:flex-row flex-wrap justify-center w-full sm:w-auto gap-3 mt-3">
           <PdfDownloadButton
-            label="Download Results & Answer Key (PDF)"
+            label={`${t('test.resultsTitle')} (PDF)`}
             variant="primary"
             className="w-full sm:w-auto"
             onDownload={async (onProgress, signal) => {
@@ -336,7 +338,7 @@ export function TestResultPage() {
             style={{ gap: 8 }}
           >
             <RotateCcw size={16} />
-            <span>Retake / New Drill</span>
+            <span>{t('test.retakeTest')}</span>
           </Button>
 
           <Button
@@ -347,7 +349,7 @@ export function TestResultPage() {
             style={{ gap: 8 }}
           >
             <BookOpen size={16} />
-            <span>All My Results</span>
+            <span>{t('nav.results')}</span>
           </Button>
 
           <Button
@@ -357,8 +359,8 @@ export function TestResultPage() {
             className="w-full sm:w-auto justify-center"
             style={{ gap: 8 }}
           >
-            <span>Overview Dashboard</span>
-            <ArrowRight size={16} />
+            <span>{t('test.backToDashboard')}</span>
+            <ArrowRight size={16} className="rtl-mirror" />
           </Button>
         </div>
       </div>
@@ -369,12 +371,12 @@ export function TestResultPage() {
       {/* Review Section */}
       <div className="min-w-0 max-w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 min-w-0 max-w-full">
-          <div>
+          <div className="text-start">
             <h3 className="font-dot text-lg sm:text-xl font-bold text-[var(--text)]">
-              Question Breakdown
+              {t('test.reviewAnswers')}
             </h3>
             <p className="text-xs sm:text-sm text-[var(--text-muted)]">
-              Detailed step-by-step solutions with KaTeX derivations
+              {t('test.explanation')}
             </p>
           </div>
 
@@ -382,9 +384,9 @@ export function TestResultPage() {
           <div className="flex items-center gap-1.5 flex-wrap max-w-full">
             {(
               [
-                { id: 'all', label: `All (${questions.length})` },
-                { id: 'mistakes', label: `Mistakes (${wrongCount + unansweredCount})` },
-                { id: 'flagged', label: `Flagged (${flagged.length})` },
+                { id: 'all', label: `${t('common.all')} (${formatNumber(questions.length)})` },
+                { id: 'mistakes', label: `${t('test.incorrect')} (${formatNumber(wrongCount + unansweredCount)})` },
+                { id: 'flagged', label: `${t('test.flagged')} (${formatNumber(flagged.length)})` },
               ] as const
             ).map((tab) => {
               const active = filter === tab.id;
@@ -420,17 +422,17 @@ export function TestResultPage() {
                 key={q.id || idx}
                 className={`glass rounded-2xl p-4 sm:p-6 flex flex-col gap-4 min-w-0 max-w-full overflow-hidden ${
                   isCorrect
-                    ? 'border-l-4 border-l-[var(--success)]'
+                    ? 'border-s-4 border-s-[var(--success)]'
                     : isSkipped
-                    ? 'border-l-4 border-l-[var(--text-faint)]'
-                    : 'border-l-4 border-l-[var(--danger)]'
+                    ? 'border-s-4 border-s-[var(--text-faint)]'
+                    : 'border-s-4 border-s-[var(--danger)]'
                 }`}
               >
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2 min-w-0 max-w-full">
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <span className="text-xs sm:text-sm font-bold text-[var(--text)]">
-                      Question {idx + 1}
+                      {t('test.questionOf', { current: formatNumber(idx + 1), total: formatNumber(questions.length) })}
                     </span>
                     {q.subject && (
                       <span className="text-[11px] text-[var(--text-faint)] bg-[var(--surface)] px-2 py-0.5 rounded-full border border-[var(--border)]">
@@ -439,7 +441,7 @@ export function TestResultPage() {
                     )}
                     {isItemFlagged && (
                       <span className="inline-flex items-center gap-1 text-[11px] text-amber-500">
-                        <Bookmark size={11} fill="currentColor" /> Flagged
+                        <Bookmark size={11} fill="currentColor" /> {t('test.flagged')}
                       </span>
                     )}
                   </div>
@@ -457,20 +459,20 @@ export function TestResultPage() {
                       if (isCorrect) {
                         return (
                           <span className="inline-flex items-center gap-1 text-[var(--success)] text-xs font-bold">
-                            <CheckCircle size={14} /> Correct ({correctLabel})
+                            <CheckCircle size={14} /> {t('test.correct')} (<span className="ltr-nums">{correctLabel}</span>)
                           </span>
                         );
                       }
                       if (isSkipped) {
                         return (
                           <span className="inline-flex items-center gap-1 text-[var(--text-faint)] text-xs">
-                            <Clock size={14} /> Skipped (0)
+                            <Clock size={14} /> {t('test.skipped')} (0)
                           </span>
                         );
                       }
                       return (
                         <span className="inline-flex items-center gap-1 text-[var(--danger)] text-xs font-bold">
-                          <XCircle size={14} /> Incorrect ({penaltyLabel})
+                          <XCircle size={14} /> {t('test.incorrect')} (<span className="ltr-nums">{penaltyLabel}</span>)
                         </span>
                       );
                     })()}
@@ -479,10 +481,10 @@ export function TestResultPage() {
                       type="button"
                       onClick={() => setReportingQuestionId(q.id)}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[var(--border)] text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-                      title="Report issue with this question"
+                      title={t('test.reportQuestion')}
                     >
                       <Flag size={11} />
-                      <span>Report</span>
+                      <span>{t('common.report')}</span>
                     </button>
                   </div>
                 </div>
@@ -549,12 +551,12 @@ export function TestResultPage() {
 
                           {isOptionCorrect && (
                             <span className="text-[10px] sm:text-[11px] font-bold text-[var(--success)] shrink-0 hidden xs:inline">
-                              Correct Answer
+                              {t('test.correctAnswer')}
                             </span>
                           )}
                           {isUserChoice && !isOptionCorrect && (
                             <span className="text-[10px] sm:text-[11px] font-bold text-[var(--danger)] shrink-0 hidden xs:inline">
-                              Your Choice
+                              {t('test.yourAnswer')}
                             </span>
                           )}
                         </div>
@@ -567,9 +569,9 @@ export function TestResultPage() {
                 {q.explain && q.explain.trim().length > 0 && !q.explain.includes('available in the study portal') && (
                   <div className="p-3 sm:p-4 rounded-xl bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-sm leading-relaxed text-[var(--text)] min-w-0 max-w-full break-words overflow-x-auto">
                     <p className="text-[10px] sm:text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">
-                      Standard Solution
+                      {t('test.explanation')}
                     </p>
-                    <MathText block>{q.explain}</MathText>
+                    <div dir="ltr"><MathText block>{q.explain}</MathText></div>
                   </div>
                 )}
 
@@ -586,7 +588,7 @@ export function TestResultPage() {
                       <div className="p-2.5 sm:p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-2.5 text-xs min-w-0 max-w-full">
                         <div className="flex items-center gap-2 text-[var(--text-muted)] min-w-0">
                           <AlertTriangle size={15} className="text-amber-500 shrink-0" />
-                          <span className="truncate">This question is being reviewed. Correct answer key is being verified.</span>
+                          <span className="truncate">{t('common.pending')}</span>
                         </div>
                         <button
                           type="button"
@@ -594,7 +596,7 @@ export function TestResultPage() {
                           className="px-2.5 py-1 rounded-full border border-[var(--border)] text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0 inline-flex items-center gap-1"
                         >
                           <Flag size={11} />
-                          <span>Report</span>
+                          <span>{t('common.report')}</span>
                         </button>
                       </div>
                     );
@@ -610,7 +612,7 @@ export function TestResultPage() {
                         >
                           <Bot size={14} className="text-[#D71921]" />
                           <span>
-                            {aiExplaining[idx] ? 'Deriving solution...' : 'Explain this with Boardy AI'}
+                            {aiExplaining[idx] ? t('common.loading') : `${t('test.showExplanation')} (AI Mentors)`}
                           </span>
                           {aiExplaining[idx] && <ButtonLineLoader />}
                         </button>
@@ -619,7 +621,7 @@ export function TestResultPage() {
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="flex items-center gap-1.5 text-[#D71921] text-xs font-bold">
                               <Bot size={15} />
-                              <span>Boardy AI Step-by-Step Derivation</span>
+                              <span>AI Mentors · {t('test.explanation')}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
@@ -627,14 +629,14 @@ export function TestResultPage() {
                                 disabled={aiExplaining[idx]}
                                 className="text-xs text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1 disabled:opacity-50"
                               >
-                                <RotateCcw size={11} /> Re-derive
+                                <RotateCcw size={11} /> {t('common.retry')}
                               </button>
                               <button
                                 onClick={() => setReportingQuestionId(q.id)}
                                 className="text-xs text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1"
-                                title="Report issue with explanation"
+                                title={t('test.reportQuestion')}
                               >
-                                <Flag size={11} /> Report
+                                <Flag size={11} /> {t('common.report')}
                               </button>
                             </div>
                           </div>
@@ -643,10 +645,10 @@ export function TestResultPage() {
                               variant="inline"
                               context="results"
                               loading={aiExplaining[idx]}
-                              message="Deriving solution..."
+                              message={t('common.loading')}
                             />
                           ) : (
-                            <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto">
+                            <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto" dir="ltr">
                               <MathText block>{aiExplanations[idx]}</MathText>
                             </div>
                           )}
@@ -667,48 +669,45 @@ export function TestResultPage() {
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl text-[var(--text)]">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <h3 className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)' }}>
-                Report Question
+                {t('test.reportQuestion')}
               </h3>
               <button
                 type="button"
                 onClick={() => setReportingQuestionId(null)}
                 className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs cursor-pointer"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
 
             {reportSuccess ? (
               <div className="py-6 text-center space-y-2">
                 <CheckCircle2 className="mx-auto text-[var(--accent)]" size={32} />
-                <p className="text-sm font-semibold">Report Received</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Thank you! Our academic reviewers will verify this question.
-                </p>
+                <p className="text-sm font-semibold">{t('test.reportSubmitted')}</p>
               </div>
             ) : (
-              <div className="space-y-3 text-xs">
+              <div className="space-y-3 text-xs text-start">
                 <div>
-                  <label className="block font-semibold mb-1 text-[var(--text)]">What seems wrong?</label>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">{t('commons.reportReason')}</label>
                   <select
                     value={reportReason}
                     onChange={(e) => setReportReason(e.target.value)}
                     className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]"
                   >
-                    <option value="wrong_key">Answer key appears incorrect</option>
-                    <option value="broken_math">Math formula formatting issue</option>
-                    <option value="unclear">Question wording is ambiguous or incomplete</option>
-                    <option value="other">Other issue</option>
+                    <option value="wrong_key">{t('test.correctAnswer')}</option>
+                    <option value="broken_math">Math / LaTeX</option>
+                    <option value="unclear">{t('common.somethingWrong')}</option>
+                    <option value="other">{t('common.report')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1 text-[var(--text)]">Details (optional)</label>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">{t('common.optional')}</label>
                   <textarea
                     rows={3}
                     value={reportComment}
                     onChange={(e) => setReportComment(e.target.value)}
-                    placeholder="Describe what needs correction..."
+                    placeholder={t('commons.reportReason')}
                     className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] resize-none"
                   />
                 </div>
@@ -719,7 +718,7 @@ export function TestResultPage() {
                     onClick={() => setReportingQuestionId(null)}
                     className="btn-outline px-3 py-1.5 rounded-xl text-xs cursor-pointer"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -749,7 +748,7 @@ export function TestResultPage() {
                     }}
                     className="relative overflow-hidden btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <span>{reporting ? 'Submitting...' : 'Submit Report'}</span>
+                    <span>{reporting ? t('common.submitting') : t('common.submit')}</span>
                     {reporting && <ButtonLineLoader />}
                   </button>
                 </div>

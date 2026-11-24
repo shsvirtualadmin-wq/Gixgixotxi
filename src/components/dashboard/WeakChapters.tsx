@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { D1WeakChapterItem } from '@/services/universityMcqService';
 
 interface Props {
@@ -11,26 +12,27 @@ export const WeakChapters = memo(function WeakChapters({
   chapters,
   onDrillChapter,
 }: Props) {
+  const { t, formatNumber } = useLanguage();
   const safeChapters = Array.isArray(chapters) ? chapters.slice(0, 5) : [];
 
   return (
     <section
       className="space-y-3"
-      aria-label="Weak Chapters"
+      aria-label={t('dashboard.weakChapters')}
       data-testid="weak-chapters-section"
     >
       <div className="flex items-center justify-between gap-2 px-1">
         <h2
           className="text-base sm:text-lg font-black tracking-tight truncate"
-          style={{ fontFamily: 'var(--font-dot)', color: 'var(--text)' }}
+          style={{ color: 'var(--text)' }}
         >
-          Weak Chapters
+          {t('dashboard.weakChapters')}
         </h2>
         <span
-          className="text-[11px] font-bold uppercase tracking-wider shrink-0"
+          className="text-[11px] font-bold uppercase tracking-wider shrink-0 ltr-nums"
           style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
         >
-          TOP 05 FOCUS
+          01–05
         </span>
       </div>
 
@@ -43,18 +45,18 @@ export const WeakChapters = memo(function WeakChapters({
             boxShadow: 'var(--shadow)',
           }}
         >
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 text-start">
             <div
               className="text-sm font-bold truncate"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--text)' }}
             >
-              No weak chapters recorded yet
+              {t('dashboard.weakChapters')}
             </div>
             <div
               className="text-xs truncate"
               style={{ fontFamily: 'var(--font-body)', color: 'var(--text-muted)' }}
             >
-              Complete a university test above to unlock your 01–05 chapter accuracy meters.
+              {t('dashboard.noWeakChapters')}
             </div>
           </div>
         </div>
@@ -93,10 +95,10 @@ export const WeakChapters = memo(function WeakChapters({
                     {c.topic}
                   </div>
                   <div
-                    className="text-[11px] truncate"
+                    className="text-[11px] truncate text-start"
                     style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}
                   >
-                    {c.universityName} · {c.subject} · {c.answered} Qs · {pct}%
+                    {c.universityName} · {c.subject} · <span className="ltr-nums">{formatNumber(c.answered)} · {formatNumber(pct)}%</span>
                   </div>
                 </div>
 

@@ -14,6 +14,7 @@ import { getMyTestAttempts, type AmbassadorTestAttempt } from '@/services/ambass
 import { showApiToast } from '@/lib/api';
 import { PdfDownloadButton } from '@/components/drill/PdfDownloadButton';
 import { RotatingBoardlyAd } from '@/components/BoardlyAd';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 function getTimestampSeconds(val: unknown): number {
   if (!val || typeof val !== 'object') return 0;
@@ -23,25 +24,20 @@ function getTimestampSeconds(val: unknown): number {
   return 0;
 }
 
-function formatTimestampDate(val: unknown): string {
-  if (!val) return 'Recent';
-  let ms = Date.now();
+function toTimestampDate(val: unknown): Date | null {
+  if (!val) return null;
   if (typeof val === 'object' && val !== null) {
     if ('toMillis' in val && typeof (val as { toMillis: () => number }).toMillis === 'function') {
-      ms = (val as { toMillis: () => number }).toMillis();
-    } else if ('seconds' in val && typeof (val as { seconds: number }).seconds === 'number') {
-      ms = (val as { seconds: number }).seconds * 1000;
+      return new Date((val as { toMillis: () => number }).toMillis());
+    }
+    if ('seconds' in val && typeof (val as { seconds: number }).seconds === 'number') {
+      return new Date((val as { seconds: number }).seconds * 1000);
     }
   } else if (typeof val === 'string') {
     const parsed = Date.parse(val);
-    if (!Number.isNaN(parsed)) ms = parsed;
+    if (!Number.isNaN(parsed)) return new Date(parsed);
   }
-  return new Date(ms).toLocaleDateString('en-PK', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return null;
 }
 
 function formatDurationLabel(seconds: number): string {
@@ -53,6 +49,7 @@ function formatDurationLabel(seconds: number): string {
 
 export function ResultsListPage() {
   const { user, profile, isAdmin, isGuest } = useAuth();
+  const { t, formatNumber, formatDate } = useLanguage();
   const navigate = useNavigate();
 
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
@@ -207,23 +204,23 @@ export function ResultsListPage() {
     <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
+        <div className="text-start">
           <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-            Test Results &amp; History
+            {t('test.resultsTitle')}
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Review every attempt, download verified drill PDFs, and track accuracy.
+            {t('dashboard.recentAttempts')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button variant="secondary" size="sm" onClick={loadAttempts} loading={loading}>
-            <RefreshCw size={14} /> Refresh
+            <RefreshCw size={14} /> {t('common.refresh')}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => navigate('/grand-line')}>
-            Grand Line Drills
+            {t('nav.grandLine')}
           </Button>
           <Button variant="primary" size="sm" onClick={() => navigate('/dashboard/practice')}>
-            Start New Drill
+            {t('dashboard.startPractice')}
           </Button>
         </div>
       </div>
@@ -239,37 +236,37 @@ export function ResultsListPage() {
         <GlassCard style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
             <BarChart2 size={16} />
-            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tests Attempted</span>
+            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('dashboard.testsCompleted')}</span>
           </div>
-          <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
-            {totalTests}
+          <span className="font-display tabular-nums ltr-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
+            {formatNumber(totalTests)}
           </span>
         </GlassCard>
 
         <GlassCard style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
             <CheckCircle size={16} />
-            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Average Accuracy</span>
+            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('dashboard.accuracy')}</span>
           </div>
           <span
-            className="font-display tabular-nums"
+            className="font-display tabular-nums ltr-nums"
             style={{
               fontSize: 32,
               fontWeight: 800,
               color: avgAccuracy >= 70 ? 'var(--success)' : avgAccuracy >= 40 ? 'var(--warning)' : '#D71921',
             }}
           >
-            {avgAccuracy}%
+            {formatNumber(avgAccuracy)}%
           </span>
         </GlassCard>
 
         <GlassCard style={{ padding: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
             <Clock size={16} />
-            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Correct MCQs</span>
+            <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('test.correct')}</span>
           </div>
-          <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: '#D71921' }}>
-            {totalQuestionsSolved}
+          <span className="font-display tabular-nums ltr-nums" style={{ fontSize: 32, fontWeight: 800, color: '#D71921' }}>
+            {formatNumber(totalQuestionsSolved)}
           </span>
         </GlassCard>
       </div>
@@ -278,14 +275,14 @@ export function ResultsListPage() {
       {loading ? (
         <LineLoader context="results" variant="section" />
       ) : error && grandLineAttempts.length === 0 ? (
-        <ErrorState title="Could not load attempts" error={error} onRetry={loadAttempts} />
+        <ErrorState title={t('common.somethingWrong')} error={error} onRetry={loadAttempts} />
       ) : totalTests === 0 ? (
         <EmptyState
           icon={<BookOpen size={40} className="text-[#D71921]" />}
-          title="No attempts yet"
-          description="Start your first Grand Line drill or practice test to see your performance metrics, mistake review, and downloadable result PDFs here."
-          actionLabel="Explore Grand Line Drills"
-          onAction={() => navigate('/grand-line')}
+          title={t('test.noResultsYet')}
+          description={t('dashboard.noRecentAttempts')}
+          actionLabel={t('dashboard.startPractice')}
+          onAction={() => navigate('/dashboard/practice')}
         />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -294,7 +291,7 @@ export function ResultsListPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Trophy size={16} className="text-[#D71921]" />
                 <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                  Grand Line Verified Drill Attempts ({grandLineAttempts.length})
+                  {t('nav.grandLine')} (<span className="ltr-nums">{formatNumber(grandLineAttempts.length)}</span>)
                 </h2>
               </div>
 
@@ -302,7 +299,10 @@ export function ResultsListPage() {
                 const pct = glAtt.percentage ?? 0;
                 const score = glAtt.score ?? 0;
                 const total = glAtt.totalQuestions ?? 0;
-                const dateStr = formatTimestampDate(glAtt.submittedAt);
+                const parsedDate = toTimestampDate(glAtt.submittedAt);
+                const dateStr = parsedDate
+                  ? formatDate(parsedDate, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : t('common.today');
 
                 return (
                   <GlassCard
@@ -315,15 +315,15 @@ export function ResultsListPage() {
                       flexWrap: 'wrap',
                       gap: 16,
                       cursor: 'pointer',
-                      borderLeft: `4px solid ${pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921'}`,
+                      borderInlineStart: `4px solid ${pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921'}`,
                     }}
                     onClick={() => navigate(`/grand-line/test/${glAtt.testId}/run?mode=result`)}
                     hover
                   >
-                    <div style={{ minWidth: 0, flex: '1 1 240px' }}>
+                    <div style={{ minWidth: 0, flex: '1 1 240px' }} className="text-start">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                         <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                          {glAtt.testTitle || 'Grand Line Drill'}
+                          {glAtt.testTitle || t('nav.grandLine')}
                         </h3>
                         <span
                           style={{
@@ -334,40 +334,40 @@ export function ResultsListPage() {
                             color: 'var(--text-muted)',
                           }}
                         >
-                          {glAtt.subject || 'General'}
+                          {glAtt.subject || t('nav.practice')}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-faint)', flexWrap: 'wrap' }}>
                         <span>{dateStr}</span>
                         <span>·</span>
-                        <span>
-                          {score} / {total} correct
+                        <span className="ltr-nums">
+                          {formatNumber(score)} / {formatNumber(total)} {t('test.correct')}
                         </span>
                         <span>·</span>
-                        <span>{formatDurationLabel(glAtt.timeTakenSeconds)}</span>
+                        <span className="ltr-nums">{formatDurationLabel(glAtt.timeTakenSeconds)}</span>
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      <div style={{ textAlign: 'right', marginRight: 4 }}>
+                      <div style={{ textAlign: 'end', marginInlineEnd: 4 }}>
                         <div
-                          className="font-display tabular-nums"
+                          className="font-display tabular-nums ltr-nums"
                           style={{
                             fontSize: 22,
                             fontWeight: 800,
                             color: pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921',
                           }}
                         >
-                          {pct}%
+                          {formatNumber(pct)}%
                         </div>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {score} / {total} marks
+                        <span className="ltr-nums" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {formatNumber(score)} / {formatNumber(total)}
                         </span>
                       </div>
 
                       <PdfDownloadButton
                         variant="secondary"
-                        label={isAdmin ? 'My Report' : 'Download PDF'}
+                        label="PDF"
                         className="text-xs py-1.5 px-3 h-8 font-semibold"
                         onDownload={async (onProgress, signal) => {
                           if (!glAtt.testId) return;
@@ -417,7 +417,7 @@ export function ResultsListPage() {
                           navigate(`/grand-line/test/${glAtt.testId}/run?mode=result`);
                         }}
                       >
-                        View Result <ArrowRight size={13} />
+                        {t('test.viewResults')} <ArrowRight size={13} className="rtl-mirror" />
                       </Button>
                     </div>
                   </GlassCard>
@@ -429,12 +429,15 @@ export function ResultsListPage() {
           {attempts.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {grandLineAttempts.length > 0 && (
-                <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                  Practice Arena History ({attempts.length})
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }} className="text-start">
+                  {t('dashboard.recentAttempts')} (<span className="ltr-nums">{formatNumber(attempts.length)}</span>)
                 </h2>
               )}
               {attempts.map((att) => {
-                const dateStr = formatTimestampDate(att.createdAt);
+                const parsedDate = toTimestampDate(att.createdAt);
+                const dateStr = parsedDate
+                  ? formatDate(parsedDate, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : t('common.today');
 
                 const pct = att.percentage ?? 0;
                 const score = att.score ?? 0;
@@ -451,15 +454,15 @@ export function ResultsListPage() {
                       flexWrap: 'wrap',
                       gap: 16,
                       cursor: 'pointer',
-                      borderLeft: `4px solid ${pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921'}`,
+                      borderInlineStart: `4px solid ${pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921'}`,
                     }}
                     onClick={() => navigate(`/test/${att.id}/result`)}
                     hover
                   >
-                    <div>
+                    <div className="text-start">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                          {att.subject ?? 'Practice Drill'}
+                          {att.subject ?? t('nav.practice')}
                         </h3>
                         {att.university && (
                           <span
@@ -478,37 +481,37 @@ export function ResultsListPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: 'var(--text-faint)' }}>
                         <span>{dateStr}</span>
                         <span>·</span>
-                        <span>
-                          {att.correctAnswers ?? 0} correct / {att.wrongAnswers ?? 0} wrong
+                        <span className="ltr-nums">
+                          {formatNumber(att.correctAnswers ?? 0)} {t('test.correct')} / {formatNumber(att.wrongAnswers ?? 0)} {t('test.incorrect')}
                         </span>
                         {att.timeTakenSeconds && (
                           <>
                             <span>·</span>
-                            <span>{Math.round(att.timeTakenSeconds / 60)} min</span>
+                            <span className="ltr-nums">{formatNumber(Math.round(att.timeTakenSeconds / 60))} min</span>
                           </>
                         )}
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ textAlign: 'right' }}>
+                      <div style={{ textAlign: 'end' }}>
                         <div
-                          className="font-display tabular-nums"
+                          className="font-display tabular-nums ltr-nums"
                           style={{
                             fontSize: 22,
                             fontWeight: 800,
                             color: pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : '#D71921',
                           }}
                         >
-                          {pct}%
+                          {formatNumber(pct)}%
                         </div>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          {score} / {total} marks
+                        <span className="ltr-nums" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                          {formatNumber(score)} / {formatNumber(total)}
                         </span>
                       </div>
 
                       <Button variant="secondary" size="sm" onClick={() => navigate(`/test/${att.id}/result`)}>
-                        Review <ArrowRight size={13} />
+                        {t('test.reviewAnswers')} <ArrowRight size={13} className="rtl-mirror" />
                       </Button>
                     </div>
                   </GlassCard>
@@ -518,7 +521,7 @@ export function ResultsListPage() {
               {hasMore && <div ref={sentinelRef} style={{ height: 24, width: '100%' }} />}
               {loadingMore && (
                 <div style={{ padding: '12px 0' }}>
-                  <LineLoader variant="inline" context="results" message="Loading older test results..." />
+                  <LineLoader variant="inline" context="results" message={t('common.loading')} />
                 </div>
               )}
             </div>

@@ -28,6 +28,7 @@ export function resolveTabIdFromPathname(
     isMenuOpen ||
     p === '/menu' ||
     p === '/dashboard/menu' ||
+    p.startsWith('/settings') ||
     p.startsWith('/store') ||
     p.startsWith('/dashboard/store') ||
     p.startsWith('/dashboard/notifications') ||
@@ -66,7 +67,7 @@ let state: NavStoreState = {
   pathname: initialPathname,
   activeTabId: resolveTabIdFromPathname(initialPathname, false, false),
   optimisticTabId: null,
-  isMenuOpen: initialPathname === '/menu' || initialPathname === '/dashboard/menu',
+  isMenuOpen: false,
 };
 
 const listeners = new Set<() => void>();
@@ -93,7 +94,7 @@ export function setOptimisticNavTab(
   openMenu?: boolean
 ): void {
   const nextMenuOpen =
-    typeof openMenu === 'boolean' ? openMenu : tabId === 'menu' ? true : state.isMenuOpen;
+    typeof openMenu === 'boolean' ? openMenu : false;
   if (
     state.optimisticTabId === tabId &&
     state.activeTabId === tabId &&

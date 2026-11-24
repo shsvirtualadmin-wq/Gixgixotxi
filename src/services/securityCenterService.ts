@@ -186,6 +186,11 @@ async function fetchWithTimeout(
       throw new Error('Request timed out. Please try again.');
     }
     recordRequestTiming(label, elapsed, 'error');
+    console.error('[Boardly Security] request error', {
+      fn: 'fetchWithTimeout',
+      url,
+      message: err?.message || String(err),
+    });
     throw err;
   } finally {
     clearTimeout(timer);
@@ -195,7 +200,15 @@ async function fetchWithTimeout(
 async function parseJsonResponse<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.ok) {
-    throw new Error(data?.error || `Request failed (${res.status}).`);
+    const message = data?.error || `Request failed (${res.status}).`;
+    console.error('[Boardly Security] non-ok response', {
+      fn: 'parseJsonResponse',
+      url: res.url || null,
+      status: res.status,
+      code: data?.code || null,
+      message,
+    });
+    throw new Error(message);
   }
   return data as T;
 }

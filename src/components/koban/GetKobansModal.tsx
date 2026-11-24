@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import type { KobanRequest } from '@/types';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface GetKobansModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
   const effectiveInitial = initialAmount ?? initialKobanAmount ?? 1000;
   const { user } = useAuth();
   const { profile } = useUserProfile();
+  const { t, formatNumber } = useLanguage();
 
   const [amount, setAmount] = useState<number>(effectiveInitial);
   const [selectedMethod, setSelectedMethod] = useState<SupportedPaymentMethod>('jazzcash');
@@ -94,22 +96,22 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.uid) {
-      setError('Please sign in to submit a Kobans request.');
+      setError(t('kobans.signInRequired'));
       return;
     }
 
     if (amount < 500) {
-      setError('Minimum purchase is 500 Kobans (PKR 50).');
+      setError(t('kobans.minPurchaseError'));
       return;
     }
 
     if (amount % 10 !== 0) {
-      setError('Amount must be a whole multiple of 10 Kobans.');
+      setError(t('kobans.multipleOf10Error'));
       return;
     }
 
     if (!transactionId.trim() || transactionId.trim().length < 4) {
-      setError('Please enter a valid Transaction ID (TRX).');
+      setError(t('kobans.invalidTrxError'));
       return;
     }
 
@@ -151,11 +153,11 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center">
               <KobanIcon size={24} />
             </div>
-            <div>
+            <div className="text-start">
               <h2 className="font-dot font-extrabold text-lg sm:text-xl text-[var(--text)]">
-                Get Kobans
+                {t('store.getKobans')}
               </h2>
-              <p className="text-xs text-[var(--muted)] font-mono">10 Kobans = PKR 1</p>
+              <p className="text-xs text-[var(--muted)] font-mono ltr-nums">10 Kobans = PKR 1</p>
             </div>
           </div>
 
@@ -163,7 +165,8 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] transition-colors"
-            title="Close"
+            title={t('common.close')}
+            aria-label={t('common.close')}
           >
             <X size={18} />
           </button>
@@ -177,31 +180,33 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             </div>
             <div className="space-y-1">
               <h3 className="font-heading font-extrabold text-xl text-[var(--text)]">
-                Request Submitted!
+                {t('kobans.requestSubmitted')}
               </h3>
               <p className="text-xs text-[var(--muted)] max-w-sm mx-auto leading-relaxed">
-                Your request for{' '}
-                <strong className="text-[#FFD66B] font-mono">{amount.toLocaleString()} Kobans</strong> (PKR {pkrAmount}) has been sent for admin verification.
+                {t('kobans.requestSubmittedDesc', {
+                  amount: formatNumber(amount),
+                  pkr: formatNumber(pkrAmount),
+                })}
               </p>
             </div>
 
-            <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-left text-xs space-y-1.5 font-mono">
+            <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-start text-xs space-y-1.5 font-mono">
               <div className="flex justify-between text-[var(--muted)]">
-                <span>Payment Method:</span>
+                <span>{t('kobans.paymentMethodLabel')}</span>
                 <span className="text-[var(--text)] font-bold">{activeMethod.displayName}</span>
               </div>
               <div className="flex justify-between text-[var(--muted)]">
-                <span>Transaction ID:</span>
-                <span className="text-[var(--text)] font-bold">{transactionId}</span>
+                <span>{t('kobans.trxIdLabel')}</span>
+                <span className="text-[var(--text)] font-bold ltr-nums">{transactionId}</span>
               </div>
               <div className="flex justify-between text-[var(--muted)]">
-                <span>Status:</span>
-                <span className="text-amber-400 font-bold">Pending Verification</span>
+                <span>{t('kobans.statusLabel')}</span>
+                <span className="text-amber-400 font-bold">{t('kobans.pendingVerification')}</span>
               </div>
             </div>
 
             <p className="text-[11px] text-[var(--muted)]">
-              Kobans are credited to your wallet balance as soon as the transaction is confirmed.
+              {t('kobans.creditedSoonDesc')}
             </p>
 
             <button
@@ -209,19 +214,19 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               onClick={onClose}
               className="btn-red w-full py-2.5 rounded-xl font-bold text-xs sm:text-sm cursor-pointer shadow-sm"
             >
-              Back to Store
+              {t('kobans.backToStore')}
             </button>
           </div>
         ) : (
           /* FORM STATE */
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5 text-start">
             {/* Amount Selection */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-heading font-bold text-[var(--text)] uppercase tracking-wider">
-                  Select or Enter Kobans Amount
+                  {t('kobans.selectAmount')}
                 </label>
-                <span className="text-xs font-mono text-[var(--muted)]">Min. 500 Kobans</span>
+                <span className="text-xs font-mono text-[var(--muted)]">{t('kobans.minKobans')}</span>
               </div>
 
               {/* Quick Select Chips */}
@@ -231,26 +236,26 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                     key={quick}
                     type="button"
                     onClick={() => handleAmountChange(quick)}
-                    className={`py-2 px-1 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                    className={`py-2 px-1 rounded-xl text-xs font-mono font-bold ltr-nums transition-all border cursor-pointer ${
                       amount === quick
                         ? 'bg-[var(--text)] text-[var(--bg)] border-[var(--text)] shadow-sm'
                         : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)] border-[var(--border)]'
                     }`}
                   >
-                    {quick.toLocaleString()}
+                    {formatNumber(quick)}
                   </button>
                 ))}
               </div>
 
               {/* Custom Input & Live Calculation */}
               <div className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--surface-2)] border border-[rgba(232,163,23,0.35)]">
-                <div className="shrink-0 flex items-center justify-center pl-1">
+                <div className="shrink-0 flex items-center justify-center ps-1">
                   {amount >= 1000 ? <KobanStack size={28} /> : <KobanIcon size={28} />}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <span className="block text-[10px] uppercase font-heading text-[var(--muted)] font-semibold">
-                    Amount (Whole multiples of 10)
+                    {t('kobans.amountMultiples')}
                   </span>
                   <input
                     type="number"
@@ -258,17 +263,17 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                     step="10"
                     value={amount || ''}
                     onChange={(e) => handleAmountChange(Number(e.target.value))}
-                    className="w-full bg-transparent font-mono font-bold text-lg text-[#FFD66B] focus:outline-none placeholder-neutral-600"
+                    className="w-full bg-transparent font-mono font-bold text-lg text-[#FFD66B] focus:outline-none placeholder-neutral-600 ltr-nums"
                     placeholder="500"
                   />
                 </div>
 
-                <div className="text-right pl-3 border-l border-[var(--border)] shrink-0">
+                <div className="text-end ps-3 border-s border-[var(--border)] shrink-0">
                   <span className="block text-[10px] uppercase font-heading text-[var(--muted)] font-semibold">
-                    Total in PKR
+                    {t('kobans.totalInPkr')}
                   </span>
-                  <span className="font-heading font-extrabold text-base text-[var(--text)]">
-                    PKR {pkrAmount.toLocaleString()}
+                  <span className="font-heading font-extrabold text-base text-[var(--text)] ltr-nums">
+                    PKR {formatNumber(pkrAmount)}
                   </span>
                 </div>
               </div>
@@ -277,7 +282,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <label className="text-xs font-heading font-bold text-[var(--text)] uppercase tracking-wider block">
-                Choose Payment Method
+                {t('kobans.choosePaymentMethod')}
               </label>
 
               <div className="grid grid-cols-2 gap-2.5">
@@ -288,7 +293,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                       key={m.id}
                       type="button"
                       onClick={() => setSelectedMethod(m.id)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-2xl border text-start transition-all cursor-pointer ${
                         isSelected
                           ? 'border-[var(--red)] bg-[rgba(215,25,33,0.08)] shadow-sm'
                           : 'border-[var(--border)] bg-[var(--surface-2)] opacity-70 hover:opacity-100'
@@ -297,7 +302,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                       <div className="font-heading font-bold text-xs text-[var(--text)]">
                         {m.displayName}
                       </div>
-                      <div className="text-[11px] text-[var(--muted)] font-mono truncate mt-0.5">
+                      <div className="text-[11px] text-[var(--muted)] font-mono truncate mt-0.5 ltr-nums">
                         {m.number}
                       </div>
                     </button>
@@ -308,22 +313,22 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               {/* Account Details Box */}
               <div className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[var(--muted)]">Send exactly:</span>
-                  <span className="font-heading font-bold text-sm text-[var(--text)]">
-                    PKR {pkrAmount.toLocaleString()}
+                  <span className="text-[var(--muted)]">{t('kobans.sendExactly')}</span>
+                  <span className="font-heading font-bold text-sm text-[var(--text)] ltr-nums">
+                    PKR {formatNumber(pkrAmount)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]">
                   <div>
-                    <span className="text-[10px] text-[var(--muted)] uppercase font-mono block">Account Number</span>
-                    <span className="font-mono font-bold text-xs text-[var(--text)]">{activeMethod.number}</span>
+                    <span className="text-[10px] text-[var(--muted)] uppercase font-mono block">{t('kobans.accountNumber')}</span>
+                    <span className="font-mono font-bold text-xs text-[var(--text)] ltr-nums">{activeMethod.number}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleCopy(activeMethod.number, 'num')}
                     className="p-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-white transition-colors"
-                    title="Copy number"
+                    title={t('common.copy')}
                   >
                     {copiedKey === 'num' ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                   </button>
@@ -331,14 +336,14 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
 
                 <div className="flex items-center justify-between pt-1 border-t border-[var(--border)]">
                   <div>
-                    <span className="text-[10px] text-[var(--muted)] uppercase font-mono block">Account Title</span>
+                    <span className="text-[10px] text-[var(--muted)] uppercase font-mono block">{t('kobans.accountTitle')}</span>
                     <span className="font-heading font-semibold text-xs text-[var(--text)]">{activeMethod.accountTitle}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleCopy(activeMethod.accountTitle, 'title')}
                     className="p-1.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-white transition-colors"
-                    title="Copy title"
+                    title={t('common.copy')}
                   >
                     {copiedKey === 'title' ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                   </button>
@@ -349,18 +354,18 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             {/* Transaction ID Input */}
             <div className="space-y-1.5">
               <label className="text-xs font-heading font-bold text-[var(--text)] uppercase tracking-wider block">
-                Transaction ID (TRX / TID)
+                {t('kobans.trxIdInputLabel')}
               </label>
               <input
                 type="text"
                 required
                 value={transactionId}
                 onChange={(e) => setTransactionId(e.target.value)}
-                placeholder="e.g. 84920194821 or 2940284"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
+                placeholder={t('kobans.trxIdPlaceholder')}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-mono text-[var(--text)] placeholder-[var(--muted)] focus:outline-none text-start"
               />
               <p className="text-[11px] text-[var(--muted)]">
-                Copy the TID from your {PAYMENT_METHODS_PAIR_LABEL} confirmation SMS or receipt screen.
+                {t('kobans.trxIdHint', { methods: PAYMENT_METHODS_PAIR_LABEL })}
               </p>
             </div>
 
@@ -372,11 +377,11 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               </div>
             )}
 
-            {/* Recent Student Requests History (preserves legacy methods with "(legacy)" suffix) */}
+            {/* Recent Student Requests History */}
             {recentRequests.length > 0 && (
               <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2">
                 <span className="text-[10px] font-heading font-bold uppercase tracking-wider text-[var(--muted)] block">
-                  Your Recent Koban Requests
+                  {t('kobans.recentRequests')}
                 </span>
                 <div className="space-y-1.5">
                   {recentRequests.map((req) => (
@@ -384,8 +389,8 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                       key={req.id}
                       className="flex items-center justify-between gap-2 text-[11px] font-mono pt-1 first:pt-0 border-t first:border-t-0 border-[var(--border)]"
                     >
-                      <span className="text-[var(--text)] truncate">
-                        {req.amount.toLocaleString()} Kobans · {formatPaymentMethodLabel(req.paymentMethod)}
+                      <span className="text-[var(--text)] truncate ltr-nums">
+                        {formatNumber(req.amount)} Kobans · {formatPaymentMethodLabel(req.paymentMethod)}
                       </span>
                       <span
                         className={`uppercase font-bold shrink-0 ${
@@ -396,7 +401,11 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
                             : 'text-amber-400'
                         }`}
                       >
-                        {req.status}
+                        {req.status === 'approved'
+                          ? t('kobans.statusApproved')
+                          : req.status === 'rejected'
+                          ? t('kobans.statusRejected')
+                          : t('kobans.statusPending')}
                       </span>
                     </div>
                   ))}
@@ -408,7 +417,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
             <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--muted)] leading-relaxed flex items-start gap-2">
               <ShieldCheck size={15} className="text-[#E8A317] shrink-0 mt-0.5" />
               <span>
-                Kobans are for profile cosmetics and visual flair only and are non-refundable. Standard rate: 10 Kobans = PKR 1.
+                {t('kobans.nonRefundableNotice')}
               </span>
             </div>
 
@@ -421,13 +430,13 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
               >
                 {submitting ? (
                   <>
-                    <span>Submitting...</span>
+                    <span>{t('common.submitting')}</span>
                     <ButtonLineLoader />
                   </>
                 ) : (
                   <>
-                    <span>Submit Payment Verification</span>
-                    <ArrowRight size={15} />
+                    <span>{t('kobans.submitVerification')}</span>
+                    <ArrowRight size={15} className="rtl-mirror" />
                   </>
                 )}
               </button>

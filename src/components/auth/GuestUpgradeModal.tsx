@@ -9,6 +9,7 @@ import {
   LEGAL_DOCUMENT_VERSION,
   recordLegalConsentOnServer,
 } from '@/constants/legalConsent';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface GuestUpgradeModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
     signOutUser,
   } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const [displayName, setDisplayName] = useState(
     profile?.displayName || user?.displayName || profile?.username || ''
@@ -55,19 +57,19 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
     try {
       const res = await upgradeGuestWithGoogle();
       if (res.ok) {
-        setSuccessMsg('Account upgraded! Your username, progress, attempts, and stats have been preserved.');
+        setSuccessMsg(t('auth.guestUpgradedSuccess'));
         setTimeout(() => {
           onClose();
           onUpgraded?.();
         }, 900);
       } else {
-        setErrorMsg(res.error || 'Could not upgrade account with Google.');
+        setErrorMsg(res.error || t('auth.googleUpgradeFailed'));
         if (res.existingAccountConflict) {
           setExistingConflict(true);
         }
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Google upgrade failed.');
+      setErrorMsg(err instanceof Error ? err.message : t('auth.googleUpgradeFailed'));
     } finally {
       setGoogleLoading(false);
     }
@@ -80,11 +82,11 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setErrorMsg('Please enter a valid email address.');
+      setErrorMsg(t('auth.errValidEmail'));
       return;
     }
     if (!password || password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters.');
+      setErrorMsg(t('auth.errPasswordLength'));
       return;
     }
 
@@ -104,19 +106,19 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
             documentVersion: LEGAL_DOCUMENT_VERSION,
           });
         }
-        setSuccessMsg('Account upgraded! Your username, progress, attempts, and stats have been preserved.');
+        setSuccessMsg(t('auth.guestUpgradedSuccess'));
         setTimeout(() => {
           onClose();
           onUpgraded?.();
         }, 900);
       } else {
-        setErrorMsg(res.error || 'Could not upgrade guest account.');
+        setErrorMsg(res.error || t('auth.guestUpgradeFailed'));
         if (res.existingAccountConflict) {
           setExistingConflict(true);
         }
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Could not upgrade guest account.');
+      setErrorMsg(err instanceof Error ? err.message : t('auth.guestUpgradeFailed'));
     } finally {
       setLoading(false);
     }
@@ -142,15 +144,15 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
         aria-hidden="true"
       />
       <div
-        className="relative z-10 w-full max-w-md rounded-[28px] border border-[var(--border)] bg-[var(--card)] p-6 sm:p-7 text-left shadow-2xl space-y-5"
+        className="relative z-10 w-full max-w-md rounded-[28px] border border-[var(--border)] bg-[var(--card)] p-6 sm:p-7 text-start shadow-2xl space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
           disabled={loading || googleLoading}
-          className="absolute top-4 right-4 w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
-          aria-label="Close"
+          className="absolute top-4 end-4 w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+          aria-label={t('common.close')}
         >
           <X size={16} />
         </button>
@@ -162,10 +164,10 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
             className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight pt-1"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            Create your account
+            {t('auth.createYourAccount')}
           </h2>
           <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-            Upgrade your guest account (<strong className="text-[var(--text)] font-mono">@{guestUsername}</strong>) in place. Your username, progress, attempts, and stats carry over automatically.
+            {t('auth.upgradeGuestDesc', { username: `@${guestUsername}` })}
           </p>
         </div>
 
@@ -185,7 +187,7 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                 {existingConflict && (
                   <div className="pt-2 border-t border-[#EF4444]/30 flex items-center justify-between gap-2">
                     <span className="text-[11px] text-[#FCA5A5]">
-                      Already have an account with those credentials?
+                      {t('auth.alreadyHaveAccountPrompt')}
                     </span>
                     <button
                       type="button"
@@ -193,7 +195,7 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                       className="px-3 py-1.5 rounded-xl bg-[#EF4444] hover:bg-[#DC2626] text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0"
                     >
                       <LogIn size={13} />
-                      <span>Log in instead</span>
+                      <span>{t('auth.logInInstead')}</span>
                     </button>
                   </div>
                 )}
@@ -224,23 +226,23 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                   d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98Z"
                 />
               </svg>
-              <span>{googleLoading ? 'Linking Google account...' : 'Continue with Google'}</span>
+              <span>{googleLoading ? t('auth.linkingGoogle') : t('auth.continueWithGoogle')}</span>
               {googleLoading && <ButtonLineLoader />}
             </button>
 
             <div className="flex items-center gap-3">
               <div className="flex-1 border-t border-[var(--border)]" />
-              <span className="text-xs text-[var(--muted)] lowercase">or use email &amp; password</span>
+              <span className="text-xs text-[var(--muted)] lowercase">{t('auth.orUseEmailPassword')}</span>
               <div className="flex-1 border-t border-[var(--border)]" />
             </div>
 
             <form onSubmit={handleEmailUpgrade} className="space-y-3.5">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--text)] block">
-                  Display Name
+                  {t('settings.displayName')}
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+                  <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                     <User size={16} />
                   </div>
                   <input
@@ -248,53 +250,54 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder={guestUsername}
-                    className="auth-form-input"
-                    style={{ height: '46px', paddingLeft: '40px', paddingRight: '14px' }}
+                    className="auth-form-input ps-10 pe-3.5"
+                    style={{ height: '46px' }}
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--text)] block">
-                  Email
+                  {t('auth.email')}
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+                  <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                     <Mail size={16} />
                   </div>
                   <input
                     type="email"
+                    dir="ltr"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@example.com"
                     required
-                    className="auth-form-input"
-                    style={{ height: '46px', paddingLeft: '40px', paddingRight: '14px' }}
+                    className="auth-form-input ps-10 pe-3.5"
+                    style={{ height: '46px' }}
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-[var(--text)] block">
-                  Password
+                  {t('auth.password')}
                 </label>
                 <div className="relative">
-                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
+                  <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                     <Lock size={16} />
                   </div>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder={t('auth.atLeast6Chars')}
                     required
-                    className="auth-form-input"
-                    style={{ height: '46px', paddingLeft: '40px', paddingRight: '40px' }}
+                    className="auth-form-input ps-10 pe-10"
+                    style={{ height: '46px' }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#374151] hover:text-black p-1 cursor-pointer"
+                    className="absolute end-3 top-1/2 -translate-y-1/2 text-[#374151] hover:text-black p-1 cursor-pointer"
                   >
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -302,21 +305,21 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
               </div>
 
               <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-                By continuing you agree to our{' '}
+                {t('plans.agreeToTermsPrefix')}{' '}
                 <Link
                   to="/terms"
                   onClick={onClose}
                   className="underline text-[var(--text)] hover:text-[#D71921]"
                 >
-                  Terms of Service
+                  {t('settings.termsOfService')}
                 </Link>{' '}
-                and{' '}
+                {t('common.and')}{' '}
                 <Link
                   to="/privacy"
                   onClick={onClose}
                   className="underline text-[var(--text)] hover:text-[#D71921]"
                 >
-                  Privacy Policy
+                  {t('settings.privacyPolicy')}
                 </Link>
                 .
               </p>
@@ -327,7 +330,7 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
                 className="btn-red relative overflow-hidden w-full cursor-pointer disabled:opacity-70"
                 style={{ height: '48px' }}
               >
-                <span>{loading ? 'Upgrading account...' : 'Create account'}</span>
+                <span>{loading ? t('auth.upgradingAccount') : t('auth.createAccount')}</span>
                 {loading && <ButtonLineLoader />}
               </button>
             </form>

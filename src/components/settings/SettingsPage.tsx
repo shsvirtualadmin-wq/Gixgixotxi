@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Search, X } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface SettingsPageProps {
   title: string;
@@ -28,6 +29,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   scrollContainer = 'window',
   children,
 }) => {
+  const { t } = useLanguage();
   const [scrolled, setScrolled] = useState(false);
   const selfScrollRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -115,7 +117,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <button
               type="button"
               onClick={onBack}
-              aria-label="Go back"
+              aria-label={t('nav.goBack')}
               className="flex h-[40px] w-[40px] shrink-0 items-center justify-center rounded-full transition-colors active:scale-95 cursor-pointer"
               style={{
                 backgroundColor: 'var(--card)',
@@ -200,8 +202,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 type="search"
                 value={search.value}
                 onChange={(e) => search.onChange(e.target.value)}
-                placeholder={search.placeholder || 'Search settings'}
-                aria-label={search.placeholder || 'Search settings'}
+                placeholder={search.placeholder || t('settings.searchPlaceholder')}
+                aria-label={search.placeholder || t('settings.searchPlaceholder')}
                 className="settings-search-input h-full min-w-0 flex-1 text-[16px] placeholder:text-[var(--text-muted)]"
                 style={{
                   color: 'var(--text)',
@@ -223,7 +225,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     search.onChange('');
                     searchInputRef.current?.focus();
                   }}
-                  aria-label="Clear search"
+                  aria-label={t('common.clear')}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-opacity active:opacity-70 cursor-pointer"
                   style={{ color: 'var(--text-muted)' }}
                 >

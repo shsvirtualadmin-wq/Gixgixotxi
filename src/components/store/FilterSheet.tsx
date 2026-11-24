@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { RotateCcw, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import type { CosmeticRarity } from '@/data/cosmeticsCatalog';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type OwnershipFilter = 'all' | 'unowned' | 'owned';
 export type SortOption =
@@ -29,21 +30,21 @@ export interface FilterSheetProps {
   onReset: () => void;
 }
 
-const RARITIES: Array<{ id: 'all' | CosmeticRarity; label: string }> = [
-  { id: 'all', label: 'All Rarities' },
-  { id: 'common', label: 'Common' },
-  { id: 'rare', label: 'Rare' },
-  { id: 'epic', label: 'Epic' },
-  { id: 'legendary', label: 'Legendary' },
-  { id: 'mythic', label: 'Mythic' },
+const RARITY_IDS: Array<'all' | CosmeticRarity> = [
+  'all',
+  'common',
+  'rare',
+  'epic',
+  'legendary',
+  'mythic',
 ];
 
-const SORT_OPTIONS: Array<{ id: SortOption; label: string }> = [
-  { id: 'featured', label: 'Featured & Popular' },
-  { id: 'newest', label: 'Newest First' },
-  { id: 'price_asc', label: 'Price: Low to High' },
-  { id: 'price_desc', label: 'Price: High to Low' },
-  { id: 'rarity_desc', label: 'Rarity: Highest First' },
+const SORT_IDS: SortOption[] = [
+  'featured',
+  'newest',
+  'price_asc',
+  'price_desc',
+  'rarity_desc',
 ];
 
 export const FilterSheet: React.FC<FilterSheetProps> = ({
@@ -55,6 +56,8 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
   onChange,
   onReset,
 }) => {
+  const { t, isRtl, formatNumber } = useLanguage();
+
   if (!open || typeof document === 'undefined') return null;
 
   return createPortal(
@@ -77,13 +80,13 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-[#E11D2A]" />
             <h2 className="text-base font-black text-[var(--text-primary)]">
-              Filters &amp; Sort
+              {t('store.filtersAndSort')}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close filters"
+            aria-label={t('common.close')}
             className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
           >
             <X className="w-4 h-4" />
@@ -91,14 +94,14 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
         </div>
 
         {/* Scrollable Body */}
-        <div className="p-5 space-y-5 overflow-y-auto">
+        <div className="p-5 space-y-5 overflow-y-auto text-start">
           {/* Sort Dropdown */}
           <div>
             <label
               htmlFor="store-sort-select"
               className="block text-[11px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2"
             >
-              Sort By
+              {t('store.sortBy')}
             </label>
             <select
               id="store-sort-select"
@@ -106,9 +109,9 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
               onChange={(e) => onChange({ sortBy: e.target.value as SortOption })}
               className="w-full h-11 px-3.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] text-sm font-bold text-[var(--text-primary)] focus:outline-none"
             >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
+              {SORT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {t(`store.sort_${id}`)}
                 </option>
               ))}
             </select>
@@ -121,12 +124,12 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
                 htmlFor="store-price-range"
                 className="text-[11px] font-black uppercase tracking-wider text-[var(--text-muted)]"
               >
-                Max Price
+                {t('store.maxPrice')}
               </label>
-              <span className="text-xs font-extrabold tabular-nums text-[var(--text-primary)]">
+              <span className="text-xs font-extrabold tabular-nums ltr-nums text-[var(--text-primary)]">
                 {filters.maxPrice >= priceCeiling
-                  ? `Any (up to ${priceCeiling.toLocaleString()} Kobans)`
-                  : `Up to ${filters.maxPrice.toLocaleString()} Kobans`}
+                  ? t('store.anyPriceUpTo', { max: formatNumber(priceCeiling) })
+                  : t('store.upToKobans', { max: formatNumber(filters.maxPrice) })}
               </span>
             </div>
             <input
@@ -139,33 +142,33 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
               onChange={(e) => onChange({ maxPrice: Number(e.target.value) })}
               className="w-full accent-[#E11D2A] cursor-pointer"
             />
-            <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mt-1">
-              <span>150 Kobans</span>
-              <span>{Math.round(priceCeiling / 2).toLocaleString()} Kobans</span>
-              <span>{priceCeiling.toLocaleString()} Kobans</span>
+            <div className="flex justify-between text-[10px] font-semibold text-[var(--text-muted)] mt-1 ltr-nums">
+              <span>{formatNumber(150)} Kobans</span>
+              <span>{formatNumber(Math.round(priceCeiling / 2))} Kobans</span>
+              <span>{formatNumber(priceCeiling)} Kobans</span>
             </div>
           </div>
 
           {/* Rarity */}
           <div>
             <span className="block text-[11px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">
-              Rarity
+              {t('store.rarity')}
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {RARITIES.map((r) => {
-                const active = filters.rarity === r.id;
+              {RARITY_IDS.map((id) => {
+                const active = filters.rarity === id;
                 return (
                   <button
-                    key={r.id}
+                    key={id}
                     type="button"
-                    onClick={() => onChange({ rarity: r.id })}
+                    onClick={() => onChange({ rarity: id })}
                     className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${
                       active
                         ? 'bg-[#E11D2A] text-white border-[#E11D2A]'
                         : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)] hover:text-[var(--text-primary)]'
                     }`}
                   >
-                    {r.label}
+                    {id === 'all' ? t('store.allRarities') : t(`store.rarity_${id}`)}
                   </button>
                 );
               })}
@@ -175,14 +178,14 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
           {/* Ownership */}
           <div>
             <span className="block text-[11px] font-black uppercase tracking-wider text-[var(--text-muted)] mb-2">
-              Ownership Status
+              {t('store.ownershipStatus')}
             </span>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
-                  { id: 'all', label: 'All Items' },
-                  { id: 'unowned', label: 'Unowned' },
-                  { id: 'owned', label: 'Owned' },
+                  { id: 'all', label: t('store.allItems') },
+                  { id: 'unowned', label: t('store.unowned') },
+                  { id: 'owned', label: t('store.owned') },
                 ] as const
               ).map((opt) => {
                 const active = filters.ownership === opt.id;
@@ -207,15 +210,15 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
           {/* Animated Only toggle */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)]">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0">
                 <Sparkles className="w-4 h-4" />
               </div>
               <div>
                 <p className="text-xs font-extrabold text-[var(--text-primary)]">
-                  Animated Only
+                  {t('store.animatedOnly')}
                 </p>
                 <p className="text-[11px] text-[var(--text-muted)]">
-                  Show cosmetics with live motion effects
+                  {t('store.animatedOnlyDesc')}
                 </p>
               </div>
             </div>
@@ -224,14 +227,17 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
               role="switch"
               aria-checked={filters.animatedOnly}
               onClick={() => onChange({ animatedOnly: !filters.animatedOnly })}
-              className={`w-11 h-6 rounded-full transition-colors p-0.5 ${
+              className={`w-11 h-6 rounded-full transition-colors p-0.5 shrink-0 ${
                 filters.animatedOnly ? 'bg-[#E11D2A]' : 'bg-[var(--border)]'
               }`}
             >
               <span
-                className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  filters.animatedOnly ? 'translate-x-5' : 'translate-x-0'
-                }`}
+                className="block w-5 h-5 rounded-full bg-white shadow transition-transform"
+                style={{
+                  transform: filters.animatedOnly
+                    ? `translateX(${isRtl ? '-20px' : '20px'})`
+                    : 'translateX(0px)',
+                }}
               />
             </button>
           </div>
@@ -245,14 +251,16 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
             className="h-11 px-4 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-extrabold text-[var(--text-secondary)] inline-flex items-center gap-1.5"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset</span>
+            <span>{t('common.reset')}</span>
           </button>
           <button
             type="button"
             onClick={onClose}
             className="flex-1 h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black shadow-sm transition-all"
           >
-            Show {resultCount} {resultCount === 1 ? 'item' : 'items'}
+            {resultCount === 1
+              ? t('store.showItemSingle', { count: formatNumber(resultCount) })
+              : t('store.showItemsCount', { count: formatNumber(resultCount) })}
           </button>
         </div>
       </div>

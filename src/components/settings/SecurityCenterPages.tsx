@@ -27,6 +27,7 @@ import {
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { SettingsPage } from './SettingsPage';
 import { SettingsGroup } from './SettingsGroup';
 import { SettingsRow } from './SettingsRow';
@@ -98,9 +99,10 @@ function formatDateTime(ms: number): string {
   });
 }
 
-const InlineErrorCard: React.FC<{ message: string; onRetry: () => void }> = ({
+const InlineErrorCard: React.FC<{ message: string; onRetry: () => void; retryLabel?: string }> = ({
   message,
   onRetry,
+  retryLabel = 'Retry',
 }) => (
   <div
     className="mb-6 flex items-center justify-between gap-3 rounded-[24px] px-5 py-4"
@@ -112,7 +114,7 @@ const InlineErrorCard: React.FC<{ message: string; onRetry: () => void }> = ({
   >
     <div className="flex min-w-0 items-center gap-3">
       <AlertCircle className="h-5 w-5 shrink-0" style={{ color: 'var(--danger)' }} />
-      <p className="text-[14px] leading-snug" style={{ color: 'var(--text)' }}>
+      <p className="text-[14px] leading-snug text-start" style={{ color: 'var(--text)' }}>
         {message}
       </p>
     </div>
@@ -127,7 +129,7 @@ const InlineErrorCard: React.FC<{ message: string; onRetry: () => void }> = ({
       }}
     >
       <RefreshCw className="h-3.5 w-3.5" />
-      Retry
+      {retryLabel}
     </button>
   </div>
 );
@@ -167,6 +169,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   onSummaryChange,
 }) => {
   const { user, profile, isGuest, signOutUser } = useAuth();
+  const { t } = useLanguage();
   const [subView, setSubView] = useState<SecuritySubView>('overview');
 
   const uid = user?.uid || '';
@@ -840,7 +843,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   if (subView === 'mfa') {
     return (
       <SettingsPage
-        title="Multi-factor authentication"
+        title={t('settings.twoFactorAuth')}
         onBack={() => {
           setSubView('overview');
           void loadSummary();
@@ -865,7 +868,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   if (subView === 'sessions') {
     return (
       <SettingsPage
-        title="Active sessions"
+        title={t('settings.activeSessions')}
         onBack={() => setSubView('overview')}
         scrollContainer={scrollContainer}
       >
@@ -1154,7 +1157,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   if (subView === 'password') {
     return (
       <SettingsPage
-        title="Change password"
+        title={t('settings.changePassword')}
         onBack={() => setSubView('overview')}
         scrollContainer={scrollContainer}
       >
@@ -1183,15 +1186,15 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
 
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block pl-2 text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                Current password
+              <label className="mb-1.5 block ps-2 text-start text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                {t('auth.passwordLabel')}
               </label>
               <input
                 type="password"
                 required
                 value={currentPw}
                 onChange={(e) => setCurrentPw(e.target.value)}
-                placeholder="Enter current password"
+                placeholder={t('auth.passwordPlaceholder')}
                 className="h-[50px] w-full rounded-full px-5 text-[15px] outline-none placeholder:text-[var(--placeholder)]"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -1202,8 +1205,8 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block pl-2 text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                New password
+              <label className="mb-1.5 block ps-2 text-start text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                {t('settings.changePassword')}
               </label>
               <input
                 type="password"
@@ -1211,7 +1214,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                 minLength={8}
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t('auth.passwordPlaceholder')}
                 className="h-[50px] w-full rounded-full px-5 text-[15px] outline-none placeholder:text-[var(--placeholder)]"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -1222,15 +1225,15 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block pl-2 text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                Confirm new password
+              <label className="mb-1.5 block ps-2 text-start text-[14px]" style={{ color: 'var(--text-muted)' }}>
+                {t('common.confirm')}
               </label>
               <input
                 type="password"
                 required
                 value={confirmPw}
                 onChange={(e) => setConfirmPw(e.target.value)}
-                placeholder="Repeat new password"
+                placeholder={t('auth.passwordPlaceholder')}
                 className="h-[50px] w-full rounded-full px-5 text-[15px] outline-none placeholder:text-[var(--placeholder)]"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -1246,7 +1249,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               className="mt-2 flex min-h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-white disabled:opacity-60 cursor-pointer"
               style={{ backgroundColor: 'var(--accent)' }}
             >
-              {pwBusy ? 'Updating password…' : 'Update password'}
+              {pwBusy ? t('common.saving') : t('common.save')}
             </button>
           </div>
         </form>
@@ -1261,7 +1264,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const twoFa = summary?.twoFactor;
 
   return (
-    <SettingsPage title="Security and login" onBack={onBack} scrollContainer={scrollContainer}>
+    <SettingsPage title={t('settings.security')} onBack={onBack} scrollContainer={scrollContainer}>
       {toastMessage && (
         <div
           role="status"
@@ -1277,18 +1280,18 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
       )}
 
       {isGuest ? (
-        <SettingsGroup label="Guest account" radius="compact">
+        <SettingsGroup label={t('settings.guestBannerTitle')} radius="compact">
           <SettingsRow
             icon={<Shield />}
-            label="Create a full account for security features"
-            subtitle="Passkeys, two-step verification, and session controls require a registered Boardly account."
+            label={t('settings.upgradeAccount')}
+            subtitle={t('settings.guestBannerDesc')}
             chevron="none"
           />
         </SettingsGroup>
       ) : (
         <>
           {summaryError && (
-            <InlineErrorCard message={summaryError} onRetry={() => void loadSummary()} />
+            <InlineErrorCard message={summaryError} onRetry={() => void loadSummary()} retryLabel={t('common.retry')} />
           )}
 
           {/* 1. Security recommendations (visual layout only) */}
@@ -1303,7 +1306,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                     <button
                       type="button"
                       onClick={() => setSubView(rec.targetSection)}
-                      className="flex min-h-[56px] w-full items-center gap-3.5 px-5 py-3.5 text-left transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
+                      className="flex min-h-[56px] w-full items-center gap-3.5 px-5 py-3.5 text-start transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)]"
                     >
                       <span
                         className="flex h-6 w-6 shrink-0 items-center justify-center [&>svg]:h-6 [&>svg]:w-6"
@@ -1319,7 +1322,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                         )}
                       </span>
 
-                      <span className="min-w-0 flex-1 text-left">
+                      <span className="min-w-0 flex-1 text-start">
                         <span
                           className="block text-[16px] font-normal leading-snug break-words"
                           style={{ color: 'var(--text)' }}
@@ -1358,7 +1361,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                         className="pointer-events-none h-px"
                         style={{
                           backgroundColor: 'var(--border)',
-                          marginLeft: '58px',
+                          marginInlineStart: '58px',
                         }}
                       />
                     )}
@@ -1378,7 +1381,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
           ) : null}
 
           {/* 2. Log in */}
-          <SettingsGroup label="Log in">
+          <SettingsGroup label={t('nav.signIn')}>
             <SettingsRow
               icon={<KeyRound />}
               label="Passkeys & security keys"
@@ -1388,7 +1391,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                     ? undefined
                     : '—'
                   : (summary.passkeysCount || 0) === 0
-                    ? 'Add'
+                    ? t('common.open')
                     : `${summary.passkeysCount}`
               }
               actionValue={Boolean(summary) && (summary?.passkeysCount || 0) === 0}
@@ -1398,8 +1401,8 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
             {hasPasswordProvider && (
               <SettingsRow
                 icon={<Lock />}
-                label="Password"
-                value="Change"
+                label={t('settings.changePassword')}
+                value={t('common.edit')}
                 onClick={() => setSubView('password')}
               />
             )}
@@ -1407,20 +1410,20 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
 
           {/* 3. Multi-factor authentication */}
           <SettingsGroup
-            label="Multi-factor authentication"
+            label={t('settings.twoFactorAuth')}
             helperText="Require a second step when signing in on a new device. Keep your backup codes somewhere safe in case you lose access to your authenticator."
           >
             <SettingsRow
               icon={<Smartphone />}
               label="Authenticator app"
-              value={twoFa?.totpEnabled ? 'On' : 'Set up'}
+              value={twoFa?.totpEnabled ? t('common.on') : t('common.open')}
               actionValue={!twoFa?.totpEnabled}
               onClick={() => setSubView('mfa')}
             />
             <SettingsRow
               icon={<Mail />}
               label="Email code"
-              value={twoFa?.email2faEnabled ? 'On' : 'Off'}
+              value={twoFa?.email2faEnabled ? t('common.on') : t('common.off')}
               onClick={() => setSubView('mfa')}
             />
             <SettingsRow
@@ -1428,8 +1431,8 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               label="Backup codes"
               value={
                 twoFa?.twoFactorEnabled
-                  ? `${twoFa.backupCodesRemaining} left`
-                  : 'Set up'
+                  ? `${twoFa.backupCodesRemaining}`
+                  : t('common.open')
               }
               actionValue={!twoFa?.twoFactorEnabled}
               onClick={() => setSubView('mfa')}
@@ -1438,12 +1441,12 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
 
           {/* 4. Sessions & device unlock */}
           <SettingsGroup
-            label="Sessions"
+            label={t('settings.activeSessions')}
             helperText="Review devices signed into your account and devices trusted to skip two-step verification."
           >
             <SettingsRow
               icon={<Laptop />}
-              label="Active sessions"
+              label={t('settings.activeSessions')}
               value={
                 !summary
                   ? summaryRowSpinner
@@ -1497,7 +1500,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
           </SettingsGroup>
 
           {/* 6. Danger zone */}
-          <SettingsGroup label="Danger zone" danger>
+          <SettingsGroup label={t('settings.dangerZone')} danger>
             <SettingsRow
               icon={<ShieldAlert />}
               label="Suspend account"
@@ -1511,7 +1514,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
             />
             <SettingsRow
               icon={<Trash2 />}
-              label="Delete account"
+              label={t('settings.deleteAccount')}
               subtitle="Permanently erase your account and data"
               tone="danger"
               chevron="none"
@@ -1578,7 +1581,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                 className="flex min-h-[52px] w-full items-center justify-center rounded-full text-[16px] font-semibold text-white disabled:opacity-60 cursor-pointer"
                 style={{ backgroundColor: 'var(--danger)' }}
               >
-                {dangerBusy ? 'Deleting…' : 'Delete account'}
+                {dangerBusy ? t('common.loading') : t('settings.deleteAccount')}
               </button>
               <button
                 type="button"
@@ -1591,7 +1594,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                   color: 'var(--text)',
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </SettingsSheet>

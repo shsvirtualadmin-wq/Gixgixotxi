@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   User,
   Settings,
@@ -14,13 +14,8 @@ import {
 } from 'lucide-react';
 import { clearSecurityStatusCache } from '@/hooks/useSecurityStatus';
 import { clearCachedRewardsState } from '@/services/rewardsService';
-
-const LazyBoardlySettingsFlow = React.lazy(() =>
-  import('@/components/settings/BoardlySettingsFlow').then((m) => ({
-    default: m.BoardlySettingsFlow,
-  }))
-);
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/hooks/useTheme';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useWallet } from '@/hooks/useWallet';
@@ -31,7 +26,6 @@ import {
   clearCachedKobans,
   clearSwrCache,
 } from '@/utils/userStateSource';
-import { useBodyScrollLock } from '@/utils/scrollLock';
 
 export interface HamburgerMenuSheetProps {
   isOpen: boolean;
@@ -73,6 +67,8 @@ export function clearCachedAuthAndAdminStorage() {
       if (
         k &&
         k !== 'boardly-theme' &&
+        k !== 'boardly_app_language' &&
+        k !== 'boardly_app_language_by_uid' &&
         (k.startsWith('boardly_admin') ||
           k.startsWith('boardly_role') ||
           k.startsWith('boardly_auth') ||
@@ -103,6 +99,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
   showCoinBalanceInStore = true,
 }) => {
   const { user, profile, authStatus, profileLoading, isGuest } = useAuth();
+  const { t, formatNumber } = useLanguage();
   const { isDark, toggle: toggleTheme } = useTheme();
   const { isPro, isPlus } = useEffectivePlan();
   const { kobanBalance, balanceLoaded } = useWallet();
@@ -120,20 +117,20 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
     (authStatus === 'loading' || profileLoading) && !displayName && !user?.uid;
 
   const itemClass =
-    'w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-medium text-[var(--text)] hover:bg-[var(--border)]/40 transition-colors cursor-pointer';
+    'w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-start text-[14px] font-medium text-[var(--text)] hover:bg-[var(--border)]/40 transition-colors cursor-pointer';
 
   return (
     <div className="w-[260px] max-w-[calc(100vw-32px)] space-y-2 text-[var(--text)]">
-      <div className="px-3 py-2 border-b border-[var(--border)]">
+      <div className="px-3 py-2 border-b border-[var(--border)] text-start">
         {isIdentityLoading ? (
           <div className="h-4 w-28 animate-pulse rounded-full bg-[var(--border)]" />
         ) : (
           <div className="text-[15px] font-semibold text-[var(--text)] truncate">
-            {displayName || (isGuest ? 'Guest' : user ? 'Account' : 'Guest')}
+            {displayName || (isGuest ? t('common.guest') : user ? t('settings.account') : t('common.guest'))}
           </div>
         )}
         {handle && (
-          <div className="text-[12px] text-[var(--text-muted)] truncate">{handle}</div>
+          <div className="text-[12px] text-[var(--text-muted)] truncate ltr-nums">{handle}</div>
         )}
       </div>
 
@@ -141,7 +138,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button type="button" onClick={onOpenProfile} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <User className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
-            <span className="truncate">Profile</span>
+            <span className="truncate">{t('nav.profile')}</span>
           </span>
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>
@@ -150,11 +147,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('/dashboard/plan')}
-            className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors cursor-pointer"
+            className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-start text-[14px] font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors cursor-pointer"
           >
             <span className="inline-flex items-center gap-2.5 min-w-0">
               <Crown className="w-4 h-4 shrink-0" />
-              <span className="truncate">Upgrade to Pro</span>
+              <span className="truncate">{t('plans.upgradeToPro')}</span>
             </span>
             <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
@@ -162,11 +159,11 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('/dashboard/plan')}
-            className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-[14px] font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+            className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-start text-[14px] font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
           >
             <span className="inline-flex items-center gap-2.5 min-w-0">
               <Sparkles className="w-4 h-4 shrink-0" />
-              <span className="truncate">Upgrade to Plus</span>
+              <span className="truncate">{t('plans.upgradeToPlus')}</span>
             </span>
             <ChevronRight className="w-4 h-4 shrink-0" />
           </button>
@@ -175,15 +172,15 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button type="button" onClick={() => onNavigate('/store')} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <ShoppingBag className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
-            <span className="truncate">Boardly Store</span>
+            <span className="truncate">{t('nav.store')}</span>
           </span>
           {showCoinBalanceInStore ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)] tabular-nums">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)] tabular-nums ltr-nums">
               <KobanIcon size={12} decorative />
               {!balanceLoaded || kobanBalance === null ? (
                 <span className="inline-block w-8 h-3 rounded skeleton" aria-hidden="true" />
               ) : (
-                kobanBalance.toLocaleString()
+                formatNumber(kobanBalance)
               )}
             </span>
           ) : (
@@ -194,7 +191,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button type="button" onClick={() => onNavigate('/rewards')} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <Gift className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
-            <span className="truncate">Rewards</span>
+            <span className="truncate">{t('nav.rewards')}</span>
           </span>
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>
@@ -202,7 +199,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button type="button" onClick={() => onNavigate('/locker')} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <Sparkles className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
-            <span className="truncate">Locker</span>
+            <span className="truncate">{t('nav.locker')}</span>
           </span>
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>
@@ -210,7 +207,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button type="button" onClick={() => onNavigate('/settings')} className={itemClass}>
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <Settings className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
-            <span className="truncate">Settings</span>
+            <span className="truncate">{t('nav.settings')}</span>
           </span>
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>
@@ -222,7 +219,7 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
             ) : (
               <Moon className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
             )}
-            <span className="truncate">{isDark ? 'Light theme' : 'Dark theme'}</span>
+            <span className="truncate">{isDark ? t('nav.lightMode') : t('nav.darkMode')}</span>
           </span>
         </button>
       </div>
@@ -231,10 +228,10 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
         <button
           type="button"
           onClick={onSignOut}
-          className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center gap-2.5 text-left text-[14px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors cursor-pointer"
+          className="w-full min-h-[44px] px-3 py-2 rounded-xl flex items-center gap-2.5 text-start text-[14px] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors cursor-pointer"
         >
           <LogOut className="w-4 h-4 shrink-0" />
-          <span>Sign out</span>
+          <span>{t('nav.logOut')}</span>
         </button>
       </div>
     </div>
@@ -242,42 +239,18 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
 };
 
 export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({ isOpen, onClose }) => {
-  useBodyScrollLock(isOpen, 'hamburger-menu-sheet');
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!isOpen) return;
+    onClose();
+    if (!location.pathname.startsWith('/settings')) {
+      navigate('/settings');
+    }
+  }, [isOpen, onClose, navigate, location.pathname]);
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen || typeof document === 'undefined') return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9900] h-[100dvh] w-full overflow-hidden"
-      style={{ backgroundColor: 'var(--bg)' }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings and more"
-    >
-      <React.Suspense fallback={null}>
-        <LazyBoardlySettingsFlow
-          onClose={onClose}
-          onAfterNavigate={onClose}
-          scrollContainer="self"
-        />
-      </React.Suspense>
-    </div>,
-    document.body
-  );
+  return null;
 };
 
 export default HamburgerMenuSheet;

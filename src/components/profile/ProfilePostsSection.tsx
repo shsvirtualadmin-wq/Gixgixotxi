@@ -26,6 +26,7 @@ import { useDailyPostQuota } from '@/hooks/useDailyPostQuota';
 import { PostLimitBanner } from '@/components/commons/PostLimitBanner';
 import { formatPostLimitReachedMessage } from '@/config/postLimits';
 import type { PlanTier } from '@/lib/planTier';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface CommonsCommentItem {
   id: string;
@@ -325,6 +326,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   onCountChange,
 }) => {
   const { user, profile: viewerProfile, isGuest } = useAuth();
+  const { t, formatNumber } = useLanguage();
   const [posts, setPosts] = useState<ProfilePostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -414,14 +416,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     } catch (err) {
       setLoadError(
         err instanceof Error && err.name === 'AbortError'
-          ? 'Posts took too long to load.'
-          : 'Could not load posts right now.'
+          ? t('profile.postsTimeoutError')
+          : t('profile.postsLoadError')
       );
     } finally {
       window.clearTimeout(timer);
       setLoading(false);
     }
-  }, [targetUid, isOwnProfile, user?.uid, onCountChange]);
+  }, [targetUid, isOwnProfile, user?.uid, onCountChange, t]);
 
   useEffect(() => {
     void loadUserPosts();
@@ -444,11 +446,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setComposerError('Only image files can be attached to profile posts.');
+      setComposerError(t('profile.onlyImageError'));
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setComposerError('Image must be smaller than 10 MB.');
+      setComposerError(t('profile.imageTooLargeError'));
       return;
     }
     setComposerError(null);
@@ -469,7 +471,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     const trimmed = composerText.trim();
     if (!trimmed && !composerImageFile) return;
     if (!user?.uid || isGuest) {
-      setComposerError('Please sign in with a registered account to post.');
+      setComposerError(t('profile.signInToPost'));
       return;
     }
     if (quota.limitReached) {
@@ -838,9 +840,11 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     <div className="space-y-4">
       {/* Section Header with Count Chip */}
       <div className="flex items-center justify-between px-1">
-        <h3 className="text-[14px] font-medium text-[var(--text-muted)]">Posts</h3>
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold font-inter-num text-[var(--text-muted)] bg-[var(--card)] border border-[var(--border)]">
-          {totalPostsCount.toLocaleString()} {totalPostsCount === 1 ? 'post' : 'posts'}
+        <h3 className="text-[14px] font-medium text-[var(--text-muted)]">{t('profile.posts')}</h3>
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-[12px] font-semibold font-inter-num ltr-nums text-[var(--text-muted)] bg-[var(--card)] border border-[var(--border)]">
+          {totalPostsCount === 1
+            ? t('profile.postSingleCount', { count: formatNumber(totalPostsCount) })
+            : t('profile.postsCount', { count: formatNumber(totalPostsCount) })}
         </span>
       </div>
 
@@ -866,22 +870,22 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 onChange={(e) => setComposerText(e.target.value)}
                 rows={2}
                 maxLength={2000}
-                placeholder="Share something with your study squad..."
-                className="w-full resize-none bg-transparent border-0 outline-none text-[15px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-muted)]"
+                placeholder={t('profile.postPlaceholder')}
+                className="w-full resize-none bg-transparent border-0 outline-none text-[15px] leading-relaxed text-[var(--text)] placeholder:text-[var(--text-muted)] text-start"
               />
 
               {composerImagePreview && (
                 <div className="relative mt-2.5 inline-block rounded-2xl overflow-hidden border border-[var(--border)]">
                   <img
                     src={composerImagePreview}
-                    alt="Attachment preview"
+                    alt={t('profile.attachmentPreview')}
                     className="max-h-48 w-auto object-cover rounded-2xl"
                   />
                   <button
                     type="button"
                     onClick={clearComposerImage}
-                    aria-label="Remove attached image"
-                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/75 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
+                    aria-label={t('profile.removeImage')}
+                    className="absolute top-2 end-2 w-8 h-8 rounded-full bg-black/75 text-white flex items-center justify-center hover:bg-black transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -912,7 +916,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     className="inline-flex items-center gap-2 min-h-[42px] px-3.5 rounded-full text-[13px] font-semibold text-[var(--text)] bg-[var(--bg)] hover:bg-[var(--settings-row-hover)] border border-[var(--border)] disabled:opacity-45 transition-colors cursor-pointer"
                   >
                     <ImageIcon className="w-4 h-4 text-[var(--accent)]" />
-                    <span>Attach image</span>
+                    <span>{t('profile.attachImage')}</span>
                   </button>
                   {!quota.limitReached && (
                     <PostLimitBanner quota={quota} variant="inline" />
@@ -931,14 +935,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   {publishing ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Posting...</span>
+                      <span>{t('commons.posting')}</span>
                     </>
                   ) : quota.limitReached ? (
-                    <span>Limit reached</span>
+                    <span>{t('profile.limitReached')}</span>
                   ) : (
                     <>
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Post</span>
+                      <Send className="w-3.5 h-3.5 rtl-mirror" />
+                      <span>{t('commons.post')}</span>
                     </>
                   )}
                 </button>
@@ -976,16 +980,16 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             className="min-h-[38px] px-4 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] font-semibold text-[var(--text)] inline-flex items-center gap-1.5 hover:bg-[var(--settings-row-hover)] cursor-pointer shrink-0"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Retry</span>
+            <span>{t('common.retry')}</span>
           </button>
         </div>
       ) : posts.length === 0 ? (
         <div className="rounded-[24px] p-7 text-center border border-dashed border-[var(--border)] bg-[var(--card)]">
-          <p className="text-[15px] font-semibold text-[var(--text)]">No posts yet</p>
+          <p className="text-[15px] font-semibold text-[var(--text)]">{t('profile.noPostsTitle')}</p>
           <p className="text-[13px] mt-1 text-[var(--text-muted)]">
             {isOwnProfile
-              ? 'Share study notes, updates, or questions with your study squad above.'
-              : `${authorDisplayName} hasn't shared any posts yet.`}
+              ? t('profile.noPostsOwnDesc')
+              : t('profile.noPostsOtherDesc', { name: authorDisplayName })}
           </p>
         </div>
       ) : (
@@ -1020,7 +1024,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             const isExpanded = Boolean(expandedPostIds[post.id]);
             const isAnonOwnPost = Boolean(post.isAnonymous && isOwnProfile);
             const resolvedPostAuthor = isAnonOwnPost
-              ? 'Anonymous'
+              ? t('commons.anonymous')
               : getDisplayName({
                   display_name: post.authorName || authorDisplayName,
                   username: post.authorUsername || authorUsername,
@@ -1059,7 +1063,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         </span>
                         {isAnonOwnPost && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--bg)] border border-[var(--border)] text-[var(--text-muted)]">
-                            Anonymous · Only you see this here
+                            {t('profile.anonOnlyYouSee')}
                           </span>
                         )}
                         {(() => {
@@ -1089,7 +1093,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">
                         {resolvedPostHandle && (
-                          <span className="truncate">{resolvedPostHandle}</span>
+                          <span className="truncate ltr-nums">{resolvedPostHandle}</span>
                         )}
                         {resolvedPostHandle && <span>·</span>}
                         <span>{formatRelativeDate(post.createdAt)}</span>
@@ -1101,8 +1105,8 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDeletePost(post.id)}
-                      title="Delete post"
-                      aria-label="Delete post"
+                      title={t('commons.deletePost')}
+                      aria-label={t('commons.deletePost')}
                       className="w-10 h-10 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1111,7 +1115,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 </div>
 
                 {/* Post Body */}
-                <div className="mt-3">
+                <div className="mt-3 text-start">
                   {showDistinctTitle && (
                     <h4 className="text-[16px] font-semibold text-[var(--text)] leading-snug mb-1.5">
                       {trimmedTitle}
@@ -1135,7 +1139,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       }
                       className="mt-1.5 text-[13px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
                     >
-                      {isExpanded ? 'Show less' : 'Show more'}
+                      {isExpanded ? t('common.showLess') : t('common.showMore')}
                     </button>
                   )}
                 </div>
@@ -1167,7 +1171,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-[var(--bg)] border border-[var(--border)] text-[13px] font-medium text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors"
                       >
                         <FileText className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                        <span className="truncate">{file.name || 'Attached file'}</span>
+                        <span className="truncate">{file.name || t('profile.attachedFile')}</span>
                       </a>
                     ))}
                   </div>
@@ -1190,7 +1194,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           post.likedByMe ? 'fill-[var(--accent)] text-[var(--accent)]' : ''
                         }`}
                       />
-                      <span className="font-inter-num">{post.likesCount.toLocaleString()}</span>
+                      <span className="font-inter-num ltr-nums">{formatNumber(post.likesCount)}</span>
                     </button>
 
                     <button
@@ -1203,7 +1207,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                       }`}
                     >
                       <MessageSquare className="w-4 h-4" />
-                      <span className="font-inter-num">{post.commentsCount.toLocaleString()}</span>
+                      <span className="font-inter-num ltr-nums">{formatNumber(post.commentsCount)}</span>
                     </button>
                   </div>
 
@@ -1211,7 +1215,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleBookmark(post)}
-                      aria-label="Bookmark post"
+                      aria-label={t('commons.savePost')}
                       className={`w-10 h-10 rounded-full inline-flex items-center justify-center transition-colors cursor-pointer ${
                         post.bookmarkedByMe
                           ? 'bg-[var(--koban-bg)]'
@@ -1227,13 +1231,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     <button
                       type="button"
                       onClick={() => handleSharePost(post)}
-                      aria-label="Share post"
+                      aria-label={t('commons.share')}
                       className="px-3 min-h-[40px] rounded-full inline-flex items-center gap-1 text-[13px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer"
                     >
                       <Share2 className="w-4 h-4" />
                       {shareToastPostId === post.id && (
                         <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                          Copied!
+                          {t('common.copied')}
                         </span>
                       )}
                     </button>
@@ -1246,14 +1250,14 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                     {loadingComments ? (
                       <div className="py-3 flex items-center justify-center gap-2 text-[12px] text-[var(--text-muted)]">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Loading comments...</span>
+                        <span>{t('commons.loadingComments')}</span>
                       </div>
                     ) : postComments.length === 0 ? (
                       <p className="text-[12px] py-2 text-center text-[var(--text-muted)]">
-                        No comments yet. Start the conversation!
+                        {t('commons.noComments')}
                       </p>
                     ) : (
-                      <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                      <div className="space-y-2.5 max-h-64 overflow-y-auto pe-1">
                         {postComments.map((c) => {
                           const cDisplay = getDisplayName({
                             display_name: c.authorName,
@@ -1264,7 +1268,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                             <div
                               key={c.id}
                               className={`rounded-2xl p-3 text-[12px] bg-[var(--bg)] border border-[var(--border)] ${
-                                c.parentId ? 'ml-5' : ''
+                                c.parentId ? 'ms-5' : ''
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
@@ -1273,7 +1277,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                                     {cDisplay}
                                   </span>
                                   {cHandle && (
-                                    <span className="text-[11px] text-[var(--text-muted)] truncate">
+                                    <span className="text-[11px] text-[var(--text-muted)] truncate ltr-nums">
                                       {cHandle}
                                     </span>
                                   )}
@@ -1296,7 +1300,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                                       className={`w-3 h-3 ${c.likedByMe ? 'fill-current' : ''}`}
                                     />
                                     {(c.likesCount ?? 0) > 0 && (
-                                      <span className="font-inter-num">{c.likesCount}</span>
+                                      <span className="font-inter-num ltr-nums">{formatNumber(c.likesCount ?? 0)}</span>
                                     )}
                                   </button>
                                   <button
@@ -1309,21 +1313,21 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                                     }
                                     className="text-[11px] font-semibold text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                                   >
-                                    Reply
+                                    {t('commons.reply')}
                                   </button>
                                   {(c.authorId === user?.uid || isOwnProfile) && (
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteComment(post.id, c.id)}
                                       className="text-[var(--text-muted)] hover:text-[var(--danger)] cursor-pointer"
-                                      aria-label="Delete comment"
+                                      aria-label={t('common.delete')}
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   )}
                                 </div>
                               </div>
-                              <p className="mt-1 leading-relaxed text-[var(--text)] break-words">
+                              <p className="mt-1 leading-relaxed text-[var(--text)] break-words text-start">
                                 {c.text}
                               </p>
                             </div>
@@ -1338,8 +1342,8 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         {replyTarget && (
                           <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-[var(--bg)] text-[var(--text-muted)]">
                             <span className="inline-flex items-center gap-1">
-                              <CornerDownRight className="w-3 h-3" />
-                              Replying to <strong className="text-[var(--text)]">{replyTarget.authorName}</strong>
+                              <CornerDownRight className="w-3 h-3 rtl-mirror" />
+                              {t('profile.replyingTo', { name: replyTarget.authorName })}
                             </span>
                             <button
                               type="button"
@@ -1348,7 +1352,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                               }
                               className="hover:underline cursor-pointer"
                             >
-                              Cancel
+                              {t('common.cancel')}
                             </button>
                           </div>
                         )}
@@ -1370,10 +1374,10 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                             }}
                             placeholder={
                               replyTarget
-                                ? `Reply to ${replyTarget.authorName}...`
-                                : 'Write a comment...'
+                                ? t('profile.replyToPlaceholder', { name: replyTarget.authorName })
+                                : t('commons.writeComment')
                             }
-                            className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                            className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none text-start"
                           />
                           <button
                             type="button"
@@ -1384,7 +1388,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                             onClick={() => void handleSendComment(post.id)}
                             className="min-h-[42px] px-4 rounded-full bg-[var(--accent)] text-white text-[13px] font-semibold disabled:opacity-40 cursor-pointer"
                           >
-                            {submittingCommentPostId === post.id ? '...' : 'Reply'}
+                            {submittingCommentPostId === post.id ? '...' : t('commons.reply')}
                           </button>
                         </div>
                       </div>

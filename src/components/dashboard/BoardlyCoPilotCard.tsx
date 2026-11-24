@@ -4,6 +4,7 @@ import type {
   D1WeakChapterItem,
 } from '@/services/universityMcqService';
 import { useSmoothMode } from '@/utils/smoothMode';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface BoardlyCoPilotCardProps {
   firstName: string;
@@ -18,29 +19,6 @@ function formatClock(now: Date): string {
   const mins = String(now.getMinutes()).padStart(2, '0');
   const secs = String(now.getSeconds()).padStart(2, '0');
   return `${hrs}:${mins}:${secs}`;
-}
-
-function computeDaysSince(isoDate?: string): number | null {
-  if (!isoDate) return null;
-  const parsed = new Date(isoDate);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfAttemptDay = new Date(
-    parsed.getFullYear(),
-    parsed.getMonth(),
-    parsed.getDate()
-  ).getTime();
-  const diffDays = Math.round((startOfToday - startOfAttemptDay) / (1000 * 60 * 60 * 24));
-  return Math.max(0, diffDays);
-}
-
-function getTimeOfDayGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  if (hour < 21) return 'Good evening';
-  return 'Late night study session';
 }
 
 const CoPilotLiveClock = memo(function CoPilotLiveClock({ active }: { active: boolean }) {
@@ -87,6 +65,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
   questionsSolved,
 }: BoardlyCoPilotCardProps) {
   const { smoothMode } = useSmoothMode();
+  const { t, formatNumber } = useLanguage();
   const rawName = (firstName || '').trim();
   const safeName = rawName && rawName.toLowerCase() !== 'student' ? rawName : '';
   const cardRef = useRef<HTMLButtonElement | null>(null);
@@ -111,56 +90,55 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
     const safeAttempts = Array.isArray(recentAttempts) ? recentAttempts : [];
     const safeWeak = Array.isArray(weakChapters) ? weakChapters : [];
     const latestAttempt = safeAttempts[0];
-    const daysSinceLast = computeDaysSince(latestAttempt?.createdAt);
-    const timeGreeting = getTimeOfDayGreeting();
-    const nameComma = safeName ? `, ${safeName}` : '';
+    const hour = new Date().getHours();
+    const greetingKey =
+      hour < 12
+        ? 'dashboard.greetingMorning'
+        : hour < 17
+        ? 'dashboard.greetingAfternoon'
+        : 'dashboard.greetingEvening';
+    const greetingLine = safeName
+      ? `${t(greetingKey, { name: safeName })}! ${t('dashboard.readyToPractice')}`
+      : t('dashboard.readyToPractice');
 
     if (safeAttempts.length === 0 && questionsSolved <= 0) {
-      // New user welcome messages
-      list.push(
-        `Welcome to Boardly${nameComma}! Pick a live university below to start your first test.`
-      );
-      list.push(`${timeGreeting}${nameComma}. What will you practice today?`);
+      list.push(greetingLine);
+      list.push(t('dashboard.universitiesSubtitle'));
       if (streak > 0) {
         list.push(
-          `Your ${streak}-day streak is active${nameComma}. Let's solve your first set today!`
+          `${streak === 1 ? t('dashboard.streakDay') : t('dashboard.streakDays', { count: formatNumber(streak) })} — ${t('dashboard.keepStreakAlive')}`
         );
       }
       return list;
     }
 
-    if (daysSinceLast === 1) {
-      list.push(`I was sad you didn't come yesterday${nameComma}. Ready to jump back in?`);
-    } else if (daysSinceLast !== null && daysSinceLast >= 2) {
-      list.push(`You haven't practiced in ${daysSinceLast} days${nameComma}. Let's warm up today!`);
-    } else if (daysSinceLast === 0 && latestAttempt) {
+    if (latestAttempt) {
       list.push(
-        `Nice work on ${latestAttempt.universityName} (${Math.round(Number(latestAttempt.accuracy) || 0)}% accuracy) today${nameComma}!`
+        `${latestAttempt.universityName} · ${formatNumber(Math.round(Number(latestAttempt.accuracy) || 0))}% ${t('dashboard.accuracy')}`
       );
     }
 
     if (safeWeak.length > 0) {
       const weakest = safeWeak[0];
       list.push(
-        `${weakest.topic} (${weakest.subject}) is at ${Math.round(Number(weakest.accuracy) || 0)}% accuracy — drill it next${nameComma}?`
+        `${weakest.topic} (${weakest.subject}) · ${formatNumber(Math.round(Number(weakest.accuracy) || 0))}%`
       );
     }
 
     if (streak > 0) {
       list.push(
-        `${streak}-day streak strong${nameComma}! Keep your momentum alive today.`
+        `${streak === 1 ? t('dashboard.streakDay') : t('dashboard.streakDays', { count: formatNumber(streak) })} — ${t('dashboard.keepStreakAlive')}`
       );
     }
 
-    list.push(`${timeGreeting}${nameComma}. What will you practice today?`);
+    list.push(greetingLine);
 
     return list;
-  }, [safeName, streak, recentAttempts, weakChapters, questionsSolved]);
+  }, [safeName, streak, recentAttempts, weakChapters, questionsSolved, t, formatNumber]);
 
   const [msgIndex, setMsgIndex] = useState(0);
   const activeMessage =
-    messages[msgIndex % messages.length] ||
-    (safeName ? `What will you practice today, ${safeName}?` : 'What will you practice today?');
+    messages[msgIndex % messages.length] || t('dashboard.readyToPractice');
   const [typedLen, setTypedLen] = useState<number>(() => (smoothMode ? activeMessage.length : 0));
   const [mouthFrame, setMouthFrame] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
@@ -233,9 +211,9 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
       ref={cardRef}
       type="button"
       onClick={handleCardTap}
-      aria-label="Boardly Co-Pilot live message — tap to skip"
+      aria-label="Boardly Co-Pilot"
       data-testid="boardly-copilot-card"
-      className="w-full text-left rounded-[28px] px-4 py-3.5 sm:px-5 sm:py-4 flex items-center gap-3.5 sm:gap-4 transition-transform duration-150 active:scale-[0.99] cursor-pointer select-none"
+      className="w-full text-start rounded-[28px] px-4 py-3.5 sm:px-5 sm:py-4 flex items-center gap-3.5 sm:gap-4 transition-transform duration-150 active:scale-[0.99] cursor-pointer select-none"
       style={{
         backgroundColor: 'var(--copilot-bg)',
         border: '1px solid var(--copilot-border)',
@@ -358,7 +336,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
                 color: 'var(--accent)',
               }}
             >
-              BOARDLY CO-PILOT · LIVE
+              BOARDLY CO-PILOT · {t('common.live')}
             </span>
           </div>
 
@@ -377,7 +355,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
             {displayedText}
             {isTyping && (
               <span
-                className="inline-block w-1.5 h-3.5 ml-0.5 align-middle"
+                className="inline-block w-1.5 h-3.5 ms-0.5 align-middle"
                 style={{ backgroundColor: 'var(--accent)' }}
                 aria-hidden="true"
               />

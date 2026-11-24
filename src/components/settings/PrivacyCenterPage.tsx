@@ -14,6 +14,7 @@ import { SettingsPage } from './SettingsPage';
 import { SettingsGroup } from './SettingsGroup';
 import { SettingsRow } from './SettingsRow';
 import { LEGAL_LAST_UPDATED_LABEL, LEGAL_VERSION_DISPLAY } from '@/constants/legalConsent';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface PrivacyCenterPageProps {
   onBack: () => void;
@@ -51,8 +52,9 @@ export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
   onOpenAiPrivacy,
   scrollContainer = 'window',
 }) => {
+  const { t } = useLanguage();
   return (
-    <SettingsPage title="Privacy center" onBack={onBack} scrollContainer={scrollContainer}>
+    <SettingsPage title={t('settings.privacy')} onBack={onBack} scrollContainer={scrollContainer}>
       {/* Centered 72px round shield+lock hero */}
       <div className="flex flex-col items-center px-2 pt-4 pb-7 text-center">
         <div
@@ -76,47 +78,47 @@ export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
           className="mt-4 text-[32px] font-semibold leading-tight tracking-tight"
           style={{ color: 'var(--text)' }}
         >
-          Privacy center
+          {t('settings.privacy')}
         </h2>
         <p
           className="mt-2 max-w-[440px] text-[15px] leading-relaxed"
           style={{ color: 'var(--text-muted)' }}
         >
-          Understand how Boardly protects your account, study progress, and personal information.
+          {t('settings.privacySub')}
         </p>
       </div>
 
       {/* Explore your options */}
-      <SettingsGroup label="Explore your options">
+      <SettingsGroup label={t('settings.groupPrivacySecurity')}>
         <SettingsRow
           icon={<FileText />}
-          label="Privacy policy"
+          label={t('settings.privacyPolicy')}
           onClick={() => onNavigate('/privacy')}
         />
         <SettingsRow
           icon={<Scale />}
-          label="Terms of service"
+          label={t('settings.termsOfService')}
           onClick={() => onNavigate('/terms')}
         />
         <SettingsRow
           icon={<Shield />}
-          label="Legal & privacy version"
-          subtitle={`Last updated ${LEGAL_LAST_UPDATED_LABEL}`}
+          label={t('settings.aboutBoardly')}
+          subtitle={LEGAL_LAST_UPDATED_LABEL}
           value={LEGAL_VERSION_DISPLAY}
           chevron="none"
         />
         {onOpenAiPrivacy && (
           <SettingsRow
             icon={<Sparkles />}
-            label="Boardly AI chat history"
-            subtitle="Save chat history toggle & delete all AI chats"
+            label={t('settings.boardlyAi')}
+            subtitle={t('settings.boardlyAiSub')}
             onClick={onOpenAiPrivacy}
           />
         )}
         <SettingsRow
           icon={<Mail />}
-          label="Submit a privacy request"
-          subtitle="Export or remove your personal data"
+          label={t('settings.contactSupport')}
+          subtitle={t('settings.privacySub')}
           onClick={() => onNavigate('/contact?topic=privacy')}
         />
       </SettingsGroup>
@@ -124,15 +126,15 @@ export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
       {/* Our approach to privacy — horizontal scroll-snap carousel clipped cleanly inside itself */}
       <section className="mb-6">
         <h2
-          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          className="mb-2 ps-4 text-start text-[14px] font-medium leading-snug"
           style={{ color: 'var(--text-muted)' }}
         >
-          Our approach to privacy
+          {t('settings.privacy')}
         </h2>
 
         <div className="overflow-hidden rounded-[28px]">
           <div
-            className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 pe-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{ overscrollBehaviorX: 'contain' }}
           >
             {PRIVACY_APPROACH_CARDS.map((card) => {
@@ -178,16 +180,16 @@ export const PrivacyCenterPage: React.FC<PrivacyCenterPageProps> = ({
       </section>
 
       {/* Helpful resources */}
-      <SettingsGroup label="Helpful resources">
+      <SettingsGroup label={t('settings.groupSupport')}>
         <SettingsRow
           icon={<HelpCircle />}
-          label="Help center"
+          label={t('settings.contactSupport')}
           onClick={() => onNavigate('/faq')}
         />
         <SettingsRow
           icon={<FileText />}
-          label="Developer info"
-          subtitle="Boardly platform security & contact"
+          label={t('settings.aboutBoardly')}
+          subtitle={t('settings.aboutBoardlySub')}
           onClick={() => onNavigate('/about')}
         />
       </SettingsGroup>

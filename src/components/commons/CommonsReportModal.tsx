@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Flag, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, Flag, CheckCircle2 } from 'lucide-react';
 import type { CommonsPost } from '@/types/commons';
 import { reportCommonsPost } from '@/services/commonsService';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface CommonsReportModalProps {
   post: CommonsPost | null;
@@ -17,6 +18,7 @@ export function CommonsReportModal({
   onClose,
   reporterUid,
 }: CommonsReportModalProps) {
+  const { t } = useLanguage();
   const [reason, setReason] = useState<'spam' | 'harassment' | 'copyright' | 'inaccurate' | 'other'>('spam');
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -28,7 +30,7 @@ export function CommonsReportModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reporterUid) {
-      setError('Please sign in to report content.');
+      setError(t('auth.signInToContinue'));
       return;
     }
 
@@ -61,10 +63,11 @@ export function CommonsReportModal({
         <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2">
             <Flag size={16} className="text-[#D71921]" />
-            <h3 className="text-sm font-bold text-[var(--text)] font-dot">REPORT CONTENT</h3>
+            <h3 className="text-sm font-bold text-[var(--text)] font-dot uppercase">{t('commons.reportTitle')}</h3>
           </div>
           <button
             onClick={onClose}
+            aria-label={t('common.close')}
             className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
           >
             <X size={16} />
@@ -74,15 +77,15 @@ export function CommonsReportModal({
         {submitted ? (
           <div className="py-8 text-center space-y-2">
             <CheckCircle2 size={32} className="mx-auto text-emerald-500" />
-            <p className="text-sm font-semibold text-[var(--text)]">Report Submitted</p>
+            <p className="text-sm font-semibold text-[var(--text)]">{t('commons.reportSubmittedTitle')}</p>
             <p className="text-xs text-[var(--text-muted)]">
-              Thank you for keeping Boardly Commons clean and safe for everyone. Posts with 3+ reports are automatically hidden pending superadmin review.
+              {t('commons.reportSubmittedDesc')}
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3.5">
             <p className="text-xs text-[var(--text-muted)]">
-              Reporting: <strong className="text-[var(--text)] font-medium">"{post.title}"</strong>
+              {t('commons.reportingLabel')} <strong className="text-[var(--text)] font-medium">&ldquo;{post.title}&rdquo;</strong>
             </p>
 
             {error && (
@@ -93,15 +96,15 @@ export function CommonsReportModal({
 
             <div>
               <label className="block text-xs font-medium text-[var(--text)] mb-1.5">
-                Reason for report
+                {t('commons.reportReason')}
               </label>
               <div className="space-y-1.5">
                 {[
-                  { id: 'spam', label: 'Spam, advertising or irrelevant content' },
-                  { id: 'inaccurate', label: 'Misleading formulas, incorrect solutions or exam fraud' },
-                  { id: 'copyright', label: 'Unauthorized proprietary book scans / copyright' },
-                  { id: 'harassment', label: 'Harassment, hate speech or abusive remarks' },
-                  { id: 'other', label: 'Other violation of Community Guidelines' },
+                  { id: 'spam', label: t('commons.reasonSpam') },
+                  { id: 'inaccurate', label: t('commons.reasonInaccurate') },
+                  { id: 'copyright', label: t('commons.reasonCopyright') },
+                  { id: 'harassment', label: t('commons.reasonHarassment') },
+                  { id: 'other', label: t('commons.reasonOther') },
                 ].map((opt) => (
                   <label
                     key={opt.id}
@@ -127,12 +130,12 @@ export function CommonsReportModal({
 
             <div>
               <label className="block text-xs font-medium text-[var(--text)] mb-1">
-                Additional details (optional)
+                {t('commons.additionalDetails')}
               </label>
               <textarea
                 value={details}
                 onChange={(e) => setDetails(e.target.value)}
-                placeholder="Help our moderators understand the issue..."
+                placeholder={t('commons.reportDetailsPlaceholder')}
                 rows={2}
                 className="w-full px-3.5 py-2.5 text-xs glass-row rounded-[16px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none"
               />
@@ -144,14 +147,14 @@ export function CommonsReportModal({
                 onClick={onClose}
                 className="btn-secondary px-4 py-2 text-xs font-medium rounded-full cursor-pointer"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 disabled={submitting}
                 className="btn-primary px-4 py-2 text-xs font-bold rounded-full transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {submitting ? 'Submitting...' : 'Submit Report'}
+                {submitting ? t('common.submitting') : t('commons.submitReport')}
               </button>
             </div>
           </form>

@@ -3,8 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { CheckCircle, AlertCircle, ArrowLeft, UserPlus, Mail, Loader2 } from 'lucide-react';
 import { AuthLayout } from '@/components/auth/AuthLayout';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-function mapResetPasswordError(err: unknown): {
+function mapResetPasswordError(
+  err: unknown,
+  t: (key: string) => string
+): {
   message: string;
   showSignUpLink?: boolean;
 } {
@@ -14,20 +18,18 @@ function mapResetPasswordError(err: unknown): {
 
   if (code === 'auth/user-not-found' || rawMsg.includes('EMAIL_NOT_FOUND')) {
     return {
-      message:
-        'No active Boardly account was found for this email address. If your account was deleted, you can create a new account with this email.',
+      message: t('auth.resetErrNotFound'),
       showSignUpLink: true,
     };
   }
   if (code === 'auth/invalid-email' || rawMsg.includes('INVALID_EMAIL')) {
     return {
-      message: 'Please enter a valid email address (for example: student@example.com).',
+      message: t('auth.resetErrInvalidEmail'),
     };
   }
   if (code === 'auth/too-many-requests' || rawMsg.includes('TOO_MANY_ATTEMPTS')) {
     return {
-      message:
-        'Too many password reset requests were sent recently. Please wait a few minutes and try again.',
+      message: t('auth.resetErrTooMany'),
     };
   }
   if (
@@ -37,14 +39,12 @@ function mapResetPasswordError(err: unknown): {
     code === 'auth/invalid-continue-uri'
   ) {
     return {
-      message:
-        'We could not complete the password reset link right now. Please try requesting a new link or signing in directly.',
+      message: t('auth.resetErrContinueUri'),
     };
   }
   if (code === 'auth/network-request-failed') {
     return {
-      message:
-        'Network connection issue. Please check your internet connection and try again.',
+      message: t('auth.networkError'),
     };
   }
 
@@ -52,12 +52,13 @@ function mapResetPasswordError(err: unknown): {
     message:
       rawMsg && !/firebase|cloudflare|d1|firestore/i.test(rawMsg)
         ? rawMsg
-        : 'Could not send the password reset email right now. Please double-check your email address and try again.',
+        : t('auth.resetErrGeneric'),
   };
 }
 
 export function ForgotPasswordPage() {
   const { resetPassword } = useAuth();
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const initialEmail = searchParams.get('email') || '';
 
@@ -83,7 +84,7 @@ export function ForgotPasswordPage() {
       await resetPassword(email.trim());
       setSent(true);
     } catch (err: unknown) {
-      const mapped = mapResetPasswordError(err);
+      const mapped = mapResetPasswordError(err, t);
       setError(mapped.message);
       setShowSignUpHint(Boolean(mapped.showSignUpLink));
     } finally {
@@ -118,31 +119,33 @@ export function ForgotPasswordPage() {
             to="/login"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
           >
-            <ArrowLeft size={14} />
-            <span>Back to Sign In</span>
+            <ArrowLeft size={14} className="rtl-mirror" />
+            <span>{t('auth.backToSignIn')}</span>
           </Link>
         </div>
 
-        <div className="text-left">
+        <div className="text-start">
           <h1
             className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight"
             style={{ fontFamily: 'var(--font-dot)' }}
           >
-            Reset password
+            {t('auth.resetPassword')}
           </h1>
           <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
-            Enter your registered email and we&apos;ll send you a password reset link.
+            {t('auth.resetPasswordDesc')}
           </p>
         </div>
 
         {sent ? (
           <div className="space-y-4">
-            <div className="flex items-start gap-2.5 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-500 text-left">
+            <div className="flex items-start gap-2.5 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-500 text-start">
               <CheckCircle size={16} className="shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-semibold">Reset link sent to {email.trim()}</p>
+                <p className="font-semibold">
+                  {t('auth.resetLinkSentTo', { email: email.trim() })}
+                </p>
                 <p className="text-emerald-500/80">
-                  Please check your inbox and spam/junk folder for the password reset email.
+                  {t('auth.checkInboxSpam')}
                 </p>
               </div>
             </div>
@@ -150,7 +153,7 @@ export function ForgotPasswordPage() {
               to="/login"
               className="w-full min-h-[48px] px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-xs sm:text-sm font-semibold text-[var(--text)] inline-flex items-center justify-center"
             >
-              Back to Sign in
+              {t('auth.backToSignIn')}
             </Link>
           </div>
         ) : (
@@ -159,20 +162,20 @@ export function ForgotPasswordPage() {
               {error && (
                 <div
                   role="alert"
-                  className="p-3.5 bg-[#D71921]/10 border border-[#D71921]/40 rounded-2xl text-xs text-[var(--text)] space-y-2 text-left"
+                  className="p-3.5 bg-[#D71921]/10 border border-[#D71921]/40 rounded-2xl text-xs text-[var(--text)] space-y-2 text-start"
                 >
                   <div className="flex items-start gap-2.5">
                     <AlertCircle size={15} className="text-[#D71921] shrink-0 mt-0.5" />
                     <span className="leading-relaxed">{error}</span>
                   </div>
                   {showSignUpHint && (
-                    <div className="pl-6 pt-1">
+                    <div className="ps-6 pt-1">
                       <Link
                         to="/signup"
                         className="inline-flex items-center gap-1.5 font-semibold text-[#D71921] underline hover:opacity-80"
                       >
                         <UserPlus size={13} />
-                        <span>Create a new account with this email →</span>
+                        <span>{t('auth.createAccountWithEmail')}</span>
                       </Link>
                     </div>
                   )}
@@ -180,32 +183,29 @@ export function ForgotPasswordPage() {
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5 text-left">
+            <div className="flex flex-col gap-1.5 text-start">
               <label
                 htmlFor="forgot-password-email"
                 className="text-xs sm:text-sm font-semibold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                Email address
+                {t('auth.emailAddress')}
               </label>
               <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
+                <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
                   <Mail size={18} />
                 </div>
                 <input
                   id="forgot-password-email"
                   type="email"
+                  dir="ltr"
                   inputMode="email"
                   autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="auth-form-input"
-                  style={{
-                    height: '50px',
-                    paddingLeft: '42px',
-                    paddingRight: '16px',
-                  }}
+                  className="auth-form-input ps-[42px] pe-4"
+                  style={{ height: '50px' }}
                   placeholder="student@example.com"
                 />
               </div>
@@ -218,13 +218,13 @@ export function ForgotPasswordPage() {
               style={{ height: '50px' }}
             >
               {busy && <Loader2 size={17} className="animate-spin shrink-0" />}
-              <span>Send reset link</span>
+              <span>{t('auth.sendResetLink')}</span>
             </button>
 
             <p className="text-center text-xs text-[var(--text-muted)]">
-              Remembered your password?{' '}
+              {t('auth.rememberedPassword')}{' '}
               <Link to="/login" className="text-[#D71921] font-semibold hover:underline">
-                Sign in
+                {t('auth.signIn')}
               </Link>
             </p>
           </form>

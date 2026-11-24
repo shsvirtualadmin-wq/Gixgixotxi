@@ -39,7 +39,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({
     <section className={`mb-6 ${className}`}>
       {label && (
         <h2
-          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          className="mb-2 ps-4 text-start text-[14px] font-medium leading-snug"
           style={{
             color: 'var(--text-muted)',
             fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',

@@ -1440,10 +1440,21 @@ RULES:
             },
           });
 
-          const outHeaders: Record<string, string> = {};
+          const outHeaders: Record<string, string | string[]> = {};
           webRes.headers.forEach((v, k) => {
-            outHeaders[k] = v;
+            if (k.toLowerCase() !== 'set-cookie') {
+              outHeaders[k] = v;
+            }
           });
+          const setCookies =
+            typeof (webRes.headers as any).getSetCookie === 'function'
+              ? ((webRes.headers as any).getSetCookie() as string[])
+              : webRes.headers.get('set-cookie')
+              ? [String(webRes.headers.get('set-cookie'))]
+              : [];
+          if (setCookies.length > 0) {
+            outHeaders['set-cookie'] = setCookies;
+          }
           res.writeHead(webRes.status, outHeaders);
           const text = await webRes.text();
           res.end(text);

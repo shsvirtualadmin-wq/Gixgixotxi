@@ -7,6 +7,7 @@ import {
 } from '@/config/postLimits';
 import { BoardlyAd } from '@/components/BoardlyAd';
 import { useShowAds } from '@/hooks/useShowAds';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PostLimitBannerProps {
   quota: DailyPostQuotaStatus;
@@ -25,6 +26,7 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
 }) => {
   const navigate = useNavigate();
   const { showAds } = useShowAds();
+  const { t, formatNumber } = useLanguage();
 
   const handleUpgrade = (target: 'pro' | 'plus') => {
     onBeforeNavigate?.();
@@ -41,10 +43,10 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
       return (
         <span
           className={`inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-500 ${className}`}
-          title="Boardly Plus includes unlimited daily posts"
+          title={t('commons.unlimitedPosts')}
         >
           <InfinityIcon className="w-3.5 h-3.5 shrink-0" />
-          <span>Unlimited posts</span>
+          <span>{t('commons.unlimitedPosts')}</span>
         </span>
       );
     }
@@ -59,7 +61,7 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
         </div>
         <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-500">
           <InfinityIcon className="w-3.5 h-3.5" />
-          <span>Unlimited posts</span>
+          <span>{t('commons.unlimitedPosts')}</span>
         </span>
       </div>
     );
@@ -67,31 +69,34 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
 
   const limit = quota.limit ?? POST_LIMITS.free;
   const remaining = quota.remaining ?? Math.max(0, limit - quota.usedToday);
-  const planLabel = quota.plan === 'pro' ? 'Pro' : 'Free';
+  const planLabel = quota.plan === 'pro' ? 'Boardly Pro' : t('common.free');
   const upgradeTarget: 'pro' | 'plus' = quota.upgradeTarget ?? 'pro';
 
   // Limit Reached: show clear plan-aware cap, exact midnight PKT reset time, and BoardlyAd (only when ads are enabled)
   if (quota.limitReached) {
+    const reachedHeadline = t('commons.dailyPostLimitReached', {
+      used: formatNumber(quota.usedToday),
+      limit: formatNumber(limit),
+      plan: planLabel,
+    });
+    const resetText = t('test.resetsIn', { time: `${quota.resetCountdown} (${quota.resetTimeLabel})` });
+
     if (!showAds) {
       return (
         <div
           role="alert"
           className={`my-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--text)] space-y-1 ${className}`}
         >
-          <div className="font-bold">
-            Daily post limit reached ({quota.usedToday}/{limit} · {planLabel})
-          </div>
-          <div className="text-[var(--text-muted)]">
-            Resets in {quota.resetCountdown} ({quota.resetTimeLabel})
-          </div>
+          <div className="font-bold">{reachedHeadline}</div>
+          <div className="text-[var(--text-muted)]">{resetText}</div>
         </div>
       );
     }
 
     const upgradeLabel =
       upgradeTarget === 'plus'
-        ? 'Upgrade to Plus (Unlimited)'
-        : `Upgrade to Pro (${POST_LIMITS.pro}/day)`;
+        ? t('commons.upgradePlusUnlimited')
+        : t('commons.upgradeProPosts', { limit: formatNumber(POST_LIMITS.pro) });
 
     return (
       <div role="alert" className={`my-2 ${className}`}>
@@ -99,26 +104,22 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
           variant="banner"
           accent={upgradeTarget === 'plus' ? 'indigo-blue' : 'teal-purple'}
           illustrationId="crew-together"
-          chip={upgradeTarget === 'plus' ? 'BOARDLY PLUS' : 'DAILY POST LIMIT'}
-          headline={`Daily post limit reached (${quota.usedToday}/${limit} · ${planLabel})`}
-          description={
-            quota.plan === 'free'
-              ? `Free accounts can publish up to ${POST_LIMITS.free} posts per day. Upgrade to Pro (${POST_LIMITS.pro}/day) or Plus (unlimited).`
-              : `Boardly Pro accounts can publish up to ${POST_LIMITS.pro} posts per day. Upgrade to Plus for unlimited daily posts.`
-          }
-          metaNote={`Resets in ${quota.resetCountdown} (${quota.resetTimeLabel})`}
+          chip={upgradeTarget === 'plus' ? 'BOARDLY PLUS' : t('commons.dailyLimitReached')}
+          headline={reachedHeadline}
+          description={t('test.dailyLimitDesc')}
+          metaNote={resetText}
           ctaLabel={upgradeLabel}
           onAction={() => handleUpgrade(upgradeTarget)}
           secondaryAction={
             quota.plan === 'free'
               ? {
-                  label: 'Or go Plus (Unlimited daily posts)',
+                  label: t('commons.upgradePlusUnlimited'),
                   onClick: () => handleUpgrade('plus'),
                 }
               : undefined
           }
           dismissible={false}
-          infoText="Boardly upgrade prompt shown when your daily Commons post quota is reached."
+          infoText={t('settings.resetsAtMidnight')}
         />
       </div>
     );
@@ -135,7 +136,11 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
             isLow ? 'text-amber-500' : 'text-[var(--text-muted)]'
           }`}
         >
-          {remaining} of {limit} posts left today · {planLabel}
+          {t('commons.postsLeftToday', {
+            remaining: formatNumber(remaining),
+            limit: formatNumber(limit),
+          })}{' '}
+          · {planLabel}
         </span>
         {isLow && (
           <button
@@ -143,7 +148,7 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
             onClick={() => handleUpgrade(upgradeTarget)}
             className="font-bold text-[var(--accent)] hover:underline cursor-pointer"
           >
-            {upgradeTarget === 'plus' ? 'Get Unlimited' : `Upgrade (${POST_LIMITS.pro}/day)`}
+            {t('common.upgrade')}
           </button>
         )}
       </div>
@@ -161,19 +166,22 @@ export const PostLimitBanner: React.FC<PostLimitBannerProps> = ({
             isLow ? 'text-amber-500' : 'text-[var(--text)]'
           }`}
         >
-          {remaining} of {limit} posts left today
+          {t('commons.postsLeftToday', {
+            remaining: formatNumber(remaining),
+            limit: formatNumber(limit),
+          })}
         </span>
         <span className="text-[var(--text-muted)]">· {planLabel}</span>
       </div>
       <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-        <span>Resets {quota.resetTimeLabel}</span>
+        <span>{t('commons.resetsLabel', { time: quota.resetTimeLabel })}</span>
         {isLow && (
           <button
             type="button"
             onClick={() => handleUpgrade(upgradeTarget)}
             className="font-bold text-[#D71921] dark:text-[#ff6b72] hover:underline cursor-pointer"
           >
-            Upgrade
+            {t('common.upgrade')}
           </button>
         )}
       </div>

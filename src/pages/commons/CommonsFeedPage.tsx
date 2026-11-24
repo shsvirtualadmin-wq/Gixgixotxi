@@ -41,6 +41,7 @@ import { buildEntitySlug } from '@/utils/privacy';
 import { getDisplayName } from '@/utils/displayName';
 import { AdSlot } from '@/components/AdSlot';
 import { useAdsConfig } from '@/services/adsConfigService';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // Per-tab feed keys for isolated All / Trending / Following state
 type FeedTabKey = 'all' | 'trending' | 'following';
@@ -91,6 +92,7 @@ const SUBJECT_FILTERS = [
 ];
 
 export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: boolean }) {
+  const { t, isRtl } = useLanguage();
   const { user, profile, loading: profileLoading } = useUserProfile();
   const { isAdmin, isGuest, authStatus } = useAuth();
   const { requireAuth } = useAuthGate();
@@ -841,7 +843,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             </h1>
           </div>
           <p className="text-xs text-muted truncate mt-0.5">
-            Share notes, papers and doubts. Learn together.
+            {t('commons.subtitle')}
           </p>
         </div>
 
@@ -850,8 +852,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <Link
             to="/material"
             className="ios-circle-btn text-secondary hover:text-primary"
-            title="Study Material Library"
-            aria-label="Study Material Library"
+            title={t('commons.materialLibrary')}
+            aria-label={t('commons.materialLibrary')}
           >
             <FolderOpen size={18} />
           </Link>
@@ -860,8 +862,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             type="button"
             onClick={() => setSearchModalOpen(true)}
             className="ios-circle-btn text-secondary hover:text-primary cursor-pointer"
-            title="Search Commons"
-            aria-label="Search"
+            title={t('commons.searchTitle')}
+            aria-label={t('common.search')}
           >
             <Search size={18} />
           </button>
@@ -869,8 +871,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <Link
             to="/guidelines"
             className="ios-circle-btn text-secondary hover:text-primary"
-            title="Community Guidelines"
-            aria-label="Guidelines"
+            title={t('commons.guidelines')}
+            aria-label={t('commons.guidelines')}
           >
             <Shield size={18} />
           </Link>
@@ -878,12 +880,12 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <Link
             to="/dashboard/notifications"
             className="relative ios-circle-btn text-secondary hover:text-primary"
-            title="Notifications"
-            aria-label="Notifications"
+            title={t('nav.notifications')}
+            aria-label={t('nav.notifications')}
           >
             <Bell size={18} />
             {unreadNotifCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
+              <span className="ltr-nums absolute top-1.5 end-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[10px] font-bold flex items-center justify-center leading-none">
                 {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
               </span>
             )}
@@ -894,8 +896,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             onClick={() => loadPosts()}
             disabled={loading}
             className="ios-circle-btn text-secondary hover:text-primary cursor-pointer"
-            title="Refresh feed"
-            aria-label="Refresh feed"
+            title={t('common.refresh')}
+            aria-label={t('common.refresh')}
           >
             <RefreshCw size={18} />
           </button>
@@ -922,7 +924,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <div
             onClick={() => (user ? openProfile(user.uid) : openComposerWithGate({ initialStep: 1 }))}
             className="shrink-0 cursor-pointer transition-transform hover:scale-105"
-            title={user ? 'View your profile' : 'Sign in to post'}
+            title={user ? t('nav.viewProfile') : t('nav.signIn')}
           >
             <BoardlyAvatar
               uid={user?.uid}
@@ -952,9 +954,9 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <button
             type="button"
             onClick={() => openComposerWithGate({ initialStep: 1 })}
-            className="flex-1 min-w-0 text-left px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer truncate"
+            className="flex-1 min-w-0 text-start px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer truncate"
           >
-            Share a resource or ask a doubt...
+            {t('commons.writeSomething')}
           </button>
         </div>
 
@@ -973,7 +975,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <ImageIcon size={15} className="text-emerald-500 shrink-0" />
-            <span className="truncate">Photo</span>
+            <span className="truncate">{t('commons.photo')}</span>
           </button>
 
           <button
@@ -987,7 +989,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <Paperclip size={15} className="text-blue-500 shrink-0" />
-            <span className="truncate">File</span>
+            <span className="truncate">{t('commons.file')}</span>
           </button>
 
           <button
@@ -1001,7 +1003,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <HelpCircle size={15} className="text-amber-500 shrink-0" />
-            <span className="truncate">Doubt</span>
+            <span className="truncate">{t('commons.doubt')}</span>
           </button>
 
           <button
@@ -1015,7 +1017,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-2 px-1 rounded-full text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap"
           >
             <EyeOff size={15} className="text-purple-500 shrink-0" />
-            <span className="truncate">Anonymous</span>
+            <span className="truncate">{t('commons.anonymous')}</span>
           </button>
         </div>
       </div>
@@ -1049,16 +1051,16 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                 : 'bg-surface border-border text-secondary hover:text-primary'
             }`}
           >
-            {s.label}
+            {s.slug === 'all' ? t('dashboard.allSubjects') : s.label}
           </button>
         ))}
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
-          aria-label="Filter by class or board"
-          className="ml-auto max-w-full px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
+          aria-label={t('commons.allClassesBoards')}
+          className="ms-auto max-w-full px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
         >
-          <option value="all">All Classes & Boards</option>
+          <option value="all">{t('commons.allClassesBoards')}</option>
           <option value="class 9">Class 9 (SSC-I)</option>
           <option value="class 10">Class 10 (SSC-II)</option>
           <option value="11">Class 11 (HSSC-I)</option>
@@ -1079,7 +1081,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       >
         <div
           role="tablist"
-          aria-label="Commons feed filter"
+          aria-label={t('commons.title')}
           className="ios-seg-track flex-1 grid grid-cols-3 items-center"
         >
           <div
@@ -1087,7 +1089,9 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             className="ios-seg-thumb"
             style={{
               width: 'calc((100% - 8px) / 3)',
-              transform: `translate3d(${feedTabIndex * 100}%, 0, 0)`,
+              left: isRtl ? 'auto' : '4px',
+              right: isRtl ? '4px' : 'auto',
+              transform: `translate3d(${isRtl ? -feedTabIndex * 100 : feedTabIndex * 100}%, 0, 0)`,
             }}
           >
             <div className={`ios-seg-thumb-inner ${segStretching ? 'is-stretching' : ''}`} />
@@ -1103,7 +1107,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             }}
             className={`ios-seg-btn ${feedTab === 'all' ? 'is-active' : ''}`}
           >
-            All
+            {t('common.all')}
           </button>
 
           <button
@@ -1116,7 +1120,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             }}
             className={`ios-seg-btn ${feedTab === 'trending' ? 'is-active' : ''}`}
           >
-            Trending
+            {t('commons.sortTrending')}
           </button>
 
           <button
@@ -1129,7 +1133,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             }}
             className={`ios-seg-btn ${feedTab === 'following' ? 'is-active' : ''}`}
           >
-            Following
+            {t('common.following')}
           </button>
         </div>
 
@@ -1137,7 +1141,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           to="/search"
           className="commons-tabs-search-pill px-3.5 min-h-[44px] rounded-full glass-pill inline-flex items-center justify-center text-xs text-muted hover:text-primary font-semibold transition-colors shrink-0"
         >
-          Search →
+          {t('common.search')} {isRtl ? '←' : '→'}
         </Link>
       </div>
 
@@ -1150,17 +1154,17 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">
             <AlertTriangle size={28} className="mx-auto text-accent" />
             <h3 className="text-sm font-semibold text-primary">
-              Couldn't Load Posts
+              {t('commons.loadErrorTitle')}
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
-              We encountered an issue fetching the latest community resources.
+              {t('commons.loadErrorDesc')}
             </p>
             <button
               onClick={() => void loadPosts(true, feedTab)}
               className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-surface border border-border text-primary hover:bg-surface-muted transition-colors cursor-pointer shadow-xs"
             >
               <RefreshCw size={14} />
-              <span>Retry</span>
+              <span>{t('common.retry')}</span>
             </button>
           </div>
         ) : displayedPosts.length === 0 ? (
@@ -1170,24 +1174,24 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             <h3 className="text-sm font-bold text-primary">
               {feedTab === 'following'
                 ? isGuestOrAnon
-                  ? 'Sign in to follow people'
+                  ? t('commons.signInToFollowTitle')
                   : !followingIds || followingIds.length === 0
-                  ? "You're not following anyone yet"
-                  : 'No posts from people you follow yet'
+                  ? t('commons.notFollowingTitle')
+                  : t('commons.noFollowingPostsTitle')
                 : subjectFilter !== 'all' || classFilter !== 'all'
-                ? 'No posts matching your filter'
-                : 'No posts yet'}
+                ? t('commons.noFilterMatchTitle')
+                : t('commons.emptyTitle')}
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               {feedTab === 'following'
                 ? isGuestOrAnon
-                  ? 'Sign in to follow students and educators and see their posts here.'
+                  ? t('commons.signInToFollowDesc')
                   : !followingIds || followingIds.length === 0
-                  ? 'Follow people to see their posts here.'
+                  ? t('commons.notFollowingDesc')
                   : subjectFilter !== 'all' || classFilter !== 'all'
-                  ? 'No posts from people you follow match your current filter.'
-                  : 'When people you follow share notes, papers, or questions, their posts will appear here.'
-                : 'Be the first to share notes, papers, or ask a doubt to learn together!'}
+                  ? t('commons.noFilterMatchDesc')
+                  : t('commons.noFollowingPostsDesc')
+                : t('commons.emptyDesc')}
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
               {feedTab === 'following' ? (
@@ -1197,7 +1201,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                     onClick={() => requireAuth('view posts from students you follow')}
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                   >
-                    <span>Sign in</span>
+                    <span>{t('nav.signIn')}</span>
                   </button>
                 ) : !followingIds || followingIds.length === 0 ? (
                   <button
@@ -1206,7 +1210,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                   >
                     <Compass size={14} />
-                    <span>Find people to follow</span>
+                    <span>{t('commons.findPeople')}</span>
                   </button>
                 ) : subjectFilter !== 'all' || classFilter !== 'all' ? (
                   <button
@@ -1218,7 +1222,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                   >
                     <Compass size={14} />
-                    <span>Reset Filters</span>
+                    <span>{t('commons.resetFilters')}</span>
                   </button>
                 ) : (
                   <button
@@ -1227,7 +1231,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                   >
                     <Compass size={14} />
-                    <span>Explore All Posts</span>
+                    <span>{t('commons.exploreAllPosts')}</span>
                   </button>
                 )
               ) : subjectFilter !== 'all' || classFilter !== 'all' ? (
@@ -1240,7 +1244,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >
                   <Compass size={14} />
-                  <span>Reset Filters</span>
+                  <span>{t('commons.resetFilters')}</span>
                 </button>
               ) : (
                 <button
@@ -1248,7 +1252,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
                   onClick={() => openComposerWithGate({ initialStep: 1 })}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >
-                  <span>Share something</span>
+                  <span>{t('commons.shareSomething')}</span>
                 </button>
               )}
             </div>
@@ -1291,11 +1295,11 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="commons-back-to-top fixed bottom-[calc(104px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] right-4 sm:right-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          title="Back to top"
+          className="commons-back-to-top fixed bottom-[calc(104px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] end-4 sm:end-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          title={t('commons.backToTop')}
         >
           <ArrowUp size={14} />
-          <span>Back to top</span>
+          <span>{t('commons.backToTop')}</span>
         </button>
       )}
 

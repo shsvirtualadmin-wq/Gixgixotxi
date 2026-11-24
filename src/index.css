@@ -11661,7 +11661,7 @@ button.section-chip:active:not(:disabled),
   position: absolute;
   top: 4px;
   bottom: 4px;
-  left: 4px;
+  inset-inline-start: 4px;
   border-radius: 9999px;
   background: #D71921;
   border: 1px solid rgba(255, 255, 255, 0.28);
@@ -13928,5 +13928,200 @@ html.smooth-mode .plus-badge.pb::after {
     animation: none !important;
   }
 }
+
+/* ==========================================================================
+   MULTI-LANGUAGE FONTS, ANTI-CLIPPING LINE-HEIGHT, AND RTL LAYOUT SUPPORT
+   ========================================================================== */
+
+/* Urdu (Nastaliq) — generous line-height & padding so ascenders/descenders never clip */
+html[lang="ur"],
+html[lang="ur"] body,
+html[lang="ur"] button,
+html[lang="ur"] input,
+html[lang="ur"] textarea,
+html[lang="ur"] select {
+  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', 'Inter', sans-serif !important;
+  letter-spacing: 0 !important;
+  word-spacing: 0.04em;
+}
+
+html[lang="ur"] body {
+  line-height: 2.15;
+}
+
+html[lang="ur"] h1,
+html[lang="ur"] h2,
+html[lang="ur"] h3,
+html[lang="ur"] h4,
+html[lang="ur"] .font-doto-title {
+  font-family: 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', sans-serif !important;
+  letter-spacing: 0 !important;
+  line-height: 2.05 !important;
+  padding-top: 0.12em;
+  padding-bottom: 0.16em;
+}
+
+html[lang="ur"] p,
+html[lang="ur"] span,
+html[lang="ur"] label,
+html[lang="ur"] li,
+html[lang="ur"] a {
+  letter-spacing: 0 !important;
+  line-height: 2.05;
+}
+
+html[lang="ur"] button,
+html[lang="ur"] [role="tab"],
+html[lang="ur"] [role="button"] {
+  line-height: 1.95 !important;
+}
+
+html[lang="ur"] input,
+html[lang="ur"] textarea,
+html[lang="ur"] select {
+  line-height: 2 !important;
+  min-height: 46px;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+html[lang="ur"] .truncate {
+  padding-top: 0.14em;
+  padding-bottom: 0.18em;
+  line-height: 2 !important;
+}
+
+html[lang="ur"] .leading-none,
+html[lang="ur"] .leading-tight,
+html[lang="ur"] .leading-snug {
+  line-height: 1.95 !important;
+}
+
+/* Arabic (Naskh) — clean connected cursive script without letter-spacing breaks */
+html[lang="ar"],
+html[lang="ar"] body,
+html[lang="ar"] button,
+html[lang="ar"] input,
+html[lang="ar"] textarea,
+html[lang="ar"] select {
+  font-family: 'Noto Naskh Arabic', 'Inter', sans-serif !important;
+  letter-spacing: 0 !important;
+}
+
+html[lang="ar"] body {
+  line-height: 1.75;
+}
+
+html[lang="ar"] h1,
+html[lang="ar"] h2,
+html[lang="ar"] h3,
+html[lang="ar"] h4,
+html[lang="ar"] .font-doto-title {
+  font-family: 'Noto Naskh Arabic', sans-serif !important;
+  letter-spacing: 0 !important;
+  line-height: 1.65 !important;
+}
+
+html[lang="ar"] p,
+html[lang="ar"] span,
+html[lang="ar"] label,
+html[lang="ar"] button {
+  letter-spacing: 0 !important;
+}
+
+html[lang="ar"] .leading-none,
+html[lang="ar"] .leading-tight {
+  line-height: 1.55 !important;
+}
+
+/* Hindi (Devanagari) — extra vertical clearance for matras & shirorekha */
+html[lang="hi"],
+html[lang="hi"] body,
+html[lang="hi"] button,
+html[lang="hi"] input,
+html[lang="hi"] textarea,
+html[lang="hi"] select {
+  font-family: 'Noto Sans Devanagari', 'Inter', sans-serif !important;
+}
+
+html[lang="hi"] body {
+  line-height: 1.65;
+}
+
+html[lang="hi"] h1,
+html[lang="hi"] h2,
+html[lang="hi"] h3,
+html[lang="hi"] h4,
+html[lang="hi"] .font-doto-title {
+  font-family: 'Noto Sans Devanagari', sans-serif !important;
+  line-height: 1.5 !important;
+  padding-top: 0.08em;
+  padding-bottom: 0.08em;
+}
+
+html[lang="hi"] .leading-none,
+html[lang="hi"] .leading-tight {
+  line-height: 1.5 !important;
+}
+
+/* Chinese (Simplified) */
+html[lang="zh"],
+html[lang="zh"] body,
+html[lang="zh"] button,
+html[lang="zh"] input,
+html[lang="zh"] textarea,
+html[lang="zh"] select {
+  font-family: 'Noto Sans SC', 'Inter', sans-serif !important;
+}
+
+html[lang="zh"] h1,
+html[lang="zh"] h2,
+html[lang="zh"] h3,
+html[lang="zh"] h4,
+html[lang="zh"] .font-doto-title {
+  font-family: 'Noto Sans SC', sans-serif !important;
+}
+
+/* Keep brand/numeric inline elements readable in RTL */
+.ltr-nums,
+html[dir="rtl"] input[type="email"],
+html[dir="rtl"] input[type="url"],
+html[dir="rtl"] input[type="tel"],
+html[dir="rtl"] code {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+html[dir="rtl"] input[type="email"],
+html[dir="rtl"] input[type="url"],
+html[dir="rtl"] input[type="tel"] {
+  text-align: right;
+}
+
+/* RTL Mirroring for directional icons (back arrows, forward chevrons) */
+html[dir="rtl"] svg.lucide-chevron-right:not(.no-rtl-flip),
+html[dir="rtl"] svg.lucide-chevron-left:not(.no-rtl-flip),
+html[dir="rtl"] svg.lucide-arrow-left:not(.no-rtl-flip),
+html[dir="rtl"] svg.lucide-arrow-right:not(.no-rtl-flip) {
+  transform: scaleX(-1);
+}
+
+/* RTL Full-screen menu slide direction */
+html[dir="rtl"] .fsm-page--closed {
+  transform: translate3d(-100%, 0, 0);
+}
+
+/* RTL text alignment defaults for inputs and dialogs */
+html[dir="rtl"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html[dir="rtl"] textarea,
+html[dir="rtl"] select {
+  text-align: start;
+}
+
+/* Prevent horizontal overflow from longer labels on mobile */
+.sdn-tab-btn {
+  overflow: visible;
+}
+
 
 

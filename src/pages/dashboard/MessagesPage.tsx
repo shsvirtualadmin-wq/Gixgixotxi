@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { SUPER_ADMIN_UID, SUPER_ADMIN_NAME } from '@/constants/superAdmin';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/components/chat/DirectMessageModal';
 
 export function MessagesPage() {
+  const { t } = useLanguage();
   const { user, isGuest } = useAuth();
   const [searchParams] = useSearchParams();
   const params = useParams<{ conversationId?: string }>();
@@ -56,7 +58,7 @@ export function MessagesPage() {
     }
 
     if (!uid || uid === user?.uid) return null;
-    const defaultName = uid === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : 'Student';
+    const defaultName = uid === SUPER_ADMIN_UID ? SUPER_ADMIN_NAME : t('common.student');
     const name = searchParams.get('name') || defaultName;
     return {
       uid,
@@ -69,22 +71,23 @@ export function MessagesPage() {
     user?.uid,
     initialTab,
     routeState?.partner,
+    t,
   ]);
 
   if (isGuest || (user?.uid && user.uid.startsWith('guest_'))) {
     return (
       <div data-student-page="messages" className="min-h-screen bg-[var(--bg)] text-[var(--text)] px-4 pt-6 pb-24 max-w-2xl mx-auto space-y-5">
         <PageMeta
-          title="Messages — Boardly"
-          description="Direct conversations and chat requests with fellow students."
+          title={`${t('chat.title')} — Boardly`}
+          description={t('chat.subtitle')}
           noindex={true}
         />
         <header>
-          <h1 className="font-doto-title text-2xl tracking-[0.08em] text-[var(--text)]">
-            MESSAGES
+          <h1 className="font-doto-title text-2xl tracking-[0.08em] text-[var(--text)] uppercase">
+            {t('chat.title')}
           </h1>
           <p className="text-sm text-[var(--muted)] mt-1">
-            Direct conversations and chat requests with fellow students.
+            {t('chat.subtitle')}
           </p>
         </header>
         <div className="boardly-glass-card rounded-[28px] p-8 text-center space-y-2.5">
@@ -92,11 +95,10 @@ export function MessagesPage() {
             <MessageCircle className="w-5 h-5" />
           </div>
           <p className="text-[15px] font-bold text-[var(--text)]">
-            Sign in with a full account to chat
+            {t('chat.guestTitle')}
           </p>
           <p className="text-[13px] text-[var(--muted)] max-w-xs mx-auto leading-relaxed">
-            Upgrade your guest session to send chat requests and message fellow
-            students directly.
+            {t('chat.guestDesc')}
           </p>
         </div>
       </div>
@@ -106,8 +108,8 @@ export function MessagesPage() {
   return (
     <>
       <PageMeta
-        title="Messages — Boardly"
-        description="Direct conversations and chat requests with fellow students."
+        title={`${t('chat.title')} — Boardly`}
+        description={t('chat.subtitle')}
         noindex={true}
       />
       <MessagesDashboardContent

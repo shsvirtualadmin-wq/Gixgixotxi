@@ -93,6 +93,7 @@ import { ProCheckoutSheet } from '@/components/plans/ProCheckoutSheet';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { fetchStudentProRequests } from '@/services/proSubscriptionService';
 import type { PaymentRequest } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type StoreTab =
   | 'all'
@@ -129,6 +130,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   defaultOpenGetKobans = false,
 }) => {
   const navigate = useNavigate();
+  const { t, formatNumber } = useLanguage();
   const { user, profile: authUserProfile, isGuest } = useAuth();
   const { profile: liveUserProfile } = useUserProfile();
   const userProfile = liveUserProfile || authUserProfile;
@@ -707,7 +709,7 @@ export const StorePage: React.FC<StorePageProps> = ({
     (item: EnrichedCosmeticItem) => {
       if (purchasingSingleLockRef.current || cartProcessing) return;
       if (!isSuperAdmin && owned.includes(item.id)) {
-        showToast('error', 'You already own this item.');
+        showToast('error', t('store.alreadyOwned'));
         return;
       }
       // Enforce only ONE modal/sheet open at a time
@@ -725,7 +727,7 @@ export const StorePage: React.FC<StorePageProps> = ({
       }
       setConfirmBuyItem(item);
     },
-    [cartProcessing, confirmBuyItem?.id, isSuperAdmin, owned, showToast]
+    [cartProcessing, confirmBuyItem?.id, isSuperAdmin, owned, showToast, t]
   );
 
   // Keyboard navigation & Escape / browser Back button support for sheets
@@ -823,11 +825,11 @@ export const StorePage: React.FC<StorePageProps> = ({
       showToast(
         'success',
         currentlyEquipped
-          ? `Unequipped ${item.name}`
-          : `Equipped ${item.name}!`
+          ? t('store.unequippedItem', { name: item.name })
+          : t('store.equippedItem', { name: item.name })
       );
     } catch (err: any) {
-      showToast('error', err?.message || 'Failed to update equipped cosmetic');
+      showToast('error', err?.message || t('store.failedUpdateEquip'));
     }
   };
 
@@ -842,14 +844,12 @@ export const StorePage: React.FC<StorePageProps> = ({
       return;
     }
     if (isGuest || user.uid.startsWith('guest_')) {
-      setSinglePurchaseError(
-        'Guest accounts cannot purchase items with Kobans. Please create a registered account to use the Boardly Store.'
-      );
+      setSinglePurchaseError(t('store.guestCannotPurchase'));
       return;
     }
     if (!isSuperAdmin && owned.includes(confirmBuyItem.id)) {
-      setSinglePurchaseError('You already own this item.');
-      showToast('error', 'You already own this item.');
+      setSinglePurchaseError(t('store.alreadyOwned'));
+      showToast('error', t('store.alreadyOwned'));
       return;
     }
     if (!singlePurchaseKeyRef.current) {
@@ -880,10 +880,10 @@ export const StorePage: React.FC<StorePageProps> = ({
       refreshWallet().catch(() => {});
       showToast(
         'success',
-        `Unlocked & equipped ${confirmBuyItem.name}!`
+        t('store.unlockedEquipped', { name: confirmBuyItem.name })
       );
     } catch (err: any) {
-      const msg = err?.message || 'Purchase could not be completed.';
+      const msg = err?.message || t('store.purchaseFailed');
       setSinglePurchaseError(msg);
       showToast('error', msg);
     } finally {
@@ -922,8 +922,8 @@ export const StorePage: React.FC<StorePageProps> = ({
     showToast(
       'success',
       addedCount > 0
-        ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'} to your cart`
-        : 'Selected items are already in your cart'
+        ? t('store.addedMultipleToCart', { count: formatNumber(addedCount) })
+        : t('store.selectedAlreadyInCart')
     );
   };
 
@@ -954,9 +954,7 @@ export const StorePage: React.FC<StorePageProps> = ({
       return;
     }
     if (isGuest || user.uid.startsWith('guest_')) {
-      setCartError(
-        'Guest accounts cannot purchase items with Kobans. Please create a registered account to complete your purchase.'
-      );
+      setCartError(t('store.guestCannotPurchase'));
       return;
     }
     if (cartItems.length === 0 || cartProcessing) return;
@@ -996,7 +994,7 @@ export const StorePage: React.FC<StorePageProps> = ({
       setCompletedOrder(result);
     } catch (err: any) {
       setCartError(
-        err?.message || 'Checkout could not be completed. No Kobans were deducted.'
+        err?.message || t('store.checkoutFailed')
       );
     } finally {
       setCartProcessing(false);
@@ -1015,11 +1013,11 @@ export const StorePage: React.FC<StorePageProps> = ({
         slotUpdates[entry.type] = entry.id;
       }
       await equipMultipleCosmetics(slotUpdates);
-      showToast('success', 'Equipped your new cosmetics!');
+      showToast('success', t('store.equippedNewCosmetics'));
       setCompletedOrder(null);
       setCartOpen(false);
     } catch (err: any) {
-      showToast('error', err?.message || 'Could not equip items');
+      showToast('error', err?.message || t('store.couldNotEquip'));
     } finally {
       setEquippingOrder(false);
     }
@@ -1042,35 +1040,35 @@ export const StorePage: React.FC<StorePageProps> = ({
   };
 
   const tabs: { id: StoreTab; label: string; count: number }[] = [
-    { id: 'all', label: 'All Items', count: liveCatalog.length },
+    { id: 'all', label: t('store.tabAll'), count: liveCatalog.length },
     {
       id: 'banner',
-      label: 'Banners',
+      label: t('store.tabBanners'),
       count: liveCatalog.filter((i) => i.type === 'banner').length,
     },
     {
       id: 'avatar',
-      label: 'Profile Pictures',
+      label: t('store.tabAvatars'),
       count: liveCatalog.filter((i) => i.type === 'avatar').length,
     },
     {
       id: 'frame',
-      label: 'Avatar Frames',
+      label: t('store.tabFrames'),
       count: liveCatalog.filter((i) => i.type === 'frame').length,
     },
     {
       id: 'effect',
-      label: 'Profile Effects',
+      label: t('store.tabEffects'),
       count: liveCatalog.filter((i) => i.type === 'effect').length,
     },
     {
       id: 'nameplate',
-      label: 'Nameplates',
+      label: t('store.tabNameplates'),
       count: liveCatalog.filter((i) => i.type === 'nameplate').length,
     },
     {
       id: 'collection',
-      label: 'My Collection',
+      label: t('store.tabCollection'),
       count: isSuperAdmin ? liveCatalog.length : owned.length,
     },
   ];
@@ -1129,20 +1127,20 @@ export const StorePage: React.FC<StorePageProps> = ({
             <button
               type="button"
               onClick={() => navigate(-1)}
-              aria-label="Go back"
+              aria-label={t('common.back')}
               className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center transition-colors shrink-0"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4 rtl-mirror" />
             </button>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <ShoppingBag className="w-4 h-4 text-[#E11D2A] shrink-0" />
                 <h1 className="text-sm sm:text-lg font-black tracking-tight truncate">
-                  Boardly Store
+                  {t('store.title')}
                 </h1>
               </div>
               <p className="text-[10px] sm:text-xs text-[var(--text-muted)] hidden sm:block truncate">
-                Animated cosmetics · Multi-buy cart · Instant unlock
+                {t('store.subtitle')}
               </p>
             </div>
           </div>
@@ -1157,13 +1155,13 @@ export const StorePage: React.FC<StorePageProps> = ({
             )}
 
             {/* Live Koban Wallet Balance with "+" button */}
-            <div className="h-9 pl-2.5 pr-1 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center gap-1.5">
+            <div className="h-9 ps-2.5 pe-1 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center gap-1.5">
               <KobanIcon size={16} />
-              <span className="text-xs sm:text-sm font-black tabular-nums text-[var(--text-primary)] inline-flex items-center">
+              <span className="text-xs sm:text-sm font-black tabular-nums ltr-nums text-[var(--text-primary)] inline-flex items-center">
                 {!balanceLoaded || kobanBalance === null ? (
-                  <span className="inline-block w-10 h-3.5 rounded-md skeleton" aria-label="Loading balance" />
+                  <span className="inline-block w-10 h-3.5 rounded-md skeleton" aria-label={t('common.loading')} />
                 ) : (
-                  kobanBalance.toLocaleString()
+                  formatNumber(kobanBalance)
                 )}
               </span>
               <button
@@ -1172,9 +1170,9 @@ export const StorePage: React.FC<StorePageProps> = ({
                   setGetKobansInitialAmount(undefined);
                   setGetKobansOpen(true);
                 }}
-                aria-label="Get more Kobans"
-                title="Get Kobans"
-                className="w-7 h-7 rounded-lg bg-[#E11D2A] hover:bg-[#c81824] text-white flex items-center justify-center transition-colors ml-0.5"
+                aria-label={t('store.getMoreKobans')}
+                title={t('kobans.getKobans')}
+                className="w-7 h-7 rounded-lg bg-[#E11D2A] hover:bg-[#c81824] text-white flex items-center justify-center transition-colors ms-0.5"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.75]" />
               </button>
@@ -1183,8 +1181,8 @@ export const StorePage: React.FC<StorePageProps> = ({
             <button
               type="button"
               onClick={toggleTheme}
-              aria-label="Toggle theme"
-              title="Toggle theme"
+              aria-label={t('settings.theme')}
+              title={t('settings.theme')}
               className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             >
               {isDark ? (
@@ -1211,7 +1209,7 @@ export const StorePage: React.FC<StorePageProps> = ({
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Cosmetics ({liveCatalog.length})</span>
+              <span>{t('store.cosmeticsCount', { count: formatNumber(liveCatalog.length) })}</span>
             </button>
             {!isGuest && (
               <button
@@ -1233,9 +1231,9 @@ export const StorePage: React.FC<StorePageProps> = ({
                 }`}
               >
                 <Crown className="w-3.5 h-3.5" />
-                <span>Pro &amp; Plus</span>
+                <span>{t('store.proAndPlus')}</span>
                 {effectiveIsPro && (
-                  <span className="ml-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
+                  <span className="ms-1 px-1.5 py-0.2 rounded text-[9px] font-mono uppercase bg-white/20 text-[#FFFFFF]">
                     {effectiveIsPlus ? 'Plus' : 'Pro'}
                   </span>
                 )}
@@ -1251,7 +1249,7 @@ export const StorePage: React.FC<StorePageProps> = ({
               </span>
             )}
             <div className="text-[11px] font-semibold text-[var(--text-muted)] hidden sm:block">
-              10 Kobans = PKR 1 · Instant delivery
+              {t('store.rateBanner')}
             </div>
           </div>
         </div>
@@ -1291,14 +1289,13 @@ export const StorePage: React.FC<StorePageProps> = ({
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#E8342A]/10 border border-[#E8342A]/30 text-[#E8342A] text-[11px] font-mono font-bold uppercase tracking-wider">
                   <Crown className="w-3.5 h-3.5" />
-                  <span>Boardly Pro &amp; Plus Passes</span>
+                  <span>{t('plans.passesBadge')}</span>
                 </div>
                 <h2 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--text-primary)] tracking-tight leading-tight">
-                  Unlock Unlimited Mock Tests, Deep AI &amp; Exclusive Perks
+                  {t('plans.headline')}
                 </h2>
                 <p className="font-body text-xs sm:text-sm text-[var(--text-secondary)] max-w-2xl leading-relaxed">
-                  Pay instantly using your Koban wallet balance or via JazzCash / Opay.{' '}
-                  {REFUND_POLICY_TEXT}
+                  {t('plans.paymentNote')} {t('plans.refundPolicy')}
                 </p>
               </div>
 
@@ -1313,7 +1310,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         : 'text-[var(--text-secondary)]'
                     }`}
                   >
-                    Monthly
+                    {t('plans.monthly')}
                   </button>
                   <button
                     type="button"
@@ -1324,8 +1321,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                         : 'text-[var(--text-secondary)]'
                     }`}
                   >
-                    <span>Annual</span>
-                    <span className="text-[10px] font-mono text-[#E8342A]">
+                    <span>{t('plans.annual')}</span>
+                    <span className="text-[10px] font-mono text-[#E8342A] ltr-nums">
                       -{plansConfig.annualDiscountPercent}%
                     </span>
                   </button>
@@ -1347,20 +1344,21 @@ export const StorePage: React.FC<StorePageProps> = ({
                       ? plansCatalog.plus_annual
                       : plansCatalog.plus_monthly;
                   const proCtaDisabled = effectiveIsPlus || (planStatus.isPersonalPro && !effectiveIsPlus);
+                  const cadenceShort = membershipBilling === 'annual' ? t('plans.perYearShort') : t('plans.perMonthShort');
                   const proCtaLabel = effectiveIsPlus
-                    ? 'Included in Plus'
+                    ? t('plans.includedInPlus')
                     : planStatus.isPersonalPro
-                    ? 'Current plan'
-                    : `Upgrade to Pro · PKR ${proPlan.price_pkr.toLocaleString()}${
-                        membershipBilling === 'annual' ? '/yr' : '/mo'
-                      }`;
+                    ? t('plans.currentPlan')
+                    : t('plans.upgradeToProPrice', {
+                        price: `PKR ${formatNumber(proPlan.price_pkr)}${cadenceShort}`,
+                      });
                   const plusCtaLabel = effectiveIsPlus
-                    ? `Extend Plus · PKR ${plusPlan.price_pkr.toLocaleString()}${
-                        membershipBilling === 'annual' ? '/yr' : '/mo'
-                      }`
-                    : `Upgrade to Plus · PKR ${plusPlan.price_pkr.toLocaleString()}${
-                        membershipBilling === 'annual' ? '/yr' : '/mo'
-                      }`;
+                    ? t('plans.extendPlusPrice', {
+                        price: `PKR ${formatNumber(plusPlan.price_pkr)}${cadenceShort}`,
+                      })
+                    : t('plans.upgradeToPlusPrice', {
+                        price: `PKR ${formatNumber(plusPlan.price_pkr)}${cadenceShort}`,
+                      });
 
                   return (
                     <>
@@ -1368,20 +1366,20 @@ export const StorePage: React.FC<StorePageProps> = ({
                         title="Boardly Pro"
                         subtitle={
                           membershipBilling === 'annual'
-                            ? `Annual pass · ${proPlan.duration_days} days`
-                            : `Monthly pass · ${proPlan.duration_days} days`
+                            ? t('plans.annualPassDays', { days: formatNumber(proPlan.duration_days) })
+                            : t('plans.monthlyPassDays', { days: formatNumber(proPlan.duration_days) })
                         }
-                        durationBadge={`${proPlan.duration_days} Days`}
-                        topRightBadge="Popular"
+                        durationBadge={t('plans.daysCount', { days: formatNumber(proPlan.duration_days) })}
+                        topRightBadge={t('plans.popular')}
                         topRightBadgeTone="pro"
                         icon={<Crown size={17} />}
                         pricePkr={proPlan.price_pkr}
-                        cadenceLabel={proPlan.cadenceLabel}
+                        cadenceLabel={cadenceShort}
                         priceKobans={proPlan.price_kobans}
                         regularPricePkr={proPlan.regular_price_pkr}
                         priceSubtext={
                           planStatus.isPersonalPro && !effectiveIsPlus && planStatus.expiryFormatted
-                            ? `Active until ${planStatus.expiryFormatted}`
+                            ? t('plans.activeUntil', { date: planStatus.expiryFormatted })
                             : proPlan.description
                         }
                         features={proPlan.features}
@@ -1398,24 +1396,24 @@ export const StorePage: React.FC<StorePageProps> = ({
                         title="Boardly Plus"
                         subtitle={
                           membershipBilling === 'annual'
-                            ? `Annual pass · ${plusPlan.duration_days} days`
-                            : `Monthly pass · ${plusPlan.duration_days} days`
+                            ? t('plans.annualPassDays', { days: formatNumber(plusPlan.duration_days) })
+                            : t('plans.monthlyPassDays', { days: formatNumber(plusPlan.duration_days) })
                         }
-                        durationBadge={`${plusPlan.duration_days} Days`}
-                        topRightBadge="Best value"
+                        durationBadge={t('plans.daysCount', { days: formatNumber(plusPlan.duration_days) })}
+                        topRightBadge={t('plans.bestValue')}
                         topRightBadgeTone="plus"
                         icon={<Sparkles size={17} />}
                         pricePkr={plusPlan.price_pkr}
-                        cadenceLabel={plusPlan.cadenceLabel}
+                        cadenceLabel={cadenceShort}
                         priceKobans={plusPlan.price_kobans}
                         regularPricePkr={plusPlan.regular_price_pkr}
                         priceSubtext={
                           effectiveIsPlus && planStatus.expiryFormatted
-                            ? `Active until ${planStatus.expiryFormatted}`
+                            ? t('plans.activeUntil', { date: planStatus.expiryFormatted })
                             : planStatus.isPersonalPro
                             ? proToPlusCreditDays > 0
-                              ? `Your unused Pro days are credited to Plus (+${proToPlusCreditDays} bonus days)`
-                              : 'Your unused Pro days are credited to Plus'
+                              ? t('plans.unusedProCreditedDays', { days: formatNumber(proToPlusCreditDays) })
+                              : t('plans.unusedProCredited')
                             : plusPlan.description
                         }
                         features={plusPlan.features}
@@ -1436,10 +1434,10 @@ export const StorePage: React.FC<StorePageProps> = ({
             <div className="rounded-[22px] border border-[var(--border)] bg-[var(--bg-card)] p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
-                  What you get with Pro &amp; Plus
+                  {t('plans.whatYouGet')}
                 </h3>
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
-                  Full Scholar Access
+                  {t('plans.fullScholarAccess')}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1460,11 +1458,11 @@ export const StorePage: React.FC<StorePageProps> = ({
                           {icons[idx % icons.length]}
                         </div>
                         <span className="font-heading font-bold text-xs sm:text-[13px] text-[var(--text-primary)] leading-snug">
-                          {item.title}
+                          {t(`plans.highlight_${idx}_title`)}
                         </span>
                       </div>
                       <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                        {item.description}
+                        {t(`plans.highlight_${idx}_desc`)}
                       </p>
                     </div>
                   );
@@ -1477,27 +1475,27 @@ export const StorePage: React.FC<StorePageProps> = ({
               <div className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-[#E8342A]" />
                 <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text-primary)]">
-                  Frequently Asked Questions
+                  {t('plans.faqTitle')}
                 </h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {planFaqItems.map((faq) => (
+                {planFaqItems.map((faq, idx) => (
                   <div
                     key={faq.question}
                     className="rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] p-4 space-y-1.5"
                   >
                     <h4 className="font-heading font-bold text-xs sm:text-sm text-[var(--text-primary)]">
-                      {faq.question}
+                      {t(`plans.faq_${idx}_q`)}
                     </h4>
                     <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                      {faq.answer}
+                      {t(`plans.faq_${idx}_a`)}
                     </p>
                   </div>
                 ))}
               </div>
               <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
                 <ShieldCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                <span>{REFUND_POLICY_TEXT}</span>
+                <span>{t('plans.refundPolicy')}</span>
               </div>
             </div>
           </div>
@@ -1510,7 +1508,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                 <button
                   type="button"
                   onClick={() => setLoadoutExpanded((prev) => !prev)}
-                  className="flex items-center gap-2.5 min-w-0 text-left flex-1"
+                  className="flex items-center gap-2.5 min-w-0 text-start flex-1"
                 >
                   <div className="w-7 h-7 rounded-lg bg-[#E11D2A]/15 border border-[#E11D2A]/30 flex items-center justify-center text-[#E11D2A] shrink-0">
                     <Eye className="w-3.5 h-3.5" />
@@ -1518,11 +1516,11 @@ export const StorePage: React.FC<StorePageProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-black uppercase tracking-wider text-[var(--text-primary)]">
-                        {isPreviewingAny ? 'Live Try-On Preview' : 'Active Loadout'}
+                        {isPreviewingAny ? t('store.liveTryOn') : t('store.activeLoadout')}
                       </span>
                       {isPreviewingAny && (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)]">
-                          Previewing
+                          {t('store.previewing')}
                         </span>
                       )}
                     </div>
@@ -1535,7 +1533,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                           activeEffect && getCosmeticById(activeEffect)?.name,
                           activeNameplate && getCosmeticById(activeNameplate)?.name,
                         ].filter(Boolean) as string[]
-                      ).join(' · ') || 'Default profile styling — tap to expand'}
+                      ).join(' · ') || t('store.defaultStyling')}
                     </p>
                   </div>
                 </button>
@@ -1548,7 +1546,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                       className="h-7 px-2.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)] flex items-center gap-1"
                     >
                       <X className="w-3 h-3" />
-                      <span>Reset</span>
+                      <span>{t('common.reset')}</span>
                     </button>
                   )}
                   <button
@@ -1556,12 +1554,12 @@ export const StorePage: React.FC<StorePageProps> = ({
                     onClick={() => setLoadoutExpanded((prev) => !prev)}
                     aria-label={
                       loadoutExpanded
-                        ? 'Collapse Active Loadout'
-                        : 'Expand Active Loadout'
+                        ? t('store.hide')
+                        : t('store.preview')
                     }
                     className="h-7 px-2.5 rounded-lg bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-[11px] font-bold text-[var(--text-secondary)] inline-flex items-center gap-1"
                   >
-                    <span>{loadoutExpanded ? 'Hide' : 'Preview'}</span>
+                    <span>{loadoutExpanded ? t('store.hide') : t('store.preview')}</span>
                     {loadoutExpanded ? (
                       <ChevronUp className="w-3.5 h-3.5" />
                     ) : (
@@ -1609,7 +1607,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                             />
                           </AvatarFrame>
                         )}
-                        <div className="flex-1 text-center sm:text-left space-y-1 min-w-0">
+                        <div className="flex-1 text-center sm:text-start space-y-1 min-w-0">
                           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                             <span
                               className="text-sm font-black text-white truncate"
@@ -1621,7 +1619,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                               {displayName}
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#E11D2A]/25 text-red-300 border border-[#E11D2A]/40">
-                              Scholar
+                              {t('profile.scholar')}
                             </span>
                           </div>
                           <Nameplate
@@ -1647,11 +1645,11 @@ export const StorePage: React.FC<StorePageProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-[11px]">
                     {(
                       [
-                        { key: 'banner', label: 'Banner', val: activeBanner },
-                        { key: 'avatar', label: 'Avatar', val: activeAvatar },
-                        { key: 'frame', label: 'Frame', val: activeFrame },
-                        { key: 'effect', label: 'Effect', val: activeEffect },
-                        { key: 'nameplate', label: 'Nameplate', val: activeNameplate },
+                        { key: 'banner', label: t('store.cat_banner'), val: activeBanner },
+                        { key: 'avatar', label: t('store.cat_avatar'), val: activeAvatar },
+                        { key: 'frame', label: t('store.cat_frame'), val: activeFrame },
+                        { key: 'effect', label: t('store.cat_effect'), val: activeEffect },
+                        { key: 'nameplate', label: t('store.cat_nameplate'), val: activeNameplate },
                       ] as const
                     ).map((slot) => {
                       const itemObj = slot.val ? getCosmeticById(slot.val) : null;
@@ -1665,7 +1663,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                               {slot.label}
                             </span>
                             <span className="font-bold truncate block text-[var(--text-primary)]">
-                              {itemObj ? itemObj.name : 'None'}
+                              {itemObj ? itemObj.name : t('common.none')}
                             </span>
                           </div>
                           {slot.val && equipped[slot.key] === slot.val && (
@@ -1674,7 +1672,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                               onClick={() => equipCosmetic(slot.key, null)}
                               className="text-[10px] font-bold text-red-400 hover:text-red-300 shrink-0"
                             >
-                              Clear
+                              {t('common.clear')}
                             </button>
                           )}
                         </div>
@@ -1689,21 +1687,21 @@ export const StorePage: React.FC<StorePageProps> = ({
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               {/* Search input */}
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-4 h-4 text-[var(--text-muted)] absolute start-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="search"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search banners, avatars, frames, effects, nameplates…"
-                  aria-label="Search store items by name"
-                  className="w-full h-10 pl-10 pr-9 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                  placeholder={t('store.searchPlaceholder')}
+                  aria-label={t('store.searchPlaceholder')}
+                  className="w-full h-10 ps-10 pe-9 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    aria-label="Clear search"
-                    className="w-6 h-6 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] flex items-center justify-center text-[var(--text-muted)] absolute right-2 top-1/2 -translate-y-1/2"
+                    aria-label={t('common.clear')}
+                    className="w-6 h-6 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] flex items-center justify-center text-[var(--text-muted)] absolute end-2 top-1/2 -translate-y-1/2"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1722,10 +1720,10 @@ export const StorePage: React.FC<StorePageProps> = ({
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>Filters</span>
+                  <span>{t('store.filters')}</span>
                   {activeFilterCount > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-[#E11D2A] text-white text-[10px] font-black flex items-center justify-center">
-                      {activeFilterCount}
+                    <span className="w-5 h-5 rounded-full bg-[#E11D2A] text-white text-[10px] font-black flex items-center justify-center ltr-nums">
+                      {formatNumber(activeFilterCount)}
                     </span>
                   )}
                 </button>
@@ -1737,7 +1735,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                     className="h-10 px-3 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)] inline-flex items-center gap-1"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>Clear all</span>
+                    <span>{t('store.clearAll')}</span>
                   </button>
                 )}
 
@@ -1756,7 +1754,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                   }`}
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
-                  <span>{selectionMode ? 'Cancel Select' : 'Select'}</span>
+                  <span>{selectionMode ? t('store.cancelSelect') : t('store.select')}</span>
                 </button>
               </div>
             </div>
@@ -1815,13 +1813,13 @@ export const StorePage: React.FC<StorePageProps> = ({
                 <div className="space-y-1">
                   <p className="text-sm sm:text-base font-extrabold text-[var(--text-primary)]">
                     {activeTab === 'collection'
-                      ? 'Your collection has no matching items yet'
-                      : 'No cosmetics match your current filters'}
+                      ? t('store.emptyCollectionTitle')
+                      : t('store.emptyFilteredTitle')}
                   </p>
                   <p className="text-xs text-[var(--text-muted)] max-w-md mx-auto">
                     {activeTab === 'collection'
-                      ? 'Unlock animated banners, avatars, frames, profile effects, or nameplates to see them here.'
-                      : 'Try clearing your search or relaxing your price and rarity filters.'}
+                      ? t('store.emptyCollectionDesc')
+                      : t('store.emptyFilteredDesc')}
                   </p>
                 </div>
                 <div className="pt-1 flex items-center justify-center gap-2">
@@ -1832,7 +1830,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                       className="px-4 py-2.5 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs font-extrabold inline-flex items-center gap-1.5"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Clear filters</span>
+                      <span>{t('store.clearFilters')}</span>
                     </button>
                   )}
                   {activeTab === 'collection' && (
@@ -1841,7 +1839,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                       onClick={() => setActiveTab('all')}
                       className="px-4 py-2.5 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-extrabold text-[var(--text-primary)]"
                     >
-                      Browse All Items
+                      {t('store.browseAllItems')}
                     </button>
                   )}
                 </div>
@@ -1886,7 +1884,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                           if (purchasingSingleLockRef.current) return;
                           const res = toggleCartItem(clicked.id);
                           if (res === 'added') {
-                            showToast('success', `Added ${clicked.name} to cart`);
+                            showToast('success', t('store.addedToCartToast', { name: clicked.name }));
                           }
                         }}
                         onBuyNow={() => {
@@ -1924,13 +1922,13 @@ export const StorePage: React.FC<StorePageProps> = ({
         <div className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg bottom-[calc(86px+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl bg-[var(--bg-card)] border border-[#E11D2A]/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs sm:text-sm font-black text-[var(--text-primary)] truncate">
-              {selectedIds.length} selected ·{' '}
-              <span className="text-[#E11D2A] tabular-nums">
-                {selectedItemsTotalKobans.toLocaleString()} Kobans
+              {t('store.selectedCount', { count: formatNumber(selectedIds.length) })} ·{' '}
+              <span className="text-[#E11D2A] tabular-nums ltr-nums">
+                {formatNumber(selectedItemsTotalKobans)} Kobans
               </span>
             </p>
             <p className="text-[10px] text-[var(--text-muted)]">
-              Tap cards to toggle selection
+              {t('store.tapToToggle')}
             </p>
           </div>
 
@@ -1943,7 +1941,7 @@ export const StorePage: React.FC<StorePageProps> = ({
               }}
               className="h-9 px-3 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)]"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -1951,30 +1949,30 @@ export const StorePage: React.FC<StorePageProps> = ({
               onClick={handleAddSelectedToCart}
               className="h-9 px-3.5 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs font-black shadow-sm transition-all disabled:opacity-50"
             >
-              Add to Cart
+              {t('store.addToCart')}
             </button>
           </div>
         </div>
       )}
 
-      {/* Floating Cart Pill (bottom-right, above floating nav; hidden when cart is empty or cart/pro drawer is open) */}
+      {/* Floating Cart Pill (bottom-end, above floating nav; hidden when cart is empty or cart/pro drawer is open) */}
       {cartItems.length > 0 && !selectionMode && !cartOpen && !proCheckoutOpen && (
         <button
           type="button"
           onClick={handleOpenCart}
-          aria-label={`Open cart with ${cartItems.length} items`}
-          className={`fixed right-4 sm:right-6 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
+          aria-label={t('cart.title')}
+          className={`fixed end-4 sm:end-6 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
             cartPillBounce ? 'scale-110 ring-4 ring-[#E11D2A]/40' : ''
           }`}
         >
           <span role="img" aria-hidden="true" className="text-base leading-none">
             🛒
           </span>
-          <span className="tabular-nums">{cartItems.length}</span>
+          <span className="tabular-nums ltr-nums">{formatNumber(cartItems.length)}</span>
           <span className="opacity-60">·</span>
           <KobanIcon size={15} />
-          <span className="tabular-nums">
-            {cartTotalKobans.toLocaleString()}
+          <span className="tabular-nums ltr-nums">
+            {formatNumber(cartTotalKobans)}
           </span>
         </button>
       )}
@@ -2044,23 +2042,23 @@ export const StorePage: React.FC<StorePageProps> = ({
                       type="button"
                       disabled={filteredItems.length <= 1}
                       onClick={() => handleNavigateDetail('prev')}
-                      aria-label="Previous item"
+                      aria-label={t('common.previous')}
                       className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
                     >
-                      <ChevronLeft className="w-4 h-4" />
+                      <ChevronLeft className="w-4 h-4 rtl-mirror" />
                     </button>
                     <button
                       type="button"
                       disabled={filteredItems.length <= 1}
                       onClick={() => handleNavigateDetail('next')}
-                      aria-label="Next item"
+                      aria-label={t('common.next')}
                       className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-primary)] disabled:opacity-40"
                     >
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-4 h-4 rtl-mirror" />
                     </button>
                     {detailIndex >= 0 && (
-                      <span className="text-[11px] font-bold text-[var(--text-muted)] ml-1 tabular-nums">
-                        {detailIndex + 1} / {filteredItems.length}
+                      <span className="text-[11px] font-bold text-[var(--text-muted)] ms-1 tabular-nums ltr-nums">
+                        {formatNumber(detailIndex + 1)} / {formatNumber(filteredItems.length)}
                       </span>
                     )}
                   </div>
@@ -2071,19 +2069,19 @@ export const StorePage: React.FC<StorePageProps> = ({
                       onClick={() => {
                         const shareUrl = `${window.location.origin}/store/${encodeURIComponent(detailItem.id)}`;
                         navigator.clipboard?.writeText(shareUrl).then(() => {
-                          showToast('success', 'Item link copied to clipboard!');
+                          showToast('success', t('store.linkCopied'));
                         });
                       }}
-                      aria-label="Share item link"
+                      aria-label={t('common.share')}
                       className="h-8 px-3 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] inline-flex items-center gap-1.5 text-xs font-bold text-[var(--text-primary)] cursor-pointer"
                     >
                       <Share2 className="w-3.5 h-3.5" />
-                      <span>Share</span>
+                      <span>{t('common.share')}</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setDetailItemId(null)}
-                      aria-label="Close item details"
+                      aria-label={t('common.close')}
                       className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center text-[var(--text-secondary)]"
                     >
                       <X className="w-4 h-4" />
@@ -2180,16 +2178,16 @@ export const StorePage: React.FC<StorePageProps> = ({
                             <span
                               className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${r.badgeBg} ${r.badgeText} ${r.badgeBorder}`}
                             >
-                              {r.label} Rarity
+                              {t(`store.rarity_${detailItem.rarity}`)}
                             </span>
                           );
                         })()}
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)]">
-                          {CATEGORY_SHORT_LABEL[detailItem.type]}
+                          {t(`store.cat_${detailItem.type}`)}
                         </span>
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--koban-bg)] border border-[var(--koban-border)] text-[var(--koban)] inline-flex items-center gap-1">
                           <Sparkles className="w-3 h-3" />
-                          <span>Animated</span>
+                          <span>{t('store.animated')}</span>
                         </span>
                       </div>
 
@@ -2205,15 +2203,15 @@ export const StorePage: React.FC<StorePageProps> = ({
                     {/* Price & PKR breakdown */}
                     <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-between">
                       <span className="text-xs font-bold text-[var(--text-secondary)]">
-                        Unlock Price
+                        {t('store.unlockPrice')}
                       </span>
-                      <div className="text-right">
-                        <div className="inline-flex items-center gap-1.5 font-black text-base tabular-nums text-[var(--text-primary)]">
+                      <div className="text-end">
+                        <div className="inline-flex items-center gap-1.5 font-black text-base tabular-nums ltr-nums text-[var(--text-primary)]">
                           <KobanIcon size={17} />
-                          <span>{detailItem.price.toLocaleString()} Kobans</span>
+                          <span>{formatNumber(detailItem.price)} Kobans</span>
                         </div>
-                        <p className="text-[10px] font-semibold text-[var(--text-muted)]">
-                          PKR {(detailItem.price / 10).toLocaleString()} · 10 Kobans = PKR 1
+                        <p className="text-[10px] font-semibold text-[var(--text-muted)] ltr-nums">
+                          PKR {formatNumber(detailItem.price / 10)} · 10 Kobans = PKR 1
                         </p>
                       </div>
                     </div>
@@ -2226,7 +2224,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                         className="w-full h-10 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-extrabold text-[var(--text-primary)] inline-flex items-center justify-center gap-2 transition-colors"
                       >
                         <Eye className="w-4 h-4 text-[#E11D2A]" />
-                        <span>Preview on my profile</span>
+                        <span>{t('store.previewOnProfile')}</span>
                       </button>
 
                       {isItemOwned(detailItem.id) ? (
@@ -2241,8 +2239,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                           <Check className="w-4 h-4" />
                           <span>
                             {isItemEquipped(detailItem)
-                              ? 'Unequip Item'
-                              : 'Equip Now'}
+                              ? t('store.unequipItem')
+                              : t('store.equipNow')}
                           </span>
                         </button>
                       ) : (
@@ -2255,8 +2253,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                               showToast(
                                 'success',
                                 action === 'added'
-                                  ? `Added ${detailItem.name} to cart`
-                                  : `Removed ${detailItem.name} from cart`
+                                  ? t('store.addedToCartToast', { name: detailItem.name })
+                                  : t('store.removedFromCartToast', { name: detailItem.name })
                               );
                             }}
                             className={`h-11 px-3 rounded-xl text-xs sm:text-sm font-extrabold border inline-flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 ${
@@ -2268,12 +2266,12 @@ export const StorePage: React.FC<StorePageProps> = ({
                             {isInCart(detailItem.id) ? (
                               <>
                                 <Check className="w-4 h-4" />
-                                <span>In cart</span>
+                                <span>{t('store.inCart')}</span>
                               </>
                             ) : (
                               <>
                                 <Plus className="w-4 h-4" />
-                                <span>Add to cart</span>
+                                <span>{t('store.addToCart')}</span>
                               </>
                             )}
                           </button>
@@ -2287,8 +2285,8 @@ export const StorePage: React.FC<StorePageProps> = ({
                             className="h-11 px-3 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 shadow-sm transition-all disabled:opacity-60"
                           >
                             <KobanIcon size={15} />
-                            <span>
-                              Buy for {detailItem.price.toLocaleString()} Kobans
+                            <span className="ltr-nums">
+                              {t('store.buyForPrice', { price: formatNumber(detailItem.price) })}
                             </span>
                           </button>
                         </div>
@@ -2320,8 +2318,8 @@ export const StorePage: React.FC<StorePageProps> = ({
               aria-modal="true"
               aria-label={
                 singlePurchaseSuccess
-                  ? 'Purchase Complete'
-                  : 'Confirm Instant Unlock'
+                  ? t('cart.purchaseComplete')
+                  : t('store.confirmUnlockTitle')
               }
               className="fixed inset-0 z-[215] flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-none"
             >
@@ -2338,16 +2336,16 @@ export const StorePage: React.FC<StorePageProps> = ({
                 <div className="flex items-center justify-between">
                   <h3 className="text-base font-black text-[var(--text-primary)]">
                     {singlePurchaseSuccess
-                      ? 'Unlocked & Equipped!'
+                      ? t('store.unlockedAndEquippedTitle')
                       : purchasingSingle
-                      ? 'Unlocking Item…'
-                      : 'Confirm Instant Unlock'}
+                      ? t('store.unlockingItem')
+                      : t('store.confirmUnlockTitle')}
                   </h3>
                   <button
                     type="button"
                     disabled={purchasingSingle}
                     onClick={closeConfirmBuySheet}
-                    aria-label="Close confirmation"
+                    aria-label={t('common.close')}
                     className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-secondary)] disabled:opacity-50"
                   >
                     <X className="w-4 h-4" />
@@ -2360,10 +2358,10 @@ export const StorePage: React.FC<StorePageProps> = ({
                       <CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-400 shrink-0 mt-0.5" />
                       <div className="text-xs space-y-0.5">
                         <p className="font-extrabold text-[var(--text-primary)]">
-                          {singlePurchaseSuccess.item.name} is now in your collection!
+                          {t('store.itemInCollection', { name: singlePurchaseSuccess.item.name })}
                         </p>
                         <p className="text-[var(--text-secondary)]">
-                          We automatically equipped it to your profile.
+                          {t('store.autoEquippedNote')}
                         </p>
                       </div>
                     </div>
@@ -2371,7 +2369,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                     <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] space-y-2 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-[var(--text-secondary)] font-semibold">
-                          Unlocked Item
+                          {t('store.unlockedItemLabel')}
                         </span>
                         <span className="font-extrabold text-[var(--text-primary)]">
                           {singlePurchaseSuccess.item.name}
@@ -2379,11 +2377,11 @@ export const StorePage: React.FC<StorePageProps> = ({
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
                         <span className="text-[var(--text-secondary)] font-semibold">
-                          New Wallet Balance
+                          {t('cart.newBalance')}
                         </span>
-                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-emerald-700 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-1 font-black tabular-nums ltr-nums text-emerald-700 dark:text-emerald-400">
                           <KobanIcon size={14} />
-                          {singlePurchaseSuccess.newBalance.toLocaleString()} Kobans
+                          {formatNumber(singlePurchaseSuccess.newBalance)} Kobans
                         </span>
                       </div>
                     </div>
@@ -2394,7 +2392,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                       className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2 shadow-sm transition-all"
                     >
                       <Check className="w-4 h-4" />
-                      <span>Done</span>
+                      <span>{t('common.done')}</span>
                     </button>
                   </div>
                 ) : (
@@ -2402,7 +2400,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                     <div className="p-3.5 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border)] space-y-2 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="text-[var(--text-secondary)] font-semibold">
-                          Item
+                          {t('store.itemLabel')}
                         </span>
                         <span className="font-extrabold text-[var(--text-primary)]">
                           {confirmBuyItem.name}
@@ -2410,23 +2408,23 @@ export const StorePage: React.FC<StorePageProps> = ({
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[var(--text-secondary)] font-semibold">
-                          Price
+                          {t('store.priceLabel')}
                         </span>
-                        <span className="inline-flex items-center gap-1 font-black tabular-nums text-[var(--text-primary)]">
+                        <span className="inline-flex items-center gap-1 font-black tabular-nums ltr-nums text-[var(--text-primary)]">
                           <KobanIcon size={14} />
-                          {isSuperAdmin ? 0 : confirmBuyItem.price.toLocaleString()} Kobans
+                          {formatNumber(isSuperAdmin ? 0 : confirmBuyItem.price)} Kobans
                         </span>
                       </div>
                       <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
                         <span className="text-[var(--text-secondary)] font-semibold">
-                          Your Balance
+                          {t('cart.yourBalance')}
                         </span>
-                        <span className="inline-flex items-center gap-1 font-bold tabular-nums text-[var(--text-primary)]">
+                        <span className="inline-flex items-center gap-1 font-bold tabular-nums ltr-nums text-[var(--text-primary)]">
                           <KobanIcon size={13} />
                           {!balanceLoaded || kobanBalance === null ? (
                             <span className="inline-block w-12 h-3.5 rounded-md skeleton" aria-hidden="true" />
                           ) : (
-                            `${kobanBalance.toLocaleString()} Kobans`
+                            `${formatNumber(kobanBalance)} Kobans`
                           )}
                         </span>
                       </div>
@@ -2444,7 +2442,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                     {isGuest || user?.uid.startsWith('guest_') ? (
                       <div className="space-y-3">
                         <p className="text-xs font-bold text-[#E11D2A]">
-                          Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock cosmetics and keep them forever.
+                          {t('store.guestCannotPurchase')}
                         </p>
                         <button
                           type="button"
@@ -2455,13 +2453,13 @@ export const StorePage: React.FC<StorePageProps> = ({
                           }}
                           className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
                         >
-                          <span>Create an Account</span>
+                          <span>{t('auth.createAccount')}</span>
                         </button>
                       </div>
                     ) : !isSuperAdmin && balance < confirmBuyItem.price ? (
                       <div className="space-y-3">
                         <p className="text-xs font-bold text-[#E11D2A]">
-                          You need {(confirmBuyItem.price - balance).toLocaleString()} more Kobans to unlock this item.
+                          {t('store.needMoreKobans', { amount: formatNumber(confirmBuyItem.price - balance) })}
                         </p>
                         <button
                           type="button"
@@ -2477,7 +2475,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                           className="w-full h-11 rounded-xl bg-[#E11D2A] hover:bg-[#c81824] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-2"
                         >
                           <KobanIcon size={15} />
-                          <span>Get more Kobans</span>
+                          <span>{t('store.getMoreKobans')}</span>
                         </button>
                       </div>
                     ) : (
@@ -2488,7 +2486,7 @@ export const StorePage: React.FC<StorePageProps> = ({
                           onClick={closeConfirmBuySheet}
                           className="flex-1 h-11 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] text-xs font-bold text-[var(--text-secondary)] disabled:opacity-50"
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                         <button
                           type="button"
@@ -2499,13 +2497,13 @@ export const StorePage: React.FC<StorePageProps> = ({
                           {purchasingSingle ? (
                             <>
                               <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Unlocking…</span>
+                              <span>{t('store.unlockingShort')}</span>
                             </>
                           ) : (
                             <>
                               <KobanIcon size={15} />
-                              <span>
-                                Buy for {(isSuperAdmin ? 0 : confirmBuyItem.price).toLocaleString()}
+                              <span className="ltr-nums">
+                                {t('store.buyForShort', { price: formatNumber(isSuperAdmin ? 0 : confirmBuyItem.price) })}
                               </span>
                             </>
                           )}

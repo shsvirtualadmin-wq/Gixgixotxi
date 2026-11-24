@@ -10,6 +10,7 @@ import { MathText } from '@/components/ui/MathText';
 import { repairSplitOrGarbledMcqOptions } from '@/lib/math';
 import { reportQuestion } from '@/services/testEngine';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { formatChapterName, formatSubjectName } from '@/constants/taxonomy';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import type { AttemptQuestion } from '@/types/index';
@@ -57,6 +58,7 @@ export const QuestionCard = memo(function QuestionCard({
   university,
 }: QuestionCardProps) {
   const { user } = useAuth();
+  const { t, formatNumber } = useLanguage();
 
   // Report issue modal state
   const [isReportOpen, setIsReportOpen] = useState(false);
@@ -115,7 +117,7 @@ export const QuestionCard = memo(function QuestionCard({
   // Handle deleted question gracefully
   const isUnavailable = question.isUnavailable || (!question.q && !question.stem);
 
-  // Build clean subject · topic label (e.g. "SAT Math · Conditional Probability")
+  // Build clean subject · topic label (kept untranslated for question bank subjects)
   const subjectLabel = question.subject ? formatSubjectName(question.subject) : (university || 'SAT Math');
   const topicLabel = question.chapter
     ? formatChapterName(question.subject || 'mathematics', question.chapter)
@@ -127,14 +129,14 @@ export const QuestionCard = memo(function QuestionCard({
 
   return (
     <>
-      {/* 2. PROGRESS: large question number on left, "Answered 0/100" on right, 100 small dots below in 2 rows */}
-      <section className="nt-progress" aria-label="Test progress">
+      {/* 2. PROGRESS: large question number on start, "Answered 0/100" on end, small dots below in 2 rows */}
+      <section className="nt-progress" aria-label={t('test.questionOf', { current: index + 1, total })}>
         <div className="nt-progress-row">
-          <span className="nt-progress-qnum nt-doto">
-            {index + 1} / {total}
+          <span className="nt-progress-qnum nt-doto ltr-nums">
+            {formatNumber(index + 1)} / {formatNumber(total)}
           </span>
-          <span className="nt-progress-answered">
-            Answered {answeredCount}/{total}
+          <span className="nt-progress-answered ltr-nums">
+            {t('test.answered')} {formatNumber(answeredCount)}/{formatNumber(total)}
           </span>
         </div>
 
@@ -146,7 +148,7 @@ export const QuestionCard = memo(function QuestionCard({
             } as React.CSSProperties
           }
           role="tablist"
-          aria-label="Questions navigation strip"
+          aria-label={t('test.paletteTitle')}
         >
           {Array.from({ length: total }).map((_, dotIdx) => {
             const isCurrent = dotIdx === index;
@@ -157,7 +159,7 @@ export const QuestionCard = memo(function QuestionCard({
                 type="button"
                 role="tab"
                 aria-selected={isCurrent}
-                aria-label={`Question ${dotIdx + 1}${isDotAnswered ? ' (Answered)' : ''}`}
+                aria-label={`${t('test.questionOf', { current: dotIdx + 1, total })}${isDotAnswered ? ` (${t('test.answered')})` : ''}`}
                 onClick={() => onSelectIndex?.(dotIdx)}
                 className={`nt-dot ${
                   isCurrent
@@ -172,8 +174,8 @@ export const QuestionCard = memo(function QuestionCard({
         </div>
       </section>
 
-      {/* 3. QUESTION CARD: rounded 28px card holding subject tag pill, Flag pill button (solid red when flagged), then question text */}
-      <section className="nt-qcard" aria-label={`Question ${index + 1}`}>
+      {/* 3. QUESTION CARD: rounded 28px card holding subject tag pill, Flag pill button, then question text */}
+      <section className="nt-qcard" aria-label={t('test.questionOf', { current: index + 1, total })}>
         <div className="nt-qcard-header">
           <span className="nt-subject-pill" title={subjectTagText}>
             {subjectTagText}
@@ -185,19 +187,19 @@ export const QuestionCard = memo(function QuestionCard({
               onClick={onToggleFlag}
               aria-pressed={isFlagged}
               className={`nt-flag-pill ${isFlagged ? 'nt-flag-pill--active' : ''}`}
-              title="Flag question for review"
+              title={isFlagged ? t('test.flagged') : t('test.flag')}
             >
               <Bookmark size={12} fill={isFlagged ? 'currentColor' : 'none'} />
-              <span>{isFlagged ? 'Flagged' : 'Flag'}</span>
+              <span>{isFlagged ? t('test.flagged') : t('test.flag')}</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setIsReportOpen(true)}
               className="nt-flag-pill"
-              title="Report issue with this question"
+              title={t('test.reportQuestion')}
             >
-              <span>Report</span>
+              <span>{t('common.report')}</span>
             </button>
           )}
         </div>
@@ -205,24 +207,25 @@ export const QuestionCard = memo(function QuestionCard({
         {isUnavailable ? (
           <div className="nt-qcard-stem flex flex-col items-center justify-center text-center gap-1.5 py-2">
             <AlertTriangle className="text-[#d71921]" size={22} />
-            <p className="text-sm font-semibold">Question no longer available</p>
+            <p className="text-sm font-semibold">{t('common.noResults')}</p>
             <p className="text-xs text-[var(--nt-muted)]">
-              This question was removed from the active question bank.
+              {t('common.somethingWrong')}
             </p>
           </div>
         ) : (
-          <div className="nt-qcard-stem select-text">
+          <div className="nt-qcard-stem select-text" dir="ltr">
             <MathText text={question.stem || question.q || ''} block />
           </div>
         )}
       </section>
 
-      {/* 4. OPTIONS A-D: 4 rows of minmax(0, ~92px) on mobile, 2x2 grid on wide screens (>=700px) */}
+      {/* 4. OPTIONS A-D: kept LTR for English/math exam options */}
       {!isUnavailable && (
         <div
           className="nt-options-grid"
+          dir="ltr"
           role="radiogroup"
-          aria-label={`Question ${index + 1} options`}
+          aria-label={t('test.questionOf', { current: index + 1, total })}
         >
           {cleanedOptions.map((optText, optIdx) => {
             const letter = OPTION_LABELS[optIdx] ?? String(optIdx + 1);
@@ -264,48 +267,45 @@ export const QuestionCard = memo(function QuestionCard({
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl text-[var(--text)]">
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <h3 className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)' }}>
-                Report an Issue
+                {t('test.reportQuestion')}
               </h3>
               <button
                 type="button"
                 onClick={() => setIsReportOpen(false)}
                 className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
 
             {reportSuccess ? (
               <div className="py-6 text-center space-y-2">
                 <CheckCircle2 className="mx-auto text-[var(--accent)]" size={32} />
-                <p className="text-sm font-semibold">Thank you for reporting</p>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Our academic reviewers will inspect this question.
-                </p>
+                <p className="text-sm font-semibold">{t('test.reportSubmitted')}</p>
               </div>
             ) : (
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="block font-semibold mb-1 text-[var(--text)]">What seems wrong?</label>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">{t('commons.reportReason')}</label>
                   <select
                     value={reportReason}
                     onChange={(e) => setReportReason(e.target.value as 'wrong_key' | 'broken_math' | 'unclear' | 'other')}
                     className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]"
                   >
-                    <option value="wrong_key">Answer key appears incorrect</option>
-                    <option value="broken_math">Math formula formatting issue</option>
-                    <option value="unclear">Question wording is ambiguous or incomplete</option>
-                    <option value="other">Other issue</option>
+                    <option value="wrong_key">{t('test.correctAnswer')}</option>
+                    <option value="broken_math">Math / LaTeX</option>
+                    <option value="unclear">{t('common.somethingWrong')}</option>
+                    <option value="other">{t('common.report')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1 text-[var(--text)]">Additional details (optional)</label>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">{t('common.optional')}</label>
                   <textarea
                     rows={3}
                     value={reportComment}
                     onChange={(e) => setReportComment(e.target.value)}
-                    placeholder="Describe what needs correction..."
+                    placeholder={t('commons.reportReason')}
                     className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] resize-none"
                   />
                 </div>
@@ -316,7 +316,7 @@ export const QuestionCard = memo(function QuestionCard({
                     onClick={() => setIsReportOpen(false)}
                     className="btn-outline px-3 py-1.5 rounded-xl text-xs"
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="button"
@@ -324,7 +324,7 @@ export const QuestionCard = memo(function QuestionCard({
                     disabled={reporting}
                     className="relative overflow-hidden btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 disabled:opacity-60"
                   >
-                    <span>{reporting ? 'Submitting...' : 'Submit Report'}</span>
+                    <span>{reporting ? t('common.submitting') : t('common.submit')}</span>
                     {reporting && <ButtonLineLoader />}
                   </button>
                 </div>

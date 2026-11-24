@@ -12552,9 +12552,11 @@ ${postSitemaps}
       const { handleAuthApiRequest } = await import('../../functions/api/auth/[[path]]');
       const authHeader = String(req.headers.authorization || '').trim();
       const targetPath = req.originalUrl || req.url || req.path || '/api/auth/resolve-profiles';
+      const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000').split(',')[0].trim();
       const fullUrl = targetPath.startsWith('http')
         ? targetPath
-        : `http://localhost:3000${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
+        : `${proto}://${host}${targetPath.startsWith('/') ? '' : '/'}${targetPath}`;
       const method = String(req.method || 'GET').toUpperCase();
       const webReq = new Request(fullUrl, {
         method,
@@ -12567,6 +12569,26 @@ ${postSitemaps}
           ...(req.headers['x-device-id']
             ? { 'X-Device-Id': String(req.headers['x-device-id']) }
             : {}),
+          ...(req.headers['x-requested-with']
+            ? { 'X-Requested-With': String(req.headers['x-requested-with']) }
+            : {}),
+          ...(req.headers['x-boardly-session']
+            ? { 'X-Boardly-Session': String(req.headers['x-boardly-session']) }
+            : {}),
+          ...(req.headers['x-trusted-device']
+            ? { 'X-Trusted-Device': String(req.headers['x-trusted-device']) }
+            : {}),
+          ...(req.headers.origin ? { Origin: String(req.headers.origin) } : {}),
+          ...(req.headers.referer ? { Referer: String(req.headers.referer) } : {}),
+          ...(req.headers['x-forwarded-proto']
+            ? { 'X-Forwarded-Proto': String(req.headers['x-forwarded-proto']) }
+            : {}),
+          ...(req.headers['x-forwarded-host']
+            ? { 'X-Forwarded-Host': String(req.headers['x-forwarded-host']) }
+            : {}),
+          ...(req.headers['user-agent']
+            ? { 'User-Agent': String(req.headers['user-agent']) }
+            : {}),
           ...(req.headers.cookie ? { Cookie: String(req.headers.cookie) } : {}),
         },
         body:
@@ -12578,12 +12600,37 @@ ${postSitemaps}
         request: webReq,
         env: {
           DB: getSharedLocalD1Database(),
+          OTP_HMAC_SECRET: process.env.OTP_HMAC_SECRET,
+          EMAIL_VERIFICATION_SECRET: process.env.EMAIL_VERIFICATION_SECRET,
           FIREBASE_SERVICE_ACCOUNT: process.env.FIREBASE_SERVICE_ACCOUNT,
           GOOGLE_SERVICE_ACCOUNT_KEY: process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
           FIREBASE_PROJECT_ID,
           FIREBASE_DATABASE_ID: FIRESTORE_DATABASE_ID,
         },
       });
+      const setCookies =
+        typeof (webRes.headers as any).getSetCookie === 'function'
+          ? ((webRes.headers as any).getSetCookie() as string[])
+          : webRes.headers.get('set-cookie')
+          ? [String(webRes.headers.get('set-cookie'))]
+          : [];
+      if (setCookies.length > 0) {
+        res.setHeader('Set-Cookie', setCookies);
+      }
+      for (const hdr of [
+        'cache-control',
+        'vary',
+        'access-control-allow-origin',
+        'access-control-allow-credentials',
+        'access-control-allow-methods',
+        'access-control-allow-headers',
+      ]) {
+        const val = webRes.headers.get(hdr);
+        if (val) res.setHeader(hdr, val);
+      }
+      if (webRes.status === 204) {
+        return res.status(204).end();
+      }
       const payload = (await webRes.json().catch(() => ({}))) as Record<string, any>;
       return res.status(webRes.status).json(payload);
     } catch (err: any) {
@@ -12613,6 +12660,15 @@ ${postSitemaps}
   app.post('/api/auth/username-register', delegateToAuthWorker);
   app.get('/api/auth/username-check', delegateToAuthWorker);
   app.get('/api/auth/username-suggest', delegateToAuthWorker);
+  app.get('/api/auth/switch-session/accounts', delegateToAuthWorker);
+  app.options('/api/auth/switch-session/accounts', delegateToAuthWorker);
+  app.post('/api/auth/switch-session/register', delegateToAuthWorker);
+  app.options('/api/auth/switch-session/register', delegateToAuthWorker);
+  app.post('/api/auth/switch-session/exchange', delegateToAuthWorker);
+  app.options('/api/auth/switch-session/exchange', delegateToAuthWorker);
+  app.post('/api/auth/switch-session/revoke', delegateToAuthWorker);
+  app.options('/api/auth/switch-session/revoke', delegateToAuthWorker);
+  app.get('/api/auth/security/summary', delegateToAuthWorker);
 
   const delegateToRewardsWorker = async (req: Request, res: Response) => {
     try {
@@ -13214,6 +13270,8 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
     put: (p: any, h: any) => addRoute('PUT', p, h),
     patch: (p: any, h: any) => addRoute('PATCH', p, h),
     delete: (p: any, h: any) => addRoute('DELETE', p, h),
+    options: (p: any, h: any) => addRoute('OPTIONS', p, h),
+    head: (p: any, h: any) => addRoute('HEAD', p, h),
     all: (p: any, h: any) => {
       for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']) {
         addRoute(m, p, h);
@@ -13381,7 +13439,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/formulas') ||
         pathname.startsWith('/api/admin') ||
         pathname.startsWith('/api/r2') ||
-        pathname.startsWith('/api/auth') ||
+        (pathname.startsWith('/api/auth') && !pathname.startsWith('/api/auth/switch-session/')) ||
         pathname.startsWith('/api/plan') ||
         pathname.startsWith('/api/pro') ||
         pathname.startsWith('/api/store') ||

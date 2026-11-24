@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { showApiToast } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { t as translate, getActiveResolvedLanguage, getLanguageMeta } from '@/i18n';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
@@ -95,14 +97,15 @@ export function formatRelativeTime(ms?: number, ts?: any): string {
   }
   if (!timestamp) return '';
   const diffSec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
-  if (diffSec < 45) return 'Just now';
+  if (diffSec < 45) return translate('common.justNow');
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m`;
+  if (diffMin < 60) return translate('common.minutesAgo', { count: diffMin });
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h`;
+  if (diffHr < 24) return translate('common.hoursAgo', { count: diffHr });
   const diffDays = Math.floor(diffHr / 24);
-  if (diffDays < 7) return `${diffDays}d`;
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  if (diffDays < 7) return translate('common.daysAgo', { count: diffDays });
+  const locale = getLanguageMeta(getActiveResolvedLanguage()).intlLocale;
+  return new Date(timestamp).toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
   });
@@ -115,10 +118,11 @@ export function formatBubbleTime(ms?: number, ts?: any): string {
     else if (typeof ts?.toMillis === 'function') timestamp = ts.toMillis();
     else if (typeof ts?.seconds === 'number') timestamp = ts.seconds * 1000;
   }
-  if (!timestamp) return 'Just now';
+  if (!timestamp) return translate('common.justNow');
   const d = new Date(timestamp);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const locale = getLanguageMeta(getActiveResolvedLanguage()).intlLocale;
+  return d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
 }
 
 export function formatDateDividerLabel(ms?: number, ts?: any): string {
@@ -128,9 +132,9 @@ export function formatDateDividerLabel(ms?: number, ts?: any): string {
     else if (typeof ts?.toMillis === 'function') timestamp = ts.toMillis();
     else if (typeof ts?.seconds === 'number') timestamp = ts.seconds * 1000;
   }
-  if (!timestamp) return 'TODAY';
+  if (!timestamp) return translate('common.today');
   const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return 'TODAY';
+  if (Number.isNaN(date.getTime())) return translate('common.today');
 
   const now = new Date();
   const startOfToday = new Date(
@@ -140,16 +144,15 @@ export function formatDateDividerLabel(ms?: number, ts?: any): string {
   ).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
 
-  if (timestamp >= startOfToday) return 'TODAY';
-  if (timestamp >= startOfYesterday) return 'YESTERDAY';
+  if (timestamp >= startOfToday) return translate('common.today');
+  if (timestamp >= startOfYesterday) return translate('common.yesterday');
 
-  return date
-    .toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
-    })
-    .toUpperCase();
+  const locale = getLanguageMeta(getActiveResolvedLanguage()).intlLocale;
+  return date.toLocaleDateString(locale, {
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
 }
 
 export function formatRoleChipLabel(
@@ -162,7 +165,7 @@ export function formatRoleChipLabel(
 
 function formatFirestoreError(collectionName: string, err: any): string {
   console.error(`[Boardly Chat] Firestore error on "${collectionName}":`, err);
-  return 'Something went wrong. Please try again.';
+  return translate('common.somethingWrong');
 }
 
 export function useOutgoingChatRequests(
@@ -230,6 +233,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
   const loggedCachedPaintRef = useRef(false);
   const loggedFreshSnapshotRef = useRef(false);
 
+  const { t } = useLanguage();
   const { user: authUser, profile: authProfile, isAdmin } = useAuth();
   const { profile: ownProfile } = useUserProfile();
   const { equipped: ownEquipped } = useWallet();
@@ -690,11 +694,11 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
       setActivePermission(updatedPerm);
 
       if (result.status !== 'already_allowed' && result.status !== 'auto_accepted') {
-        setRequestFeedback('Chat request sent! You can message once they accept.');
+        setRequestFeedback(t('chat.requestSent'));
       }
       if (onPermissionChange) onPermissionChange();
     } catch (err: any) {
-      setSendError(err?.message || 'Failed to send chat request.');
+      setSendError(err?.message || t('common.somethingWrong'));
     } finally {
       setSendingRequest(false);
     }
@@ -757,10 +761,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
           <button
             type="button"
             onClick={onBack}
-            aria-label="Back to messages"
+            aria-label={t('common.back')}
             className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/90 hover:bg-white/10 transition-colors cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5 rtl-mirror" />
           </button>
 
           {/* Lazy-loaded fixed-size 40px Avatar with Frame */}
@@ -801,33 +805,33 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                 aria-hidden="true"
               />
               <span className="text-[11px] font-medium text-white/72 truncate">
-                Direct chat
+                {t('chat.directChat')}
               </span>
             </div>
           </div>
 
-          {/* More Button on the Right */}
+          {/* More Button on the End */}
           <div className="relative shrink-0">
             <button
               type="button"
               onClick={() => setShowMoreMenu((v) => !v)}
-              aria-label="More chat options"
+              aria-label={t('common.open')}
               className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <MoreHorizontal className="w-5 h-5" />
             </button>
 
             {showMoreMenu && (
-              <div className="absolute right-0 mt-2 w-44 boardly-glass-card rounded-2xl p-1.5 z-50 shadow-2xl">
+              <div className="absolute end-0 mt-2 w-44 boardly-glass-card rounded-2xl p-1.5 z-50 shadow-2xl">
                 <button
                   type="button"
                   onClick={() => {
                     setShowMoreMenu(false);
                     scrollToNewest('smooth');
                   }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
+                  className="w-full text-start px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
                 >
-                  Jump to latest
+                  {t('chat.jumpToLatest')}
                 </button>
                 <button
                   type="button"
@@ -835,9 +839,9 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                     setShowMoreMenu(false);
                     onBack();
                   }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
+                  className="w-full text-start px-3 py-2.5 rounded-xl text-xs font-semibold text-white/90 hover:bg-white/10 cursor-pointer"
                 >
-                  Close conversation
+                  {t('chat.closeConversation')}
                 </button>
               </div>
             )}
@@ -860,7 +864,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
             {activePermission?.incomingRequest?.status === 'pending' ? (
               <>
                 <h4 className="text-base font-bold text-white">
-                  {partnerName} wants to chat with you
+                  {t('chat.wantsToChat', { name: partnerName })}
                 </h4>
                 {activePermission.incomingRequest.message && (
                   <p className="text-xs italic px-3.5 py-2.5 rounded-2xl bg-white/[0.05] border border-white/12 text-white/80">
@@ -887,7 +891,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                     className="boardly-red-pill press-scale min-h-[44px] px-5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>Accept</span>
+                    <span>{t('chat.accept')}</span>
                   </button>
                   <button
                     type="button"
@@ -900,7 +904,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                       void onRespondRequest(req, 'declined');
                     }}
                     className="boardly-glass-pill press-scale w-11 h-11 rounded-full inline-flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
-                    aria-label="Decline request"
+                    aria-label={t('chat.decline')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -908,18 +912,16 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               </>
             ) : activePermission?.outgoingRequest?.status === 'pending' ? (
               <>
-                <h4 className="text-base font-bold text-white">Chat Request Pending</h4>
+                <h4 className="text-base font-bold text-white">{t('chat.requestPendingTitle')}</h4>
                 <p className="text-xs text-white/70 leading-relaxed">
-                  You&apos;ve sent a chat request to <strong>{partnerName}</strong>.
-                  You&apos;ll be notified as soon as they accept.
+                  {t('chat.requestPendingDesc', { name: partnerName })}
                 </p>
               </>
             ) : (
               <>
-                <h4 className="text-base font-bold text-white">Send a Chat Request</h4>
+                <h4 className="text-base font-bold text-white">{t('chat.sendRequestTitle')}</h4>
                 <p className="text-xs text-white/70 leading-relaxed">
-                  Direct messaging is open between mutual followers. Send a quick request
-                  to start chatting with <strong>{partnerName}</strong>.
+                  {t('chat.sendRequestDesc', { name: partnerName })}
                 </p>
                 <div className="space-y-2.5 pt-2">
                   <div className="search-pill-wrapper boardly-glass-pill px-3.5 min-h-[44px] flex items-center">
@@ -927,7 +929,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                       type="text"
                       value={requestNote}
                       onChange={(e) => setRequestNote(e.target.value)}
-                      placeholder="Optional note (e.g., Let's study together!)"
+                      placeholder={t('chat.optionalNotePlaceholder')}
                       maxLength={160}
                       className="w-full text-xs text-white placeholder:text-white/45"
                     />
@@ -944,7 +946,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                   >
                     <UserPlus className="w-4 h-4" />
                     <span>
-                      {sendingRequest ? 'Sending Request...' : 'Request to Chat'}
+                      {sendingRequest ? t('chat.sendingRequest') : t('chat.requestToChat')}
                     </span>
                   </button>
                 </div>
@@ -963,22 +965,22 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               {loadingOlder && (
                 <div className="py-2 flex items-center justify-center gap-2 text-xs text-white/60">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Loading older messages...</span>
+                  <span>{t('chat.loadingOlder')}</span>
                 </div>
               )}
 
               {messagesError ? (
                 <div className="boardly-glass-card rounded-[28px] p-6 my-8 text-center space-y-2">
                   <AlertTriangle className="w-8 h-8 text-[#D71921] mx-auto" />
-                  <p className="text-sm font-bold text-white">Unable to load messages</p>
+                  <p className="text-sm font-bold text-white">{t('chat.unableToLoad')}</p>
                   <p className="text-xs text-white/65 break-all">{messagesError}</p>
                 </div>
               ) : !hasFirstSnapshot && combinedMessages.length === 0 ? (
                 /* Skeleton bubbles ONLY on first fetch when nothing is cached */
                 <div className="space-y-3 py-4 animate-pulse">
-                  <div className="w-48 h-11 rounded-[22px] rounded-bl-[6px] bg-white/10 self-start" />
-                  <div className="w-56 h-12 rounded-[22px] rounded-br-[6px] bg-[#D71921]/30 self-end ml-auto" />
-                  <div className="w-40 h-10 rounded-[22px] rounded-bl-[6px] bg-white/10 self-start" />
+                  <div className="w-48 h-11 rounded-[22px] rounded-es-[6px] bg-white/10 self-start" />
+                  <div className="w-56 h-12 rounded-[22px] rounded-ee-[6px] bg-[#D71921]/30 self-end ms-auto" />
+                  <div className="w-40 h-10 rounded-[22px] rounded-es-[6px] bg-white/10 self-start" />
                 </div>
               ) : combinedMessages.length === 0 ? (
                 /* Instant "Say hi to <name>" empty state */
@@ -987,10 +989,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <p className="text-[16px] font-bold text-white">
-                    Say hi to {partnerName}
+                    {t('chat.sayHi', { name: partnerName })}
                   </p>
                   <p className="text-[13px] text-white/70 leading-relaxed">
-                    Send a message below to start your study conversation.
+                    {t('chat.startConvoHint')}
                   </p>
                 </div>
               ) : (
@@ -999,7 +1001,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                     {/* Dotted Date Separator ("TODAY" in Doto) */}
                     <div className="my-3 flex items-center gap-3">
                       <div className="flex-1 nothing-dotted-divider" />
-                      <span className="font-doto-title text-[10px] tracking-[0.18em] text-white/65 px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/12">
+                      <span className="font-doto-title text-[10px] tracking-[0.18em] text-white/65 px-2.5 py-1 rounded-full bg-white/[0.05] border border-white/12 uppercase">
                         {group.dateLabel}
                       </span>
                       <div className="flex-1 nothing-dotted-divider" />
@@ -1019,12 +1021,12 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                             isMe ? 'items-end' : 'items-start'
                           } ${isLastInSenderGroup ? 'mb-2' : 'mb-0.5'}`}
                         >
-                          {/* Bubble: Sent solid red right-aligned, Received glass left-aligned, radius 22 (6 on tail side), max width 78%, 15px/21px text */}
+                          {/* Bubble: Sent solid red end-aligned, Received glass start-aligned */}
                           <div
                             className={`max-w-[78%] px-4 py-2.5 text-[15px] leading-[21px] break-words whitespace-pre-wrap font-sans ${
                               isMe
-                                ? 'bg-[#D71921] text-white rounded-[22px] rounded-br-[6px] shadow-[0_6px_20px_rgba(215,25,33,0.32)]'
-                                : 'boardly-glass-card text-white rounded-[22px] rounded-bl-[6px]'
+                                ? 'bg-[#D71921] text-white rounded-[22px] rounded-ee-[6px] shadow-[0_6px_20px_rgba(215,25,33,0.32)]'
+                                : 'boardly-glass-card text-white rounded-[22px] rounded-es-[6px]'
                             }`}
                           >
                             {msg.text}
@@ -1032,7 +1034,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
 
                           {/* Timestamp (11px) and Delivered/Read Ticks under the last message of a group (or failed retry badge) */}
                           {(isLastInSenderGroup || status === 'failed') && (
-                            <div className="mt-1 px-1 flex items-center gap-1.5 text-[11px] text-white/60 font-inter-num">
+                            <div className="mt-1 px-1 flex items-center gap-1.5 text-[11px] text-white/60 font-inter-num ltr-nums">
                               <span>
                                 {formatBubbleTime(msg.createdAtMs, msg.createdAt)}
                               </span>
@@ -1041,19 +1043,19 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                                   {status === 'sending' && (
                                     <Clock
                                       className="w-3 h-3 text-white/60"
-                                      aria-label="Sending"
+                                      aria-label={t('common.sending')}
                                     />
                                   )}
                                   {(status === 'sent' || status === 'delivered') && (
                                     <Check
                                       className="w-3.5 h-3.5 text-white/75"
-                                      aria-label="Delivered"
+                                      aria-label={t('chat.delivered')}
                                     />
                                   )}
                                   {status === 'read' && (
                                     <CheckCheck
                                       className="w-3.5 h-3.5 text-[#ff6b72]"
-                                      aria-label="Read"
+                                      aria-label={t('chat.read')}
                                     />
                                   )}
                                   {status === 'failed' && (
@@ -1065,7 +1067,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D71921] text-white text-[10px] font-bold cursor-pointer"
                                     >
                                       <RefreshCw className="w-2.5 h-2.5" />
-                                      Retry
+                                      {t('common.retry')}
                                     </button>
                                   )}
                                 </>
@@ -1091,12 +1093,12 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                 className="pointer-events-auto boardly-glass-pill press-scale min-h-[38px] px-4 rounded-full text-xs font-bold text-white inline-flex items-center gap-1.5 shadow-2xl cursor-pointer"
               >
                 <ChevronDown className="w-4 h-4 text-[#D71921]" />
-                <span>Jump to latest</span>
+                <span>{t('chat.jumpToLatest')}</span>
               </button>
             </div>
           )}
 
-          {/* 3. STICKY GLASS PILL COMPOSER ABOVE SAFE AREA: attach button, growing text field (max 5 lines), red circular send button that appears when there is text */}
+          {/* 3. STICKY GLASS PILL COMPOSER ABOVE SAFE AREA */}
           <form
             onSubmit={handleSendMessage}
             className="relative z-20 px-3 pt-2 pb-[calc(12px+env(safe-area-inset-bottom,0px))] shrink-0"
@@ -1111,7 +1113,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               <button
                 type="button"
                 onClick={() => fileAttachInputRef.current?.click()}
-                aria-label="Attach file"
+                aria-label={t('commons.attachFiles')}
                 className="press-scale w-10 h-10 rounded-full flex items-center justify-center text-white/75 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
               >
                 <Paperclip className="w-4 h-4" />
@@ -1128,7 +1130,7 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
                     void handleSendMessage();
                   }
                 }}
-                placeholder={`Message ${partnerName}...`}
+                placeholder={t('chat.messagePlaceholder', { name: partnerName })}
                 maxLength={2000}
                 className="flex-1 bg-transparent border-0 outline-none resize-none py-2 text-[15px] leading-[21px] text-white placeholder:text-white/50 max-h-[110px] font-sans"
               />
@@ -1136,10 +1138,10 @@ export const FullScreenConversationView: React.FC<FullScreenConversationViewProp
               {draft.trim().length > 0 && (
                 <button
                   type="submit"
-                  aria-label="Send message"
+                  aria-label={t('common.send')}
                   className="boardly-red-pill press-scale w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 cursor-pointer"
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4 rtl-mirror" />
                 </button>
               )}
             </div>
@@ -1169,6 +1171,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
   onPermissionChange,
   isModalWrapper = false,
 }) => {
+  const { t, isRtl, formatNumber } = useLanguage();
   const { user: authUser, profile: authProfile, isAdmin, isGuest } = useAuth();
   const { profile: ownProfile } = useUserProfile();
   const { equipped: ownEquipped } = useWallet();
@@ -1467,18 +1470,18 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-doto-title text-[24px] sm:text-[26px] tracking-[0.08em] text-[var(--text)]">
-            MESSAGES
+          <h1 className="font-doto-title text-[24px] sm:text-[26px] tracking-[0.08em] text-[var(--text)] uppercase">
+            {t('chat.title')}
           </h1>
           <p className="text-[13px] text-[var(--muted)] mt-0.5">
-            Direct conversations and chat requests with fellow students.
+            {t('chat.subtitle')}
           </p>
         </div>
         {isModalWrapper && onCloseModal && (
           <button
             type="button"
             onClick={onCloseModal}
-            aria-label="Close messages"
+            aria-label={t('common.close')}
             className="press-scale w-11 h-11 rounded-full bg-white/[0.08] border border-white/15 flex items-center justify-center text-white/85 cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -1489,7 +1492,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
       {/* Segmented Control: Chats / Requests with Shared Sliding Red Pill */}
       <div
         role="tablist"
-        aria-label="Messages sections"
+        aria-label={t('chat.title')}
         className="boardly-glass-pill relative p-1.5 grid grid-cols-2 items-center h-[50px]"
       >
         <div
@@ -1497,8 +1500,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-full bg-[#D71921] shadow-[0_4px_16px_rgba(215,25,33,0.45)] transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
           style={{
             width: 'calc((100% - 12px) / 2)',
-            left: '6px',
-            transform: `translateX(${activeTab === 'chat' ? 0 : 100}%)`,
+            left: isRtl ? 'auto' : '6px',
+            right: isRtl ? '6px' : 'auto',
+            transform: `translateX(${activeTab === 'chat' ? 0 : isRtl ? -100 : 100}%)`,
           }}
         />
         <button
@@ -1508,9 +1512,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           onClick={() => setActiveTab('chat')}
           className="relative z-10 h-full rounded-full text-xs font-bold tracking-wide inline-flex items-center justify-center gap-2 text-white cursor-pointer"
         >
-          <span>Chats</span>
-          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num">
-            {Math.max(conversations.length, unreadChatNotificationsCount)}
+          <span>{t('chat.tabChats')}</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num ltr-nums">
+            {formatNumber(Math.max(conversations.length, unreadChatNotificationsCount))}
           </span>
         </button>
         <button
@@ -1520,9 +1524,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
           onClick={() => setActiveTab('requests')}
           className="relative z-10 h-full rounded-full text-xs font-bold tracking-wide inline-flex items-center justify-center gap-2 text-white cursor-pointer"
         >
-          <span>Requests</span>
-          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num">
-            {totalRequestsCount}
+          <span>{t('chat.tabRequests')}</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] bg-black/30 font-inter-num ltr-nums">
+            {formatNumber(totalRequestsCount)}
           </span>
         </button>
       </div>
@@ -1536,15 +1540,15 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chats..."
-              aria-label="Search chats"
+              placeholder={t('chat.searchPlaceholder')}
+              aria-label={t('chat.searchPlaceholder')}
               className="flex-1 text-sm text-white placeholder:text-white/50"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
+                aria-label={t('common.clear')}
                 className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/75 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1552,11 +1556,11 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
             )}
           </div>
 
-          {/* Messages List Rows: Glass rows with avatar, name, one-line preview, time, and red unread count dot */}
+          {/* Messages List Rows */}
           {conversationsError ? (
             <div className="boardly-glass-card rounded-[28px] p-8 text-center space-y-3">
               <AlertTriangle className="w-8 h-8 text-[#D71921] mx-auto" />
-              <p className="text-sm font-bold text-white">Failed to load conversations</p>
+              <p className="text-sm font-bold text-white">{t('chat.failedLoadConvs')}</p>
               <p className="text-xs text-white/65 break-all">{conversationsError}</p>
               <button
                 type="button"
@@ -1564,7 +1568,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                 className="boardly-red-pill press-scale min-h-[44px] px-5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Retry</span>
+                <span>{t('common.retry')}</span>
               </button>
             </div>
           ) : loadingConversations && conversations.length === 0 ? (
@@ -1587,13 +1591,13 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
               <MessageCircle className="w-8 h-8 text-white/45 mx-auto" />
               <p className="text-sm font-bold text-white">
                 {searchQuery.trim()
-                  ? 'No matching conversations'
-                  : 'No active conversations yet'}
+                  ? t('chat.noMatchingConvs')
+                  : t('chat.noChatsTitle')}
               </p>
               <p className="text-xs text-white/65 max-w-xs mx-auto">
                 {searchQuery.trim()
-                  ? 'Try searching for another student name.'
-                  : 'Follow students back or accept a chat request to start messaging.'}
+                  ? t('chat.tryAnotherName')
+                  : t('chat.noChatsDesc')}
               </p>
             </div>
           ) : (
@@ -1602,11 +1606,11 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                 const otherUid =
                   conv.participants.find((p) => p !== currentUid) || '';
                 const otherDetails = conv.participantDetails?.[otherUid] || {
-                  displayName: 'Student',
+                  displayName: t('common.student'),
                 };
                 const resolved = resolvedUsers[otherUid];
                 const displayName =
-                  resolved?.displayName || otherDetails.displayName || 'Student';
+                  resolved?.displayName || otherDetails.displayName || t('common.student');
                 const avatarId =
                   resolved?.equippedAvatar ||
                   resolved?.avatar ||
@@ -1624,9 +1628,9 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
                 const previewText = conv.lastMessageText
                   ? conv.lastMessageSenderId === currentUid
-                    ? `You: ${conv.lastMessageText}`
+                    ? `${t('chat.you')}: ${conv.lastMessageText}`
                     : conv.lastMessageText
-                  : `Say hi to ${displayName}`;
+                  : t('chat.sayHi', { name: displayName });
 
                 return (
                   <button
@@ -1656,7 +1660,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                         lastMessageAtMs: conv.lastMessageAtMs,
                       });
                     }}
-                    className={`press-scale w-full text-left boardly-glass-card rounded-[24px] p-3.5 flex items-center gap-3.5 transition-all cursor-pointer ${
+                    className={`press-scale w-full text-start boardly-glass-card rounded-[24px] p-3.5 flex items-center gap-3.5 transition-all cursor-pointer ${
                       isUnread
                         ? 'border-[#D71921]/60 shadow-[0_0_20px_rgba(215,25,33,0.2)]'
                         : 'hover:border-white/30'
@@ -1698,8 +1702,8 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                           {previewText}
                         </span>
                         {isUnread && (
-                          <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#D71921] text-white text-[11px] font-bold font-inter-num inline-flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(215,25,33,0.6)]">
-                            {unreadCountForRow}
+                          <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#D71921] text-white text-[11px] font-bold font-inter-num ltr-nums inline-flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(215,25,33,0.6)]">
+                            {formatNumber(unreadCountForRow)}
                           </span>
                         )}
                       </div>
@@ -1715,7 +1719,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
         <div className="space-y-5">
           <section className="space-y-2.5">
             <h2 className="font-doto-title text-xs tracking-[0.16em] text-white/75 uppercase px-1">
-              RECEIVED REQUESTS
+              {t('chat.receivedRequests')}
             </h2>
             {requestsError ? (
               <div className="boardly-glass-card rounded-[24px] p-6 text-center space-y-2">
@@ -1724,15 +1728,15 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
             ) : incomingRequests.length === 0 ? (
               <div className="boardly-glass-card rounded-[24px] p-8 text-center space-y-1.5">
                 <Inbox className="w-7 h-7 text-white/45 mx-auto" />
-                <p className="text-sm font-bold text-white">No received requests</p>
+                <p className="text-sm font-bold text-white">{t('chat.noRequestsTitle')}</p>
                 <p className="text-xs text-white/65">
-                  When a student sends you a chat request, it will appear here.
+                  {t('chat.noRequestsDesc')}
                 </p>
               </div>
             ) : (
               incomingRequests.map((req) => {
                 const resolved = resolvedUsers[req.fromUid];
-                const senderName = resolved?.displayName || req.fromName || 'Student';
+                const senderName = resolved?.displayName || req.fromName || t('common.student');
                 const isHighlighted = Boolean(
                   initialRequestId && req.id === initialRequestId
                 );
@@ -1757,7 +1761,7 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                           {senderName}
                         </div>
                         <div className="text-xs text-white/65 truncate">
-                          {req.message || 'Wants to chat with you'}
+                          {req.message || t('chat.wantsToChatShort')}
                         </div>
                       </div>
                     </div>
@@ -1769,13 +1773,13 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                         onClick={() => void handleRespondRequest(req, 'accepted')}
                         className="boardly-red-pill press-scale min-h-[40px] px-4 rounded-full text-xs font-bold cursor-pointer"
                       >
-                        {respondingId === req.id ? '...' : 'Accept'}
+                        {respondingId === req.id ? '...' : t('chat.accept')}
                       </button>
                       <button
                         type="button"
                         disabled={respondingId === req.id}
                         onClick={() => void handleRespondRequest(req, 'declined')}
-                        aria-label="Decline request"
+                        aria-label={t('chat.decline')}
                         className="boardly-glass-pill press-scale w-10 h-10 rounded-full flex items-center justify-center text-white/75 hover:text-white cursor-pointer"
                       >
                         <X className="w-4 h-4" />
@@ -1789,16 +1793,16 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
 
           <section className="space-y-2.5">
             <h2 className="font-doto-title text-xs tracking-[0.16em] text-white/75 uppercase px-1">
-              SENT REQUESTS
+              {t('chat.sentRequests')}
             </h2>
             {outgoingRequests.length === 0 ? (
               <div className="boardly-glass-card rounded-[24px] p-6 text-center text-xs text-white/60">
-                No pending sent requests.
+                {t('chat.noSentRequests')}
               </div>
             ) : (
               outgoingRequests.map((req) => {
                 const resolved = resolvedUsers[req.toUid];
-                const recipientName = resolved?.displayName || req.toName || 'Student';
+                const recipientName = resolved?.displayName || req.toName || t('common.student');
                 return (
                   <div
                     key={req.id}
@@ -1816,11 +1820,11 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                         <div className="text-sm font-bold text-white truncate">
                           {recipientName}
                         </div>
-                        <div className="text-xs text-white/60">Pending acceptance</div>
+                        <div className="text-xs text-white/60">{t('chat.pendingAcceptance')}</div>
                       </div>
                     </div>
                     <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-white/10 border border-white/15 text-white/80">
-                      Pending
+                      {t('common.pending')}
                     </span>
                   </div>
                 );

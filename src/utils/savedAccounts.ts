@@ -8,12 +8,33 @@
  * Pure TypeScript (safe in browser and Node tests).
  */
 
+export type SavedAccountLiveStatus = 'loading' | 'active' | 'expired' | 'error';
+
+export interface LiveSavedAccountInfo {
+  uid: string;
+  email?: string;
+  displayName?: string;
+  username?: string | null;
+  role?: string | null;
+  planTier?: 'free' | 'pro' | 'plus' | null;
+  isSuperAdmin?: boolean;
+  equippedAvatar?: string | null;
+  equippedFrameId?: string | null;
+  sessionStatus: SavedAccountLiveStatus;
+  expiresAt?: number | null;
+  error?: string | null;
+}
+
 export interface SavedAccountEntry {
   uid: string;
   email: string;
   displayName: string;
   username?: string | null;
   role?: string | null;
+  /**
+   * Deprecated for persistence: never stored in localStorage so stale plans cannot leak into UI.
+   * Kept optional on the type only for backward compatibility with existing callers/tests.
+   */
   planLabel?: string | null;
   equippedAvatar?: string | null;
   equippedFrameId?: string | null;
@@ -54,6 +75,11 @@ export function getSavedAccounts(
         (entry): entry is SavedAccountEntry =>
           Boolean(entry && typeof entry === 'object' && typeof entry.uid === 'string' && entry.uid.trim())
       )
+      .map((entry) => {
+        // Strip any legacy cached planLabel so stale localStorage values are never displayed as truth
+        const { planLabel: _ignoredLegacyPlan, ...rest } = entry;
+        return rest;
+      })
       .sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
   } catch {
     return [];
@@ -80,7 +106,6 @@ export function upsertSavedAccount(
     ).trim(),
     username: account.username ?? prevMatch?.username ?? null,
     role: account.role ?? prevMatch?.role ?? null,
-    planLabel: account.planLabel ?? prevMatch?.planLabel ?? null,
     equippedAvatar: account.equippedAvatar ?? prevMatch?.equippedAvatar ?? null,
     equippedFrameId: account.equippedFrameId ?? prevMatch?.equippedFrameId ?? null,
     sessionId: account.sessionId !== undefined ? account.sessionId : (prevMatch?.sessionId ?? null),

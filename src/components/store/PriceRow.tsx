@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Loader2, Plus } from 'lucide-react';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface PriceRowProps {
   price: number;
@@ -28,6 +29,7 @@ export const PriceRow: React.FC<PriceRowProps> = ({
   onPrimaryAction,
 }) => {
   const [justAdded, setJustAdded] = useState(false);
+  const { t, formatNumber } = useLanguage();
 
   const handleCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -52,19 +54,19 @@ export const PriceRow: React.FC<PriceRowProps> = ({
         {isOwned ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--text-secondary)] whitespace-nowrap">
             <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span>{isEquipped ? 'Equipped' : 'Owned'}</span>
+            <span>{isEquipped ? t('store.equipped') : t('store.owned')}</span>
           </span>
         ) : (
           <div className="flex items-baseline gap-1.5 min-w-0 flex-wrap">
             <span className="inline-flex items-center gap-1 whitespace-nowrap shrink-0">
               <KobanIcon size={15} className="shrink-0 self-center" />
-              <span className="text-[13px] sm:text-sm font-black tabular-nums text-[var(--text-primary)] leading-none whitespace-nowrap">
-                {price.toLocaleString()}
+              <span className="text-[13px] sm:text-sm font-black tabular-nums ltr-nums text-[var(--text-primary)] leading-none whitespace-nowrap">
+                {formatNumber(price)}
               </span>
             </span>
             {isOnSale && originalPrice && originalPrice > price && (
-              <span className="text-[10px] font-semibold tabular-nums text-[var(--text-muted)] line-through leading-none whitespace-nowrap shrink-0">
-                {originalPrice.toLocaleString()}
+              <span className="text-[10px] font-semibold tabular-nums ltr-nums text-[var(--text-muted)] line-through leading-none whitespace-nowrap shrink-0">
+                {formatNumber(originalPrice)}
               </span>
             )}
           </div>
@@ -78,8 +80,8 @@ export const PriceRow: React.FC<PriceRowProps> = ({
             type="button"
             disabled={disabled || isPurchasing}
             onClick={handleCartClick}
-            aria-label={isInCart ? 'Remove from cart' : 'Add to cart'}
-            title={isInCart ? 'In cart (tap to remove)' : 'Add to cart'}
+            aria-label={isInCart ? t('store.removeFromCart') : t('store.addToCart')}
+            title={isInCart ? t('store.inCartTapRemove') : t('store.addToCart')}
             className={`relative p-0.5 inline-flex items-center justify-center rounded-xl transition-all active:scale-90 disabled:opacity-50 shrink-0 ${
               justAdded ? 'scale-110' : ''
             }`}
@@ -117,7 +119,7 @@ export const PriceRow: React.FC<PriceRowProps> = ({
             ) : (
               <Check className="w-3 h-3 shrink-0 stroke-[2.5]" />
             )}
-            <span>{isEquipped ? 'Active' : 'Owned'}</span>
+            <span className="truncate">{isEquipped ? t('store.active') : t('store.owned')}</span>
           </button>
         ) : isInCart ? (
           <button
@@ -127,7 +129,7 @@ export const PriceRow: React.FC<PriceRowProps> = ({
             className="flex-1 sm:flex-initial min-w-[78px] sm:min-w-[84px] h-8 px-2.5 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-1 bg-transparent text-[#E11D2A] border border-[#E11D2A]/60 hover:bg-[#E11D2A]/10 transition-all active:scale-95 disabled:opacity-50"
           >
             <Check className="w-3 h-3 shrink-0 stroke-[2.5]" />
-            <span>In cart</span>
+            <span className="truncate">{t('store.inCart')}</span>
           </button>
         ) : (
           <button
@@ -139,10 +141,10 @@ export const PriceRow: React.FC<PriceRowProps> = ({
             {isPurchasing ? (
               <>
                 <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
-                <span>Buying…</span>
+                <span className="truncate">{t('store.buying')}</span>
               </>
             ) : (
-              <span>Buy</span>
+              <span className="truncate">{t('store.buy')}</span>
             )}
           </button>
         )}

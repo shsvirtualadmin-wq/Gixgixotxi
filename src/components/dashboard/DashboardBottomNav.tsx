@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useUnreadMessagesCount } from '@/hooks/useUnreadMessagesCount';
 import { getHomeUrl, isUserAuthenticated } from '@/utils/homeUrl';
@@ -77,7 +78,7 @@ function isLowEndHardware(): boolean {
   return mem <= 4 || cores <= 4;
 }
 
-function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
+function computeMetricsFromRect(rect: DOMRect, isRtl = false): CachedDockMetrics {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
   const isDesktop = vw >= 768;
   const hasCenterAiFab = vw < 1024;
@@ -92,7 +93,10 @@ function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
   const slotOffsets: number[] = [];
   for (let i = 0; i < TAB_COUNT; i++) {
     const extraCenter = hasCenterAiFab && i >= 3 ? centerSlotWidth + gap : 0;
-    slotOffsets.push(Math.round(pad + i * (rawSlotWidth + gap) + extraCenter));
+    const ltrOffset = pad + i * (rawSlotWidth + gap) + extraCenter;
+    slotOffsets.push(
+      isRtl ? Math.round(dockWidth - slotWidth - ltrOffset) : Math.round(ltrOffset)
+    );
   }
   return {
     dockLeft: rect.left,
@@ -110,6 +114,7 @@ function computeMetricsFromRect(rect: DOMRect): CachedDockMetrics {
 function DashboardBottomNavComponent() {
   const { user, profileLoading, isCaptain, isAdmin, isSuperAdmin } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { t, isRtl, resolvedLanguage } = useLanguage();
   const { isOpen: isProfileModalOpen } = useProfileModal();
   const unreadMessagesCount = useUnreadMessagesCount();
   const { smoothMode: isSmoothMode } = useSmoothMode();
@@ -275,13 +280,13 @@ function DashboardBottomNavComponent() {
       {
         id: 'commons',
         to: commonsLink,
-        label: 'Commons',
+        label: t('nav.commons'),
         icon: <Compass strokeWidth={2} />,
       },
       {
         id: 'home',
         to: isAuthenticated ? '/dashboard' : homeUrl,
-        label: 'Dashboard',
+        label: t('nav.dashboard'),
         icon: <LayoutDashboard strokeWidth={2} />,
         end: true,
       },
@@ -289,43 +294,40 @@ function DashboardBottomNavComponent() {
         ? {
             id: 'messages',
             to: '/dashboard/messages',
-            label: 'Messages',
+            label: t('nav.messages'),
             icon: <MessageCircle strokeWidth={2} />,
             badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
           }
         : {
             id: 'messages',
-            label: 'Messages',
+            label: t('nav.messages'),
             icon: <MessageCircle strokeWidth={2} />,
-            onClick: () => requireAuth('view your messages'),
+            onClick: () => requireAuth(t('nav.messages')),
           },
       isAuthenticated
         ? {
             id: 'streaks',
             to: '/dashboard/streaks',
-            label: 'Streak',
+            label: t('nav.streak'),
             icon: <Flame strokeWidth={2} />,
           }
         : {
             id: 'streaks',
-            label: 'Streak',
+            label: t('nav.streak'),
             icon: <Flame strokeWidth={2} />,
-            onClick: () => requireAuth('track your daily study streaks'),
+            onClick: () => requireAuth(t('nav.streaks')),
           },
       {
         id: 'crew',
         to: crewLink,
-        label: 'Friends',
+        label: t('nav.friends'),
         icon: <Users strokeWidth={2} />,
       },
       {
         id: 'menu',
-        label: 'Menu',
+        to: '/settings',
+        label: t('nav.menu'),
         icon: <Menu strokeWidth={2} />,
-        onClick: () => {
-          setNavMenuOpen(true, isApprovedCaptain);
-          recordNavFirstPaint('menu');
-        },
       },
     ],
     [
@@ -335,7 +337,7 @@ function DashboardBottomNavComponent() {
       unreadMessagesCount,
       crewLink,
       requireAuth,
-      isApprovedCaptain,
+      t,
     ]
   );
 
@@ -423,20 +425,21 @@ function DashboardBottomNavComponent() {
     if (!dockEl) return null;
     const rect = dockEl.getBoundingClientRect();
     if (rect.width <= 0) return null;
-    const next = computeMetricsFromRect(rect);
+    const next = computeMetricsFromRect(rect, isRtl);
     metricsRef.current = next;
     return next;
-  }, []);
+  }, [isRtl]);
 
-  // Measure once on mount and when visibility changes, and update on resize only
+  // Measure once on mount, when visibility changes, or when language/RTL direction flips
   useLayoutEffect(() => {
     if (shouldHideBottomNav) return;
     const m = refreshCachedMetrics() || metricsRef.current;
     const idx = BOTTOM_NAV_TAB_INDEX[activeTabIdRef.current] ?? 1;
     const targetTx = m.slotOffsets[idx] ?? m.pad;
+    setIsInstant(true);
     setSlotWidth(m.slotWidth);
     setTranslateX(targetTx);
-  }, [shouldHideBottomNav, refreshCachedMetrics]);
+  }, [shouldHideBottomNav, refreshCachedMetrics, isRtl, resolvedLanguage]);
 
   // Move bubble via GPU translate3d whenever activeTabId changes
   useLayoutEffect(() => {
@@ -506,7 +509,7 @@ function DashboardBottomNavComponent() {
       const changed = prevTabIdRef.current !== item.id;
       prevTabIdRef.current = item.id;
       markNavTapStart(item.id);
-      setOptimisticNavTab(item.id, item.id === 'menu');
+      setOptimisticNavTab(item.id, false);
       prefetchTabRouteAndData(item.id, user?.uid);
 
       const m = metricsRef.current;
@@ -668,8 +671,8 @@ function DashboardBottomNavComponent() {
     }
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
-      const dir = e.key === 'ArrowRight' ? 1 : -1;
-      const nextIdx = (index + dir + navItems.length) % navItems.length;
+      const step = e.key === 'ArrowRight' ? (isRtl ? -1 : 1) : (isRtl ? 1 : -1);
+      const nextIdx = (index + step + navItems.length) % navItems.length;
       const nextItem = navItems[nextIdx];
       btnRefs.current[nextItem.id]?.focus();
     }
@@ -752,6 +755,8 @@ function DashboardBottomNavComponent() {
           isDragging ? 'is-dragging' : ''
         } ${isPressed ? 'is-pressed out' : ''}`}
         style={{
+          left: 0,
+          right: 'auto',
           transform: `translate3d(${translateX}px, 0, 0)`,
         }}
       >
@@ -776,8 +781,8 @@ function DashboardBottomNavComponent() {
                     type="button"
                     data-ai-nav-fab="true"
                     data-testid="bottom-nav-ai-fab"
-                    aria-label="Open Boardly AI Mentors"
-                    title="Boardly AI Mentors"
+                    aria-label={t('nav.aiMentors')}
+                    title={t('nav.aiMentors')}
                     onPointerDown={(e) => e.stopPropagation()}
                     onTouchStart={(e) => e.stopPropagation()}
                     onClick={handleOpenAiMentors}

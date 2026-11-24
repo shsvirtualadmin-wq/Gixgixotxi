@@ -36,6 +36,38 @@
             root.classList.add('smooth-mode');
             root.setAttribute('data-smooth-mode', 'true');
           }
+          // Apply saved or system language + RTL direction synchronously before first paint
+          var rawLang = (localStorage.getItem('boardly_app_language') || 'en').toLowerCase();
+          var resolvedLang = rawLang;
+          if (rawLang === 'auto' || rawLang === 'system') {
+            var navList = Array.isArray(navigator.languages) ? navigator.languages : [navigator.language || 'en'];
+            resolvedLang = 'en';
+            for (var li = 0; li < navList.length; li++) {
+              var lt = String(navList[li] || '').toLowerCase().replace(/_/g, '-');
+              if (lt.indexOf('ur-latn') === 0) { resolvedLang = 'ur-latn'; break; }
+              if (lt === 'ur' || lt.indexOf('ur-') === 0) { resolvedLang = 'ur'; break; }
+              if (lt === 'ar' || lt.indexOf('ar-') === 0) { resolvedLang = 'ar'; break; }
+              if (lt === 'es' || lt.indexOf('es-') === 0) { resolvedLang = 'es'; break; }
+              if (lt === 'zh' || lt.indexOf('zh-') === 0) { resolvedLang = 'zh'; break; }
+              if (lt === 'hi' || lt.indexOf('hi-') === 0) { resolvedLang = 'hi'; break; }
+              if (lt === 'fr' || lt.indexOf('fr-') === 0) { resolvedLang = 'fr'; break; }
+              if (lt === 'en' || lt.indexOf('en-') === 0) { resolvedLang = 'en'; break; }
+            }
+          }
+          var htmlLangMap = {
+            en: 'en',
+            'ur-latn': 'ur-Latn',
+            ur: 'ur',
+            es: 'es',
+            zh: 'zh',
+            hi: 'hi',
+            ar: 'ar',
+            fr: 'fr'
+          };
+          var finalLang = htmlLangMap[resolvedLang] ? resolvedLang : 'en';
+          root.setAttribute('lang', htmlLangMap[finalLang]);
+          root.setAttribute('dir', finalLang === 'ur' || finalLang === 'ar' ? 'rtl' : 'ltr');
+          root.setAttribute('data-lang', finalLang);
           // Kick off first-screen public API fetches in parallel with JS download
           var p = window.location.pathname.toLowerCase();
           if (
@@ -129,6 +161,12 @@
     />
     <link
       href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"

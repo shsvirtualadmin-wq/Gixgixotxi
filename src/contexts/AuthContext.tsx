@@ -67,6 +67,7 @@ import {
   getSavedAccounts,
   removeSavedAccount,
   upsertSavedAccount,
+  type LiveSavedAccountInfo,
   type SavedAccountEntry,
 } from '@/utils/savedAccounts';
 import {
@@ -356,6 +357,11 @@ interface AuthContextValue {
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateLocalProfile: (updates: Partial<UserProfile>) => void;
   registerCurrentAccountSwitchSession: () => Promise<{ ok: boolean; sessionId?: string; expiresAt?: number }>;
+  refreshSavedAccountsStatus: () => Promise<{
+    ok: boolean;
+    accounts: Record<string, LiveSavedAccountInfo>;
+    error?: string;
+  }>;
   switchToSavedAccount: (
     account: Pick<SavedAccountEntry, 'uid' | 'email' | 'sessionId' | 'role'>
   ) => Promise<{
@@ -364,6 +370,7 @@ interface AuthContextValue {
     redirectTo?: string;
     expired?: boolean;
     email?: string;
+    planTier?: string | null;
     error?: string;
   }>;
   removeSavedAccountSession: (uid: string) => Promise<SavedAccountEntry[]>;
@@ -966,7 +973,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...(existingCached?.customRole ? { customRole: existingCached.customRole } : {}),
       photoURL: null,
       role: claimDerivedRole,
-      plan: claimSuperAdmin ? 'pro' : (existingCached as any)?.plan || 'free',
+      plan: claimSuperAdmin ? 'plus' : (existingCached as any)?.plan || 'free',
       status: 'active',
       profileCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.profileCompleted),
       onboardingCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.onboardingCompleted),
@@ -1007,7 +1014,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             equipped: starterEquipped,
             ownedCosmetics: [starterAvatarKey],
             role: claimDerivedRole,
-            plan: claimSuperAdmin ? 'pro' : 'free',
+            plan: claimSuperAdmin ? 'plus' : 'free',
             status: 'active',
             profileCompleted: claimSuperAdmin ? true : false,
             onboardingCompleted: claimSuperAdmin ? true : false,
@@ -2006,6 +2013,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? serverDisplayName
                 : prevDisplay || (serverDisplayIsDistinct ? serverDisplayName : '');
 
+            const serverPlan = meData.user.plan;
+            const existingPlan = String((base as any).plan || '').toLowerCase();
+            const shouldAdoptServerPlan =
+              (serverPlan === 'plus' || serverPlan === 'pro' || serverPlan === 'free') &&
+              !(existingPlan === 'plus' && serverPlan !== 'plus');
+
             const updated: UserProfile = {
               ...base,
               ...(serverUsername ? { username: serverUsername } : {}),
@@ -2013,8 +2026,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? { displayName: nextDisplayName, display_name: nextDisplayName }
                 : {}),
               ...(serverCustomRole ? { customRole: serverCustomRole } : {}),
-              ...(meData.user.plan === 'pro' || meData.user.plan === 'free'
-                ? { plan: meData.user.plan, isPremium: meData.user.plan === 'pro' }
+              ...(shouldAdoptServerPlan
+                ? { plan: serverPlan, isPremium: serverPlan === 'pro' || serverPlan === 'plus' }
                 : {}),
               role: effectiveRole,
             };
@@ -3584,6 +3597,126 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void registerCurrentAccountSwitchSession();
   }, [user?.uid, isGuest, isSessionVerified, registerCurrentAccountSwitchSession]);
 
+  const refreshSavedAccountsStatus = useCallback(async (): Promise<{
+    ok: boolean;
+    accounts: Record<string, LiveSavedAccountInfo>;
+    error?: string;
+  }> => {
+    const endpoint = '/api/auth/switch-session/accounts';
+    try {
+      const headers: Record<string, string> = {
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+      if (auth.currentUser && !isGuest) {
+        const idToken = await auth.currentUser.getIdToken().catch(() => null);
+        if (idToken) {
+          headers.Authorization = `Bearer ${idToken}`;
+        }
+      }
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        accounts?: Array<{
+          uid?: string;
+          email?: string;
+          displayName?: string;
+          username?: string;
+          role?: string;
+          planTier?: string | null;
+          isSuperAdmin?: boolean;
+          equippedAvatar?: string | null;
+          equippedFrameId?: string | null;
+          sessionStatus?: 'active' | 'expired' | 'error';
+          expiresAt?: number | null;
+          error?: string | null;
+        }>;
+        error?: string;
+      };
+
+      if (!res.ok || !data.ok) {
+        console.error('[Boardly Auth] refreshSavedAccountsStatus failed', {
+          fn: 'refreshSavedAccountsStatus',
+          url: endpoint,
+          status: res.status,
+          error: data.error || null,
+        });
+        return {
+          ok: false,
+          accounts: {},
+          error: data.error || `Failed to refresh saved accounts (${res.status}).`,
+        };
+      }
+
+      const map: Record<string, LiveSavedAccountInfo> = {};
+      const rows = Array.isArray(data.accounts) ? data.accounts : [];
+      for (const row of rows) {
+        const rowUid = String(row.uid || '').trim();
+        if (!rowUid) continue;
+        const status =
+          row.sessionStatus === 'active' ||
+          row.sessionStatus === 'expired' ||
+          row.sessionStatus === 'error'
+            ? row.sessionStatus
+            : 'error';
+        const planTier =
+          row.planTier === 'free' || row.planTier === 'plus' || row.planTier === 'pro'
+            ? row.planTier
+            : null;
+        map[rowUid] = {
+          uid: rowUid,
+          planTier,
+          status,
+          displayName: row.displayName || undefined,
+          username: row.username || null,
+          email: row.email || undefined,
+          role: row.role || null,
+          isSuperAdmin: Boolean(row.isSuperAdmin),
+          equippedAvatar: row.equippedAvatar ?? null,
+          equippedFrameId: row.equippedFrameId ?? null,
+          error: row.error || null,
+        };
+        if (status === 'active') {
+          const existing = getSavedAccounts().find((acc) => acc.uid === rowUid);
+          if (existing) {
+            upsertSavedAccount({
+              uid: rowUid,
+              email: row.email || existing.email,
+              displayName: row.displayName || existing.displayName,
+              username: row.username ?? existing.username ?? null,
+              role: row.role ?? existing.role ?? null,
+              equippedAvatar: row.equippedAvatar ?? existing.equippedAvatar ?? null,
+              equippedFrameId: row.equippedFrameId ?? existing.equippedFrameId ?? null,
+              sessionId: existing.sessionId ?? null,
+              sessionExpiresAt:
+                typeof row.expiresAt === 'number'
+                  ? row.expiresAt
+                  : existing.sessionExpiresAt ?? null,
+              isGuest: false,
+            });
+          }
+        }
+      }
+
+      return { ok: true, accounts: map };
+    } catch (err: any) {
+      console.error('[Boardly Auth] refreshSavedAccountsStatus exception', {
+        fn: 'refreshSavedAccountsStatus',
+        url: endpoint,
+        message: err?.message || String(err),
+        error: err,
+      });
+      return {
+        ok: false,
+        accounts: {},
+        error: err?.message || 'Could not refresh saved accounts.',
+      };
+    }
+  }, [isGuest]);
+
   const switchToSavedAccount = useCallback(
     async (
       account: Pick<SavedAccountEntry, 'uid' | 'email' | 'sessionId' | 'role'>
@@ -3593,6 +3726,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       redirectTo?: string;
       expired?: boolean;
       email?: string;
+      planTier?: string | null;
       error?: string;
     }> => {
       const targetUid = String(account.uid || '').trim();
@@ -3617,8 +3751,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await registerCurrentAccountSwitchSession().catch(() => {});
       }
 
+      const exchangeUrl = '/api/auth/switch-session/exchange';
       try {
-        const res = await fetch('/api/auth/switch-session/exchange', {
+        const res = await fetch(exchangeUrl, {
           method: 'POST',
           credentials: 'include',
           headers: {
@@ -3634,7 +3769,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ok?: boolean;
           uid?: string;
           email?: string;
+          displayName?: string;
+          username?: string;
           role?: string;
+          planTier?: string | null;
           sessionId?: string;
           expiresAt?: number;
           customToken?: string;
@@ -3644,13 +3782,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!res.ok || !data.ok || !data.customToken) {
           const isExpired = res.status === 401 || data.code === 'SWITCH_SESSION_EXPIRED';
+          console.error('[Boardly Auth] switchToSavedAccount failed', {
+            fn: 'switchToSavedAccount',
+            url: exchangeUrl,
+            status: res.status,
+            code: data.code || null,
+            targetUid,
+            error: data.error || null,
+          });
           return {
             ok: false,
-            expired: true,
+            expired: isExpired,
             email: data.email || targetEmail,
             error: isExpired
               ? 'Session expired, please sign in again.'
-              : data.error || 'Session expired, please sign in again.',
+              : data.error || 'Could not switch accounts right now. Please try again.',
           };
         }
 
@@ -3730,11 +3876,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Ignore storage errors
         }
 
-        // Refresh display metadata + rotated session ID for the switched account
+        // Refresh display metadata + rotated session ID for the switched account (never store stale planLabel)
         upsertSavedAccount({
           uid: switchedUser.uid,
           email: switchedUser.email || data.email || targetEmail,
-          displayName: switchedUser.displayName || switchedUser.email || targetEmail || 'Account',
+          displayName:
+            data.displayName ||
+            switchedUser.displayName ||
+            switchedUser.email ||
+            targetEmail ||
+            'Account',
+          username: data.username || null,
           role: resolvedRole,
           sessionId: data.sessionId || account.sessionId || null,
           sessionExpiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : null,
@@ -3742,19 +3894,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           lastUsedAt: Date.now(),
         });
 
-        const redirectTo = getRoleRedirectUrl(resolvedRole);
+        // Compute destination directly from the newly switched account's resolved role (never stale closure)
+        const redirectTo =
+          resolvedRole === 'super_admin' || resolvedRole === 'superadmin'
+            ? '/superadmin'
+            : resolvedRole === 'admin'
+            ? '/admin'
+            : resolvedRole === 'captain'
+            ? '/dashboard/captain'
+            : '/dashboard';
         return {
           ok: true,
           uid: switchedUser.uid,
           redirectTo,
+          planTier: data.planTier ?? null,
         };
       } catch (err: any) {
-        console.warn('[Boardly Auth] switchToSavedAccount error:', err);
+        console.error('[Boardly Auth] switchToSavedAccount exception', {
+          fn: 'switchToSavedAccount',
+          url: exchangeUrl,
+          targetUid,
+          code: err?.code || null,
+          message: err?.message || String(err),
+          error: err,
+        });
+        const isTokenExpired =
+          err?.code === 'auth/invalid-custom-token' || err?.code === 'auth/custom-token-mismatch';
         return {
           ok: false,
-          expired: true,
+          expired: isTokenExpired,
           email: targetEmail,
-          error: 'Session expired, please sign in again.',
+          error: isTokenExpired
+            ? 'Session expired, please sign in again.'
+            : err?.message || 'Could not switch accounts right now. Please try again.',
         };
       }
     },
@@ -3762,7 +3934,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isGuest,
       isSessionVerified,
       registerCurrentAccountSwitchSession,
-      getRoleRedirectUrl,
       evaluateVerifiedRoleState,
     ]
   );
@@ -4248,6 +4419,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       updateLocalProfile,
       registerCurrentAccountSwitchSession,
+      refreshSavedAccountsStatus,
       switchToSavedAccount,
       removeSavedAccountSession,
     }),
@@ -4294,6 +4466,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateProfile,
       updateLocalProfile,
       registerCurrentAccountSwitchSession,
+      refreshSavedAccountsStatus,
       switchToSavedAccount,
       removeSavedAccountSession,
     ]

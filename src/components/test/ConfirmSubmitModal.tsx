@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ConfirmSubmitModalProps {
   open: boolean;
@@ -22,6 +23,8 @@ export function ConfirmSubmitModal({
   flaggedCount,
   secondsRemaining,
 }: ConfirmSubmitModalProps) {
+  const { t, formatNumber } = useLanguage();
+
   if (!open) return null;
 
   const unansweredCount = totalQuestions - answeredCount;
@@ -30,7 +33,7 @@ export function ConfirmSubmitModal({
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return `${m}m ${s}s`;
+    return `${m}:${String(s).padStart(2, '0')}`;
   };
 
   return (
@@ -97,12 +100,12 @@ export function ConfirmSubmitModal({
             className="font-dot"
             style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}
           >
-            Submit Test Attempt?
+            {t('test.confirmSubmitTitle')}
           </h3>
           <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 6 }}>
             {hasUnanswered
-              ? `You have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Unanswered questions receive 0 points.`
-              : 'All questions answered! Ready to see your score and detailed explanations?'}
+              ? `${t('test.confirmSubmitDesc', { answered: formatNumber(answeredCount), total: formatNumber(totalQuestions) })} ${t('test.unansweredWarning', { count: formatNumber(unansweredCount) })}`
+              : t('test.confirmSubmitDesc', { answered: formatNumber(answeredCount), total: formatNumber(totalQuestions) })}
           </p>
         </div>
 
@@ -118,31 +121,31 @@ export function ConfirmSubmitModal({
           }}
         >
           <div>
-            <p className="font-dot" style={{ fontSize: 20, fontWeight: 800, color: '#D71921' }}>
-              {answeredCount}
+            <p className="font-dot ltr-nums" style={{ fontSize: 20, fontWeight: 800, color: '#D71921' }}>
+              {formatNumber(answeredCount)}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Answered</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t('test.answered')}</p>
           </div>
 
           <div>
             <p
-              className="font-dot"
+              className="font-dot ltr-nums"
               style={{
                 fontSize: 20,
                 fontWeight: 800,
                 color: hasUnanswered ? 'var(--warning)' : 'var(--text-muted)',
               }}
             >
-              {unansweredCount}
+              {formatNumber(unansweredCount)}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Unanswered</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t('test.unanswered')}</p>
           </div>
 
           <div>
-            <p className="font-dot" style={{ fontSize: 20, fontWeight: 800, color: 'var(--warning)' }}>
-              {flaggedCount}
+            <p className="font-dot ltr-nums" style={{ fontSize: 20, fontWeight: 800, color: 'var(--warning)' }}>
+              {formatNumber(flaggedCount)}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Flagged</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{t('test.flagged')}</p>
           </div>
         </div>
 
@@ -158,7 +161,9 @@ export function ConfirmSubmitModal({
             }}
           >
             <Clock size={13} />
-            <span>Time remaining: {formatTime(secondsRemaining)}</span>
+            <span>
+              {t('test.timeLeft')}: <span className="ltr-nums">{formatTime(secondsRemaining)}</span>
+            </span>
           </div>
         )}
 
@@ -171,7 +176,7 @@ export function ConfirmSubmitModal({
             onClick={onClose}
             disabled={submitting}
           >
-            Keep Practicing
+            {t('test.stayInTest')}
           </Button>
 
           <Button
@@ -179,10 +184,10 @@ export function ConfirmSubmitModal({
             size="md"
             fullWidth
             loading={submitting}
-            loadingMessages={['Checking your answers...']}
+            loadingMessages={[t('common.submitting')]}
             onClick={onConfirm}
           >
-            Submit Test
+            {t('test.submitNow')}
           </Button>
         </div>
       </div>

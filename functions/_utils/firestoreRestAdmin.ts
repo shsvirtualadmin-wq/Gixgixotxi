@@ -1008,7 +1008,7 @@ export async function resolveCurrentUser(params: {
         displayName: resolvedDisplayName,
         username: resolvedUsername,
         accountType: 'registered',
-        plan: isCaptainOrAbove ? 'pro' : 'free',
+        plan: isSuperAdmin ? 'plus' : isCaptainOrAbove ? 'pro' : 'free',
         picture: verified.picture || null,
         role,
         customRole: roleRow?.custom_role || null,

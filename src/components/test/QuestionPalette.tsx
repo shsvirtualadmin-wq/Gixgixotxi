@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { X, Bookmark } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface QuestionPaletteProps {
   open: boolean;
@@ -20,6 +21,8 @@ export const QuestionPalette = memo(function QuestionPalette({
   flagged,
   onSelectIndex,
 }: QuestionPaletteProps) {
+  const { t, formatNumber } = useLanguage();
+
   if (!open) return null;
 
   const answeredCount = Object.keys(userAnswers).length;
@@ -54,8 +57,11 @@ export const QuestionPalette = memo(function QuestionPalette({
           width: '100%',
           maxWidth: 380,
           height: '100%',
-          borderLeft: '1px solid var(--glass-border)',
-          borderRadius: '28px 0 0 28px',
+          borderInlineStart: '1px solid var(--glass-border)',
+          borderStartStartRadius: 28,
+          borderEndStartRadius: 28,
+          borderStartEndRadius: 0,
+          borderEndEndRadius: 0,
           display: 'flex',
           flexDirection: 'column',
           zIndex: 101,
@@ -72,20 +78,21 @@ export const QuestionPalette = memo(function QuestionPalette({
             justifyContent: 'space-between',
           }}
         >
-          <div>
+          <div className="text-start">
             <h3
               className="font-dot"
               style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}
             >
-              Question Palette
+              {t('test.paletteTitle')}
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              Jump to any question instantly
+              {t('test.questionOf', { current: currentIndex + 1, total: totalQuestions })}
             </p>
           </div>
 
           <button
             onClick={onClose}
+            aria-label={t('common.close')}
             className="glass-pill"
             style={{
               width: 34,
@@ -122,9 +129,10 @@ export const QuestionPalette = memo(function QuestionPalette({
                 borderRadius: 4,
                 background: 'rgba(215, 25, 33, 0.22)',
                 border: '1px solid #D71921',
+                flexShrink: 0,
               }}
             />
-            <span>Answered ({answeredCount})</span>
+            <span>{t('test.answered')} (<span className="ltr-nums">{formatNumber(answeredCount)}</span>)</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -135,9 +143,10 @@ export const QuestionPalette = memo(function QuestionPalette({
                 borderRadius: 4,
                 background: 'rgba(245, 158, 11, 0.25)',
                 border: '1px solid var(--warning)',
+                flexShrink: 0,
               }}
             />
-            <span>Flagged ({flaggedCount})</span>
+            <span>{t('test.flagged')} (<span className="ltr-nums">{formatNumber(flaggedCount)}</span>)</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -148,9 +157,10 @@ export const QuestionPalette = memo(function QuestionPalette({
                 borderRadius: 4,
                 background: 'var(--glass-row-bg)',
                 border: '1px solid var(--glass-border)',
+                flexShrink: 0,
               }}
             />
-            <span>Unanswered ({unansweredCount})</span>
+            <span>{t('test.unanswered')} (<span className="ltr-nums">{formatNumber(unansweredCount)}</span>)</span>
           </div>
         </div>
 
@@ -178,7 +188,7 @@ export const QuestionPalette = memo(function QuestionPalette({
                   onSelectIndex(i);
                   onClose();
                 }}
-                className="font-dot"
+                className="font-dot ltr-nums"
                 style={{
                   height: 48,
                   borderRadius: 14,
@@ -211,13 +221,13 @@ export const QuestionPalette = memo(function QuestionPalette({
                   boxShadow: isCurrent ? '0 6px 16px -4px rgba(215, 25, 33, 0.45)' : undefined,
                 }}
               >
-                {i + 1}
+                {formatNumber(i + 1)}
                 {isItemFlagged && (
                   <Bookmark
                     size={10}
                     fill="var(--warning)"
                     color="var(--warning)"
-                    style={{ position: 'absolute', top: 4, right: 4 }}
+                    style={{ position: 'absolute', top: 4, insetInlineEnd: 4 }}
                   />
                 )}
               </button>

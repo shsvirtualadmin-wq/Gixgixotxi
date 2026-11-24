@@ -21,8 +21,10 @@ import { useStoreCart } from '@/hooks/useStoreCart';
 import { Plus } from 'lucide-react';
 import { getDisplayName } from '@/utils/displayName';
 import { RARITY_ACCENT } from '@/components/store/StoreCard';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export const StoreItemDetailPage: React.FC = () => {
+  const { t, formatNumber } = useLanguage();
   const { item: rawItem, slug: rawSlug } = useParams<{ item?: string; slug?: string }>();
   const itemParam = rawItem || rawSlug || '';
   const { user, profile, isGuest } = useAuth();
@@ -93,10 +95,8 @@ export const StoreItemDetailPage: React.FC = () => {
   const handleAction = async () => {
     if (busyLockRef.current || busy) return;
     if (!user || isGuest || user.uid.startsWith('guest_')) {
-      setFeedback(
-        'Guest accounts cannot purchase items with Kobans. Please create a registered account to unlock this item.'
-      );
-      requireAuth(`unlock "${cosmetic.name}" in the Boardly Store`);
+      setFeedback(t('store.guestCannotPurchase'));
+      requireAuth(t('store.unlockItemAuthReason', { name: cosmetic.name }));
       return;
     }
     busyLockRef.current = true;
@@ -105,7 +105,11 @@ export const StoreItemDetailPage: React.FC = () => {
     try {
       if (isOwned) {
         await equipCosmetic(cosmetic.type, isEquipped ? null : cosmetic.id);
-        setFeedback(isEquipped ? 'Unequipped item.' : 'Equipped to your student profile!');
+        setFeedback(
+          isEquipped
+            ? t('store.unequippedItem', { name: cosmetic.name })
+            : t('store.equippedItem', { name: cosmetic.name })
+        );
       } else {
         if (!idempotencyKeyRef.current) {
           idempotencyKeyRef.current = `detail_${cosmetic.id}_${Date.now()}_${Math.random()
@@ -114,14 +118,14 @@ export const StoreItemDetailPage: React.FC = () => {
         }
         const res = await purchaseCosmetic(cosmetic, idempotencyKeyRef.current);
         if (res.success) {
-          setFeedback('Unlocked! You can now equip this item.');
+          setFeedback(t('store.unlockedNowEquip'));
         }
       }
     } catch (err: unknown) {
       setFeedback(
         err instanceof Error
           ? err.message
-          : 'Could not complete Store purchase. Please try again.'
+          : t('store.purchaseFailed')
       );
     } finally {
       busyLockRef.current = false;
@@ -147,7 +151,7 @@ export const StoreItemDetailPage: React.FC = () => {
       <div className="max-w-4xl mx-auto">
         <Breadcrumbs
           items={[
-            { label: 'Store', href: '/store' },
+            { label: t('nav.store'), href: '/store' },
             { label: cosmetic.name },
           ]}
         />
@@ -197,15 +201,15 @@ export const StoreItemDetailPage: React.FC = () => {
               <span
                 className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider border ${rarityStyle.badgeBg} ${rarityStyle.badgeText} ${rarityStyle.badgeBorder}`}
               >
-                {rarityStyle.label}
+                {t(`store.rarity_${cosmetic.rarity}`)}
               </span>
-              <span className="glass-pill px-3 py-1 text-xs font-medium text-[var(--text-muted)] capitalize">
-                {cosmetic.type}
+              <span className="glass-pill px-3 py-1 text-xs font-medium text-[var(--text-muted)]">
+                {t(`store.cat_${cosmetic.type}`)}
               </span>
               {cosmetic.animated && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--koban-bg)] text-[var(--koban)] border border-[var(--koban-border)]">
                   <Sparkles size={11} />
-                  <span>Animated</span>
+                  <span>{t('store.animated')}</span>
                 </span>
               )}
             </div>
@@ -220,12 +224,12 @@ export const StoreItemDetailPage: React.FC = () => {
 
             <div className="glass-card p-4 mb-6 flex items-center justify-between">
               <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
-                Store Price
+                {t('store.storePrice')}
               </span>
-              <div className="text-right">
+              <div className="text-end">
                 <KobanAmount amount={cosmetic.priceKobans} size="md" />
-                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5">
-                  ≈ PKR {kobansToPkr(cosmetic.priceKobans)}
+                <div className="text-[11px] font-mono text-[var(--text-muted)] mt-0.5 ltr-nums">
+                  ≈ PKR {formatNumber(kobansToPkr(cosmetic.priceKobans))}
                 </div>
               </div>
             </div>
@@ -244,8 +248,8 @@ export const StoreItemDetailPage: React.FC = () => {
                     const action = toggleCartItem(cosmetic.id);
                     setFeedback(
                       action === 'added'
-                        ? 'Added to your cart!'
-                        : 'Removed from your cart.'
+                        ? t('store.addedToCartToast', { name: cosmetic.name })
+                        : t('store.removedFromCartToast', { name: cosmetic.name })
                     );
                   }}
                   className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-bold inline-flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
@@ -255,7 +259,7 @@ export const StoreItemDetailPage: React.FC = () => {
                   }`}
                 >
                   {inCart ? <Check size={15} /> : <Plus size={15} />}
-                  <span>{inCart ? 'In cart' : 'Add to cart'}</span>
+                  <span>{inCart ? t('store.inCart') : t('store.addToCart')}</span>
                 </button>
               )}
 
@@ -266,21 +270,21 @@ export const StoreItemDetailPage: React.FC = () => {
                 className="btn-primary flex-1 py-3 px-6 text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
               >
                 {busy ? (
-                  <ButtonLineLoader label={isOwned ? 'Updating...' : 'Unlocking...'} />
+                  <ButtonLineLoader label={isOwned ? t('common.saving') : t('store.unlockingShort')} />
                 ) : !user ? (
                   <>
                     <Lock size={15} />
-                    <span>Sign in to Unlock ({cosmetic.priceKobans} Kobans)</span>
+                    <span>{t('store.signInToUnlock', { price: formatNumber(cosmetic.priceKobans) })}</span>
                   </>
                 ) : isOwned ? (
                   <>
                     <Check size={15} />
-                    <span>{isEquipped ? 'Equipped (Click to Unequip)' : 'Equip Now'}</span>
+                    <span>{isEquipped ? t('store.unequipItem') : t('store.equipNow')}</span>
                   </>
                 ) : (
                   <>
                     <ShoppingBag size={15} />
-                    <span>Buy for {cosmetic.priceKobans} Kobans</span>
+                    <span className="ltr-nums">{t('store.buyForPrice', { price: formatNumber(cosmetic.priceKobans) })}</span>
                   </>
                 )}
               </button>
@@ -297,15 +301,15 @@ export const StoreItemDetailPage: React.FC = () => {
                 className="btn-secondary py-3 px-4 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer"
               >
                 {copiedLink ? <Check size={14} className="text-emerald-400" /> : <Share2 size={14} />}
-                <span>{copiedLink ? 'Link copied!' : 'Share'}</span>
+                <span>{copiedLink ? t('store.linkCopiedShort') : t('common.share')}</span>
               </button>
 
               <Link
                 to="/store"
                 className="btn-secondary py-3 px-4 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5"
               >
-                <ArrowLeft size={14} />
-                <span>All Store Items</span>
+                <ArrowLeft size={14} className="rtl-mirror" />
+                <span>{t('store.allStoreItems')}</span>
               </Link>
             </div>
           </div>
@@ -314,8 +318,8 @@ export const StoreItemDetailPage: React.FC = () => {
         {/* Related Cosmetics */}
         {relatedItems.length > 0 && (
           <section className="glass-panel p-6 sm:p-8">
-            <h2 className="font-dot text-xl font-bold text-[var(--text)] mb-4 capitalize">
-              More {cosmetic.type}s in the Store
+            <h2 className="font-dot text-xl font-bold text-[var(--text)] mb-4">
+              {t('store.moreInStore', { category: t(`store.cat_${cosmetic.type}`) })}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               {relatedItems.map((rel) => {
@@ -329,7 +333,7 @@ export const StoreItemDetailPage: React.FC = () => {
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold border ${relRarity.badgeBg} ${relRarity.badgeText} ${relRarity.badgeBorder}`}
                     >
-                      {relRarity.label}
+                      {t(`store.rarity_${rel.rarity}`)}
                     </span>
                     <h3 className="font-dot text-sm font-bold text-[var(--text)] mt-1.5 mb-2 truncate">
                       {rel.name}

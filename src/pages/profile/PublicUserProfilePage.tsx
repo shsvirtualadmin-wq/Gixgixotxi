@@ -8,6 +8,7 @@ import { ContentUnavailableScreen } from '@/components/ui/ContentUnavailableScre
 import { LineLoader } from '@/components/ui/LineLoader';
 import { ProfileView } from '@/components/profile/ProfileView';
 import { resolveProfileByUsernameOrUid } from '@/services/publicProfileService';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export const PublicUserProfilePage: React.FC = () => {
   const { username: rawUsername, userId: rawUserId } = useParams<{
@@ -15,6 +16,7 @@ export const PublicUserProfilePage: React.FC = () => {
     userId?: string;
   }>();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const rawParam = (rawUsername || rawUserId || '').trim();
 
   const [targetUid, setTargetUid] = useState<string | null>(null);
@@ -133,9 +135,9 @@ export const PublicUserProfilePage: React.FC = () => {
   if (notFound || !targetUid) {
     return (
       <ContentUnavailableScreen
-        title="This profile is no longer available"
-        message="The student account you are looking for has been deleted or does not exist."
-        badge="Profile Unavailable"
+        title={t('profile.unavailableTitle')}
+        message={t('profile.unavailableDesc')}
+        badge={t('profile.unavailableBadge')}
       />
     );
   }
@@ -143,8 +145,8 @@ export const PublicUserProfilePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-24 pb-24 px-2 sm:px-6">
       <PageMeta
-        title="Student Profile — Boardly"
-        description="View public study profile, achievements, and contributions on Boardly."
+        title={`${t('profile.studentProfile')} — Boardly`}
+        description={t('profile.publicMetaDesc')}
         canonicalPath={`/u/${encodeURIComponent(rawParam)}`}
         ogType="profile"
       />
@@ -152,8 +154,8 @@ export const PublicUserProfilePage: React.FC = () => {
       <div className="max-w-4xl mx-auto mb-3 px-2 sm:px-0">
         <Breadcrumbs
           items={[
-            { label: 'Commons', href: '/commons' },
-            { label: 'Student Profile' },
+            { label: t('nav.commons'), href: '/commons' },
+            { label: t('profile.studentProfile') },
           ]}
         />
       </div>

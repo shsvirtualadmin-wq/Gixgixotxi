@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { GuestProBlockedView } from '@/components/plans/GuestProBlockedView';
 import { BoardlyAd } from '@/components/BoardlyAd';
 
@@ -20,6 +21,7 @@ export function DailyLimitBlockedSheet({
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
   const { isGuest } = useAuth();
+  const { t, formatPKR } = useLanguage();
   const [countdownText, setCountdownText] = useState('');
 
   // PKT (UTC+5) Midnight Reset Timer
@@ -37,13 +39,13 @@ export function DailyLimitBlockedSheet({
       const hrs = Math.floor(diffMs / (1000 * 60 * 60));
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
-      setCountdownText(`Resets in ${hrs} hours ${mins} minutes (midnight PKT)`);
+      setCountdownText(t('test.resetsIn', { time: `${hrs}h ${mins}m` }));
     }
 
     calculateTimeToPktMidnight();
     const interval = setInterval(calculateTimeToPktMidnight, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [t]);
 
   // Superadmin, Pro, and crew-shared unlimited users must NEVER see the blocked sheet
   if (!isOpen || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin) return null;
@@ -65,17 +67,17 @@ export function DailyLimitBlockedSheet({
           variant="popup"
           accent="magenta-orange"
           illustrationId="boy-laptop"
-          chip="DAILY STARTER LIMIT"
-          headline={`You've used all ${FREE_DAILY_TESTS} daily attempts`}
-          description={`Free starter accounts include ${FREE_DAILY_TESTS} test attempts per day (PKT). Upgrade to Pro for unlimited practice tests.`}
-          metaNote={countdownText || 'Calculating PKT midnight reset time...'}
-          ctaLabel="Upgrade to Pro"
+          chip={t('dashboard.dailyLimits')}
+          headline={t('test.dailyLimitTitle')}
+          description={t('test.dailyLimitDesc')}
+          metaNote={countdownText || t('settings.resetsAtMidnight')}
+          ctaLabel={t('plans.upgradeToPro')}
           onAction={() => {
             onClose();
             navigate('/dashboard/plans');
           }}
           secondaryAction={{
-            label: 'Join a Crew / Buy Crew Pass (PKR 499) for unlimited group tests',
+            label: `${t('nav.crew')} (${formatPKR(499)})`,
             onClick: () => {
               onClose();
               navigate('/crew');
@@ -83,7 +85,7 @@ export function DailyLimitBlockedSheet({
           }}
           onDismiss={onClose}
           dismissible
-          infoText="Shown when your free daily test quota is reached. Quota resets automatically at midnight PKT."
+          infoText={t('settings.resetsAtMidnight')}
           footerSlot={
             effectivePlan.isSuperAdmin ? (
               <button
@@ -91,7 +93,7 @@ export function DailyLimitBlockedSheet({
                 onClick={onClose}
                 className="w-full py-2 px-3 rounded-lg border border-dashed border-white/50 bg-white/10 text-white text-xs font-mono font-semibold hover:bg-white/20 transition-colors cursor-pointer"
               >
-                [Admin Bypass: Ignore Daily Quota]
+                [{t('common.admin')}]
               </button>
             ) : undefined
           }

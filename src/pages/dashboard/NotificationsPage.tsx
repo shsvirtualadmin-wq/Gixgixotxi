@@ -56,6 +56,7 @@ import {
   getNowMs,
 } from '@/utils/dateFormat';
 import type { DocumentSnapshot } from 'firebase/firestore';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type FilterType = 'all' | 'following' | 'announcements' | 'rewards';
 type DateGroupKey = 'Today' | 'Yesterday' | 'This week' | 'Earlier';
@@ -344,6 +345,7 @@ export function NotificationsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openProfile } = useProfileModal();
+  const { t, formatNumber, resolvedLanguage } = useLanguage();
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [storeSnapshot, setStoreSnapshot] = useState(() =>
@@ -388,11 +390,11 @@ export function NotificationsPage() {
       setLastDoc(null);
       setVisibleCount(INITIAL_VISIBLE_COUNT);
     } catch {
-      setError('Unable to refresh notifications right now. Please try again.');
+      setError(t('notifications.refreshError'));
     } finally {
       setRefreshing(false);
     }
-  }, [user?.uid]);
+  }, [user?.uid, t]);
 
   const handleLoadMore = useCallback(async () => {
     if (!user?.uid || loadingMore) return;
@@ -901,22 +903,31 @@ export function NotificationsPage() {
     updateSlider();
     window.addEventListener('resize', updateSlider);
     return () => window.removeEventListener('resize', updateSlider);
-  }, [filter, counts.all, counts.following, counts.announcements, counts.rewards]);
+  }, [filter, counts.all, counts.following, counts.announcements, counts.rewards, resolvedLanguage]);
+
+  const dateGroupLabels: Record<DateGroupKey, string> = {
+    Today: t('notifications.groupToday'),
+    Yesterday: t('notifications.groupYesterday'),
+    'This week': t('notifications.groupThisWeek'),
+    Earlier: t('notifications.groupEarlier'),
+  };
 
   return (
     <div data-student-page="notifications" className="notif-page page-slide-right">
       {/* Header & Action Row */}
       <header className="notif-header">
         <div className="notif-heading-group">
-          <span className="notif-kicker">Activity &amp; Updates</span>
+          <span className="notif-kicker">{t('notifications.kicker')}</span>
           <div className="notif-page-title-row">
-            <h1 className="notif-page-title">Notifications</h1>
+            <h1 className="notif-page-title">{t('notifications.title')}</h1>
             {unreadCount > 0 && (
-              <span className="rs-chip rs-chip--red tabular-nums">{unreadCount} unread</span>
+              <span className="rs-chip rs-chip--red tabular-nums ltr-nums">
+                {t('notifications.unreadCount', { count: formatNumber(unreadCount) })}
+              </span>
             )}
           </div>
           <p className="notif-subtitle">
-            Posts from people you follow, new followers, rewards, crew updates, and announcements.
+            {t('notifications.subtitle')}
           </p>
         </div>
 
@@ -928,7 +939,7 @@ export function NotificationsPage() {
             className="rs-glass-btn inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 text-xs font-bold"
           >
             <CheckCheck className="w-4 h-4 shrink-0" strokeWidth={2} />
-            <span>Mark all as read</span>
+            <span>{t('notifications.markAllRead')}</span>
           </button>
 
           <button
@@ -936,8 +947,8 @@ export function NotificationsPage() {
             onClick={handleRefresh}
             disabled={refreshing || isLoading}
             className="rs-glass-btn w-[44px] h-[44px] min-w-[44px] min-h-[44px] inline-flex items-center justify-center shrink-0"
-            aria-label="Refresh notifications"
-            title="Refresh notifications"
+            aria-label={t('notifications.refresh')}
+            title={t('notifications.refresh')}
           >
             <RefreshCw
               className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
@@ -949,7 +960,7 @@ export function NotificationsPage() {
 
       {/* Filter Tabs Row (Segmented Tab Bar with Sliding Red Glass Pill) */}
       <div className="rs-seg-scroll">
-        <div className="rs-seg-track" role="tablist" aria-label="Notification filters">
+        <div className="rs-seg-track" role="tablist" aria-label={t('notifications.filtersAria')}>
           {sliderRect.width > 0 && (
             <span
               className="rs-seg-slider !bg-transparent !shadow-none"
@@ -968,10 +979,10 @@ export function NotificationsPage() {
           )}
           {(
             [
-              { id: 'all', label: 'All', count: counts.all },
-              { id: 'following', label: 'Following', count: counts.following },
-              { id: 'announcements', label: 'Announcements', count: counts.announcements },
-              { id: 'rewards', label: 'Rewards', count: counts.rewards },
+              { id: 'all', label: t('common.all'), count: counts.all },
+              { id: 'following', label: t('notifications.tabFollowing'), count: counts.following },
+              { id: 'announcements', label: t('notifications.tabAnnouncements'), count: counts.announcements },
+              { id: 'rewards', label: t('nav.rewards'), count: counts.rewards },
             ] as const
           ).map((tab) => {
             const active = filter === tab.id;
@@ -992,7 +1003,7 @@ export function NotificationsPage() {
                 className={`rs-seg-tab ${active ? 'rs-seg-tab--active' : ''}`}
               >
                 <span>{tab.label}</span>
-                <span className="rs-seg-badge">{tab.count}</span>
+                <span className="rs-seg-badge ltr-nums">{formatNumber(tab.count)}</span>
               </button>
             );
           })}
@@ -1007,7 +1018,7 @@ export function NotificationsPage() {
             <div className="notif-icon-circle notif-icon-circle--announcement">
               <AlertCircle className="w-5 h-5" strokeWidth={1.75} />
             </div>
-            <h2 className="notif-state-title">Something went wrong</h2>
+            <h2 className="notif-state-title">{t('common.somethingWentWrong')}</h2>
             <p className="notif-state-desc">{error}</p>
             <button
               type="button"
@@ -1019,14 +1030,14 @@ export function NotificationsPage() {
                 className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`}
                 strokeWidth={1.75}
               />
-              <span>Retry</span>
+              <span>{t('common.retry')}</span>
             </button>
           </div>
         )}
 
         {/* Loading skeleton cards */}
         {isLoading ? (
-          <ul className="notif-list" aria-busy="true" aria-label="Loading notifications">
+          <ul className="notif-list" aria-busy="true" aria-label={t('notifications.loadingAria')}>
             {[1, 2, 3, 4].map((n) => (
               <li key={n} className="notif-list-item">
                 <div className="notif-glass-card notif-glass-card--read animate-pulse pointer-events-none">
@@ -1049,15 +1060,15 @@ export function NotificationsPage() {
             <div className="notif-icon-circle">
               <Inbox className="w-5 h-5" strokeWidth={1.75} />
             </div>
-            <h2 className="notif-state-title">You&apos;re all caught up</h2>
+            <h2 className="notif-state-title">{t('notifications.emptyTitle')}</h2>
             <p className="notif-state-desc">
               {filter === 'following'
-                ? 'When students or captains you follow publish study notes, past papers, or follow you back, they will appear here.'
+                ? t('notifications.emptyFollowing')
                 : filter === 'announcements'
-                ? 'No superadmin announcements have been posted yet.'
+                ? t('notifications.emptyAnnouncements')
                 : filter === 'rewards'
-                ? 'Koban rewards, Nakama Captain allotments, and Boardly Crew updates will appear here.'
-                : 'New posts from people you follow, follower alerts, rewards, and official announcements will appear here.'}
+                ? t('notifications.emptyRewards')
+                : t('notifications.emptyAll')}
             </p>
           </div>
         ) : (
@@ -1067,9 +1078,9 @@ export function NotificationsPage() {
               <section
                 key={group.label}
                 className="notif-group"
-                aria-label={`${group.label} notifications`}
+                aria-label={dateGroupLabels[group.label]}
               >
-                <h2 className="notif-group-header">{group.label}</h2>
+                <h2 className="notif-group-header">{dateGroupLabels[group.label]}</h2>
 
                 <ul className="notif-list stagger-list">
                   {group.items.map((notif) => {
@@ -1211,7 +1222,7 @@ export function NotificationsPage() {
                         return (
                           <span className="rs-chip rs-chip--red inline-flex items-center gap-1">
                             <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.25} />
-                            Boardly Team
+                            {t('notifications.boardlyTeam')}
                           </span>
                         );
                       }
@@ -1219,7 +1230,7 @@ export function NotificationsPage() {
                         return (
                           <span className="rs-chip rs-chip--green">
                             <UserPlus className="w-2.5 h-2.5" strokeWidth={2} />
-                            FOLLOWER
+                            {t('notifications.tagFollower')}
                           </span>
                         );
                       }
@@ -1227,7 +1238,7 @@ export function NotificationsPage() {
                         return (
                           <span className="rs-chip">
                             <FileText className="w-2.5 h-2.5" strokeWidth={2} />
-                            POST
+                            {t('notifications.tagPost')}
                           </span>
                         );
                       }
@@ -1235,7 +1246,7 @@ export function NotificationsPage() {
                         return (
                           <span className="rs-chip rs-chip--gold">
                             <KobanIcon size={11} decorative />
-                            REWARD
+                            {t('notifications.tagReward')}
                           </span>
                         );
                       }
@@ -1243,14 +1254,14 @@ export function NotificationsPage() {
                         return (
                           <span className="rs-chip rs-chip--gold">
                             <Award className="w-2.5 h-2.5" strokeWidth={2} />
-                            CREW
+                            {t('notifications.tagCrew')}
                           </span>
                         );
                       }
                       return (
                         <span className="rs-chip">
                           <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
-                          SYSTEM
+                          {t('notifications.tagSystem')}
                         </span>
                       );
                     };
@@ -1279,21 +1290,21 @@ export function NotificationsPage() {
                                 {isPinned && (
                                   <span className="rs-chip rs-chip--gold">
                                     <Pin className="w-2.5 h-2.5" strokeWidth={2} />
-                                    PINNED
+                                    {t('notifications.tagPinned')}
                                   </span>
                                 )}
                                 {renderTypeTag()}
                               </div>
 
                               <div className="notif-card-meta">
-                                <span className="notif-time">
+                                <span className="notif-time ltr-nums">
                                   {formatNotificationTime(notif.createdAt)}
                                 </span>
                                 <span
                                   className={`notif-unread-dot ${
                                     notif.read ? 'notif-unread-dot--read' : ''
                                   }`}
-                                  aria-label={notif.read ? 'Read' : 'Unread'}
+                                  aria-label={notif.read ? t('notifications.read') : t('notifications.unread')}
                                 />
                               </div>
                             </div>
@@ -1323,21 +1334,21 @@ export function NotificationsPage() {
                                   {isExpanded ? (
                                     <>
                                       <ShieldCheck className="w-3.5 h-3.5 text-[#D71921]" strokeWidth={2} />
-                                      <span>Boardly Team</span>
+                                      <span>{t('notifications.boardlyTeam')}</span>
                                     </>
                                   ) : (
-                                    'Tap to read full announcement'
+                                    t('notifications.tapToReadAnnouncement')
                                   )}
                                 </span>
                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--rs-muted)]">
                                   {isExpanded ? (
                                     <>
-                                      <span>Show less</span>
+                                      <span>{t('common.showLess')}</span>
                                       <ChevronUp className="w-3.5 h-3.5" strokeWidth={1.75} />
                                     </>
                                   ) : (
                                     <>
-                                      <span>Expand</span>
+                                      <span>{t('notifications.expand')}</span>
                                       <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.75} />
                                     </>
                                   )}
@@ -1360,7 +1371,7 @@ export function NotificationsPage() {
                 className="flex justify-center pt-2 pb-4 min-h-[36px]"
                 aria-live="polite"
               >
-                {loadingMore && <ButtonLineLoader label="Loading more..." />}
+                {loadingMore && <ButtonLineLoader label={t('common.loadingMore')} />}
               </div>
             )}
           </>

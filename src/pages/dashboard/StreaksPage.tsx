@@ -33,11 +33,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSmartBack } from '@/utils/homeUrl';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export function StreaksPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const handleBack = useSmartBack();
+  const { t, formatNumber } = useLanguage();
 
   const streakCacheKey = user?.uid ? `streaks:user:${user.uid}` : '';
   const initialCachedStreak = useMemo(() => {
@@ -196,9 +198,7 @@ export function StreaksPage() {
 
       setNotification({
         type: 'success',
-        message: nextActive
-          ? 'Streak freeze activated! Your streak is protected for 1 missed day.'
-          : 'Streak freeze deactivated.',
+        message: nextActive ? t('streaks.freezeActivatedMsg') : t('streaks.freezeDeactivatedMsg'),
       });
       setTimeout(() => setNotification(null), 4000);
     } catch (err) {
@@ -215,7 +215,7 @@ export function StreaksPage() {
       }
       setNotification({
         type: 'success',
-        message: nextActive ? 'Streak freeze activated.' : 'Streak freeze deactivated.',
+        message: nextActive ? t('streaks.freezeActivatedShort') : t('streaks.freezeDeactivatedMsg'),
       });
       setTimeout(() => setNotification(null), 4000);
     } finally {
@@ -230,10 +230,10 @@ export function StreaksPage() {
       setRedeemingBadgeId(badge.id);
       await redeemStreakBadge(user.uid, badge.id);
       setRedeemedBadges((prev) => [...prev, badge.id]);
-      setNotification({ type: 'success', message: `Badge ${badge.name} unlocked!` });
+      setNotification({ type: 'success', message: t('streaks.badgeUnlockedToast', { name: badge.name }) });
       setTimeout(() => setNotification(null), 4000);
     } catch (err: unknown) {
-      setNotification({ type: 'error', message: (err as Error).message || 'Failed to redeem badge' });
+      setNotification({ type: 'error', message: (err as Error).message || t('streaks.badgeRedeemFailed') });
       setTimeout(() => setNotification(null), 4000);
     } finally {
       setRedeemingBadgeId(null);
@@ -245,26 +245,24 @@ export function StreaksPage() {
     try {
       const updated = await toggleEquipBadge(user.uid, badgeId, equippedBadges);
       setEquippedBadges(updated);
-      setNotification({ type: 'success', message: 'Badge equipment updated.' });
+      setNotification({ type: 'success', message: t('streaks.badgeUpdatedToast') });
       setTimeout(() => setNotification(null), 4000);
     } catch (err: unknown) {
-      setNotification({ type: 'error', message: (err as Error).message || 'Failed to update equipped badges' });
+      setNotification({ type: 'error', message: (err as Error).message || t('streaks.badgeUpdateFailed') });
       setTimeout(() => setNotification(null), 4000);
     }
   };
 
   // Share handlers
   const handleCopyShare = () => {
-    const text = `🔥 I'm on a ${currentStreak}-day practice streak on Boardly! Preparing daily with authentic exam questions.`;
+    const text = t('streaks.shareCopyText', { count: currentStreak });
     navigator.clipboard.writeText(text);
     setCopiedShare(true);
     setTimeout(() => setCopiedShare(false), 2000);
   };
 
   const handleWhatsAppShare = () => {
-    const text = encodeURIComponent(
-      `🔥 I'm on a ${currentStreak}-day practice streak on Boardly!\nJoin me and practice daily:\nhttps://boardly.cfd`
-    );
+    const text = encodeURIComponent(t('streaks.shareWhatsappText', { count: currentStreak }));
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
@@ -283,9 +281,9 @@ export function StreaksPage() {
         <div className="w-14 h-14 rounded-full bg-[var(--rs-red)]/15 text-[var(--rs-red-text)] flex items-center justify-center">
           <AlertCircle size={28} />
         </div>
-        <h2 className="rs-doto text-xl text-[var(--rs-text)]">Could not load streak data</h2>
+        <h2 className="rs-doto text-xl text-[var(--rs-text)]">{t('streaks.loadErrorTitle')}</h2>
         <p className="rs-body text-sm text-[var(--rs-muted)] max-w-xs">
-          There was an issue connecting to your practice history. Please check your connection and retry.
+          {t('streaks.loadErrorDesc')}
         </p>
         <button
           type="button"
@@ -293,7 +291,7 @@ export function StreaksPage() {
           className="rs-glass-btn rs-glass-btn--red inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold min-h-[44px]"
         >
           <RotateCcw size={16} />
-          <span>Retry</span>
+          <span>{t('common.retry')}</span>
         </button>
       </div>
     );
@@ -312,17 +310,17 @@ export function StreaksPage() {
         <button
           type="button"
           onClick={handleBack}
-          aria-label="Go back"
+          aria-label={t('common.back')}
           className="rs-glass-btn w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center shrink-0 mt-0.5"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={18} className="rtl-mirror" />
         </button>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 text-start">
           <h1 className="rs-doto text-2xl sm:text-[28px] text-[var(--rs-text)]">
-            Streaks
+            {t('streaks.title')}
           </h1>
           <p className="rs-body text-xs sm:text-sm text-[var(--rs-muted)] mt-0.5">
-            Practice a little every day and keep your streak going.
+            {t('streaks.subtitle')}
           </p>
         </div>
       </div>
@@ -341,7 +339,7 @@ export function StreaksPage() {
             type="button"
             onClick={() => setNotification(null)}
             className="p-1 hover:opacity-75 transition-opacity cursor-pointer shrink-0"
-            aria-label="Dismiss notification"
+            aria-label={t('common.dismiss')}
           >
             <X size={15} />
           </button>
@@ -383,17 +381,17 @@ export function StreaksPage() {
 
           {/* Centered Big Streak Number in Doto (48px) with "day streak" under it */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="rs-doto tabular-nums text-[48px] leading-none text-[var(--rs-text)]">
-              {currentStreak}
+            <span className="rs-doto tabular-nums ltr-nums text-[48px] leading-none text-[var(--rs-text)]">
+              {formatNumber(currentStreak)}
             </span>
             <span className="rs-body text-xs font-medium text-[var(--rs-muted)] mt-1.5">
-              {currentStreak === 1 ? 'day streak' : 'day streak'}
+              {t('streaks.dayStreak')}
             </span>
           </div>
 
           {/* Small Round Red-Tinted Flame Badge at Top Right of Ring */}
           <div
-            className="absolute top-1 right-1 w-9 h-9 rounded-full flex items-center justify-center pointer-events-none"
+            className="absolute top-1 end-1 w-9 h-9 rounded-full flex items-center justify-center pointer-events-none"
             style={{
               backgroundColor: 'color-mix(in srgb, var(--rs-red) 16%, var(--rs-card2))',
               boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--rs-red) 36%, var(--rs-line))',
@@ -408,12 +406,12 @@ export function StreaksPage() {
         <div className="flex flex-col items-center gap-1">
           <span className="rs-body text-sm font-bold text-[var(--rs-text)]">
             {daysToNextBadge > 0
-              ? `${daysToNextBadge} ${daysToNextBadge === 1 ? 'day' : 'days'} to ${nextBadge.name}`
-              : `Milestone reached: ${nextBadge.name}!`}
+              ? t('streaks.daysToMilestone', { count: formatNumber(daysToNextBadge), name: nextBadge.name })
+              : t('streaks.milestoneReachedName', { name: nextBadge.name })}
           </span>
           {longestStreak > 0 && (
             <span className="rs-body text-xs text-[var(--rs-muted)] tabular-nums">
-              Longest: {longestStreak} {longestStreak === 1 ? 'day' : 'days'}
+              {t('streaks.longestDays', { count: formatNumber(longestStreak) })}
             </span>
           )}
         </div>
@@ -429,12 +427,12 @@ export function StreaksPage() {
           {isTodayDone ? (
             <>
               <Check size={15} className="text-[var(--rs-green)] shrink-0 stroke-[2.5]" />
-              <span>Today&apos;s practice done</span>
+              <span>{t('streaks.todayDone')}</span>
             </>
           ) : (
             <>
               <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-              <span>Practice today to keep your streak. Ends 11:59 PM PKT</span>
+              <span>{t('streaks.practiceTodayReminder')}</span>
             </>
           )}
         </div>
@@ -446,11 +444,11 @@ export function StreaksPage() {
             onClick={() => navigate('/dashboard/practice')}
             className="rs-glass-btn rs-glass-btn--red w-full h-12 text-sm font-bold flex items-center justify-center min-h-[48px]"
           >
-            Practice Now to Lock Streak
+            {t('streaks.practiceToLockCta')}
           </button>
         ) : (
           <p className="rs-body text-xs sm:text-sm font-medium text-[var(--rs-muted)]">
-            Come back tomorrow
+            {t('streaks.comeBackTomorrow')}
           </p>
         )}
       </div>
@@ -464,7 +462,7 @@ export function StreaksPage() {
           className="rs-glass-btn h-12 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 min-h-[44px] px-4"
         >
           <Share2 size={16} className="shrink-0" />
-          <span>Share Streak</span>
+          <span>{t('streaks.shareStreak')}</span>
         </button>
 
         {/* Freeze Active: blue-tinted glass pill button with a snowflake icon */}
@@ -477,17 +475,17 @@ export function StreaksPage() {
           <Snowflake size={16} className="shrink-0" />
           <span>
             {freezeActive
-              ? 'Freeze Active'
+              ? t('streaks.freezeActive')
               : streakFreezes > 0
-              ? `Freeze (${streakFreezes} left)`
-              : 'No freeze left'}
+              ? t('streaks.freezeLeft', { count: formatNumber(streakFreezes) })
+              : t('streaks.noFreezeLeft')}
           </span>
         </button>
       </div>
 
       {/* ── 4. "This week" Card (seven 44px rounded-square day cells, radius 14px) ── */}
       <div className="rs-card rs-card--28 w-full flex flex-col gap-3.5">
-        <h3 className="rs-doto text-base text-[var(--rs-text)]">This week</h3>
+        <h3 className="rs-doto text-base text-[var(--rs-text)] text-start">{t('streaks.thisWeek')}</h3>
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2 items-center justify-items-center">
           {streakData.thisWeek.map((day) => {
             const cellClass = day.isPracticed
@@ -543,9 +541,9 @@ export function StreaksPage() {
 
       {/* ── 5. "Last 4 weeks" Card ───────────────────────────────────────── */}
       <div className="rs-card rs-card--28 w-full flex flex-col gap-4">
-        <div className="flex flex-col">
-          <h3 className="rs-doto text-base sm:text-lg text-[var(--rs-text)]">Last 4 weeks</h3>
-          <p className="rs-body text-xs text-[var(--rs-muted)]">Pakistan Standard Time</p>
+        <div className="flex flex-col text-start">
+          <h3 className="rs-doto text-base sm:text-lg text-[var(--rs-text)]">{t('streaks.last4Weeks')}</h3>
+          <p className="rs-body text-xs text-[var(--rs-muted)]">{t('streaks.pktTimezone')}</p>
         </div>
 
         {/* 7-Column Grid: Weekday Headers across top */}
@@ -560,7 +558,7 @@ export function StreaksPage() {
 
           {/* Month Label indicator above first row */}
           {streakData.last28Days[0]?.monthLabel && (
-            <div className="rs-body text-[11px] font-bold text-[var(--rs-muted)] px-1 pt-0.5">
+            <div className="rs-body text-[11px] font-bold text-[var(--rs-muted)] px-1 pt-0.5 text-start">
               {streakData.last28Days[0].monthLong}
             </div>
           )}
@@ -584,7 +582,7 @@ export function StreaksPage() {
                   key={day.date}
                   onClick={() => setSelectedDay(day)}
                   className={`rs-day-cell w-full max-w-[44px] ${cellClass} cursor-pointer`}
-                  aria-label={`${day.date}: ${day.isPracticed ? 'Practiced' : 'No practice'}`}
+                  aria-label={`${day.date}: ${day.isPracticed ? t('streaks.legendPracticed') : t('streaks.noPractice')}`}
                 >
                   {day.monthLabel && day.date !== streakData.last28Days[0]?.date && (
                     <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1 text-[9px] font-bold rounded bg-[var(--rs-card)] text-[var(--rs-text)] border border-[var(--rs-line)]">
@@ -605,7 +603,7 @@ export function StreaksPage() {
         >
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-[4px] bg-[var(--rs-red)]" />
-            <span>Practiced</span>
+            <span>{t('streaks.legendPracticed')}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span
@@ -617,18 +615,18 @@ export function StreaksPage() {
             >
               ❄
             </span>
-            <span>Freeze used</span>
+            <span>{t('streaks.legendFreezeUsed')}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-[4px] bg-[var(--rs-card2)] border border-dashed border-[var(--rs-red)]" />
-            <span>Today</span>
+            <span>{t('streaks.legendToday')}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span
               className="w-3 h-3 rounded-[4px] bg-[var(--rs-card2)]"
               style={{ border: '1px solid var(--rs-line)' }}
             />
-            <span>Missed</span>
+            <span>{t('streaks.legendMissed')}</span>
           </div>
         </div>
       </div>
@@ -636,15 +634,15 @@ export function StreaksPage() {
       {/* ── 6. Badges and Rewards ("Streak badges") ───────────────────────── */}
       <div className="w-full flex flex-col gap-4">
         {/* Section Header */}
-        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1 text-start">
           <div>
-            <h2 className="rs-doto text-lg sm:text-xl text-[var(--rs-text)]">Streak badges</h2>
+            <h2 className="rs-doto text-lg sm:text-xl text-[var(--rs-text)]">{t('streaks.badgesTitle')}</h2>
             <p className="rs-body text-xs sm:text-sm text-[var(--rs-muted)] mt-0.5">
-              Reach a streak milestone to unlock a badge and a reward. You can equip up to 3.
+              {t('streaks.badgesSubtitle')}
             </p>
           </div>
           <span className="rs-doto text-xs sm:text-sm text-[var(--rs-muted)] shrink-0 self-start sm:self-auto">
-            Equipped {equippedBadges.length} of 3
+            {t('streaks.equippedCount', { count: formatNumber(equippedBadges.length), max: formatNumber(3) })}
           </span>
         </div>
 
@@ -660,17 +658,17 @@ export function StreaksPage() {
                 isUnlocked={currentStreak >= nextBadge.days}
                 size={72}
               />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 text-start">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="rs-doto text-base text-[var(--rs-text)] truncate">
                     {nextBadge.name}
                   </h3>
                   <span className="rs-doto text-xs text-[var(--rs-muted)] shrink-0">
-                    {nextBadge.days} days
+                    {t('streaks.daysCount', { count: formatNumber(nextBadge.days) })}
                   </span>
                 </div>
                 <p className="rs-body text-xs text-[var(--rs-muted)] mt-1 line-clamp-1">
-                  Reward: {nextBadge.rewardTitle}
+                  {t('streaks.rewardPrefix', { title: nextBadge.rewardTitle })}
                 </p>
               </div>
             </div>
@@ -686,10 +684,10 @@ export function StreaksPage() {
               <div className="flex items-center justify-between text-xs text-[var(--rs-muted)] rs-body">
                 <span>
                   {daysToNextBadge > 0
-                    ? `${daysToNextBadge} more ${daysToNextBadge === 1 ? 'day' : 'days'} to unlock`
-                    : 'Milestone reached!'}
+                    ? t('streaks.moreDaysToUnlock', { count: formatNumber(daysToNextBadge) })
+                    : t('streaks.milestoneReached')}
                 </span>
-                <span className="tabular-nums font-bold">{nextBadgeProgress}%</span>
+                <span className="tabular-nums ltr-nums font-bold">{nextBadgeProgress}%</span>
               </div>
             </div>
           </div>
@@ -722,12 +720,12 @@ export function StreaksPage() {
                 </div>
 
                 {/* Name & Days */}
-                <div className="flex flex-col min-w-0">
+                <div className="flex flex-col min-w-0 text-start">
                   <h4 className="rs-doto text-xs sm:text-sm text-[var(--rs-text)] truncate">
                     {b.name}
                   </h4>
                   <span className="rs-doto text-[11px] text-[var(--rs-muted)] mt-0.5">
-                    {b.days} days
+                    {t('streaks.daysCount', { count: formatNumber(b.days) })}
                   </span>
                 </div>
 
@@ -752,17 +750,17 @@ export function StreaksPage() {
                       }`}
                     >
                       {isEquipped
-                        ? 'Equipped'
+                        ? t('locker.equipped')
                         : redeemedBadges.includes(b.id)
-                        ? 'Equip'
+                        ? t('locker.equip')
                         : redeemingBadgeId === b.id
-                        ? 'Unlocking...'
-                        : 'Unlock'}
+                        ? t('streaks.unlocking')
+                        : t('streaks.unlock')}
                     </button>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs text-[var(--rs-muted)] rs-body py-1">
                       <Lock size={13} />
-                      <span>Locked</span>
+                      <span>{t('streaks.locked')}</span>
                     </div>
                   )}
                 </div>
@@ -777,13 +775,13 @@ export function StreaksPage() {
         <button
           type="button"
           onClick={() => setHowStreaksWorkOpen((prev) => !prev)}
-          className="w-full p-4 sm:p-5 flex items-center justify-between text-left transition-colors cursor-pointer min-h-[48px]"
+          className="w-full p-4 sm:p-5 flex items-center justify-between text-start transition-colors cursor-pointer min-h-[48px]"
           aria-expanded={howStreaksWorkOpen}
         >
           <div className="flex items-center gap-2.5">
             <Info size={18} className="text-[var(--rs-red-text)] shrink-0" />
             <h3 className="rs-doto text-sm sm:text-base text-[var(--rs-text)]">
-              How streaks work
+              {t('streaks.howItWorksTitle')}
             </h3>
           </div>
           <ChevronDown
@@ -796,12 +794,12 @@ export function StreaksPage() {
 
         {howStreaksWorkOpen && (
           <div
-            className="px-5 pb-5 pt-3 text-xs sm:text-sm text-[var(--rs-muted)] rs-body flex flex-col gap-2.5 leading-relaxed"
+            className="px-5 pb-5 pt-3 text-xs sm:text-sm text-[var(--rs-muted)] rs-body flex flex-col gap-2.5 leading-relaxed text-start"
             style={{ borderTop: '1px solid var(--rs-line)' }}
           >
-            <p>• A new day starts at 12:00 AM Pakistan Standard Time (PKT).</p>
-            <p>• Finish any practice test during the day to add 1 day to your streak.</p>
-            <p>• If you miss a day, your streak goes back to 0, unless a Streak Freeze is active.</p>
+            <p>• {t('streaks.howRule1')}</p>
+            <p>• {t('streaks.howRule2')}</p>
+            <p>• {t('streaks.howRule3')}</p>
           </div>
         )}
       </div>
@@ -820,7 +818,7 @@ export function StreaksPage() {
               className="flex items-center justify-between pb-3"
               style={{ borderBottom: '1px solid var(--rs-line)' }}
             >
-              <div>
+              <div className="text-start">
                 <span className="text-xs text-[var(--rs-muted)] rs-body">
                   {selectedDay.weekday} · PKT
                 </span>
@@ -831,7 +829,7 @@ export function StreaksPage() {
               <button
                 type="button"
                 onClick={() => setSelectedDay(null)}
-                aria-label="Close"
+                aria-label={t('common.close')}
                 className="w-8 h-8 rs-glass-btn flex items-center justify-center text-[var(--rs-text)] cursor-pointer"
               >
                 <X size={15} />
@@ -840,7 +838,7 @@ export function StreaksPage() {
 
             <div className="flex flex-col gap-2.5 py-1 text-sm rs-body">
               <div className="flex justify-between items-center">
-                <span className="text-[var(--rs-muted)]">Status</span>
+                <span className="text-[var(--rs-muted)]">{t('streaks.status')}</span>
                 <span
                   className={`font-bold ${
                     selectedDay.isPracticed
@@ -853,28 +851,28 @@ export function StreaksPage() {
                   }`}
                 >
                   {selectedDay.isPracticed
-                    ? 'Practiced'
+                    ? t('streaks.legendPracticed')
                     : selectedDay.isFrozen
-                    ? 'Streak Freeze Used'
+                    ? t('streaks.freezeUsedStatus')
                     : selectedDay.isToday
-                    ? 'Practice Pending'
+                    ? t('streaks.practicePending')
                     : selectedDay.isFuture
-                    ? 'Upcoming Day'
-                    : 'No practice'}
+                    ? t('streaks.upcomingDay')
+                    : t('streaks.noPractice')}
                 </span>
               </div>
               {selectedDay.isPracticed && (
                 <>
                   <div className="flex justify-between items-center">
-                    <span className="text-[var(--rs-muted)]">MCQs Solved</span>
-                    <span className="rs-doto text-[var(--rs-text)]">
-                      {selectedDay.mcqsSolved}
+                    <span className="text-[var(--rs-muted)]">{t('streaks.mcqsSolved')}</span>
+                    <span className="rs-doto ltr-nums text-[var(--rs-text)]">
+                      {formatNumber(selectedDay.mcqsSolved)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-[var(--rs-muted)]">Practice Sessions</span>
-                    <span className="rs-doto text-[var(--rs-text)]">
-                      {selectedDay.sessionCount}
+                    <span className="text-[var(--rs-muted)]">{t('streaks.practiceSessions')}</span>
+                    <span className="rs-doto ltr-nums text-[var(--rs-text)]">
+                      {formatNumber(selectedDay.sessionCount)}
                     </span>
                   </div>
                 </>
@@ -890,7 +888,7 @@ export function StreaksPage() {
                 }}
                 className="w-full h-11 rs-glass-btn rs-glass-btn--red font-bold text-sm flex items-center justify-center cursor-pointer min-h-[44px]"
               >
-                Practice Now
+                {t('streaks.practiceNow')}
               </button>
             )}
 
@@ -899,7 +897,7 @@ export function StreaksPage() {
               onClick={() => setSelectedDay(null)}
               className="w-full h-10 rs-glass-btn text-[var(--rs-text)] font-bold text-xs sm:text-sm flex items-center justify-center cursor-pointer min-h-[44px]"
             >
-              Close
+              {t('common.close')}
             </button>
           </div>
         </div>
@@ -919,7 +917,7 @@ export function StreaksPage() {
               <button
                 type="button"
                 onClick={() => setSelectedBadge(null)}
-                aria-label="Close"
+                aria-label={t('common.close')}
                 className="w-8 h-8 rs-glass-btn flex items-center justify-center text-[var(--rs-text)] cursor-pointer"
               >
                 <X size={15} />
@@ -934,7 +932,7 @@ export function StreaksPage() {
 
             <div className="flex flex-col items-center gap-1">
               <span className="rs-chip">
-                {selectedBadge.tierName} · {selectedBadge.days} days
+                {selectedBadge.tierName} · {t('streaks.daysCount', { count: formatNumber(selectedBadge.days) })}
               </span>
               <h3 className="rs-doto text-lg text-[var(--rs-text)] mt-1">
                 {selectedBadge.name}
@@ -945,9 +943,9 @@ export function StreaksPage() {
             </div>
 
             {/* Reward Box */}
-            <div className="w-full p-3.5 rs-card2-row text-left flex flex-col gap-1">
+            <div className="w-full p-3.5 rs-card2-row text-start flex flex-col gap-1">
               <span className="rs-body text-[11px] font-bold text-[var(--rs-muted)]">
-                Customization Reward:
+                {t('streaks.customizationReward')}
               </span>
               <span className="rs-body text-xs font-bold text-[var(--rs-text)]">
                 {selectedBadge.rewardTitle}
@@ -973,10 +971,10 @@ export function StreaksPage() {
                 }`}
               >
                 {equippedBadges.includes(selectedBadge.id)
-                  ? 'Equipped (Tap to Unequip)'
+                  ? t('streaks.equippedTapUnequip')
                   : redeemedBadges.includes(selectedBadge.id)
-                  ? 'Equip to Profile'
-                  : 'Unlock Badge'}
+                  ? t('streaks.equipToProfile')
+                  : t('streaks.unlockBadge')}
               </button>
             ) : (
               <div className="w-full flex flex-col gap-1 text-center">
@@ -992,7 +990,9 @@ export function StreaksPage() {
                   />
                 </div>
                 <span className="rs-body text-xs text-[var(--rs-muted)] mt-1">
-                  {Math.max(0, selectedBadge.days - currentStreak)} more days of practice required
+                  {t('streaks.moreDaysRequired', {
+                    count: formatNumber(Math.max(0, selectedBadge.days - currentStreak)),
+                  })}
                 </span>
               </div>
             )}
@@ -1016,12 +1016,10 @@ export function StreaksPage() {
 
             <div className="flex flex-col gap-1">
               <h3 className="rs-doto text-base sm:text-lg text-[var(--rs-text)]">
-                {freezeActive ? 'Turn Off Streak Freeze?' : 'Activate Streak Freeze?'}
+                {freezeActive ? t('streaks.turnOffFreezeTitle') : t('streaks.activateFreezeTitle')}
               </h3>
               <p className="rs-body text-xs sm:text-sm text-[var(--rs-muted)] leading-relaxed mt-1">
-                {freezeActive
-                  ? 'Your streak will no longer be protected if you miss a practice day.'
-                  : 'A Streak Freeze shields your streak for 1 day if you miss a daily practice session. When active, it automatically covers your missed day so your streak doesn’t reset to zero.'}
+                {freezeActive ? t('streaks.turnOffFreezeDesc') : t('streaks.activateFreezeDesc')}
               </p>
             </div>
 
@@ -1033,10 +1031,10 @@ export function StreaksPage() {
                 className="w-full h-11 rs-glass-btn rs-glass-btn--red font-bold text-sm flex items-center justify-center cursor-pointer min-h-[44px]"
               >
                 {freezeToggling
-                  ? 'Updating...'
+                  ? t('common.updating')
                   : freezeActive
-                  ? 'Turn Off Freeze'
-                  : 'Activate Freeze'}
+                  ? t('streaks.turnOffFreezeCta')
+                  : t('streaks.activateFreezeCta')}
               </button>
               <button
                 type="button"
@@ -1044,7 +1042,7 @@ export function StreaksPage() {
                 onClick={() => setFreezeConfirmOpen(false)}
                 className="w-full h-11 rs-glass-btn text-[var(--rs-text)] font-bold text-sm flex items-center justify-center cursor-pointer min-h-[44px]"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -1065,11 +1063,11 @@ export function StreaksPage() {
               className="flex items-center justify-between pb-3"
               style={{ borderBottom: '1px solid var(--rs-line)' }}
             >
-              <h3 className="rs-doto text-base text-[var(--rs-text)]">Share Your Streak</h3>
+              <h3 className="rs-doto text-base text-[var(--rs-text)]">{t('streaks.shareModalTitle')}</h3>
               <button
                 type="button"
                 onClick={() => setShareModalOpen(false)}
-                aria-label="Close"
+                aria-label={t('common.close')}
                 className="w-8 h-8 rs-glass-btn flex items-center justify-center text-[var(--rs-text)] cursor-pointer"
               >
                 <X size={15} />
@@ -1082,10 +1080,10 @@ export function StreaksPage() {
                 <Flame size={28} className="fill-current" />
               </div>
               <span className="rs-doto text-3xl text-[var(--rs-text)]">
-                {currentStreak} DAYS
+                {t('streaks.daysUpper', { count: formatNumber(currentStreak) })}
               </span>
               <span className="rs-body text-xs font-bold text-[var(--rs-red-text)]">
-                Unbroken Practice Streak
+                {t('streaks.unbrokenStreak')}
               </span>
               <span className="rs-body text-[11px] text-[var(--rs-muted)] mt-1">
                 Boardly · boardly.cfd
@@ -1101,12 +1099,12 @@ export function StreaksPage() {
                 {copiedShare ? (
                   <>
                     <Check size={16} className="text-[var(--rs-green)]" />
-                    <span>Copied to Clipboard!</span>
+                    <span>{t('streaks.copiedClipboard')}</span>
                   </>
                 ) : (
                   <>
                     <Copy size={16} />
-                    <span>Copy Achievement Text</span>
+                    <span>{t('streaks.copyAchievement')}</span>
                   </>
                 )}
               </button>
@@ -1116,7 +1114,7 @@ export function StreaksPage() {
                 className="w-full h-11 rs-glass-btn rs-glass-btn--red font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer min-h-[44px]"
               >
                 <Share2 size={16} />
-                <span>Share to WhatsApp</span>
+                <span>{t('streaks.shareWhatsapp')}</span>
               </button>
             </div>
           </div>

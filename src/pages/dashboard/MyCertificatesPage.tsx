@@ -23,7 +23,7 @@ const CERTIFICATES_CACHE_KEY = 'certificates:my:v2';
 export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
   compact = false,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, isGuest } = useAuth();
   const initialCached = useMemo(
     () => readSwrCache<StudentCertificateRecord[]>(CERTIFICATES_CACHE_KEY),
     []
@@ -34,8 +34,21 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
   const [loading, setLoading] = useState(() => !initialCached);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const fallbackProfileName = String(
+    (profile as any)?.full_name ||
+      (profile as any)?.fullName ||
+      profile?.displayName ||
+      user?.displayName ||
+      profile?.username ||
+      ''
+  ).trim();
+
   const loadCertificates = useCallback(
     async (background = false) => {
+      if (!user?.uid || isGuest) {
+        setLoading(false);
+        return;
+      }
       if (!background) {
         setLoading(true);
       }
@@ -44,15 +57,6 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
         const rows = await fetchMyCertificates();
         const myAttempts =
           rows.length > 0 ? await getMyTestAttempts().catch(() => []) : [];
-
-        const fallbackProfileName = String(
-          (profile as any)?.full_name ||
-            (profile as any)?.fullName ||
-            profile?.displayName ||
-            user?.displayName ||
-            profile?.username ||
-            ''
-        ).trim();
 
         const enrichedRows = rows.map((cert) => {
           let score = Math.max(0, Number(cert.scoreObtained ?? cert.score ?? 0));
@@ -130,7 +134,7 @@ export const MyCertificatesSection: React.FC<MyCertificatesSectionProps> = ({
         setLoading(false);
       }
     },
-    [profile, user]
+    [user?.uid, isGuest, fallbackProfileName]
   );
 
   useEffect(() => {

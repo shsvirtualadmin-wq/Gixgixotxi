@@ -1192,6 +1192,9 @@
       "last_active_at": 1795536721177
     },
     {
+      "status": "abandoned",
+      "abandoned_at": 1795536758331,
+      "purge_after": 1796141558331,
       "uid": "guest_1795536758294_1a15071612",
       "username": "bilalkhan99",
       "username_lower": "bilalkhan99__abandoned_guest_1795536758294_1a15071612",
@@ -1202,9 +1205,6 @@
       "email": "",
       "plan": "free",
       "role": "student",
-      "status": "abandoned",
-      "abandoned_at": 1795536758331,
-      "purge_after": 1796141558331,
       "upgraded_to_uid": null,
       "upgraded_at": null,
       "target_university": "NUST",
@@ -2259,25 +2259,25 @@
       "user_id": "uid_admin",
       "email_hash": "hash_uid_admin",
       "email_verified": 1,
-      "verified_auth_time": 1795528800,
-      "verified_at": 1795528800000,
-      "updated_at": 1795528800000
+      "verified_auth_time": 1795539600,
+      "verified_at": 1795539600000,
+      "updated_at": 1795539600000
     },
     {
       "user_id": "uid_student1",
       "email_hash": "hash_uid_student1",
       "email_verified": 1,
-      "verified_auth_time": 1795528800,
-      "verified_at": 1795528800000,
-      "updated_at": 1795528800000
+      "verified_auth_time": 1795539600,
+      "verified_at": 1795539600000,
+      "updated_at": 1795539600000
     },
     {
       "user_id": "uid_student2",
       "email_hash": "hash_uid_student2",
       "email_verified": 1,
-      "verified_auth_time": 1795528800,
-      "verified_at": 1795528800000,
-      "updated_at": 1795528800000
+      "verified_auth_time": 1795539600,
+      "verified_at": 1795539600000,
+      "updated_at": 1795539600000
     }
   ],
   "user_koban_style": [],
@@ -2656,9 +2656,9 @@
       "uid": "uid_admin",
       "email": "admin@boardly.cfd",
       "role": "admin",
-      "custom_role": "1795528800000",
+      "custom_role": "1795539600000",
       "is_posting_banned": 0,
-      "updated_at": 1795536758102,
+      "updated_at": 1795559192242,
       "created_at": 1795536694477
     }
   ],
@@ -2994,6 +2994,182 @@
       "created_at": 1795525200000,
       "last_used_at": 1795525200000,
       "expires_at": 1795525199000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_is-TbeHlNU9dxN8l",
+      "user_id": "uid_admin",
+      "token_hash": "cb5c81a443c558862604e38ec3981acdf292ee6dc46a03a674943f962cb9740c",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795514400000,
+      "last_used_at": 1795514420000,
+      "expires_at": 1798106420000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_uC8EgVIFU98KfgOK",
+      "user_id": "uid_student1",
+      "token_hash": "814115fbad4858d80b5e32f7514124a3571c65c7f03a1b6c946151ce0021c06b",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795514410000,
+      "last_used_at": 1795514430000,
+      "expires_at": 1798106430000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_uJfAF_DUkzHSNPUg",
+      "user_id": "uid_admin",
+      "token_hash": "be00dbe5ac872159d73592e74c9a432e92a58bec0dff21b3590dcc4b59f62b43",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795518000000,
+      "last_used_at": 1795518020000,
+      "expires_at": 1798110020000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_FD39hwRkhCee6xXq",
+      "user_id": "uid_student1",
+      "token_hash": "1d1821361643cdf91998d83f9e68f23c30ccc5f1f60cab7914bbf4e90f6afd0c",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795518000000,
+      "last_used_at": 1795518015000,
+      "expires_at": 1798110015000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_0RjQzqjxpAakQwlc",
+      "user_id": "uid_student2",
+      "token_hash": "3d85134f65be9813be2e907be24324611cd6a5d91378ed03a27998384e8b234b",
+      "email": "bilal@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795518000000,
+      "last_used_at": 1795518025000,
+      "expires_at": 1798110025000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_t07gpUAq57jnzZK_",
+      "user_id": "uid_admin",
+      "token_hash": "0bd12474e672b765e10325f1868958dd7b32412e6f3e9e31b687f36be9d3bb2e",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795521600000,
+      "last_used_at": 1795521620000,
+      "expires_at": 1798113620000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_fhC8ChE5atdnTj4b",
+      "user_id": "uid_student1",
+      "token_hash": "d039392dda83cdc2e0bf5fe4840a7cf5664ae48ac3336de71dbae2b377195bd4",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795521600000,
+      "last_used_at": 1795521600000,
+      "expires_at": 1798113600000,
+      "revoked_at": 1795521610000
+    },
+    {
+      "session_id": "sws_2_0eIQ6EYAANkyyV",
+      "user_id": "uid_student2",
+      "token_hash": "d5909f9bdfff423ff9f018102951f0dd2e612f1024a3aa47e4a24e6b4699f2d1",
+      "email": "bilal@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795521600000,
+      "last_used_at": 1795521625000,
+      "expires_at": 1798113625000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_k3r0AfEWwWodA931",
+      "user_id": "uid_admin",
+      "token_hash": "81c2c9c5159e651a133be44978a451cace4cd06c5a0a7e356ce01ea76b58a8c1",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795525200000,
+      "last_used_at": 1795525210000,
+      "expires_at": 1798117210000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_7eDpx6OcjObA4dR2",
+      "user_id": "uid_student1",
+      "token_hash": "239262ddcfa44d11dbc818d9e063884d2c3b14fa98505271df0456760cdb5df5",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795525200000,
+      "last_used_at": 1795525200000,
+      "expires_at": 1795525199000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_Tlts9_qWxyTj2Hop",
+      "user_id": "uid_admin",
+      "token_hash": "9b09f5de14176109720dd560d8e8cb633010a132625fcfce3e1d3c8b23c75f7d",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795532400000,
+      "last_used_at": 1795532410000,
+      "expires_at": 1798124410000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_KAX44PW6VbI3_VD-",
+      "user_id": "uid_student1",
+      "token_hash": "595e31fd7f780f1ae4d4adedcd2fb5fb945c0cba2d137dbac81e5715889f0770",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795532400000,
+      "last_used_at": 1795532400000,
+      "expires_at": 1798124400000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_9wWBPpdLm9jl9PqJ",
+      "user_id": "uid_admin",
+      "token_hash": "84ff21710f4e525d4a38293f9d64e2e76f3bb9309655504fb4fe426f13388578",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795536000000,
+      "last_used_at": 1795536000000,
+      "expires_at": 1798128000000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_P3_eOdRItx6_DkBW",
+      "user_id": "uid_student1",
+      "token_hash": "42645e7122ca2b95b3efffa27e58b0ab3d5edf639c77f912638da20e29c26280",
+      "email": "amina@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795536000000,
+      "last_used_at": 1795536000000,
+      "expires_at": 1798128000000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_CGHlAewL2F2a6kX1",
+      "user_id": "uid_student2",
+      "token_hash": "3ec9db673ee2021921050f878d484a8093a1dd1acc9b92080cd2b4501bee4d04",
+      "email": "bilal@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795536000000,
+      "last_used_at": 1795536000000,
+      "expires_at": 1798128000000,
+      "revoked_at": null
+    },
+    {
+      "session_id": "sws_qFljJZ-1zunKtYt5",
+      "user_id": "uid_admin",
+      "token_hash": "90150e58196cf8b957a3a01d2d2da9cbcca1d6226c8af70396c770d457958679",
+      "email": "admin@boardly.cfd",
+      "device_label": "Web browser on Unknown OS",
+      "created_at": 1795539600000,
+      "last_used_at": 1795539600000,
+      "expires_at": 1798131600000,
       "revoked_at": null
     }
   ]

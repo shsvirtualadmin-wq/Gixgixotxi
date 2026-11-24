@@ -595,14 +595,57 @@ export function normalizePlansConfig(raw?: Record<string, any> | null): PlansCon
   };
 }
 
+export interface FormatPlanLabelOptions {
+  isGuest?: boolean;
+  loading?: boolean;
+  freeLabel?: string;
+  guestLabel?: string;
+  nowMs?: number;
+}
+
+/**
+ * Single shared canonical plan-label formatter used across Settings, Switch account,
+ * Profile, Store, Plans & Billing, and Overview so the same account never shows
+ * conflicting plan names in different places.
+ *
+ * Brand names ("Boardly Plus", "Boardly Pro") remain untranslated; "Free" and "Guest"
+ * accept optional localized labels from `t('common.free')` / `t('common.guest')`.
+ */
+export function formatPlanLabel(
+  input: PlanLikeUser | PlanTier | string | null | undefined,
+  options?: FormatPlanLabelOptions
+): string {
+  if (options?.loading) return '';
+
+  const isGuestAccount = Boolean(
+    options?.isGuest ||
+      (input &&
+        typeof input === 'object' &&
+        (input.isGuest === true || (input.uid && String(input.uid).startsWith('guest_'))))
+  );
+  if (isGuestAccount) {
+    return options?.guestLabel ?? 'Guest';
+  }
+
+  let tier: PlanTier;
+  if (!input) {
+    tier = 'free';
+  } else if (typeof input === 'string') {
+    tier = normalizePlanTier(input);
+  } else {
+    tier = getPlan(input, options?.nowMs ?? Date.now());
+  }
+
+  if (tier === 'plus') return 'Boardly Plus';
+  if (tier === 'pro') return 'Boardly Pro';
+  return options?.freeLabel ?? 'Free';
+}
+
 /**
  * Human-readable display label for a plan tier.
  */
 export function getPlanDisplayName(plan: PlanTier | string | null | undefined): string {
-  const tier = normalizePlanTier(plan);
-  if (tier === 'plus') return 'Boardly Plus';
-  if (tier === 'pro') return 'Boardly Pro';
-  return 'Free';
+  return formatPlanLabel(plan);
 }
 
 // ============================================================================

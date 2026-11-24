@@ -1,5 +1,6 @@
 import { Clock, LayoutGrid, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface TestHeaderProps {
   title: string;
@@ -24,6 +25,8 @@ export function TestHeader({
   onOpenPalette,
   onRequestSubmit,
 }: TestHeaderProps) {
+  const { t, formatNumber } = useLanguage();
+
   const formatTime = (secs: number) => {
     const safe = Math.max(0, Math.floor(secs));
     const h = Math.floor(safe / 3600);
@@ -53,8 +56,8 @@ export function TestHeader({
     >
       {/* Left: Question counter */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] font-mono text-xs font-semibold text-[var(--text)] whitespace-nowrap">
-          Q {currentIndex + 1} <span className="text-[var(--text-muted)]">/ {totalQuestions}</span>
+        <div className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] font-mono text-xs font-semibold text-[var(--text)] whitespace-nowrap ltr-nums">
+          {formatNumber(currentIndex + 1)} <span className="text-[var(--text-muted)]">/ {formatNumber(totalQuestions)}</span>
         </div>
       </div>
 
@@ -93,7 +96,7 @@ export function TestHeader({
           >
             <Clock size={13} className="shrink-0" />
             <span
-              className="tabular-nums font-mono text-xs sm:text-sm font-bold tracking-wide"
+              className="tabular-nums font-mono text-xs sm:text-sm font-bold tracking-wide ltr-nums"
             >
               {formatTime(secondsRemaining)}
             </span>
@@ -119,12 +122,13 @@ export function TestHeader({
             fontWeight: 500,
             cursor: 'pointer',
           }}
-          title="Open Question Palette"
+          title={t('test.paletteTitle')}
         >
           <LayoutGrid size={16} />
-          <span className="hidden sm:inline">Palette</span>
+          <span className="hidden sm:inline">{t('test.paletteTitle')}</span>
           {flaggedCount > 0 && (
             <span
+              className="ltr-nums"
               style={{
                 background: 'rgba(251, 191, 36, 0.25)',
                 color: 'var(--warning)',
@@ -134,7 +138,7 @@ export function TestHeader({
                 fontWeight: 700,
               }}
             >
-              {flaggedCount}
+              {formatNumber(flaggedCount)}
             </span>
           )}
         </button>
@@ -146,7 +150,7 @@ export function TestHeader({
           style={{ gap: 6 }}
         >
           <CheckCircle size={15} />
-          <span>Finish</span>
+          <span>{t('test.finishTest')}</span>
         </Button>
       </div>
     </header>

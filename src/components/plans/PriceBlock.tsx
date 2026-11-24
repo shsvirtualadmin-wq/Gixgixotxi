@@ -1,4 +1,5 @@
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface PriceBlockProps {
   pricePkr: number;
@@ -22,13 +23,14 @@ export function PriceBlock({
   subtext,
   accentColor = 'default',
 }: PriceBlockProps) {
-  const formattedPkr = `PKR ${pricePkr.toLocaleString()}`;
+  const { formatPKR, formatNumber } = useLanguage();
+  const formattedPkr = formatPKR(pricePkr);
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
         <span
-          className={`font-heading font-extrabold text-2xl sm:text-[28px] tracking-tight leading-none ${
+          className={`font-heading font-extrabold text-2xl sm:text-[28px] tracking-tight leading-none ltr-nums ${
             accentColor === 'pro'
               ? 'text-[var(--text)]'
               : accentColor === 'gold'
@@ -40,8 +42,8 @@ export function PriceBlock({
         </span>
 
         {regularPricePkr && regularPricePkr > pricePkr && (
-          <span className="font-mono text-xs text-[var(--muted)] line-through">
-            PKR {regularPricePkr.toLocaleString()}
+          <span className="font-mono text-xs text-[var(--muted)] line-through ltr-nums">
+            {formatPKR(regularPricePkr)}
           </span>
         )}
 
@@ -52,9 +54,9 @@ export function PriceBlock({
         )}
 
         {typeof priceKobans === 'number' && priceKobans > 0 && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[11px] font-semibold text-[var(--text)]">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[11px] font-semibold text-[var(--text)] ltr-nums">
             <KobanIcon size={12} />
-            <span>{priceKobans.toLocaleString()} Kobans</span>
+            <span>{formatNumber(priceKobans)} Kobans</span>
           </span>
         )}
       </div>

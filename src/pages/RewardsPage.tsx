@@ -56,6 +56,7 @@ import {
   type WingmatesCounters,
 } from '@/services/rewardsService';
 import { recordRewardsContentPaint } from '@/lib/navStore';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const LazyGuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({
@@ -65,39 +66,12 @@ const LazyGuestUpgradeModal = React.lazy(() =>
 
 type RewardsTabId = 'checkin' | 'wingmates' | 'invite' | 'faq';
 
-const REWARDS_TABS: TabPillItem<RewardsTabId>[] = [
-  { id: 'checkin', label: 'Check-In' },
-  { id: 'wingmates', label: 'Wingmates' },
-  { id: 'invite', label: 'Invite' },
-  { id: 'faq', label: 'FAQ' },
-];
-
-const FAQ_ITEMS = [
-  {
-    id: 'faq-missed-day',
-    question: 'What happens if I miss a day in the 30-day check-in?',
-    answer:
-      'Your 30-day check-in progress is cumulative and does not reset if you miss a day. Each day resets at 00:00 PKT (Asia/Karachi, UTC+5), and after Day 30 the cycle renews at Day 1.',
-  },
-  {
-    id: 'faq-wingmates',
-    question: 'Who appears in my Wingmates live feed?',
-    answer:
-      'Your Wingmates feed shows classmates connected with you through referrals. You can cheer them on when they finish a test or send one study nudge per wingmate every 24 hours.',
-  },
-  {
-    id: 'faq-two-way',
-    question: 'Why do referrals require two-way code confirmation?',
-    answer:
-      'To keep referrals fair for real classmates, your friend attaches your link/code on signup and shares their own BLD-XXXXXX code with you to confirm within 14 days.',
-  },
-  {
-    id: 'faq-payout',
-    question: 'When are referral Kobans paid out?',
-    answer:
-      'Once both codes are linked, your friend verifies their email, and they complete 20 practice MCQs, the server credits +5,000 Kobans to you and +1,000 Kobans to your friend (up to 10 paid referrals per month).',
-  },
-];
+const FAQ_IDS = [
+  'faq-missed-day',
+  'faq-wingmates',
+  'faq-two-way',
+  'faq-payout',
+] as const;
 
 function parseTabFromHash(hash: string): RewardsTabId {
   const clean = hash.replace(/^#/, '').toLowerCase();
@@ -110,16 +84,20 @@ function parseTabFromHash(hash: string): RewardsTabId {
   return 'checkin';
 }
 
-function formatLiveTimeAgo(timestampMs: number, nowMs: number): string {
-  if (!timestampMs || timestampMs <= 0) return 'Inactive';
+function formatLiveTimeAgo(
+  timestampMs: number,
+  nowMs: number,
+  t: (k: string, p?: Record<string, string | number>) => string
+): string {
+  if (!timestampMs || timestampMs <= 0) return t('rewards.inactive');
   const diffSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
+  if (diffSec < 60) return t('time.secondsAgo', { count: diffSec });
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 60) return t('time.minutesAgo', { count: diffMin });
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
+  if (diffHr < 24) return t('time.hoursAgo', { count: diffHr });
   const diffDays = Math.floor(diffHr / 24);
-  return `${diffDays}d ago`;
+  return t('time.daysAgo', { count: diffDays });
 }
 
 function formatCountdownHms(totalSeconds: number): string {
@@ -150,9 +128,17 @@ function getDiscPressHandlers() {
 export function RewardsPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, formatNumber } = useLanguage();
   const { user, isAdmin, isGuest } = useAuth();
   const { balance: walletBalance, refreshWallet } = useWallet();
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const rewardsTabs: TabPillItem<RewardsTabId>[] = [
+    { id: 'checkin', label: t('rewards.tabCheckin') },
+    { id: 'wingmates', label: t('rewards.tabWingmates') },
+    { id: 'invite', label: t('rewards.tabInvite') },
+    { id: 'faq', label: t('rewards.tabFaq') },
+  ];
 
   // Tab state synced with URL hash (#checkin, #milestones, #invite, #faq)
   const [activeTab, setActiveTab] = useState<RewardsTabId>(() =>
@@ -160,7 +146,7 @@ export function RewardsPage() {
   );
 
   // Single-open FAQ accordion state
-  const [openFaqId, setOpenFaqId] = useState<string | null>(FAQ_ITEMS[0].id);
+  const [openFaqId, setOpenFaqId] = useState<string | null>(FAQ_IDS[0]);
 
   const initialCachedRef = useRef<RewardsStateResponse | null>(
     readCachedRewardsState(user?.uid)
@@ -411,20 +397,23 @@ export function RewardsPage() {
 
         setBannerNotice({
           type: 'success',
-          text: `Claimed Day ${res.dayNumber} reward: +${rewardDelta.toLocaleString()} Kobans!`,
+          text: t('rewards.claimedDayNotice', {
+            day: formatNumber(res.dayNumber),
+            amount: formatNumber(rewardDelta),
+          }),
         });
       } else {
         console.error('[RewardsPage] Daily check-in claim failed:', res);
         setBannerNotice({
           type: 'error',
-          text: res.error || 'Daily check-in claim failed.',
+          text: res.error || t('rewards.claimFailed'),
         });
       }
     } catch (err: any) {
       console.error('[RewardsPage] Unexpected error during daily claim:', err);
       setBannerNotice({
         type: 'error',
-        text: err?.message || 'Unexpected error during daily check-in claim.',
+        text: err?.message || t('rewards.claimFailed'),
       });
     } finally {
       claimingDailyLockRef.current = false;
@@ -776,9 +765,9 @@ export function RewardsPage() {
             <div className="flex items-start sm:items-center gap-3">
               <Lock size={18} className="shrink-0 mt-0.5 sm:mt-0" style={{ color: 'var(--rw-red)' }} />
               <div className="text-xs sm:text-sm">
-                <p className="font-bold">Create a free account to claim rewards</p>
+                <p className="font-bold">{t('rewards.guestLockTitle')}</p>
                 <p className="mt-0.5 text-xs" style={{ color: 'var(--rw-muted)' }}>
-                  Upgrade in place to keep your username, progress, and test attempts while unlocking daily Kobans and Wingmates.
+                  {t('rewards.guestLockDesc')}
                 </p>
               </div>
             </div>
@@ -788,8 +777,8 @@ export function RewardsPage() {
               onClick={() => setIsUpgradeModalOpen(true)}
               className="rw-jelly-btn rw-btn-red-glass inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-xs font-heading font-bold shrink-0 cursor-pointer"
             >
-              <span>Create free account</span>
-              <ArrowRight size={14} />
+              <span>{t('rewards.createFreeAccount')}</span>
+              <ArrowRight size={14} className="rtl-mirror" />
             </button>
           </div>
         )}
@@ -805,7 +794,7 @@ export function RewardsPage() {
               className="text-xs font-heading font-bold tracking-wide"
               style={{ color: 'var(--rw-muted)' }}
             >
-              Your live balance
+              {t('rewards.yourLiveBalance')}
             </span>
             {isComingSoon && (
               <span
@@ -815,13 +804,13 @@ export function RewardsPage() {
                   color: 'var(--rw-on-red)',
                 }}
               >
-                Preview
+                {t('store.preview')}
               </span>
             )}
           </div>
 
           <h1 id="rewards-hero-heading" className="sr-only">
-            Boardly Student Rewards
+            {t('rewards.title')}
           </h1>
 
           {/* Coin Icon + Kobans Amount in Doto */}
@@ -835,15 +824,15 @@ export function RewardsPage() {
             >
               <KobanCoinSvg size={28} />
             </div>
-            <div className="text-left">
+            <div className="text-start">
               <span
                 ref={balanceNumberRef}
                 data-testid="rewards-balance-pill"
-                className={`rw-balance-number font-dot text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums block leading-none ${
+                className={`rw-balance-number font-dot text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums ltr-nums block leading-none ${
                   isBalanceBumping ? 'rw-balance-bumping' : ''
                 }`}
               >
-                {animatedBalance.toLocaleString()}{' '}
+                {formatNumber(animatedBalance)}{' '}
                 <span
                   className="text-sm sm:text-base font-heading font-bold uppercase tracking-wider"
                   style={{ color: 'var(--rw-gold)' }}
@@ -861,8 +850,8 @@ export function RewardsPage() {
               {...getJellyHandlers()}
               className="rw-jelly-btn rw-btn-red-glass h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-5 text-xs sm:text-sm font-heading font-bold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
             >
-              <span>Spend in Store</span>
-              <ArrowRight size={15} />
+              <span>{t('rewards.spendInStore')}</span>
+              <ArrowRight size={15} className="rtl-mirror" />
             </Link>
 
             <Link
@@ -870,7 +859,7 @@ export function RewardsPage() {
               {...getJellyHandlers()}
               className="rw-jelly-btn rw-btn-clear-glass h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-5 text-xs sm:text-sm font-heading font-bold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
             >
-              <span>Practice MCQs</span>
+              <span>{t('rewards.practiceMcqs')}</span>
             </Link>
           </div>
 
@@ -879,12 +868,12 @@ export function RewardsPage() {
             className="text-xs sm:text-sm font-medium"
             style={{ color: 'var(--rw-muted)' }}
           >
-            Earn up to 7,550 Kobans per 30-day cycle.
+            {t('rewards.cycleCapLine')}
           </p>
 
           {/* Action Feedback Notice */}
           {bannerNotice && isEmailVerificationRequiredError(bannerNotice.text) ? (
-            <div className="w-full text-left">
+            <div className="w-full text-start">
               <EmailVerificationRequiredCard
                 onVerified={() => {
                   setBannerNotice(null);
@@ -895,7 +884,7 @@ export function RewardsPage() {
           ) : bannerNotice ? (
             <div
               role="status"
-              className="w-full flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-xs sm:text-sm font-semibold text-left"
+              className="w-full flex items-center gap-2.5 rounded-full border px-4 py-2.5 text-xs sm:text-sm font-semibold text-start"
               style={
                 bannerNotice.type === 'success'
                   ? {
@@ -926,9 +915,9 @@ export function RewardsPage() {
                 <button
                   type="button"
                   onClick={() => setIsUpgradeModalOpen(true)}
-                  className="ml-2 underline font-bold shrink-0 cursor-pointer"
+                  className="ms-2 underline font-bold shrink-0 cursor-pointer"
                 >
-                  Create free account
+                  {t('rewards.createFreeAccount')}
                 </button>
               )}
             </div>
@@ -937,10 +926,10 @@ export function RewardsPage() {
 
         {/* ─── 2. LIQUID GLASS TAB SWITCHER ───────────────────────────────── */}
         <TabPills
-          tabs={REWARDS_TABS}
+          tabs={rewardsTabs}
           activeTab={activeTab}
           onChange={handleTabChange}
-          ariaLabel="Student Rewards sections"
+          ariaLabel={t('rewards.title')}
         />
 
         {/* First-visit skeleton shimmer banner (shown only when cold cache is fetching) */}
@@ -986,14 +975,14 @@ export function RewardsPage() {
                 className="block text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: 'var(--rw-muted)' }}
               >
-                Daily Streak Ladder
+                {t('rewards.dailyStreakLadder')}
               </span>
               <h2
                 id="daily-checkin-heading"
                 className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
                 style={{ color: 'var(--rw-text)' }}
               >
-                30-Day Daily Check-In
+                {t('rewards.thirtyDayCheckin')}
               </h2>
             </div>
 
@@ -1006,11 +995,11 @@ export function RewardsPage() {
                   style={{ color: 'var(--rw-red)' }}
                 />
               }
-              label="Next reset (00:00 PKT)"
+              label={t('rewards.nextResetPkt')}
               value={
                 <span
                   data-testid="pkt-countdown"
-                  className="font-mono text-sm sm:text-base font-bold tabular-nums"
+                  className="font-mono text-sm sm:text-base font-bold tabular-nums ltr-nums"
                 >
                   {formatCountdownHms(countdownSec)}
                 </span>
@@ -1029,18 +1018,21 @@ export function RewardsPage() {
               {isGuestAccount ? <Lock size={18} /> : <Gift size={18} />}
               <span>
                 {hasLoadError
-                  ? 'Failed to load settings'
+                  ? t('rewards.failedLoadSettings')
                   : loading
-                  ? 'Loading...'
+                  ? t('common.loading')
                   : isGuestAccount
-                  ? 'Create a free account to claim rewards'
+                  ? t('rewards.guestLockTitle')
                   : isComingSoon
-                  ? 'Coming soon'
+                  ? t('rewards.comingSoon')
                   : state.daily.claimedToday
-                  ? `Claimed Day ${state.daily.completedDaysInCycle}`
+                  ? t('rewards.claimedDayBtn', { day: formatNumber(state.daily.completedDaysInCycle) })
                   : claimingDaily
-                  ? 'Claiming...'
-                  : `Claim Day ${state.daily.nextDayNumber} (+${state.daily.nextRewardAmount} Kobans)`}
+                  ? t('rewards.claiming')
+                  : t('rewards.claimDayBtn', {
+                      day: formatNumber(state.daily.nextDayNumber),
+                      amount: formatNumber(state.daily.nextRewardAmount),
+                    })}
               </span>
             </button>
 
@@ -1148,10 +1140,10 @@ export function RewardsPage() {
 
                       {/* Reward amount under the disc (+200) */}
                       <span
-                        className="font-dot text-xs sm:text-sm font-extrabold tabular-nums leading-tight mt-2"
+                        className="font-dot text-xs sm:text-sm font-extrabold tabular-nums ltr-nums leading-tight mt-2"
                         style={{ color: amountColor }}
                       >
-                        +{amount.toLocaleString()}
+                        +{formatNumber(amount)}
                       </span>
 
                       {/* "Day N" under the amount */}
@@ -1159,7 +1151,7 @@ export function RewardsPage() {
                         className="text-[11px] font-semibold leading-tight mt-0.5"
                         style={{ color: dayLabelColor }}
                       >
-                        Day {dayNum}
+                        {t('rewards.dayLabel', { day: formatNumber(dayNum) })}
                       </span>
                     </div>
                   );
@@ -1228,7 +1220,7 @@ export function RewardsPage() {
                               color: isToday ? 'var(--rw-red)' : 'var(--rw-gold)',
                             }}
                           >
-                            Day 30 · Grand Chest
+                            {t('rewards.day30GrandChest')}
                           </span>
                           {isToday && (
                             <span
@@ -1238,7 +1230,7 @@ export function RewardsPage() {
                                 color: 'var(--rw-on-red)',
                               }}
                             >
-                              NEXT
+                              {t('common.next')}
                             </span>
                           )}
                         </div>
@@ -1246,7 +1238,7 @@ export function RewardsPage() {
                           className="block text-xs truncate mt-0.5"
                           style={{ color: 'var(--rw-muted)' }}
                         >
-                          30-Day Grand Treasure Chest
+                          {t('rewards.grandChestSub')}
                         </span>
                       </div>
                     </div>
@@ -1257,7 +1249,7 @@ export function RewardsPage() {
                         <CheckCircle2
                           size={16}
                           style={{ color: 'var(--rw-gold)' }}
-                          aria-label="Completed"
+                          aria-label={t('common.done')}
                         />
                       ) : !isToday ? (
                         <Lock size={14} style={{ color: 'var(--rw-muted)' }} />
@@ -1272,7 +1264,7 @@ export function RewardsPage() {
               className="text-center text-xs font-medium pt-1"
               style={{ color: 'var(--rw-muted)' }}
             >
-              Cumulative cycle. Never resets if you miss a day.
+              {t('rewards.cumulativeNote')}
             </p>
           </section>
         )}
@@ -1291,14 +1283,14 @@ export function RewardsPage() {
                   className="block font-mono text-[11px] font-bold uppercase tracking-widest"
                   style={{ color: 'var(--rw-muted)' }}
                 >
-                  Study Squad · Live Status
+                  {t('rewards.studySquadLive')}
                 </span>
                 <h2
                   id="wingmates-heading"
                   className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
                   style={{ color: 'var(--rw-text)' }}
                 >
-                  Wingmates
+                  {t('rewards.tabWingmates')}
                 </h2>
               </div>
 
@@ -1314,7 +1306,7 @@ export function RewardsPage() {
                 }}
               >
                 <RefreshCw size={12} className={wingmatesLoading ? 'animate-spin' : ''} />
-                <span>Refresh</span>
+                <span>{t('common.refresh')}</span>
               </button>
             </div>
 
@@ -1334,14 +1326,14 @@ export function RewardsPage() {
                   className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  Practicing now
+                  {t('rewards.practicingNow')}
                 </span>
                 <span
                   data-testid="wingmates-counter-practicing"
-                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums ltr-nums mt-1"
                   style={{ color: 'var(--rw-green)' }}
                 >
-                  {wingmatesCounters.practicingNow}
+                  {formatNumber(wingmatesCounters.practicingNow)}
                 </span>
               </div>
 
@@ -1356,14 +1348,14 @@ export function RewardsPage() {
                   className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  Streak at risk
+                  {t('rewards.streakAtRisk')}
                 </span>
                 <span
                   data-testid="wingmates-counter-at-risk"
-                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums ltr-nums mt-1"
                   style={{ color: 'var(--rw-gold)' }}
                 >
-                  {wingmatesCounters.streakAtRisk}
+                  {formatNumber(wingmatesCounters.streakAtRisk)}
                 </span>
               </div>
 
@@ -1378,14 +1370,14 @@ export function RewardsPage() {
                   className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
                   style={{ color: 'var(--text-muted)' }}
                 >
-                  Inactive 2+ days
+                  {t('rewards.inactive2Days')}
                 </span>
                 <span
                   data-testid="wingmates-counter-inactive"
-                  className="font-dot text-xl sm:text-2xl font-black tabular-nums mt-1"
+                  className="font-dot text-xl sm:text-2xl font-black tabular-nums ltr-nums mt-1"
                   style={{ color: 'var(--rw-red)' }}
                 >
-                  {wingmatesCounters.inactive2PlusDays}
+                  {formatNumber(wingmatesCounters.inactive2PlusDays)}
                 </span>
               </div>
             </div>
@@ -1444,7 +1436,7 @@ export function RewardsPage() {
                 <div className="flex items-start gap-3">
                   <AlertCircle size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--rw-red)' }} />
                   <div>
-                    <p className="text-sm font-bold">Could not load Wingmates feed</p>
+                    <p className="text-sm font-bold">{t('rewards.wingmatesErrorTitle')}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {wingmatesError}
                     </p>
@@ -1459,7 +1451,7 @@ export function RewardsPage() {
                     color: 'var(--rw-on-red)',
                   }}
                 >
-                  Retry
+                  {t('common.retry')}
                 </button>
               </div>
             )}
@@ -1487,10 +1479,10 @@ export function RewardsPage() {
                 </div>
                 <div className="max-w-md space-y-1">
                   <h3 className="font-dot text-base sm:text-lg font-black">
-                    No Wingmates linked yet
+                    {t('rewards.noWingmatesTitle')}
                   </h3>
                   <p className="text-xs sm:text-sm" style={{ color: 'var(--text-muted)' }}>
-                    Invite your classmates with your referral code to see when they are practicing live, cheer their test scores, or nudge them when their streak is at risk.
+                    {t('rewards.noWingmatesDesc')}
                   </p>
                 </div>
                 <button
@@ -1502,8 +1494,8 @@ export function RewardsPage() {
                     color: 'var(--rw-on-red)',
                   }}
                 >
-                  <span>Invite Wingmates</span>
-                  <ArrowRight size={14} />
+                  <span>{t('rewards.inviteWingmates')}</span>
+                  <ArrowRight size={14} className="rtl-mirror" />
                 </button>
               </div>
             )}
@@ -1556,7 +1548,7 @@ export function RewardsPage() {
                             <span>{w.initials}</span>
                           )}
                           <span
-                            className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border"
+                            className="absolute bottom-0.5 end-0.5 h-2.5 w-2.5 rounded-full border"
                             style={{
                               backgroundColor: statusDotColor,
                               borderColor: 'var(--pill-card-bg)',
@@ -1576,7 +1568,7 @@ export function RewardsPage() {
                               className="font-mono text-[10px] font-bold uppercase tracking-wider shrink-0"
                               style={{ color: 'var(--text-muted)' }}
                             >
-                              · {formatLiveTimeAgo(w.lastEventAtMs, liveClockMs)}
+                              · {formatLiveTimeAgo(w.lastEventAtMs, liveClockMs, t)}
                             </span>
                           </div>
                           <p
@@ -1620,16 +1612,16 @@ export function RewardsPage() {
                             <BellRing size={12} />
                             <span>
                               {isBusy
-                                ? 'Sending...'
+                                ? t('chat.sending')
                                 : w.canNudge
-                                ? 'Nudge'
-                                : 'Nudged 24h'}
+                                ? t('rewards.nudge')
+                                : t('rewards.nudged24h')}
                             </span>
                           </>
                         ) : (
                           <>
                             <Sparkles size={12} style={{ color: 'var(--rw-gold)' }} />
-                            <span>{isBusy ? 'Cheering...' : 'Cheer'}</span>
+                            <span>{isBusy ? t('rewards.cheering') : t('rewards.cheer')}</span>
                           </>
                         )}
                       </button>
@@ -1653,24 +1645,23 @@ export function RewardsPage() {
                 className="block text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: 'var(--rw-muted)' }}
               >
-                Two-Way Verified Friend Referrals
+                {t('rewards.twoWayReferrals')}
               </span>
               <h2
                 id="referral-heading"
                 className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
                 style={{ color: 'var(--rw-text)' }}
               >
-                <span style={{ color: 'var(--rw-red)' }}>+5,000</span> for you,{' '}
-                <span style={{ color: 'var(--rw-gold)' }}>+1,000</span> for your friend
+                {t('rewards.referralHeadline')}
               </h2>
             </div>
 
             {/* Monthly paid referrals counter */}
             <PillRow
-              label="Monthly paid referrals"
+              label={t('rewards.monthlyPaidReferrals')}
               value={
-                <span className="font-dot font-extrabold tabular-nums">
-                  {state.referral.paidCountThisMonth} / {state.referral.maxPaidPerMonth}
+                <span className="font-dot font-extrabold tabular-nums ltr-nums">
+                  {formatNumber(state.referral.paidCountThisMonth)} / {formatNumber(state.referral.maxPaidPerMonth)}
                 </span>
               }
             />
@@ -1681,42 +1672,42 @@ export function RewardsPage() {
                 className="block text-[10px] font-bold uppercase tracking-widest mb-4"
                 style={{ color: 'var(--rw-muted)' }}
               >
-                How It Works
+                {t('rewards.howItWorks')}
               </span>
               <div className="relative space-y-4">
                 {[
                   {
                     step: 1,
-                    title: 'Share Your Referral Link',
-                    desc: `Send your personal /join/${state.referral.myCode} link to a classmate (or have them enter your code within 7 days of signup).`,
+                    title: t('rewards.step1Title'),
+                    desc: t('rewards.step1Desc', { code: state.referral.myCode }),
                   },
                   {
                     step: 2,
-                    title: "Confirm Your Friend's Code",
-                    desc: 'Once your friend signs up and verifies their email, ask them for their own BLD-XXXXXX code and enter it below within 14 days.',
+                    title: t('rewards.step2Title'),
+                    desc: t('rewards.step2Desc'),
                   },
                   {
                     step: 3,
-                    title: `Friend Answers ${state.referral.config.minInviteeMcqs} MCQs`,
-                    desc: `As soon as your friend completes ${state.referral.config.minInviteeMcqs} practice MCQs, you receive +5,000 Kobans and they receive +1,000 Kobans!`,
+                    title: t('rewards.step3Title', { count: formatNumber(state.referral.config.minInviteeMcqs) }),
+                    desc: t('rewards.step3Desc', { count: formatNumber(state.referral.config.minInviteeMcqs) }),
                   },
                 ].map((item, idx, arr) => (
                   <div key={item.step} className="relative flex items-start gap-3.5">
                     {idx < arr.length - 1 && (
                       <div
-                        className="absolute left-[13px] top-7 bottom-[-16px] w-[1px]"
+                        className="absolute start-[13px] top-7 bottom-[-16px] w-[1px]"
                         style={{ backgroundColor: 'var(--rw-border)' }}
                         aria-hidden="true"
                       />
                     )}
                     <span
-                      className="relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold shrink-0"
+                      className="relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold shrink-0 ltr-nums"
                       style={{
                         backgroundColor: 'var(--rw-red)',
                         color: 'var(--rw-on-red)',
                       }}
                     >
-                      {item.step}
+                      {formatNumber(item.step)}
                     </span>
                     <div className="min-w-0 pt-0.5">
                       <h3
@@ -1745,11 +1736,11 @@ export function RewardsPage() {
                     className="block text-[10px] font-bold uppercase tracking-widest"
                     style={{ color: 'var(--rw-muted)' }}
                   >
-                    Your Permanent Referral Code
+                    {t('rewards.yourReferralCode')}
                   </span>
                   <span
                     data-testid="my-referral-code"
-                    className="font-dot text-2xl sm:text-3xl font-extrabold tracking-wider block mt-0.5"
+                    className="font-dot text-2xl sm:text-3xl font-extrabold tracking-wider block mt-0.5 ltr-nums"
                     style={{ color: 'var(--rw-red)' }}
                   >
                     {state.referral.myCode}
@@ -1763,20 +1754,20 @@ export function RewardsPage() {
                   className="rw-jelly-btn rw-btn-red-glass h-10 min-h-[40px] px-4 rounded-full inline-flex items-center justify-center gap-1.5 text-xs font-heading font-bold shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                 >
                   {copiedCode ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copiedCode ? 'Copied code' : 'Copy code'}</span>
+                  <span>{copiedCode ? t('rewards.copiedCode') : t('rewards.copyCode')}</span>
                 </button>
               </div>
 
               {/* Referral Link Row */}
               <div
-                className="w-full rounded-full min-h-[48px] pl-4 pr-2 py-1.5 flex items-center justify-between gap-2 border"
+                className="w-full rounded-full min-h-[48px] ps-4 pe-2 py-1.5 flex items-center justify-between gap-2 border"
                 style={{
                   backgroundColor: 'var(--rw-bg)',
                   borderColor: 'var(--rw-border)',
                 }}
               >
                 <span
-                  className="font-mono text-xs truncate min-w-0 flex-1"
+                  className="font-mono text-xs truncate min-w-0 flex-1 ltr-nums"
                   style={{ color: 'var(--rw-muted)' }}
                   title={state.referral.shareUrl}
                 >
@@ -1793,7 +1784,7 @@ export function RewardsPage() {
                   ) : (
                     <Copy size={14} />
                   )}
-                  <span>{copiedLink ? 'Copied link' : 'Copy link'}</span>
+                  <span>{copiedLink ? t('rewards.copiedLink') : t('rewards.copyLink')}</span>
                 </button>
               </div>
 
@@ -1806,7 +1797,7 @@ export function RewardsPage() {
                 className="rw-jelly-btn rw-btn-clear-glass rw-btn-whatsapp-glass w-full h-12 min-h-[48px] rounded-full inline-flex items-center justify-center gap-2 px-5 text-xs sm:text-sm font-heading font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
               >
                 <Share2 size={15} />
-                <span>Share on WhatsApp</span>
+                <span>{t('rewards.shareWhatsapp')}</span>
               </a>
             </GlassCard>
 
@@ -1817,20 +1808,19 @@ export function RewardsPage() {
                   className="block text-[10px] font-bold uppercase tracking-widest"
                   style={{ color: 'var(--rw-muted)' }}
                 >
-                  Joined Without a Link?
+                  {t('rewards.joinedWithoutLink')}
                 </span>
                 <h3
                   className="font-dot text-base sm:text-lg font-extrabold mt-0.5"
                   style={{ color: 'var(--rw-text)' }}
                 >
-                  Attach a friend&apos;s referral code
+                  {t('rewards.attachFriendCode')}
                 </h3>
                 <p
                   className="text-xs mt-0.5"
                   style={{ color: 'var(--rw-muted)' }}
                 >
-                  Enter your friend&apos;s BLD-XXXXXX code within{' '}
-                  {state.referral.config.manualCodeWindowDays} days of signup.
+                  {t('rewards.attachCodeWindow', { days: formatNumber(state.referral.config.manualCodeWindowDays) })}
                 </p>
               </div>
 
@@ -1842,7 +1832,7 @@ export function RewardsPage() {
                       style={{ color: 'var(--rw-green)' }}
                     />
                   }
-                  label="Inviter referral code attached"
+                  label={t('rewards.inviterAttached')}
                 />
               ) : (
                 <form
@@ -1851,11 +1841,12 @@ export function RewardsPage() {
                 >
                   <input
                     type="text"
+                    dir="ltr"
                     value={manualCodeInput}
                     onChange={(e) => setManualCodeInput(e.target.value.toUpperCase())}
                     placeholder="BLD-7K9M2P"
                     maxLength={12}
-                    aria-label="Enter friend's referral code"
+                    aria-label={t('rewards.attachFriendCode')}
                     className="h-12 min-h-[48px] flex-1 min-w-0 rounded-full border px-4 font-mono text-sm uppercase tracking-wider focus:outline-none"
                     style={{
                       backgroundColor: 'var(--rw-bg)',
@@ -1872,16 +1863,16 @@ export function RewardsPage() {
                     className="rw-jelly-btn rw-btn-clear-glass h-12 min-h-[48px] px-6 rounded-full inline-flex items-center justify-center text-xs sm:text-sm font-heading font-bold shrink-0 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--rw-red)]"
                   >
                     {hasLoadError
-                      ? 'Failed to load settings'
+                      ? t('rewards.failedLoadSettings')
                       : loading
-                      ? 'Loading...'
+                      ? t('common.loading')
                       : isGuestAccount
-                      ? 'Create a free account to claim rewards'
+                      ? t('rewards.guestLockTitle')
                       : isComingSoon
-                      ? 'Coming soon'
+                      ? t('rewards.comingSoon')
                       : attachingCode
-                      ? 'Attaching...'
-                      : 'Attach code'}
+                      ? t('rewards.attaching')
+                      : t('rewards.attachCodeBtn')}
                   </button>
                 </form>
               )}
@@ -1893,13 +1884,13 @@ export function RewardsPage() {
                 className="font-dot text-base sm:text-lg font-extrabold px-1"
                 style={{ color: 'var(--rw-text)' }}
               >
-                Your Referrals ({state.referral.items.length})
+                {t('rewards.yourReferralsCount', { count: formatNumber(state.referral.items.length) })}
               </h3>
 
               {state.referral.items.length === 0 ? (
                 <PillRow
                   dashed
-                  label="No referrals yet — share your code above to earn +5,000 Kobans"
+                  label={t('rewards.noReferralsYet')}
                 />
               ) : (
                 <div className="space-y-3">
@@ -1934,8 +1925,10 @@ export function RewardsPage() {
                               className="text-xs"
                               style={{ color: 'var(--rw-muted)' }}
                             >
-                              {item.role === 'inviter' ? 'You Invited' : 'Invited You'} ·{' '}
-                              {item.inviteeMcqsAnswered} / {item.minInviteeMcqs} MCQs
+                              {item.role === 'inviter' ? t('rewards.youInvited') : t('rewards.invitedYou')} ·{' '}
+                              <span className="ltr-nums">
+                                {formatNumber(item.inviteeMcqsAnswered)} / {formatNumber(item.minInviteeMcqs)} MCQs
+                              </span>
                             </span>
                           </div>
 
@@ -1965,8 +1958,10 @@ export function RewardsPage() {
                               }
                             >
                               {waitingForCounterpart
-                                ? 'Waiting for Friend'
-                                : item.status.replace(/_/g, ' ')}
+                                ? t('rewards.waitingForFriend')
+                                : isPaid
+                                ? t('rewards.statusPaid')
+                                : t('rewards.statusPending')}
                             </span>
                           </div>
                         </div>
@@ -1975,6 +1970,7 @@ export function RewardsPage() {
                           <div className="flex items-center gap-2 pt-1">
                             <input
                               type="text"
+                              dir="ltr"
                               value={confirmInputs[item.id] || ''}
                               onChange={(e) =>
                                 setConfirmInputs((prev) => ({
@@ -1982,8 +1978,8 @@ export function RewardsPage() {
                                   [item.id]: e.target.value.toUpperCase(),
                                 }))
                               }
-                              placeholder="Enter friend's BLD-XXXXXX"
-                              aria-label={`Enter referral code for ${item.counterpartDisplayName}`}
+                              placeholder={t('rewards.enterFriendCodePlaceholder')}
+                              aria-label={t('rewards.enterFriendCodePlaceholder')}
                               className="h-11 min-h-[44px] flex-1 min-w-0 rounded-full border px-4 font-mono text-xs uppercase focus:outline-none"
                               style={{
                                 backgroundColor: 'var(--rw-bg)',
@@ -2003,10 +1999,10 @@ export function RewardsPage() {
                               className="rw-jelly-btn rw-btn-red-glass h-11 min-h-[44px] px-4 rounded-full inline-flex items-center justify-center text-xs font-heading font-bold shrink-0 disabled:cursor-not-allowed"
                             >
                               {isComingSoon
-                                ? 'Coming soon'
+                                ? t('rewards.comingSoon')
                                 : confirmingRefId === item.id
-                                ? 'Accepting...'
-                                : 'Accept'}
+                                ? t('rewards.accepting')
+                                : t('rewards.accept')}
                             </button>
                           </div>
                         )}
@@ -2031,35 +2027,35 @@ export function RewardsPage() {
                 className="block text-[11px] font-bold uppercase tracking-widest"
                 style={{ color: 'var(--rw-muted)' }}
               >
-                Transparency &amp; Fair Play
+                {t('rewards.faqEyebrow')}
               </span>
               <h2
                 id="rewards-faq-heading"
                 className="font-dot text-xl sm:text-2xl font-extrabold mt-0.5"
                 style={{ color: 'var(--rw-text)' }}
               >
-                Rewards FAQ &amp; Rules
+                {t('rewards.faqTitle')}
               </h2>
             </div>
 
-            {FAQ_ITEMS.map((faq) => {
-              const isOpen = openFaqId === faq.id;
+            {FAQ_IDS.map((faqId, idx) => {
+              const isOpen = openFaqId === faqId;
               return (
-                <div key={faq.id} className="space-y-1.5">
+                <div key={faqId} className="space-y-1.5">
                   <PillRow
                     as="button"
                     jellyVariant="faq"
                     aria-expanded={isOpen}
                     onClick={() =>
-                      setOpenFaqId((prev) => (prev === faq.id ? null : faq.id))
+                      setOpenFaqId((prev) => (prev === faqId ? null : faqId))
                     }
                     className="w-full"
                   >
                     <span
-                      className="font-heading text-xs sm:text-sm font-bold text-left pr-2"
+                      className="font-heading text-xs sm:text-sm font-bold text-start pe-2"
                       style={{ color: 'var(--rw-text)' }}
                     >
-                      {faq.question}
+                      {t(`rewards.faq_${idx}_q`)}
                     </span>
                     <ChevronDown
                       size={18}
@@ -2088,7 +2084,7 @@ export function RewardsPage() {
                           color: 'var(--rw-muted)',
                         }}
                       >
-                        {faq.answer}
+                        {t(`rewards.faq_${idx}_a`)}
                       </div>
                     </div>
                   </div>

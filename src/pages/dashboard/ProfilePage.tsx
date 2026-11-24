@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { ProfileView } from '@/components/profile/ProfileView';
 import { PageMeta } from '@/components/ui/PageMeta';
+import { t as translate } from '@/i18n';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface ProfileErrorBoundaryProps {
   children: React.ReactNode;
@@ -40,11 +42,10 @@ class ProfileErrorBoundary extends React.Component<
             </div>
             <div className="flex flex-col gap-1">
               <h3 className="text-[16px] font-semibold text-[var(--text)]">
-                Could not display profile
+                {translate('profile.errorTitle')}
               </h3>
               <p className="text-[13px] text-[var(--text-muted)] leading-relaxed">
-                {this.state.error?.message ||
-                  'Something went wrong while loading this profile. Try again in a moment.'}
+                {this.state.error?.message || translate('profile.errorDesc')}
               </p>
             </div>
             <button
@@ -55,7 +56,7 @@ class ProfileErrorBoundary extends React.Component<
               className="min-h-[44px] px-5 rounded-full bg-[var(--accent)] text-white text-[14px] font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity cursor-pointer"
             >
               <RefreshCw size={15} />
-              <span>Retry</span>
+              <span>{translate('common.retry')}</span>
             </button>
           </div>
         </div>
@@ -68,12 +69,13 @@ class ProfileErrorBoundary extends React.Component<
 export function ProfilePage() {
   const [searchParams] = useSearchParams();
   const targetUid = searchParams.get('uid');
+  const { t } = useLanguage();
 
   return (
     <>
       <PageMeta
-        title="Profile | Boardly"
-        description="View and customize your Boardly student profile, equipped cosmetics, badges, and study activity."
+        title={`${t('profile.title')} | Boardly`}
+        description={t('profile.metaDesc')}
       />
       <ProfileErrorBoundary>
         <ProfileView targetUid={targetUid} isFullPage={true} />

@@ -73,24 +73,41 @@ export function sanitizeUserErrorMessage(
   fallback: string = FRIENDLY_ERROR_MESSAGE,
   context?: string
 ): string {
-  if (err !== undefined && err !== null) {
-    if (context) {
-      console.error(`[Boardly] ${context}:`, err);
-    } else {
-      console.error('[Boardly] Error:', err);
-    }
-  }
-
   let raw = '';
+  let status: number | undefined;
+  let code: string | undefined;
+  let url: string | undefined;
+
   if (typeof err === 'string') {
     raw = err.trim();
   } else if (err && typeof err === 'object') {
     const e = err as Record<string, any>;
-    const status = Number(e.status || e.statusCode || 0);
-    if (status >= 500) {
-      return fallback;
+    const parsedStatus = Number(e.status || e.statusCode || 0);
+    if (Number.isFinite(parsedStatus) && parsedStatus > 0) {
+      status = parsedStatus;
     }
-    raw = String(e.message || e.error || '').trim();
+    if (typeof e.code === 'string' && e.code.trim()) {
+      code = e.code.trim();
+    }
+    if (typeof e.url === 'string' && e.url.trim()) {
+      url = e.url.trim();
+    }
+    raw = String(e.rawMessage || e.message || e.error || '').trim();
+  }
+
+  if (err !== undefined && err !== null) {
+    console.error(`[Boardly] ${context || 'sanitizeUserErrorMessage'}:`, {
+      fn: context || 'sanitizeUserErrorMessage',
+      message: raw || String(err),
+      status: status ?? null,
+      code: code ?? null,
+      url: url ?? null,
+      error: err,
+    });
+  }
+
+  if (status && status >= 500) {
+    return fallback;
   }
 
   if (!raw || isTechnicalErrorMessage(raw)) {

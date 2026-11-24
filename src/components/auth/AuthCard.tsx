@@ -27,6 +27,7 @@ import {
   shouldAutoRedirectFromAuthScreen,
   type SavedAccountEntry,
 } from '@/utils/savedAccounts';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
@@ -98,6 +99,7 @@ export function AuthCard({
     removeSavedAccountSession,
   } = useAuth();
   const navigate = useNavigate();
+  const { t, isRtl } = useLanguage();
   const [savedAccounts, setSavedAccounts] = useState<SavedAccountEntry[]>(() => getSavedAccounts());
   const [switchingSavedUid, setSwitchingSavedUid] = useState<string | null>(null);
 
@@ -144,11 +146,11 @@ export function AuthCard({
       setHasSubmittedNewAuth(true);
       onAuthSubmitSuccess?.(nextUid);
     } catch (err: any) {
-      setGeneralError(sanitizeFriendlyAuthMessage(err?.message) || 'Could not sign in with passkey.');
+      setGeneralError(sanitizeFriendlyAuthMessage(err?.message) || t('auth.errPasskeySignIn'));
     } finally {
       setPasskeyLoading(false);
     }
-  }, [email, onAuthSubmitSuccess]);
+  }, [email, onAuthSubmitSuccess, t]);
 
   // Segmented thumb liquid stretch state
   const [segStretching, setSegStretching] = useState(false);
@@ -171,9 +173,15 @@ export function AuthCard({
     if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
     if (/[0-9]/.test(password) || /[^A-Za-z0-9]/.test(password)) score += 1;
     const clamped = Math.max(1, Math.min(4, score));
-    const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+    const labels = [
+      '',
+      t('auth.strengthWeak'),
+      t('auth.strengthFair'),
+      t('auth.strengthGood'),
+      t('auth.strengthStrong'),
+    ];
     return { level: clamped, label: labels[clamped] };
-  }, [password]);
+  }, [password, t]);
 
   // Smooth scroll-into-view on mobile keyboard focus so primary button isn't hidden
   const handleInputFocus = useCallback((e: FocusEvent<HTMLInputElement>) => {
@@ -216,7 +224,7 @@ export function AuthCard({
     if (!localValidation.valid) {
       setGuestCheckState({
         status: 'invalid',
-        reason: localValidation.reason || 'Invalid username format.',
+        reason: localValidation.reason || t('auth.errInvalidUsernameFormat'),
       });
       return;
     }
@@ -231,7 +239,7 @@ export function AuthCard({
       } else {
         setGuestCheckState({
           status: 'taken',
-          reason: res.reason || 'That username is already taken.',
+          reason: res.reason || t('auth.errUsernameTaken'),
         });
       }
     }, 260);
@@ -240,7 +248,7 @@ export function AuthCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [guestUsername, mode, checkUsernameAvailability]);
+  }, [guestUsername, mode, checkUsernameAvailability, t]);
 
   // Live debounced username availability check in email sign-up mode
   useEffect(() => {
@@ -254,7 +262,7 @@ export function AuthCard({
     if (!localValidation.valid) {
       setSignupUsernameCheck({
         status: 'invalid',
-        reason: localValidation.reason || 'Invalid username format.',
+        reason: localValidation.reason || t('auth.errInvalidUsernameFormat'),
       });
       return;
     }
@@ -269,7 +277,7 @@ export function AuthCard({
       } else {
         setSignupUsernameCheck({
           status: 'taken',
-          reason: res.reason || 'That username is already taken.',
+          reason: res.reason || t('auth.errUsernameTaken'),
         });
       }
     }, 260);
@@ -278,7 +286,7 @@ export function AuthCard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [signupUsername, mode, checkUsernameAvailability]);
+  }, [signupUsername, mode, checkUsernameAvailability, t]);
 
   const getDestinationUrl = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -321,7 +329,7 @@ export function AuthCard({
     if (!localCheck.valid) {
       setGuestCheckState({
         status: 'invalid',
-        reason: localCheck.reason || 'Please enter a valid username.',
+        reason: localCheck.reason || t('auth.errValidUsername'),
       });
       return;
     }
@@ -332,9 +340,9 @@ export function AuthCard({
       if (res && res.ok === false) {
         setGuestCheckState({
           status: 'taken',
-          reason: res.error || 'Could not claim that username.',
+          reason: res.error || t('auth.errCouldNotClaimUsername'),
         });
-        setGeneralError(res.error || 'Could not start guest session.');
+        setGeneralError(res.error || t('auth.errGuestSession'));
         return;
       }
       const nextUid = auth.currentUser?.uid ?? null;
@@ -345,7 +353,7 @@ export function AuthCard({
       logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
       navigate(dest, { replace: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not create guest session.';
+      const msg = err instanceof Error ? err.message : t('auth.errGuestSession');
       setGuestCheckState({
         status: 'taken',
         reason: msg,
@@ -409,7 +417,7 @@ export function AuthCard({
         return;
       }
       setGeneralError(
-        sanitizeFriendlyAuthMessage(fe.message) || 'Google sign-in could not be completed. Please try again.'
+        sanitizeFriendlyAuthMessage(fe.message) || t('auth.errGoogleSignIn')
       );
     } finally {
       setGoogleLoading(false);
@@ -423,42 +431,42 @@ export function AuthCard({
 
     if (mode === 'signin') {
       if (!email.trim()) {
-        errors.email = 'Please enter your email or username.';
+        errors.email = t('auth.errEnterEmailOrUsername');
       } else if (email.trim().includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        errors.email = 'Please enter a valid email address.';
+        errors.email = t('auth.errValidEmail');
       }
     } else {
       if (!email.trim()) {
-        errors.email = 'Please enter your email address.';
+        errors.email = t('auth.errEnterEmail');
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        errors.email = 'Please enter a valid email address.';
+        errors.email = t('auth.errValidEmail');
       }
     }
 
     if (!password) {
-      errors.password = 'Please enter a password.';
+      errors.password = t('auth.errEnterPassword');
     } else if (mode === 'signup' && password.length < 6) {
-      errors.password = 'Password must be at least 6 characters.';
+      errors.password = t('auth.errPasswordLength');
     }
 
     if (mode === 'signup') {
       if (!displayName.trim()) {
-        errors.name = 'Please enter your full name.';
+        errors.name = t('auth.errEnterFullName');
       }
       const cleanSignupUsername = signupUsername.trim().replace(/^@+/, '');
       const usernameValidation = validateUsernameFormat(cleanSignupUsername);
       if (!cleanSignupUsername) {
-        errors.username = 'Please choose a username.';
+        errors.username = t('auth.errChooseUsername');
       } else if (!usernameValidation.valid) {
-        errors.username = usernameValidation.reason || 'Please enter a valid username.';
+        errors.username = usernameValidation.reason || t('auth.errValidUsername');
       } else if (signupUsernameCheck.status === 'taken') {
-        errors.username = signupUsernameCheck.reason || 'That username is already taken.';
+        errors.username = signupUsernameCheck.reason || t('auth.errUsernameTaken');
       }
       if (password !== confirmPassword) {
-        errors.confirmPassword = 'Passwords do not match.';
+        errors.confirmPassword = t('auth.errPasswordsMismatch');
       }
       if (!termsAccepted) {
-        errors.terms = 'Please agree to our Terms of Service and Privacy Policy to continue.';
+        errors.terms = t('auth.errAcceptTerms');
       }
     }
 
@@ -512,44 +520,41 @@ export function AuthCard({
         code === 'INVALID_CREDENTIALS'
       ) {
         setEmailAlreadyInUse(false);
-        setGeneralError('Invalid username/email or password');
+        setGeneralError(t('auth.errInvalidCredentials'));
       } else if (
         code === 'USERNAME_TAKEN' ||
         code === 'USERNAME_TAKEN_OR_SIMILAR' ||
         code === 'INVALID_USERNAME_FORMAT'
       ) {
         setEmailAlreadyInUse(false);
-        const msg = sanitizeFriendlyAuthMessage(fe.message) || 'That username is already taken.';
+        const msg = sanitizeFriendlyAuthMessage(fe.message) || t('auth.errUsernameTaken');
         setFieldErrors({ username: msg });
         setGeneralError(msg);
       } else if (code === 'auth/email-already-in-use') {
         setEmailAlreadyInUse(true);
-        const msg =
-          'An account with this email already exists. You can sign in with your password or reset your password below.';
+        const msg = t('auth.errEmailAlreadyInUse');
         setFieldErrors({ email: msg });
         setGeneralError(msg);
       } else if (code === 'auth/weak-password') {
         setEmailAlreadyInUse(false);
-        setFieldErrors({ password: 'Password is too weak. Please use at least 6 characters.' });
+        setFieldErrors({ password: t('auth.errWeakPassword') });
       } else if (code === 'auth/too-many-requests') {
         setEmailAlreadyInUse(false);
         setGeneralError(
-          sanitizeFriendlyAuthMessage(fe.message) ||
-            'Too many failed attempts. Please wait a few moments before trying again.'
+          sanitizeFriendlyAuthMessage(fe.message) || t('auth.errTooManyAttempts')
         );
       } else if (code === 'auth/user-disabled') {
         setEmailAlreadyInUse(false);
-        setGeneralError('This account has been disabled. Please contact support@boardly.cfd.');
+        setGeneralError(t('auth.errAccountDisabled'));
       } else if (code === 'auth/network-request-failed') {
         setEmailAlreadyInUse(false);
-        setGeneralError('Network connection issue. Please check your internet connection.');
+        setGeneralError(t('auth.networkError'));
       } else {
         setEmailAlreadyInUse(false);
         setGeneralError(
           mode === 'signin'
-            ? 'Invalid username/email or password'
-            : sanitizeFriendlyAuthMessage(fe.message) ||
-              'Could not complete registration right now. Please check your details and try again.'
+            ? t('auth.errInvalidCredentials')
+            : sanitizeFriendlyAuthMessage(fe.message) || t('auth.errRegistrationFailed')
         );
       }
     } finally {
@@ -606,18 +611,18 @@ export function AuthCard({
             }}
             className="inline-flex items-center gap-1.5 min-h-[44px] text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
           >
-            <ArrowLeft size={15} />
-            <span>Back to Sign In</span>
+            <ArrowLeft size={15} className="rtl-mirror" />
+            <span>{t('auth.backToSignIn')}</span>
           </button>
           <span
             className="px-3 py-1 rounded-full text-[11px] uppercase bg-white/[0.06] border border-white/[0.15] text-[var(--text-muted)]"
             style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
           >
-            Guest Mode
+            {t('auth.guestMode')}
           </span>
         </div>
 
-        <div className="text-left">
+        <div className="text-start">
           <span
             className="block mb-2"
             style={{
@@ -635,10 +640,10 @@ export function AuthCard({
             className="text-2xl font-extrabold text-[var(--text)] tracking-tight"
             style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
           >
-            Pick a guest username
+            {t('auth.pickGuestUsername')}
           </h1>
           <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1.5 leading-relaxed">
-            Choose a unique username to practice tests, save your progress, and participate in Boardly Commons.
+            {t('auth.pickGuestUsernameDesc')}
           </p>
         </div>
 
@@ -655,42 +660,43 @@ export function AuthCard({
         </div>
 
         <form onSubmit={handleGuestSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5 text-left">
+          <div className="flex flex-col gap-1.5 text-start">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="guest-username-input"
                 className="text-xs sm:text-sm font-semibold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                Username
+                {t('settings.username')}
               </label>
 
               {guestCheckState.status === 'checking' && (
                 <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                  Checking availability...
+                  {t('auth.checkingAvailability')}
                 </span>
               )}
               {guestCheckState.status === 'available' && (
                 <span className="text-[11px] font-mono font-bold text-emerald-500 inline-flex items-center gap-1">
                   <CheckCircle2 size={13} />
-                  <span>Available</span>
+                  <span>{t('auth.available')}</span>
                 </span>
               )}
               {(guestCheckState.status === 'taken' || guestCheckState.status === 'invalid') && (
                 <span className="text-[11px] font-mono font-bold text-[#D71921] inline-flex items-center gap-1">
                   <AlertCircle size={13} />
-                  <span>{guestCheckState.status === 'taken' ? 'Taken' : 'Invalid'}</span>
+                  <span>{guestCheckState.status === 'taken' ? t('auth.taken') : t('auth.invalid')}</span>
                 </span>
               )}
             </div>
 
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm pointer-events-none">
+              <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm pointer-events-none">
                 @
               </div>
               <input
                 id="guest-username-input"
                 type="text"
+                dir="ltr"
                 inputMode="text"
                 value={guestUsername}
                 onFocus={handleInputFocus}
@@ -699,16 +705,12 @@ export function AuthCard({
                 maxLength={20}
                 autoFocus
                 autoComplete="username"
-                className={`auth-form-input font-mono ${
+                className={`auth-form-input font-mono ps-9 pe-4 ${
                   guestCheckState.status === 'taken' || guestCheckState.status === 'invalid'
                     ? 'input-error'
                     : ''
                 }`}
-                style={{
-                  height: '50px',
-                  paddingLeft: '36px',
-                  paddingRight: '16px',
-                }}
+                style={{ height: '50px' }}
               />
             </div>
 
@@ -720,12 +722,12 @@ export function AuthCard({
               )}
 
             <span className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              3 to 20 characters: letters, numbers, dots and underscores only.
+              {t('auth.usernameHint')}
             </span>
           </div>
 
-          <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--text-muted)] leading-relaxed text-left">
-            You&apos;ll stay signed in on this device.
+          <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[11px] text-[var(--text-muted)] leading-relaxed text-start">
+            {t('auth.guestStaySignedIn')}
           </div>
 
           <button
@@ -734,14 +736,14 @@ export function AuthCard({
             className="btn-primary relative overflow-hidden w-full min-h-[52px] rounded-full inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {guestSubmitting && <Loader2 size={16} className="animate-spin shrink-0" />}
-            <span>Continue as guest</span>
+            <span>{t('auth.continueAsGuest')}</span>
           </button>
 
           <p
             data-testid="guest-temporary-notice"
-            className="text-[11px] text-[var(--text-muted)] leading-relaxed text-left"
+            className="text-[11px] text-[var(--text-muted)] leading-relaxed text-start"
           >
-            Guest accounts are temporary. If you log out or clear your browser data, you can&apos;t get back into this account. Create a free account to keep your progress and use rewards and Pro.
+            {t('auth.guestTempNotice')}
           </p>
         </form>
       </div>
@@ -789,7 +791,7 @@ export function AuthCard({
       {/* 2. Segmented Tabs in a Glass Track with Shared Sliding Red Thumb */}
       <div
         role="tablist"
-        aria-label="Authentication mode"
+        aria-label={t('auth.authModeAria')}
         className="ios-seg-track w-full grid grid-cols-2 items-center"
       >
         <div
@@ -797,7 +799,12 @@ export function AuthCard({
           className="ios-seg-thumb"
           style={{
             width: 'calc((100% - 8px) / 2)',
-            transform: mode === 'signup' ? 'translate3d(100%, 0, 0)' : 'translate3d(0%, 0, 0)',
+            transform:
+              mode === 'signup'
+                ? isRtl
+                  ? 'translate3d(-100%, 0, 0)'
+                  : 'translate3d(100%, 0, 0)'
+                : 'translate3d(0%, 0, 0)',
           }}
         >
           <div className={`ios-seg-thumb-inner ${segStretching ? 'is-stretching' : ''}`} />
@@ -815,7 +822,7 @@ export function AuthCard({
           }}
           className={`ios-seg-btn ${mode === 'signin' ? 'is-active' : ''}`}
         >
-          Sign in
+          {t('auth.signIn')}
         </button>
         <button
           type="button"
@@ -830,7 +837,7 @@ export function AuthCard({
           }}
           className={`ios-seg-btn ${mode === 'signup' ? 'is-active' : ''}`}
         >
-          Create account
+          {t('auth.createAccount')}
         </button>
       </div>
 
@@ -843,16 +850,16 @@ export function AuthCard({
               : 'border-white/[0.12] bg-white/[0.04]'
           }`}
         >
-          <div className="min-w-0">
+          <div className="min-w-0 text-start">
             <p className="font-semibold text-[var(--text)]">
               {addAccountReason === 'session_expired'
-                ? 'Session expired, please sign in again.'
-                : 'Add another account'}
+                ? t('auth.sessionExpiredTitle')
+                : t('auth.addAnotherAccount')}
             </p>
             <p className="text-[11px] text-[var(--text-muted)] truncate">
               {addAccountReason === 'session_expired'
-                ? 'Enter your password once to refresh instant switching for this account.'
-                : 'Your current account stays saved in Switch account.'}
+                ? t('auth.sessionExpiredDesc')
+                : t('auth.currentAccountSavedDesc')}
             </p>
           </div>
           {onCancelAddAccount && (
@@ -861,39 +868,37 @@ export function AuthCard({
               onClick={onCancelAddAccount}
               className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:bg-white/[0.08] transition-colors shrink-0 cursor-pointer"
             >
-              <ArrowLeft size={14} />
-              <span>Back</span>
+              <ArrowLeft size={14} className="rtl-mirror" />
+              <span>{t('common.back')}</span>
             </button>
           )}
         </div>
       )}
 
       {/* 3. Heading & Subtext */}
-      <div className="text-left">
+      <div className="text-start">
         <h1
           className="text-xl sm:text-2xl text-[var(--text)] tracking-tight"
           style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
         >
           {isAddAccountFlow
             ? mode === 'signin'
-              ? 'Sign in to another account'
-              : 'Create another account'
+              ? t('auth.signInAnotherTitle')
+              : t('auth.createAnotherTitle')
             : mode === 'signin'
-            ? 'Sign in to continue'
-            : 'Create your account'}
+            ? t('auth.signInToContinue')
+            : t('auth.createYourAccount')}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
-          {mode === 'signin'
-            ? 'Sign in to continue your university mock tests and track your progress.'
-            : 'Join Boardly to practice official university entry test papers and track your rank.'}
+          {mode === 'signin' ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
         </p>
       </div>
 
       {/* Saved accounts still signed in on this device (e.g. after logging out of one account) */}
       {!isAddAccountFlow && mode === 'signin' && !user && savedAccounts.length > 0 && (
-        <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.03] p-3">
+        <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.03] p-3 text-start">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] px-1">
-            Saved accounts on this device
+            {t('auth.savedAccountsDevice')}
           </p>
           <div className="space-y-1.5">
             {savedAccounts.map((acc) => {
@@ -917,40 +922,42 @@ export function AuthCard({
                           return;
                         }
                         if (res.email) setEmail(res.email);
-                        setGeneralError(res.error || 'Session expired, please sign in again.');
+                        setGeneralError(res.error || t('auth.sessionExpiredTitle'));
                       } finally {
                         setSwitchingSavedUid(null);
                       }
                     }}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left cursor-pointer disabled:cursor-wait"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-start cursor-pointer disabled:cursor-wait"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-xs font-semibold text-[var(--text)]">
                         {acc.displayName}
                       </p>
                       <p className="truncate text-[11px] text-[var(--text-muted)]">
-                        {isSwitching ? 'Switching account…' : acc.email || (acc.username ? `@${acc.username}` : '')}
+                        {isSwitching
+                          ? t('auth.switchingAccount')
+                          : acc.email || (acc.username ? `@${acc.username}` : '')}
                       </p>
                     </div>
                     {isSwitching ? (
                       <Loader2 size={14} className="animate-spin text-[#D71921] shrink-0" />
                     ) : (
                       <span className="text-[11px] font-semibold text-[#D71921] shrink-0">
-                        Continue
+                        {t('common.continue')}
                       </span>
                     )}
                   </button>
                   <button
                     type="button"
                     disabled={Boolean(switchingSavedUid)}
-                    aria-label={`Remove ${acc.displayName}`}
+                    aria-label={t('auth.removeAccountAria', { name: acc.displayName })}
                     onClick={async () => {
                       const next = await removeSavedAccountSession(acc.uid);
                       setSavedAccounts(next);
                     }}
                     className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-1 rounded-lg cursor-pointer"
                   >
-                    Remove
+                    {t('common.remove')}
                   </button>
                 </div>
               );
@@ -968,9 +975,9 @@ export function AuthCard({
           >
             <div className="flex items-start gap-2.5">
               <AlertCircle size={16} className="text-[#D71921] shrink-0 mt-0.5" />
-              <div className="flex-1 space-y-1 text-left">
+              <div className="flex-1 space-y-1 text-start">
                 <span className="font-bold text-[#D71921] uppercase tracking-wider text-[10px] block">
-                  {mode === 'signin' ? 'Sign-In Notice' : 'Sign-Up Notice'}
+                  {mode === 'signin' ? t('auth.signInNotice') : t('auth.signUpNotice')}
                 </span>
                 <p className="text-[var(--text)] leading-relaxed font-medium">
                   {displayedError}
@@ -984,7 +991,7 @@ export function AuthCard({
                   clearProfileError();
                 }}
                 className="text-[var(--text-muted)] hover:text-[var(--text)] text-sm font-bold px-1.5 py-0.5 cursor-pointer"
-                aria-label="Dismiss error"
+                aria-label={t('common.dismiss')}
               >
                 &times;
               </button>
@@ -996,7 +1003,7 @@ export function AuthCard({
                   to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
                   className="py-1.5 px-3 rounded-xl bg-[#D71921] text-white font-semibold text-xs hover:opacity-90 transition-opacity"
                 >
-                  Forgot password? Reset it here →
+                  {t('auth.forgotPasswordResetCta')}
                 </Link>
                 <button
                   type="button"
@@ -1008,22 +1015,22 @@ export function AuthCard({
                   }}
                   className="py-1.5 px-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] text-xs font-semibold cursor-pointer"
                 >
-                  Switch to Sign In
+                  {t('auth.switchToSignIn')}
                 </button>
               </div>
             )}
 
             {authError?.code === 'auth/popup-blocked' && (
               <div className="pt-2 border-t border-[#D71921]/25 flex flex-col gap-1.5">
-                <p className="text-[11px] text-[var(--text-muted)]">
-                  Your browser blocked the Google sign-in window. Allow popups and try again:
+                <p className="text-[11px] text-[var(--text-muted)] text-start">
+                  {t('auth.popupBlockedDesc')}
                 </p>
                 <button
                   type="button"
                   onClick={handleGoogleSignIn}
                   className="w-full py-2 px-3 rounded-xl bg-[#D71921] text-white font-semibold text-xs hover:opacity-90 transition-opacity cursor-pointer text-center"
                 >
-                  Retry Google Sign-In
+                  {t('auth.retryGoogleSignIn')}
                 </button>
               </div>
             )}
@@ -1035,16 +1042,16 @@ export function AuthCard({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {/* Full Name (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-1.5 text-left">
+          <div className="flex flex-col gap-1.5 text-start">
             <label
               htmlFor="auth-fullname"
               className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              Full name
+              {t('auth.fullName')}
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
+              <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
                 <User size={18} />
               </div>
               <input
@@ -1059,14 +1066,9 @@ export function AuthCard({
                     setFieldErrors((prev) => ({ ...prev, name: '' }));
                   }
                 }}
-                placeholder="Ahmed Khan"
+                placeholder={t('auth.fullNamePlaceholder')}
                 autoComplete="name"
-                className={`auth-form-input ${fieldErrors.name ? 'input-error' : ''}`}
-                style={{
-                  height: '50px',
-                  paddingLeft: '42px',
-                  paddingRight: '16px',
-                }}
+                className={`auth-form-input h-[50px] ps-[42px] pe-4 ${fieldErrors.name ? 'input-error' : ''}`}
               />
             </div>
             {fieldErrors.name && (
@@ -1077,19 +1079,19 @@ export function AuthCard({
 
         {/* Username (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-1.5 text-left">
+          <div className="flex flex-col gap-1.5 text-start">
             <div className="flex items-center justify-between gap-2">
               <label
                 htmlFor="auth-signup-username"
                 className="text-xs sm:text-sm font-semibold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                Username
+                {t('auth.username')}
               </label>
 
               {signupUsernameCheck.status === 'checking' && (
                 <span className="text-[11px] font-mono text-[var(--text-muted)]">
-                  Checking...
+                  {t('auth.checking')}
                 </span>
               )}
               {signupUsernameCheck.status === 'available' && (
@@ -1098,7 +1100,7 @@ export function AuthCard({
                   className="text-[11px] font-mono font-bold text-emerald-500 inline-flex items-center gap-1"
                 >
                   <CheckCircle2 size={13} />
-                  <span>Available</span>
+                  <span>{t('auth.available')}</span>
                 </span>
               )}
               {(signupUsernameCheck.status === 'taken' ||
@@ -1108,12 +1110,16 @@ export function AuthCard({
                   className="text-[11px] font-mono font-bold text-[#D71921] inline-flex items-center gap-1"
                 >
                   <AlertCircle size={13} />
-                  <span>{signupUsernameCheck.status === 'taken' ? 'Taken' : 'Invalid'}</span>
+                  <span>
+                    {signupUsernameCheck.status === 'taken'
+                      ? t('auth.taken')
+                      : t('auth.invalid')}
+                  </span>
                 </span>
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative" dir="ltr">
               <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] font-mono font-bold text-sm pointer-events-none">
                 @
               </div>
@@ -1162,29 +1168,29 @@ export function AuthCard({
               )
             )}
             <span className="text-[11px] text-[var(--text-muted)] leading-snug">
-              3 to 20 characters: letters, numbers, dots and underscores only
+              {t('auth.usernameRulesHint')}
             </span>
           </div>
         )}
 
         {/* Email (Sign Up) or Email / Username (Sign In) */}
-        <div className="flex flex-col gap-1.5 text-left">
+        <div className="flex flex-col gap-1.5 text-start">
           <label
             htmlFor="auth-email"
             className="text-xs sm:text-sm font-semibold text-[var(--text)]"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
-            {mode === 'signin' ? 'Email or username' : 'Email'}
+            {mode === 'signin' ? t('auth.emailOrUsername') : t('auth.email')}
           </label>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
+            <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
               <Mail size={18} />
             </div>
             <input
               id="auth-email"
               data-testid="auth-identifier-input"
               type={mode === 'signin' ? 'text' : 'email'}
-              inputMode={mode === 'signin' ? 'email' : 'email'}
+              inputMode="email"
               value={email}
               onFocus={handleInputFocus}
               onChange={(e) => {
@@ -1194,15 +1200,12 @@ export function AuthCard({
                 }
               }}
               placeholder={
-                mode === 'signin' ? 'student@example.com or username' : 'student@example.com'
+                mode === 'signin'
+                  ? t('auth.emailOrUsernamePlaceholder')
+                  : t('auth.emailPlaceholder')
               }
               autoComplete={mode === 'signin' ? 'username' : 'email'}
-              className={`auth-form-input ${fieldErrors.email ? 'input-error' : ''}`}
-              style={{
-                height: '50px',
-                paddingLeft: '42px',
-                paddingRight: '16px',
-              }}
+              className={`auth-form-input h-[50px] ps-[42px] pe-4 ${fieldErrors.email ? 'input-error' : ''}`}
             />
           </div>
           {fieldErrors.email && (
@@ -1211,14 +1214,14 @@ export function AuthCard({
         </div>
 
         {/* Password */}
-        <div className="flex flex-col gap-1.5 text-left">
+        <div className="flex flex-col gap-1.5 text-start">
           <div className="flex items-center justify-between">
             <label
               htmlFor="auth-password"
               className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              Password
+              {t('auth.password')}
             </label>
             {mode === 'signin' && (
               <Link
@@ -1226,12 +1229,12 @@ export function AuthCard({
                 className="text-xs font-medium text-[var(--text-muted)] hover:text-[#D71921] transition-colors"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                Forgot password?
+                {t('auth.forgotPassword')}
               </Link>
             )}
           </div>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
+            <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
               <Lock size={18} />
             </div>
             <input
@@ -1247,18 +1250,13 @@ export function AuthCard({
               }}
               placeholder="••••••••"
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              className={`auth-form-input ${fieldErrors.password ? 'input-error' : ''}`}
-              style={{
-                height: '50px',
-                paddingLeft: '42px',
-                paddingRight: '48px',
-              }}
+              className={`auth-form-input h-[50px] ps-[42px] pe-12 ${fieldErrors.password ? 'input-error' : ''}`}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
+              aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+              className="absolute end-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -1287,7 +1285,8 @@ export function AuthCard({
                 ))}
               </div>
               <span className="text-[10px] text-[var(--text-muted)] block">
-                Password strength: <strong className="text-[var(--text)]">{passwordStrength.label}</strong>
+                {t('auth.passwordStrengthLabel')}{' '}
+                <strong className="text-[var(--text)]">{passwordStrength.label}</strong>
               </span>
             </div>
           )}
@@ -1295,16 +1294,16 @@ export function AuthCard({
 
         {/* Confirm Password (Sign Up only) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-1.5 text-left">
+          <div className="flex flex-col gap-1.5 text-start">
             <label
               htmlFor="auth-confirm-password"
               className="text-xs sm:text-sm font-semibold text-[var(--text)]"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              Confirm password
+              {t('auth.confirmPassword')}
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
+              <div className="absolute start-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none">
                 <Lock size={18} />
               </div>
               <input
@@ -1320,18 +1319,13 @@ export function AuthCard({
                 }}
                 placeholder="••••••••"
                 autoComplete="new-password"
-                className={`auth-form-input ${fieldErrors.confirmPassword ? 'input-error' : ''}`}
-                style={{
-                  height: '50px',
-                  paddingLeft: '42px',
-                  paddingRight: '48px',
-                }}
+                className={`auth-form-input h-[50px] ps-[42px] pe-12 ${fieldErrors.confirmPassword ? 'input-error' : ''}`}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
+                aria-label={showConfirmPassword ? t('auth.hidePassword') : t('auth.showPassword')}
+                className="absolute end-1 top-1/2 -translate-y-1/2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer rounded-lg"
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -1344,7 +1338,7 @@ export function AuthCard({
 
         {/* ONE Terms & Privacy Consent Checkbox Row on Signup (Styled checkbox, red when checked) */}
         {mode === 'signup' && (
-          <div className="flex flex-col gap-1.5 text-left pt-0.5">
+          <div className="flex flex-col gap-1.5 text-start pt-0.5">
             <label
               htmlFor="auth-terms-consent"
               className="flex items-start gap-2.5 text-xs text-[var(--text-muted)] leading-relaxed cursor-pointer select-none"
@@ -1371,21 +1365,21 @@ export function AuthCard({
                 </span>
               </span>
               <span>
-                I agree to the{' '}
+                {t('auth.agreePrefix')}{' '}
                 <Link
                   to="/terms"
                   className="underline text-[var(--text)] hover:text-[#D71921] font-medium"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Terms of Service
+                  {t('legal.termsOfService')}
                 </Link>{' '}
-                and{' '}
+                {t('common.and')}{' '}
                 <Link
                   to="/privacy"
                   className="underline text-[var(--text)] hover:text-[#D71921] font-medium"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Privacy Policy
+                  {t('legal.privacyPolicy')}
                 </Link>
                 .
               </span>
@@ -1403,7 +1397,7 @@ export function AuthCard({
           className="btn-primary relative overflow-hidden w-full min-h-[52px] rounded-full mt-1 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-65 disabled:cursor-not-allowed"
         >
           {loading && <Loader2 size={17} className="animate-spin shrink-0" />}
-          <span>{mode === 'signin' ? 'Sign in' : 'Create account'}</span>
+          <span>{mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}</span>
         </button>
       </form>
 
@@ -1414,7 +1408,7 @@ export function AuthCard({
           className="text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]"
           style={{ fontFamily: "'Doto', var(--font-dot), monospace", fontWeight: 800 }}
         >
-          OR
+          {t('auth.orDivider')}
         </span>
         <div className="flex-1 dotted-divider" />
       </div>
@@ -1426,7 +1420,7 @@ export function AuthCard({
           onClick={handleGoogleSignIn}
           disabled={googleLoading || loading}
           className="auth-google-btn relative overflow-hidden min-h-[52px] rounded-full"
-          aria-label="Continue with Google"
+          aria-label={t('auth.continueWithGoogle')}
         >
           {googleLoading ? (
             <Loader2 size={18} className="animate-spin shrink-0 text-[#D71921]" />
@@ -1450,7 +1444,7 @@ export function AuthCard({
               />
             </svg>
           )}
-          <span>Continue with Google</span>
+          <span>{t('auth.continueWithGoogle')}</span>
         </button>
 
         {mode === 'signin' && passkeySupported && (
@@ -1465,7 +1459,9 @@ export function AuthCard({
             ) : (
               <KeyRound size={16} className="text-[var(--accent)] shrink-0" />
             )}
-            <span>{passkeyLoading ? 'Verifying passkey…' : 'Sign in with passkey'}</span>
+            <span>
+              {passkeyLoading ? t('auth.verifyingPasskey') : t('auth.signInWithPasskey')}
+            </span>
           </button>
         )}
 
@@ -1476,7 +1472,7 @@ export function AuthCard({
           className="btn-secondary w-full min-h-[52px] px-5 rounded-full text-xs sm:text-sm font-semibold text-[var(--text)] cursor-pointer inline-flex items-center justify-center gap-2.5 disabled:opacity-50"
         >
           <UserCheck size={16} className="text-[#D71921] shrink-0" />
-          <span>Continue as guest</span>
+          <span>{t('auth.continueAsGuest')}</span>
         </button>
       </div>
     </div>

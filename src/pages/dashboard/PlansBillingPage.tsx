@@ -20,9 +20,7 @@ import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useWallet } from '@/hooks/useWallet';
 import { useAiCredits } from '@/hooks/useAiCredits';
 import {
-  REFUND_POLICY_TEXT,
   buildPlansCatalog,
-  buildPlanComparisonRows,
   calculatePlanExpiryPkt,
   evaluatePlanPurchaseEligibility,
   type ProPlanId,
@@ -42,6 +40,8 @@ import {
   writeSwrCache,
 } from '@/utils/userStateSource';
 import type { PaymentRequest } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPlanLabel } from '@/lib/planTier';
 
 export function PlansBillingPage() {
   const { user, isGuest } = useAuth();
@@ -57,12 +57,116 @@ export function PlansBillingPage() {
     refreshPlanStatus,
   } = useEffectivePlan();
   const isCrew = source === 'crew';
+  const { t, formatPKR, formatNumber } = useLanguage();
   const { kobanBalance, balanceLoaded, refreshWallet } = useWallet();
   const aiCredits = useAiCredits();
 
   const catalog = useMemo(() => buildPlansCatalog(plansConfig), [plansConfig]);
-  const comparisonRows = useMemo(() => buildPlanComparisonRows(plansConfig), [plansConfig]);
   const discountPercent = plansConfig.annualDiscountPercent;
+
+  const localizedFeatures = useMemo(() => {
+    const freeCredits = formatNumber(plansConfig.free.aiCreditsPerDay);
+    const proCredits = formatNumber(plansConfig.pro.aiCreditsPerDay);
+    const plusCredits = formatNumber(plansConfig.plus.aiCreditsPerDay);
+    return {
+      free: [
+        t('plans.featFreeTests'),
+        t('plans.featFreeArena'),
+        t('plans.featFreeDerivations'),
+        t('plans.featFreeAiCredits', { credits: freeCredits }),
+        t('plans.featFreeCommons'),
+        t('plans.featFreeStreak'),
+      ],
+      pro_monthly: [
+        t('plans.featProTests'),
+        t('plans.featProArena'),
+        t('plans.featProDerivations'),
+        t('plans.featProAiCredits', { credits: proCredits }),
+        t('plans.featProFastOptimizer'),
+        t('plans.featProMistakes'),
+        t('plans.featAdFree'),
+      ],
+      pro_annual: [
+        t('plans.featProAnnualEverything'),
+        t('plans.featProAiCredits', { credits: proCredits }),
+        t('plans.featProAnnualMocks'),
+        t('plans.featProAnnualSupport'),
+        t('plans.featProAnnualWeakness'),
+        t('plans.featProBadge'),
+        t('plans.featAdFree'),
+      ],
+      plus: [
+        t('plans.featPlusEverythingPro'),
+        t('plans.featPlusAiCredits', { credits: plusCredits }),
+        t('plans.featPlusDeepMax'),
+        t('plans.featPlusBadge'),
+        t('plans.featAdFree'),
+      ],
+      crew: [
+        t('plans.featCrewMembers'),
+        t('plans.featCrewLeaderboards'),
+        t('plans.featCrewChallenges'),
+        t('plans.featCrewSharedPlan'),
+        t('plans.featCrewRewards'),
+        t('plans.featCrewUpgrade'),
+      ],
+    };
+  }, [plansConfig, t, formatNumber]);
+
+  const comparisonRows = useMemo(
+    () => [
+      {
+        feature: t('plans.cmpDailyTests'),
+        free: t('plans.cmpFreeTests'),
+        pro: t('plans.unlimited'),
+        plus: t('plans.unlimited'),
+        crew: t('plans.cmpCrewShared'),
+      },
+      {
+        feature: t('plans.cmpArenaMocks'),
+        free: t('plans.cmpFreeArena'),
+        pro: t('plans.unlimited'),
+        plus: t('plans.unlimited'),
+        crew: t('plans.cmpCrewRanked'),
+      },
+      {
+        feature: t('plans.cmpDerivations'),
+        free: t('plans.cmpFreeDerivations'),
+        pro: t('plans.unlimited'),
+        plus: t('plans.unlimited'),
+        crew: t('plans.cmpBestInSquad'),
+      },
+      {
+        feature: t('plans.cmpAiMentors'),
+        free: t('plans.cmpFreeAi', { credits: formatNumber(plansConfig.free.aiCreditsPerDay) }),
+        pro: t('plans.cmpProAi', { credits: formatNumber(plansConfig.pro.aiCreditsPerDay) }),
+        plus: t('plans.cmpProAi', { credits: formatNumber(plansConfig.plus.aiCreditsPerDay) }),
+        crew: t('plans.cmpBestInSquad'),
+      },
+      {
+        feature: t('plans.cmpAnalytics'),
+        free: t('plans.cmpBasic'),
+        pro: t('plans.cmpFullDiagnostics'),
+        plus: t('plans.cmpFullDiagnostics'),
+        crew: t('plans.cmpSquadLeaderboard'),
+      },
+      {
+        feature: t('plans.cmpBadges'),
+        free: t('plans.cmpStandard'),
+        pro: t('plans.cmpProBadgeKobans'),
+        plus: t('plans.cmpPlusBadgeKobans'),
+        crew: t('plans.cmpCrewTag'),
+      },
+      {
+        feature: t('plans.featAdFree'),
+        free: t('plans.cmpAdSupported'),
+        pro: t('plans.featAdFree'),
+        plus: t('plans.featAdFree'),
+        crew: t('plans.cmpBestInSquad'),
+      },
+    ],
+    [plansConfig, t, formatNumber]
+  );
 
   useEffect(() => {
     if (location.hash === '#boardly-pro-card' || location.hash === '#boardly-plus-card') {
@@ -108,9 +212,9 @@ export function PlansBillingPage() {
       setStudentProRequests(list);
       writeSwrCache(`plans:requests:${user.uid}`, list);
     } catch (err: any) {
-      setRequestsError(err?.message || 'Could not refresh subscription status.');
+      setRequestsError(err?.message || t('plans.refreshStatusError'));
     }
-  }, [user?.uid, isGuest, refreshPlanStatus]);
+  }, [user?.uid, isGuest, refreshPlanStatus, t]);
 
   useEffect(() => {
     if (!user?.uid || isGuest) return;
@@ -201,8 +305,8 @@ export function PlansBillingPage() {
 
   if (isGuest) {
     return (
-      <SettingsPage title="Plans and billing" onBack={handleBack}>
-        <PageMeta title="Plans and billing — Boardly" />
+      <SettingsPage title={t('plans.title')} onBack={handleBack}>
+        <PageMeta title={`${t('plans.title')} — Boardly`} />
         <GuestProBlockedView variant="page" />
       </SettingsPage>
     );
@@ -232,18 +336,14 @@ export function PlansBillingPage() {
   );
 
   const aiPlanLabel = aiCredits.unlimited
-    ? 'Superadmin'
-    : aiCredits.plan === 'plus'
-    ? 'Boardly Plus'
-    : aiCredits.plan === 'pro'
-    ? 'Boardly Pro'
-    : 'Free';
+    ? t('plans.superadmin')
+    : formatPlanLabel(aiCredits.plan, { freeLabel: t('plans.free') });
 
   return (
-    <SettingsPage title="Plans and billing" onBack={handleBack}>
+    <SettingsPage title={t('plans.title')} onBack={handleBack}>
       <PageMeta
-        title="Plans and billing — Boardly"
-        description="Manage your Boardly Pro and Boardly Plus subscription, Kobans balance, and study plans."
+        title={`${t('plans.title')} — Boardly`}
+        description={t('plans.metaDescription')}
       />
 
       {/* Inline Retry Error Banner */}
@@ -273,7 +373,7 @@ export function PlansBillingPage() {
             }}
           >
             <RefreshCw className="h-3.5 w-3.5" />
-            Retry
+            {t('common.retry')}
           </button>
         </div>
       )}
@@ -281,32 +381,32 @@ export function PlansBillingPage() {
       {/* 1. YOUR PLAN */}
       {isPendingVerification ? (
         <SettingsGroup
-          label="Your plan"
-          helperText="Payments are verified manually and plans are activated within 24 hours. New purchases are locked while verification is pending."
+          label={t('plans.yourPlan')}
+          helperText={t('plans.pendingHelperText')}
         >
           <SettingsRow
             icon={<Clock />}
-            label="Payment pending verification"
+            label={t('plans.paymentPendingVerification')}
             subtitle={
               planStatus.pendingRequest
-                ? `${planStatus.pendingRequest.planName} · PKR ${planStatus.pendingRequest.amountPkr.toLocaleString()}`
+                ? `${planStatus.pendingRequest.planName} · ${formatPKR(planStatus.pendingRequest.amountPkr)}`
                 : pendingProRequest
-                ? `PKR ${Number(pendingProRequest.amount || 0).toLocaleString()} submitted`
-                : 'Awaiting manual verification'
+                ? t('plans.amountSubmitted', { amount: formatPKR(Number(pendingProRequest.amount || 0)) })
+                : t('plans.awaitingManualVerification')
             }
-            value="Pending"
+            value={t('plans.pending')}
             chevron="none"
           />
           {(planStatus.pendingRequest?.tid || pendingProRequest?.TID) && (
             <SettingsRow
-              label="Transaction ID"
+              label={t('plans.transactionId')}
               value={planStatus.pendingRequest?.tid || pendingProRequest?.TID || ''}
               chevron="none"
             />
           )}
           {planStatus.pendingRequest?.submittedFormatted && (
             <SettingsRow
-              label="Submitted"
+              label={t('plans.submitted')}
               value={planStatus.pendingRequest.submittedFormatted}
               chevron="none"
             />
@@ -315,10 +415,10 @@ export function PlansBillingPage() {
       ) : (
         <section className="mb-6" data-testid="your-plan-card">
           <h2
-            className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+            className="mb-2 ps-4 text-[14px] font-medium leading-snug"
             style={{ color: 'var(--text-muted)' }}
           >
-            Your plan
+            {t('plans.yourPlan')}
           </h2>
           <div
             className="rounded-[32px] p-5"
@@ -345,33 +445,39 @@ export function PlansBillingPage() {
                   <div className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
                     {isPersonalPlus
                       ? planStatus.isSuperAdmin
-                        ? 'Boardly Plus (Superadmin)'
-                        : 'Boardly Plus'
+                        ? t('plans.boardlyPlusSuperadmin')
+                        : formatPlanLabel('plus')
                       : isPersonalProOnly
-                      ? 'Boardly Pro'
+                      ? formatPlanLabel('pro')
                       : isCrew
                       ? planStatus.planName
-                      : 'Free tier'}
+                      : t('plans.freeTier')}
                   </div>
                 </div>
                 <p className="mt-1 text-[14px] leading-snug" style={{ color: 'var(--text-muted)' }}>
                   {isPersonalPlus
                     ? planStatus.isSuperAdmin
-                      ? 'Unlimited Superadmin access · All Pro & Plus features unlocked'
-                      : `Active until ${planStatus.expiryFormatted || 'Active'}${
-                          planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : ''
-                        }`
+                      ? t('plans.superadminSubtitle')
+                      : t('plans.activeUntilShort', {
+                          date: planStatus.expiryFormatted || t('plans.active'),
+                          extra: planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : '',
+                        })
                     : isPersonalProOnly
-                    ? `Active until ${planStatus.expiryFormatted || 'Active'}${
-                        planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : ''
-                      }`
+                    ? t('plans.activeUntilShort', {
+                        date: planStatus.expiryFormatted || t('plans.active'),
+                        extra: planStatus.timeLeftLabel ? ` · ${planStatus.timeLeftLabel}` : '',
+                      })
                     : isCrew
-                    ? `${
-                        currentPlan === 'plus'
-                          ? `${plansConfig.plus.aiCreditsPerDay} AI credits/day via crew`
-                          : `${plansConfig.pro.aiCreditsPerDay} AI credits/day via crew`
-                      }`
-                    : `2 practice tests/day · ${plansConfig.free.aiCreditsPerDay} AI Mentor credits/day`}
+                    ? t('plans.crewAiCreditsPerDay', {
+                        credits: formatNumber(
+                          currentPlan === 'plus'
+                            ? plansConfig.plus.aiCreditsPerDay
+                            : plansConfig.pro.aiCreditsPerDay
+                        ),
+                      })
+                    : t('plans.freeTierSubtitle', {
+                        credits: formatNumber(plansConfig.free.aiCreditsPerDay),
+                      })}
                 </p>
               </div>
               <span
@@ -402,8 +508,8 @@ export function PlansBillingPage() {
                   : isPersonalProOnly
                   ? 'Pro'
                   : isCrew
-                  ? 'Crew'
-                  : 'Current'}
+                  ? t('plans.crew')
+                  : t('plans.current')}
               </span>
             </div>
 
@@ -416,8 +522,7 @@ export function PlansBillingPage() {
                   color: 'var(--danger)',
                 }}
               >
-                Your previous payment request (TID: {latestRejectedProRequest.TID || 'N/A'}) was
-                not approved. You can submit a new payment below.
+                {t('plans.rejectedNotice', { tid: latestRejectedProRequest.TID || 'N/A' })}
               </div>
             )}
 
@@ -435,12 +540,14 @@ export function PlansBillingPage() {
                   <CheckCircle2 className="h-4 w-4 text-amber-500 shrink-0" />
                   <span>
                     {planStatus.isSuperAdmin
-                      ? 'Active · Unlimited'
-                      : `Active until ${planStatus.expiryFormatted || 'Active'}`}
+                      ? t('plans.activeUnlimited')
+                      : t('plans.activeUntilOnly', {
+                          date: planStatus.expiryFormatted || t('plans.active'),
+                        })}
                   </span>
                 </span>
                 <span className="text-[12px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Highest tier
+                  {t('plans.highestTier')}
                 </span>
               </div>
             ) : isPersonalProOnly ? (
@@ -452,10 +559,10 @@ export function PlansBillingPage() {
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Sparkles className="h-4 w-4" />
-                  <span>Upgrade to Plus</span>
+                  <span>{t('plans.upgradeToPlus')}</span>
                 </button>
                 <p className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                  Starts a fresh Boardly Plus pass from today (replaces your active Pro pass)
+                  {t('plans.startsFreshPlusNote')}
                 </p>
               </div>
             ) : (
@@ -467,7 +574,7 @@ export function PlansBillingPage() {
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Zap className="h-4 w-4" />
-                  <span>Upgrade to Pro</span>
+                  <span>{t('plans.upgradeToPro')}</span>
                 </button>
                 <div className="text-center">
                   <button
@@ -476,7 +583,9 @@ export function PlansBillingPage() {
                     className="text-[13px] font-semibold underline underline-offset-4 cursor-pointer"
                     style={{ color: 'var(--koban)' }}
                   >
-                    See Plus ({plansConfig.plus.aiCreditsPerDay} AI credits/day)
+                    {t('plans.seePlusCredits', {
+                      credits: formatNumber(plansConfig.plus.aiCreditsPerDay),
+                    })}
                   </button>
                 </div>
               </div>
@@ -488,10 +597,10 @@ export function PlansBillingPage() {
       {/* 1B. AI MENTOR CREDITS TODAY */}
       <section className="mb-6" data-testid="plans-ai-credits-card">
         <h2
-          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          className="mb-2 ps-4 text-[14px] font-medium leading-snug"
           style={{ color: 'var(--text-muted)' }}
         >
-          AI Mentor credits today
+          {t('plans.aiCreditsToday')}
         </h2>
         <div
           className="rounded-[32px] p-5"
@@ -510,8 +619,11 @@ export function PlansBillingPage() {
                 />
                 <span className="text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
                   {aiCredits.unlimited
-                    ? 'Unlimited credits'
-                    : `${aiCredits.remaining} of ${aiCredits.limit} credits left`}
+                    ? t('plans.unlimitedCredits')
+                    : t('plans.creditsLeftOf', {
+                        remaining: formatNumber(aiCredits.remaining),
+                        limit: formatNumber(aiCredits.limit),
+                      })}
                 </span>
                 <span
                   className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
@@ -526,12 +638,14 @@ export function PlansBillingPage() {
               </div>
               <p className="mt-1 text-[13px] leading-snug" style={{ color: 'var(--text-muted)' }}>
                 {aiCredits.unlimited
-                  ? 'Superadmin access · Quick, Balanced, Deep & Max unlocked'
-                  : `Resets in ${aiCredits.resetCountdown} (PKT) · ${
-                      aiCredits.plan === 'plus' || aiCredits.plan === 'pro'
-                        ? 'Quick, Balanced, Deep & Max unlocked'
-                        : 'Quick & Balanced unlocked'
-                    }`}
+                  ? t('plans.aiSuperadminUnlocked')
+                  : t('plans.aiResetLine', {
+                      countdown: aiCredits.resetCountdown,
+                      modes:
+                        aiCredits.plan === 'plus' || aiCredits.plan === 'pro'
+                          ? t('plans.aiModesAll')
+                          : t('plans.aiModesBasic'),
+                    })}
               </p>
             </div>
             <button
@@ -544,7 +658,7 @@ export function PlansBillingPage() {
                 color: 'var(--text)',
               }}
             >
-              Open AI
+              {t('plans.openAi')}
             </button>
           </div>
           <div
@@ -579,12 +693,12 @@ export function PlansBillingPage() {
       <SettingsGroup label="Kobans">
         <SettingsRow
           leadingElement={<KobanIcon size={24} decorative />}
-          label="Kobans balance"
-          subtitle="Use Kobans for instant Boardly Pro or Plus activation"
+          label={t('plans.kobansBalance')}
+          subtitle={t('plans.kobansBalanceSub')}
           chevron="none"
           rightElement={
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-semibold tabular-nums"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[14px] font-semibold tabular-nums ltr-nums"
               style={{
                 backgroundColor: 'var(--koban-bg)',
                 border: '1px solid var(--koban-border)',
@@ -596,17 +710,17 @@ export function PlansBillingPage() {
                 <span
                   className="inline-block h-3.5 w-12 animate-pulse rounded-full"
                   style={{ backgroundColor: 'var(--skeleton)' }}
-                  aria-label="Loading Kobans balance"
+                  aria-label={t('plans.loadingKobansBalance')}
                 />
               ) : (
-                <span>{kobanBalance.toLocaleString()}</span>
+                <span>{formatNumber(kobanBalance)}</span>
               )}
             </span>
           }
         />
         <SettingsRow
           icon={<Palette />}
-          label="Customize Koban"
+          label={t('settings.customizeKoban')}
           onClick={() => navigate('/settings/koban-icon')}
         />
       </SettingsGroup>
@@ -615,16 +729,16 @@ export function PlansBillingPage() {
       {!isPendingVerification && (
         <section className="mb-6 space-y-4">
           <h2
-            className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+            className="mb-2 ps-4 text-[14px] font-medium leading-snug"
             style={{ color: 'var(--text-muted)' }}
           >
-            Choose a plan
+            {t('plans.chooseAPlan')}
           </h2>
 
           {/* Monthly | Annual (-25%) segmented pill controlling BOTH Pro and Plus cards */}
           <div
             role="tablist"
-            aria-label="Billing cycle"
+            aria-label={t('plans.billingCycle')}
             className="grid grid-cols-2 gap-1.5 rounded-full p-1.5"
             style={{
               backgroundColor: 'var(--card)',
@@ -644,7 +758,7 @@ export function PlansBillingPage() {
                   : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
               }
             >
-              Monthly
+              {t('plans.monthly')}
             </button>
             <button
               type="button"
@@ -658,7 +772,7 @@ export function PlansBillingPage() {
                   : { backgroundColor: 'transparent', color: 'var(--text-muted)' }
               }
             >
-              Annual (−{discountPercent}%)
+              {t('plans.annualDiscount', { percent: formatNumber(discountPercent) })}
             </button>
           </div>
 
@@ -683,8 +797,13 @@ export function PlansBillingPage() {
                 </div>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
                   {billingCycle === 'annual'
-                    ? `Annual pass · ${activeProOption.duration_days} days · Save ${discountPercent}%`
-                    : `Monthly pass · ${activeProOption.duration_days} days`}
+                    ? t('plans.annualPassMeta', {
+                        days: formatNumber(activeProOption.duration_days),
+                        percent: formatNumber(discountPercent),
+                      })
+                    : t('plans.monthlyPassMeta', {
+                        days: formatNumber(activeProOption.duration_days),
+                      })}
                 </p>
               </div>
               <span
@@ -694,7 +813,9 @@ export function PlansBillingPage() {
                   color: 'var(--accent)',
                 }}
               >
-                {billingCycle === 'annual' ? `Popular · Save ${discountPercent}%` : 'Popular'}
+                {billingCycle === 'annual'
+                  ? t('plans.popularSave', { percent: formatNumber(discountPercent) })
+                  : t('plans.popular')}
               </span>
             </div>
 
@@ -708,44 +829,47 @@ export function PlansBillingPage() {
             >
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span
-                  className="text-[26px] font-bold tabular-nums"
+                  className="text-[26px] font-bold tabular-nums ltr-nums"
                   style={{ color: 'var(--text)' }}
                 >
-                  PKR {activeProOption.price_pkr.toLocaleString()}
+                  {formatPKR(activeProOption.price_pkr)}
                 </span>
                 <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                  {activeProOption.cadenceLabel}
+                  {billingCycle === 'annual' ? t('plans.perYear') : t('plans.perMonth')}
                 </span>
                 {activeProOption.regular_price_pkr && (
                   <span
-                    className="text-[13px] line-through tabular-nums"
+                    className="text-[13px] line-through tabular-nums ltr-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    PKR {activeProOption.regular_price_pkr.toLocaleString()}
+                    {formatPKR(activeProOption.regular_price_pkr)}
                   </span>
                 )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
                 <span
-                  className="inline-flex items-center gap-1.5 font-semibold"
+                  className="inline-flex items-center gap-1.5 font-semibold ltr-nums"
                   style={{ color: 'var(--koban)' }}
                 >
                   <KobanIcon size={15} decorative />
-                  <span>{activeProOption.price_kobans.toLocaleString()} Kobans</span>
+                  <span>{formatNumber(activeProOption.price_kobans)} Kobans</span>
                 </span>
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {activeProOption.duration_days} days · Active until{' '}
-                  <strong style={{ color: 'var(--text)' }}>
-                    {activeProExpiryPreview.newExpiryLabel}
-                  </strong>
+                  {t('plans.daysActiveUntil', {
+                    days: formatNumber(activeProOption.duration_days),
+                    date: activeProExpiryPreview.newExpiryLabel,
+                  })}
                 </span>
               </div>
             </div>
 
             {/* Feature Check Rows */}
             <ul className="mt-4 space-y-2.5">
-              {activeProOption.features.map((feature) => (
+              {(billingCycle === 'annual'
+                ? localizedFeatures.pro_annual
+                : localizedFeatures.pro_monthly
+              ).map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -771,7 +895,7 @@ export function PlansBillingPage() {
                 }}
               >
                 <CheckCircle2 className="h-4 w-4 text-amber-500" />
-                <span>Included in Plus</span>
+                <span>{t('plans.includedInPlus')}</span>
               </div>
             ) : isPersonalProOnly ? (
               <div
@@ -783,7 +907,7 @@ export function PlansBillingPage() {
                 }}
               >
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                <span>Current plan</span>
+                <span>{t('plans.currentPlan')}</span>
               </div>
             ) : (
               <button
@@ -794,10 +918,10 @@ export function PlansBillingPage() {
                 style={{ backgroundColor: 'var(--accent)' }}
               >
                 <Zap className="h-4 w-4" />
-                <span>
+                <span className="ltr-nums">
                   {billingCycle === 'annual'
-                    ? `Upgrade to Pro · PKR ${activeProOption.price_pkr.toLocaleString()}/yr`
-                    : `Upgrade to Pro · PKR ${activeProOption.price_pkr}/mo`}
+                    ? t('plans.upgradeToProYr', { price: formatPKR(activeProOption.price_pkr) })
+                    : t('plans.upgradeToProMo', { price: formatPKR(activeProOption.price_pkr) })}
                 </span>
               </button>
             )}
@@ -840,8 +964,13 @@ export function PlansBillingPage() {
                 </div>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
                   {billingCycle === 'annual'
-                    ? `Annual pass · ${activePlusOption.duration_days} days · Save ${discountPercent}%`
-                    : `Monthly pass · ${activePlusOption.duration_days} days`}
+                    ? t('plans.annualPassMeta', {
+                        days: formatNumber(activePlusOption.duration_days),
+                        percent: formatNumber(discountPercent),
+                      })
+                    : t('plans.monthlyPassMeta', {
+                        days: formatNumber(activePlusOption.duration_days),
+                      })}
                 </p>
               </div>
               <span
@@ -853,7 +982,9 @@ export function PlansBillingPage() {
                   color: 'var(--koban)',
                 }}
               >
-                {billingCycle === 'annual' ? `Best value · Save ${discountPercent}%` : 'Best value'}
+                {billingCycle === 'annual'
+                  ? t('plans.bestValueSave', { percent: formatNumber(discountPercent) })
+                  : t('plans.bestValue')}
               </span>
             </div>
 
@@ -867,44 +998,44 @@ export function PlansBillingPage() {
             >
               <div className="flex items-baseline gap-2 flex-wrap">
                 <span
-                  className="text-[26px] font-bold tabular-nums"
+                  className="text-[26px] font-bold tabular-nums ltr-nums"
                   style={{ color: 'var(--text)' }}
                 >
-                  PKR {activePlusOption.price_pkr.toLocaleString()}
+                  {formatPKR(activePlusOption.price_pkr)}
                 </span>
                 <span className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
-                  {activePlusOption.cadenceLabel}
+                  {billingCycle === 'annual' ? t('plans.perYear') : t('plans.perMonth')}
                 </span>
                 {activePlusOption.regular_price_pkr && (
                   <span
-                    className="text-[13px] line-through tabular-nums"
+                    className="text-[13px] line-through tabular-nums ltr-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    PKR {activePlusOption.regular_price_pkr.toLocaleString()}
+                    {formatPKR(activePlusOption.regular_price_pkr)}
                   </span>
                 )}
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
                 <span
-                  className="inline-flex items-center gap-1.5 font-semibold"
+                  className="inline-flex items-center gap-1.5 font-semibold ltr-nums"
                   style={{ color: 'var(--koban)' }}
                 >
                   <KobanIcon size={15} decorative />
-                  <span>{activePlusOption.price_kobans.toLocaleString()} Kobans</span>
+                  <span>{formatNumber(activePlusOption.price_kobans)} Kobans</span>
                 </span>
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {activePlusExpiryPreview.daysAdded} days · Active until{' '}
-                  <strong style={{ color: 'var(--text)' }}>
-                    {activePlusExpiryPreview.newExpiryLabel}
-                  </strong>
+                  {t('plans.daysActiveUntil', {
+                    days: formatNumber(activePlusExpiryPreview.daysAdded),
+                    date: activePlusExpiryPreview.newExpiryLabel,
+                  })}
                 </span>
               </div>
             </div>
 
             {/* Plus Feature List */}
             <ul className="mt-4 space-y-2.5">
-              {activePlusOption.features.map((feature) => (
+              {localizedFeatures.plus.map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -929,7 +1060,7 @@ export function PlansBillingPage() {
                 }}
               >
                 <CheckCircle2 className="h-4 w-4 text-amber-500" />
-                <span>Active · Superadmin</span>
+                <span>{t('plans.activeSuperadmin')}</span>
               </div>
             ) : isPersonalPlus ? (
               <div className="mt-5 space-y-2">
@@ -940,15 +1071,16 @@ export function PlansBillingPage() {
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Sparkles className="h-4 w-4" />
-                  <span>
+                  <span className="ltr-nums">
                     {billingCycle === 'annual'
-                      ? `Extend Plus · PKR ${activePlusOption.price_pkr.toLocaleString()}/yr`
-                      : `Extend Plus · PKR ${activePlusOption.price_pkr}/mo`}
+                      ? t('plans.extendPlusYr', { price: formatPKR(activePlusOption.price_pkr) })
+                      : t('plans.extendPlusMo', { price: formatPKR(activePlusOption.price_pkr) })}
                   </span>
                 </button>
                 <p className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                  Active until {planStatus.expiryFormatted || 'Active'} · Extending adds days onto
-                  your current Plus pass
+                  {t('plans.extendingAddsDays', {
+                    date: planStatus.expiryFormatted || t('plans.active'),
+                  })}
                 </p>
               </div>
             ) : (
@@ -961,10 +1093,10 @@ export function PlansBillingPage() {
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Sparkles className="h-4 w-4" />
-                  <span>
+                  <span className="ltr-nums">
                     {billingCycle === 'annual'
-                      ? `Upgrade to Plus · PKR ${activePlusOption.price_pkr.toLocaleString()}/yr`
-                      : `Upgrade to Plus · PKR ${activePlusOption.price_pkr}/mo`}
+                      ? t('plans.upgradeToPlusYr', { price: formatPKR(activePlusOption.price_pkr) })
+                      : t('plans.upgradeToPlusMo', { price: formatPKR(activePlusOption.price_pkr) })}
                   </span>
                 </button>
                 {isPersonalProOnly && (
@@ -972,7 +1104,9 @@ export function PlansBillingPage() {
                     className="text-center text-[12px] font-medium"
                     style={{ color: 'var(--koban)' }}
                   >
-                    Replaces your active Pro pass ({activePlusExpiryPreview.daysAdded} days from today)
+                    {t('plans.replacesProPass', {
+                      days: formatNumber(activePlusExpiryPreview.daysAdded),
+                    })}
                   </p>
                 )}
               </div>
@@ -993,11 +1127,11 @@ export function PlansBillingPage() {
                 <div className="flex items-center gap-2">
                   <Users className="h-5 w-5" style={{ color: 'var(--text)' }} />
                   <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
-                    {catalog.crew.name}
+                    {t('plans.nakamaCrew')}
                   </h3>
                 </div>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  {catalog.crew.description}
+                  {t('plans.crewDesc')}
                 </p>
               </div>
               <span
@@ -1008,12 +1142,12 @@ export function PlansBillingPage() {
                   color: 'var(--text)',
                 }}
               >
-                Free squad
+                {t('plans.freeSquad')}
               </span>
             </div>
 
             <ul className="mt-4 space-y-2">
-              {catalog.crew.features.map((feature) => (
+              {localizedFeatures.crew.map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -1040,7 +1174,7 @@ export function PlansBillingPage() {
               }}
             >
               <Users className="h-4 w-4" />
-              <span>{isCrew ? 'Manage your crew' : 'Join or create crew'}</span>
+              <span>{isCrew ? t('plans.manageCrew') : t('plans.joinOrCreateCrew')}</span>
             </button>
           </div>
 
@@ -1056,10 +1190,10 @@ export function PlansBillingPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-[17px] font-semibold" style={{ color: 'var(--text)' }}>
-                  {catalog.free.name}
+                  {t('plans.freeTier')}
                 </h3>
                 <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                  PKR 0 / forever · {catalog.free.description}
+                  {t('plans.freeForeverLine', { price: formatPKR(0) })}
                 </p>
               </div>
               <span
@@ -1070,12 +1204,12 @@ export function PlansBillingPage() {
                   color: 'var(--text-muted)',
                 }}
               >
-                {currentPlan === 'free' ? 'Current plan' : 'Base tier'}
+                {currentPlan === 'free' ? t('plans.currentPlan') : t('plans.baseTier')}
               </span>
             </div>
 
             <ul className="mt-4 space-y-2">
-              {catalog.free.features.map((feature) => (
+              {localizedFeatures.free.map((feature) => (
                 <li
                   key={feature}
                   className="flex items-start gap-2.5 text-[14px] leading-snug"
@@ -1093,10 +1227,10 @@ export function PlansBillingPage() {
       {/* 4. COMPARE PLANS — 4 tiles per block (Free, Pro red accent, Plus amber/gold accent, Crew) */}
       <section className="mb-6" data-testid="compare-plans-section">
         <h2
-          className="mb-2 pl-4 text-[14px] font-medium leading-snug"
+          className="mb-2 ps-4 text-[14px] font-medium leading-snug"
           style={{ color: 'var(--text-muted)' }}
         >
-          Compare plans
+          {t('plans.comparePlans')}
         </h2>
         <div
           className="overflow-hidden rounded-[32px]"
@@ -1128,7 +1262,7 @@ export function PlansBillingPage() {
                   }}
                 >
                   <div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                    Free
+                    {t('plans.free')}
                   </div>
                   <div className="mt-0.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
                     {row.free}
@@ -1178,7 +1312,7 @@ export function PlansBillingPage() {
                   }}
                 >
                   <div className="text-[11px] font-medium" style={{ color: 'var(--text-muted)' }}>
-                    Crew
+                    {t('plans.crew')}
                   </div>
                   <div className="mt-0.5 text-[13px] font-medium" style={{ color: 'var(--text)' }}>
                     {row.crew}
@@ -1191,14 +1325,13 @@ export function PlansBillingPage() {
 
         {/* Terms & refunds helper text under the last card */}
         <p className="mt-3 px-4 text-[13px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          {REFUND_POLICY_TEXT} Payments via JazzCash or Opay are verified manually and plans are
-          activated within 24 hours. Review our{' '}
+          {t('plans.refundPolicy')} {t('plans.manualVerificationNote')}{' '}
           <Link to="/terms" className="underline" style={{ color: 'var(--accent)' }}>
-            Terms of Service
+            {t('settings.termsOfService')}
           </Link>{' '}
-          and{' '}
+          {t('common.and')}{' '}
           <Link to="/privacy" className="underline" style={{ color: 'var(--accent)' }}>
-            Privacy Policy
+            {t('settings.privacyPolicy')}
           </Link>
           .
         </p>

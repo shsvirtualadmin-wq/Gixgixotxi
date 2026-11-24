@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Loader2, MoreHorizontal, Plus, X } from 'lucide-react';
+import { AlertCircle, Check, Loader2, MoreHorizontal, Plus, RefreshCw, X } from 'lucide-react';
 import { BoardlyAvatar } from '../ui/BoardlyAvatar';
 import { useBodyScrollLock } from '@/utils/scrollLock';
-import type { SavedAccountEntry } from '@/utils/savedAccounts';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatPlanLabel } from '@/lib/planTier';
+import type { LiveSavedAccountInfo, SavedAccountEntry } from '@/utils/savedAccounts';
 
 export interface SettingsSheetProps {
   open: boolean;
@@ -166,7 +168,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
             {title ? (
               <h3
                 className={`min-w-0 flex-1 text-[18px] font-semibold leading-snug ${
-                  alignTitle === 'center' ? 'text-center' : 'text-left'
+                  alignTitle === 'center' ? 'text-center' : 'text-start'
                 }`}
                 style={{
                   color: 'var(--text)',
@@ -182,7 +184,7 @@ export const SettingsSheet: React.FC<SettingsSheetProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="Close dialog"
+                aria-label="Close"
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-hover)] active:scale-95 cursor-pointer"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -230,12 +232,17 @@ export interface ChoiceOption<T extends string> {
   value: T;
   label: string;
   subtitle?: string;
+  /** Optional BCP 47 lang attribute for displaying native language names cleanly */
+  lang?: string;
+  /** Optional text direction for native language names */
+  dir?: 'ltr' | 'rtl';
 }
 
 export function SettingsChoiceSheet<T extends string>({
   open,
   onClose,
   title,
+  subtitle,
   value,
   options,
   onSelect,
@@ -243,12 +250,18 @@ export function SettingsChoiceSheet<T extends string>({
   open: boolean;
   onClose: () => void;
   title: string;
+  subtitle?: string;
   value: T;
   options: ChoiceOption<T>[];
   onSelect: (val: T) => void;
 }) {
   return (
     <SettingsSheet open={open} onClose={onClose} title={title} alignTitle="left">
+      {subtitle && (
+        <p className="mb-3 text-[13px] text-start leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          {subtitle}
+        </p>
+      )}
       <div className="flex flex-col divide-y divide-[var(--border)]">
         {options.map((opt) => {
           const selected = opt.value === value;
@@ -262,17 +275,19 @@ export function SettingsChoiceSheet<T extends string>({
                 onSelect(opt.value);
                 onClose();
               }}
-              className="flex min-h-[56px] w-full items-center justify-between gap-3 py-3 text-left transition-opacity active:opacity-75 cursor-pointer"
+              className="flex min-h-[56px] w-full items-center justify-between gap-3 py-3 text-start transition-opacity active:opacity-75 cursor-pointer"
             >
               <div className="min-w-0 flex-1">
                 <div
-                  className="text-[16px] font-medium"
+                  lang={opt.lang}
+                  dir={opt.dir}
+                  className="text-[16px] font-medium text-start"
                   style={{ color: selected ? 'var(--accent)' : 'var(--text)' }}
                 >
                   {opt.label}
                 </div>
                 {opt.subtitle && (
-                  <div className="mt-0.5 text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                  <div className="mt-0.5 text-[13px] text-start" style={{ color: 'var(--text-muted)' }}>
                     {opt.subtitle}
                   </div>
                 )}
@@ -310,14 +325,15 @@ export const SettingsConfirmSheet: React.FC<SettingsConfirmSheetProps> = ({
   title,
   description,
   confirmLabel,
-  cancelLabel = 'Cancel',
+  cancelLabel,
   tone = 'primary',
   loading = false,
   onConfirm,
 }) => {
+  const { t } = useLanguage();
   return (
     <SettingsSheet open={open} onClose={onClose} title={title} alignTitle="left">
-      <p className="mb-5 text-[15px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+      <p className="mb-5 text-[15px] text-start leading-relaxed" style={{ color: 'var(--text-muted)' }}>
         {description}
       </p>
 
@@ -331,7 +347,7 @@ export const SettingsConfirmSheet: React.FC<SettingsConfirmSheetProps> = ({
             backgroundColor: tone === 'danger' ? 'var(--danger)' : 'var(--accent)',
           }}
         >
-          {loading ? 'Please wait…' : confirmLabel}
+          {loading ? t('common.loading') : confirmLabel}
         </button>
 
         <button
@@ -345,7 +361,7 @@ export const SettingsConfirmSheet: React.FC<SettingsConfirmSheetProps> = ({
             color: 'var(--text)',
           }}
         >
-          {cancelLabel}
+          {cancelLabel || t('common.cancel')}
         </button>
       </div>
     </SettingsSheet>
@@ -359,14 +375,15 @@ export const AboutBoardlySheet: React.FC<{
   onOpenHelp: () => void;
   onOpenTerms: () => void;
 }> = ({ open, onClose, version, onOpenHelp, onOpenTerms }) => {
+  const { t } = useLanguage();
   return (
-    <SettingsSheet open={open} onClose={onClose} title="About Boardly" alignTitle="left">
+    <SettingsSheet open={open} onClose={onClose} title={t('settings.aboutBoardly')} alignTitle="left">
       <div className="flex flex-col divide-y divide-[var(--border)]">
         <div className="flex min-h-[52px] items-center justify-between py-3">
           <span className="text-[16px]" style={{ color: 'var(--text)' }}>
-            Version
+            Boardly
           </span>
-          <span className="text-[15px]" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-[15px] ltr-nums" style={{ color: 'var(--text-muted)' }}>
             {version}
           </span>
         </div>
@@ -377,12 +394,12 @@ export const AboutBoardlySheet: React.FC<{
             onClose();
             onOpenHelp();
           }}
-          className="flex min-h-[52px] w-full items-center justify-between py-3 text-left text-[16px] cursor-pointer"
+          className="flex min-h-[52px] w-full items-center justify-between py-3 text-start text-[16px] cursor-pointer"
           style={{ color: 'var(--text)' }}
         >
-          <span>Help center</span>
+          <span>{t('settings.contactSupport')}</span>
           <span className="text-[14px]" style={{ color: 'var(--accent)' }}>
-            Open
+            {t('common.open')}
           </span>
         </button>
 
@@ -392,12 +409,12 @@ export const AboutBoardlySheet: React.FC<{
             onClose();
             onOpenTerms();
           }}
-          className="flex min-h-[52px] w-full items-center justify-between py-3 text-left text-[16px] cursor-pointer"
+          className="flex min-h-[52px] w-full items-center justify-between py-3 text-start text-[16px] cursor-pointer"
           style={{ color: 'var(--text)' }}
         >
-          <span>Terms of Service</span>
+          <span>{t('settings.termsOfService')}</span>
           <span className="text-[14px]" style={{ color: 'var(--accent)' }}>
-            Open
+            {t('common.open')}
           </span>
         </button>
       </div>
@@ -418,8 +435,13 @@ export const SwitchAccountSheet: React.FC<{
   equippedFrameId?: string | null;
   planLabel: string;
   savedAccounts?: SavedAccountEntry[];
+  liveAccountsMap?: Record<string, LiveSavedAccountInfo>;
+  liveLoading?: boolean;
+  switchError?: string | null;
   switchingUid?: string | null;
   onSelectSavedAccount?: (account: SavedAccountEntry) => void;
+  onRetryAccount?: (uid: string) => void;
+  onReauthAccount?: (account: SavedAccountEntry) => void;
   onRemoveSavedAccount?: (uid: string) => void;
   onAddAccount: () => void;
   onSignOut: () => void;
@@ -436,26 +458,32 @@ export const SwitchAccountSheet: React.FC<{
   equippedFrameId,
   planLabel,
   savedAccounts = [],
+  liveAccountsMap = {},
+  liveLoading = false,
+  switchError = null,
   switchingUid = null,
   onSelectSavedAccount,
+  onRetryAccount,
+  onReauthAccount,
   onRemoveSavedAccount,
   onAddAccount,
   onSignOut,
 }) => {
+  const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const otherSavedAccounts = savedAccounts.filter((entry) => entry.uid && entry.uid !== uid);
   const isBusySwitching = Boolean(switchingUid);
 
   return (
-    <SettingsSheet open={open} onClose={onClose} title="Switch account" alignTitle="left">
+    <SettingsSheet open={open} onClose={onClose} title={t('settings.switchAccountSheetTitle')} alignTitle="left">
       {/* Email header with three-dot menu */}
       <div className="relative mb-3 flex items-center justify-between gap-2">
-        <span className="break-all text-[14px]" style={{ color: 'var(--text-muted)' }}>
-          {email || (authLoading ? 'Loading account…' : isGuest ? 'Guest account' : 'No email linked')}
+        <span className="break-all text-[14px] ltr-nums" style={{ color: 'var(--text-muted)' }}>
+          {email || (authLoading ? t('common.loading') : isGuest ? t('settings.guestBannerTitle') : t('common.notSet'))}
         </span>
         <button
           type="button"
-          aria-label="Account options"
+          aria-label={t('settings.account')}
           onClick={() => setMenuOpen((prev) => !prev)}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-hover)] cursor-pointer"
           style={{ color: 'var(--text-muted)' }}
@@ -465,7 +493,7 @@ export const SwitchAccountSheet: React.FC<{
 
         {menuOpen && (
           <div
-            className="absolute right-0 top-10 z-20 min-w-[180px] overflow-hidden rounded-2xl py-1 shadow-lg"
+            className="absolute end-0 top-10 z-20 min-w-[180px] overflow-hidden rounded-2xl py-1 shadow-lg"
             style={{
               backgroundColor: 'var(--card)',
               border: '1px solid var(--border)',
@@ -478,10 +506,10 @@ export const SwitchAccountSheet: React.FC<{
                 onClose();
                 onSignOut();
               }}
-              className="flex min-h-[44px] w-full items-center px-4 text-left text-[15px] hover:bg-[var(--settings-row-hover)] cursor-pointer"
+              className="flex min-h-[44px] w-full items-center px-4 text-start text-[15px] hover:bg-[var(--settings-row-hover)] cursor-pointer"
               style={{ color: 'var(--danger)' }}
             >
-              Sign out of this account
+              {t('settings.logOut')}
             </button>
           </div>
         )}
@@ -504,7 +532,7 @@ export const SwitchAccountSheet: React.FC<{
           loading={authLoading}
           size="md"
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 text-start">
           {authLoading && !displayName ? (
             <div
               className="h-4 w-28 animate-pulse rounded-full"
@@ -512,11 +540,11 @@ export const SwitchAccountSheet: React.FC<{
             />
           ) : (
             <div className="truncate text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
-              {displayName || (isGuest ? 'Guest' : 'Account')}
+              {displayName || (isGuest ? t('common.guest') : t('settings.account'))}
             </div>
           )}
           <div className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            {planLabel || (authLoading ? 'Loading…' : '')}
+            {planLabel || (authLoading ? t('common.loading') : '')}
           </div>
         </div>
         <Check
@@ -526,14 +554,56 @@ export const SwitchAccountSheet: React.FC<{
         />
       </div>
 
+      {/* Inline action error (only shown when a user-triggered switch genuinely fails) */}
+      {switchError && (
+        <div
+          role="alert"
+          className="mt-2.5 flex items-start gap-2.5 rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug"
+          style={{
+            backgroundColor: 'color-mix(in srgb, var(--danger) 10%, var(--card))',
+            border: '1px solid color-mix(in srgb, var(--danger) 35%, transparent)',
+            color: 'var(--danger)',
+          }}
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="min-w-0 flex-1">{switchError}</span>
+        </div>
+      )}
+
       {/* Other saved accounts on this device */}
       {otherSavedAccounts.length > 0 && (
         <div className="mt-2.5 space-y-2">
           {otherSavedAccounts.map((acc) => {
             const isSwitchingThis = switchingUid === acc.uid;
-            const subline = [acc.email || (acc.username ? `@${acc.username}` : ''), acc.planLabel]
-              .filter(Boolean)
-              .join(' · ');
+            const live = liveAccountsMap[acc.uid];
+            const liveStatus = live?.status || (liveLoading ? 'loading' : 'active');
+            const isErrorState = liveStatus === 'error';
+            const isExpiredState = liveStatus === 'expired';
+            const isCheckingLive = liveStatus === 'loading';
+
+            const resolvedDisplayName = live?.displayName || acc.displayName;
+            const resolvedEmailOrHandle =
+              live?.email || acc.email || (live?.username || acc.username ? `@${live?.username || acc.username}` : '');
+            const resolvedLivePlanLabel =
+              live?.planTier
+                ? formatPlanLabel(live.planTier, {
+                    freeLabel: t('common.free'),
+                    guestLabel: t('common.guest'),
+                  })
+                : '';
+
+            const sublineParts = [
+              resolvedEmailOrHandle,
+              isCheckingLive
+                ? t('settings.loadingPlan')
+                : isErrorState
+                ? t('settings.tapToRetry')
+                : isExpiredState
+                ? t('settings.signInAgain')
+                : resolvedLivePlanLabel,
+            ].filter(Boolean);
+            const subline = sublineParts.join(' · ');
+
             return (
               <div
                 key={acc.uid}
@@ -547,6 +617,14 @@ export const SwitchAccountSheet: React.FC<{
                   type="button"
                   disabled={isBusySwitching}
                   onClick={() => {
+                    if (isErrorState && onRetryAccount) {
+                      onRetryAccount(acc.uid);
+                      return;
+                    }
+                    if (isExpiredState && onReauthAccount) {
+                      onReauthAccount(acc);
+                      return;
+                    }
                     if (onSelectSavedAccount) {
                       onSelectSavedAccount(acc);
                     } else {
@@ -554,13 +632,13 @@ export const SwitchAccountSheet: React.FC<{
                       onAddAccount();
                     }
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer disabled:cursor-wait"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-start cursor-pointer disabled:cursor-wait"
                 >
                   <BoardlyAvatar
                     uid={acc.uid}
-                    equippedAvatar={acc.equippedAvatar || undefined}
-                    equippedFrameId={acc.equippedFrameId || undefined}
-                    name={acc.displayName}
+                    equippedAvatar={live?.equippedAvatar || acc.equippedAvatar || undefined}
+                    equippedFrameId={live?.equippedFrameId || acc.equippedFrameId || undefined}
+                    name={resolvedDisplayName}
                     size="sm"
                   />
                   <div className="min-w-0 flex-1">
@@ -568,14 +646,19 @@ export const SwitchAccountSheet: React.FC<{
                       className="truncate text-[15px] font-semibold"
                       style={{ color: 'var(--text)' }}
                     >
-                      {acc.displayName}
+                      {resolvedDisplayName}
                     </div>
                     {subline && (
                       <div
-                        className="truncate text-[12px]"
-                        style={{ color: 'var(--text-muted)' }}
+                        className="flex items-center gap-1 truncate text-[12px]"
+                        style={{
+                          color: isErrorState || isExpiredState ? 'var(--accent)' : 'var(--text-muted)',
+                        }}
                       >
-                        {isSwitchingThis ? 'Switching account…' : subline}
+                        {isErrorState && <RefreshCw className="h-3 w-3 shrink-0" />}
+                        <span className="truncate">
+                          {isSwitchingThis ? t('common.loading') : subline}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -584,7 +667,7 @@ export const SwitchAccountSheet: React.FC<{
                   <span
                     className="flex h-8 w-8 shrink-0 items-center justify-center"
                     style={{ color: 'var(--accent)' }}
-                    aria-label="Switching account"
+                    aria-label={t('common.loading')}
                   >
                     <Loader2 className="h-4 w-4 animate-spin" />
                   </span>
@@ -593,7 +676,7 @@ export const SwitchAccountSheet: React.FC<{
                     <button
                       type="button"
                       disabled={isBusySwitching}
-                      aria-label={`Remove ${acc.displayName} from saved accounts`}
+                      aria-label={t('common.remove')}
                       onClick={() => onRemoveSavedAccount(acc.uid)}
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-active)] cursor-pointer disabled:opacity-40"
                       style={{ color: 'var(--text-muted)' }}
@@ -628,7 +711,7 @@ export const SwitchAccountSheet: React.FC<{
         >
           <Plus className="h-5 w-5" />
         </span>
-        <span className="text-[16px] font-medium">Add account</span>
+        <span className="text-[16px] font-medium">{t('settings.addAnotherAccount')}</span>
       </button>
     </SettingsSheet>
   );

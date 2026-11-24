@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 import { ProfileModalProvider, ProfileModalHost } from './contexts/ProfileModalContext';
 import { useReferralCapture } from './hooks/useReferral';
 import { PublicLayout } from './components/layout/PublicLayout';
@@ -453,7 +454,7 @@ function AppInner() {
           <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/:subPage" element={<SettingsPage />} />
-          <Route path="menu" element={<OverviewPage />} />
+          <Route path="menu" element={<Navigate to="/settings" replace />} />
           <Route path="contact" element={<Navigate to="/contact" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
@@ -492,9 +493,7 @@ function AppInner() {
           <Route index element={<SettingsPage />} />
           <Route path=":subPage" element={<SettingsPage />} />
         </Route>
-        <Route path="/menu" element={<DashboardShell />}>
-          <Route index element={<OverviewPage />} />
-        </Route>
+        <Route path="/menu" element={<Navigate to="/settings" replace />} />
         <Route path="/profile" element={<DashboardShell />}>
           <Route index element={<ProfilePage />} />
         </Route>
@@ -654,17 +653,19 @@ function AppInner() {
 export function App() {
   return (
     <AuthProvider>
-      <KobanStyleProvider>
-        <ProBadgeProvider>
-          <PlusBadgeProvider>
-            <ProfileModalProvider>
-              <AuthGateProvider>
-                <AppInner />
-              </AuthGateProvider>
-            </ProfileModalProvider>
-          </PlusBadgeProvider>
-        </ProBadgeProvider>
-      </KobanStyleProvider>
+      <LanguageProvider>
+        <KobanStyleProvider>
+          <ProBadgeProvider>
+            <PlusBadgeProvider>
+              <ProfileModalProvider>
+                <AuthGateProvider>
+                  <AppInner />
+                </AuthGateProvider>
+              </ProfileModalProvider>
+            </PlusBadgeProvider>
+          </ProBadgeProvider>
+        </KobanStyleProvider>
+      </LanguageProvider>
     </AuthProvider>
   );
 }
