@@ -8,6 +8,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { LineLoader } from '@/components/ui/LineLoader';
 import {
   getAddAccountPrefillEmail,
+  getAddAccountReason,
   isAddAccountUrl,
   shouldAutoRedirectFromAuthScreen,
 } from '@/utils/savedAccounts';
@@ -26,6 +27,7 @@ export function LoginPage() {
 
   const isAddAccountFlow = isAddAccountUrl(location.search);
   const prefillEmail = getAddAccountPrefillEmail(location.search);
+  const addAccountReason = getAddAccountReason(location.search);
   const initialUidRef = useRef<string | null>(null);
   const [hasCompletedNewAuthSubmit, setHasCompletedNewAuthSubmit] = useState(false);
   const [submittedTargetUid, setSubmittedTargetUid] = useState<string | null>(null);
@@ -146,6 +148,7 @@ export function LoginPage() {
         <AuthCard
           initialMode="signin"
           isAddAccountFlow={isAddAccountFlow}
+          addAccountReason={addAccountReason}
           initialEmail={prefillEmail}
           initialUid={initialUidRef.current}
           onAuthSubmitSuccess={(targetUid) => {

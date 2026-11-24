@@ -20,11 +20,18 @@ import { logRedirect } from '@/utils/debugTracker';
 import { OtpVerificationCard } from './OtpVerificationCard';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 import { isWebAuthnSupported, signInWithPasskey } from '@/services/securityCenterService';
-import { isAddAccountUrl, shouldAutoRedirectFromAuthScreen } from '@/utils/savedAccounts';
+import {
+  getAddAccountReason,
+  getSavedAccounts,
+  isAddAccountUrl,
+  shouldAutoRedirectFromAuthScreen,
+  type SavedAccountEntry,
+} from '@/utils/savedAccounts';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
   isAddAccountFlow?: boolean;
+  addAccountReason?: 'session_expired' | null;
   initialEmail?: string;
   initialUid?: string | null;
   onAuthSubmitSuccess?: (targetUid?: string | null) => void;
@@ -44,6 +51,7 @@ function sanitizeFriendlyAuthMessage(raw?: string | null): string {
 export function AuthCard({
   initialMode = 'signin',
   isAddAccountFlow: isAddAccountFlowProp,
+  addAccountReason: addAccountReasonProp,
   initialEmail = '',
   initialUid = null,
   onAuthSubmitSuccess,
@@ -53,6 +61,9 @@ export function AuthCard({
     isAddAccountFlowProp ??
       (typeof window !== 'undefined' && isAddAccountUrl(window.location.search))
   );
+  const addAccountReason =
+    addAccountReasonProp ??
+    (typeof window !== 'undefined' ? getAddAccountReason(window.location.search) : null);
   const [hasSubmittedNewAuth, setHasSubmittedNewAuth] = useState(false);
   const [submittedTargetUid, setSubmittedTargetUid] = useState<string | null>(null);
 
@@ -83,8 +94,12 @@ export function AuthCard({
     profile,
     profileLoading,
     getRoleRedirectUrl,
+    switchToSavedAccount,
+    removeSavedAccountSession,
   } = useAuth();
   const navigate = useNavigate();
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccountEntry[]>(() => getSavedAccounts());
+  const [switchingSavedUid, setSwitchingSavedUid] = useState<string | null>(null);
 
   // Form State
   const [displayName, setDisplayName] = useState('');
@@ -821,11 +836,23 @@ export function AuthCard({
 
       {/* Add-Account context bar when adding/switching accounts */}
       {isAddAccountFlow && (
-        <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/[0.12] bg-white/[0.04] px-3.5 py-2.5 text-xs">
+        <div
+          className={`flex items-center justify-between gap-2 rounded-2xl border px-3.5 py-2.5 text-xs ${
+            addAccountReason === 'session_expired'
+              ? 'border-[#D71921]/35 bg-[#D71921]/10'
+              : 'border-white/[0.12] bg-white/[0.04]'
+          }`}
+        >
           <div className="min-w-0">
-            <p className="font-semibold text-[var(--text)]">Add another account</p>
+            <p className="font-semibold text-[var(--text)]">
+              {addAccountReason === 'session_expired'
+                ? 'Session expired, please sign in again.'
+                : 'Add another account'}
+            </p>
             <p className="text-[11px] text-[var(--text-muted)] truncate">
-              Your current account stays saved in Switch account.
+              {addAccountReason === 'session_expired'
+                ? 'Enter your password once to refresh instant switching for this account.'
+                : 'Your current account stays saved in Switch account.'}
             </p>
           </div>
           {onCancelAddAccount && (
@@ -861,6 +888,76 @@ export function AuthCard({
             : 'Join Boardly to practice official university entry test papers and track your rank.'}
         </p>
       </div>
+
+      {/* Saved accounts still signed in on this device (e.g. after logging out of one account) */}
+      {!isAddAccountFlow && mode === 'signin' && !user && savedAccounts.length > 0 && (
+        <div className="space-y-2 rounded-2xl border border-white/[0.1] bg-white/[0.03] p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] px-1">
+            Saved accounts on this device
+          </p>
+          <div className="space-y-1.5">
+            {savedAccounts.map((acc) => {
+              const isSwitching = switchingSavedUid === acc.uid;
+              return (
+                <div
+                  key={acc.uid}
+                  className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2 hover:bg-white/[0.06] transition-colors"
+                >
+                  <button
+                    type="button"
+                    disabled={Boolean(switchingSavedUid)}
+                    onClick={async () => {
+                      setGeneralError('');
+                      setSwitchingSavedUid(acc.uid);
+                      try {
+                        const res = await switchToSavedAccount(acc);
+                        setSavedAccounts(getSavedAccounts());
+                        if (res.ok) {
+                          navigate(res.redirectTo || '/dashboard', { replace: true });
+                          return;
+                        }
+                        if (res.email) setEmail(res.email);
+                        setGeneralError(res.error || 'Session expired, please sign in again.');
+                      } finally {
+                        setSwitchingSavedUid(null);
+                      }
+                    }}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left cursor-pointer disabled:cursor-wait"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-[var(--text)]">
+                        {acc.displayName}
+                      </p>
+                      <p className="truncate text-[11px] text-[var(--text-muted)]">
+                        {isSwitching ? 'Switching account…' : acc.email || (acc.username ? `@${acc.username}` : '')}
+                      </p>
+                    </div>
+                    {isSwitching ? (
+                      <Loader2 size={14} className="animate-spin text-[#D71921] shrink-0" />
+                    ) : (
+                      <span className="text-[11px] font-semibold text-[#D71921] shrink-0">
+                        Continue
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(switchingSavedUid)}
+                    aria-label={`Remove ${acc.displayName}`}
+                    onClick={async () => {
+                      const next = await removeSavedAccountSession(acc.uid);
+                      setSavedAccounts(next);
+                    }}
+                    className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] px-1.5 py-1 rounded-lg cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Local Error Area with aria-live */}
       <div aria-live="polite" className={displayedError ? 'block' : 'hidden'}>

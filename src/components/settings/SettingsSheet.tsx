@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, MoreHorizontal, Plus, X } from 'lucide-react';
+import { Check, Loader2, MoreHorizontal, Plus, X } from 'lucide-react';
 import { BoardlyAvatar } from '../ui/BoardlyAvatar';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import type { SavedAccountEntry } from '@/utils/savedAccounts';
@@ -418,6 +418,7 @@ export const SwitchAccountSheet: React.FC<{
   equippedFrameId?: string | null;
   planLabel: string;
   savedAccounts?: SavedAccountEntry[];
+  switchingUid?: string | null;
   onSelectSavedAccount?: (account: SavedAccountEntry) => void;
   onRemoveSavedAccount?: (uid: string) => void;
   onAddAccount: () => void;
@@ -435,6 +436,7 @@ export const SwitchAccountSheet: React.FC<{
   equippedFrameId,
   planLabel,
   savedAccounts = [],
+  switchingUid = null,
   onSelectSavedAccount,
   onRemoveSavedAccount,
   onAddAccount,
@@ -442,6 +444,7 @@ export const SwitchAccountSheet: React.FC<{
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const otherSavedAccounts = savedAccounts.filter((entry) => entry.uid && entry.uid !== uid);
+  const isBusySwitching = Boolean(switchingUid);
 
   return (
     <SettingsSheet open={open} onClose={onClose} title="Switch account" alignTitle="left">
@@ -527,6 +530,7 @@ export const SwitchAccountSheet: React.FC<{
       {otherSavedAccounts.length > 0 && (
         <div className="mt-2.5 space-y-2">
           {otherSavedAccounts.map((acc) => {
+            const isSwitchingThis = switchingUid === acc.uid;
             const subline = [acc.email || (acc.username ? `@${acc.username}` : ''), acc.planLabel]
               .filter(Boolean)
               .join(' · ');
@@ -536,19 +540,21 @@ export const SwitchAccountSheet: React.FC<{
                 className="flex min-h-[64px] items-center gap-2 rounded-[24px] px-3 py-2.5 transition-colors hover:bg-[var(--settings-row-hover)]"
                 style={{
                   border: '1px solid var(--border)',
+                  opacity: isBusySwitching && !isSwitchingThis ? 0.55 : 1,
                 }}
               >
                 <button
                   type="button"
+                  disabled={isBusySwitching}
                   onClick={() => {
-                    onClose();
                     if (onSelectSavedAccount) {
                       onSelectSavedAccount(acc);
                     } else {
+                      onClose();
                       onAddAccount();
                     }
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer disabled:cursor-wait"
                 >
                   <BoardlyAvatar
                     uid={acc.uid}
@@ -569,21 +575,32 @@ export const SwitchAccountSheet: React.FC<{
                         className="truncate text-[12px]"
                         style={{ color: 'var(--text-muted)' }}
                       >
-                        {subline}
+                        {isSwitchingThis ? 'Switching account…' : subline}
                       </div>
                     )}
                   </div>
                 </button>
-                {onRemoveSavedAccount && (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${acc.displayName} from saved accounts`}
-                    onClick={() => onRemoveSavedAccount(acc.uid)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-active)] cursor-pointer"
-                    style={{ color: 'var(--text-muted)' }}
+                {isSwitchingThis ? (
+                  <span
+                    className="flex h-8 w-8 shrink-0 items-center justify-center"
+                    style={{ color: 'var(--accent)' }}
+                    aria-label="Switching account"
                   >
-                    <X className="h-4 w-4" />
-                  </button>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </span>
+                ) : (
+                  onRemoveSavedAccount && (
+                    <button
+                      type="button"
+                      disabled={isBusySwitching}
+                      aria-label={`Remove ${acc.displayName} from saved accounts`}
+                      onClick={() => onRemoveSavedAccount(acc.uid)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[var(--settings-row-active)] cursor-pointer disabled:opacity-40"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )
                 )}
               </div>
             );
@@ -594,6 +611,7 @@ export const SwitchAccountSheet: React.FC<{
       {/* Add account row */}
       <button
         type="button"
+        disabled={isBusySwitching}
         onClick={() => {
           onClose();
           onAddAccount();

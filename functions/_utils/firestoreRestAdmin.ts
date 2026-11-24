@@ -2243,6 +2243,20 @@ export interface InMemoryD1Tables {
         created_at: number;
       }
     >;
+    device_account_sessions: Map<
+      string,
+      {
+        session_id: string;
+        user_id: string;
+        token_hash: string;
+        email: string;
+        device_label: string;
+        created_at: number;
+        last_used_at: number;
+        expires_at: number;
+        revoked_at: number | null;
+      }
+    >;
   }
 
 export class InMemoryD1Database implements RewardsD1Database {
@@ -2277,6 +2291,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     webauthn_challenges: new Map(),
     sessions: new Map(),
     security_events: new Map(),
+    device_account_sessions: new Map(),
   };
 
   constructor() {
@@ -2454,6 +2469,11 @@ export class InMemoryD1Database implements RewardsD1Database {
           if (r && r.id) this.tables.security_events.set(String(r.id), r);
         }
       }
+      if (Array.isArray(raw.device_account_sessions)) {
+        for (const r of raw.device_account_sessions) {
+          if (r && r.session_id) this.tables.device_account_sessions.set(String(r.session_id), r);
+        }
+      }
 
       // Restore canonical 2FA rows for existing seeded test accounts if prior saveToDisk omitted user_2fa
       for (const u of this.tables.user_usernames.values()) {
@@ -2528,6 +2548,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         passkeys: Array.from(this.tables.passkeys.values()),
         sessions: Array.from(this.tables.sessions.values()),
         security_events: Array.from(this.tables.security_events.values()),
+        device_account_sessions: Array.from(this.tables.device_account_sessions.values()),
       };
       fsMod.writeFileSync(diskPath, JSON.stringify(payload, null, 2), 'utf8');
     } catch {
@@ -3249,6 +3270,38 @@ export class InMemoryD1Database implements RewardsD1Database {
           .map((r) => ({ ...r }));
       }
       return all.sort((a, b) => b.created_at - a.created_at).map((r) => ({ ...r }));
+    }
+
+    // 29. device_account_sessions
+    if (upper.includes('FROM DEVICE_ACCOUNT_SESSIONS')) {
+      const all = Array.from(this.tables.device_account_sessions.values());
+      if (upper.includes('WHERE SESSION_ID =') && upper.includes('AND USER_ID =')) {
+        const sid = String(args[0] ?? '');
+        const uid = String(args[1] ?? '');
+        const row = this.tables.device_account_sessions.get(sid);
+        if (!row || row.user_id !== uid) return [];
+        return [{ ...row }];
+      }
+      if (upper.includes('WHERE SESSION_ID =')) {
+        const sid = String(args[0] ?? '');
+        const row = this.tables.device_account_sessions.get(sid);
+        return row ? [{ ...row }] : [];
+      }
+      if (upper.includes('WHERE USER_ID =') && upper.includes('REVOKED_AT IS NULL')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.user_id === uid && r.revoked_at === null)
+          .sort((a, b) => b.last_used_at - a.last_used_at)
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        return all
+          .filter((r) => r.user_id === uid)
+          .sort((a, b) => b.last_used_at - a.last_used_at)
+          .map((r) => ({ ...r }));
+      }
+      return all.map((r) => ({ ...r }));
     }
 
     return [];
@@ -4750,6 +4803,76 @@ export class InMemoryD1Database implements RewardsD1Database {
         created_at,
       });
       return 1;
+    }
+
+    // 23. device_account_sessions
+    if (upper.includes('INTO DEVICE_ACCOUNT_SESSIONS')) {
+      const session_id = String(args[0] ?? '');
+      const user_id = String(args[1] ?? '');
+      const token_hash = String(args[2] ?? '');
+      const email = String(args[3] ?? '');
+      const device_label = String(args[4] ?? 'Unknown device');
+      const created_at = Number(args[5] ?? Date.now());
+      const last_used_at = Number(args[6] ?? created_at);
+      const expires_at = Number(args[7] ?? created_at + 30 * 24 * 60 * 60 * 1000);
+      const revoked_at = args[8] === null || args[8] === undefined ? null : Number(args[8]);
+      this.tables.device_account_sessions.set(session_id, {
+        session_id,
+        user_id,
+        token_hash,
+        email,
+        device_label,
+        created_at,
+        last_used_at,
+        expires_at,
+        revoked_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('UPDATE DEVICE_ACCOUNT_SESSIONS')) {
+      if (
+        upper.includes('SET TOKEN_HASH =') &&
+        upper.includes('WHERE SESSION_ID =') &&
+        upper.includes('AND USER_ID =')
+      ) {
+        const tokenHash = String(args[0] ?? '');
+        const lastUsedAt = Number(args[1] ?? Date.now());
+        const expiresAt = Number(args[2] ?? Date.now());
+        const sid = String(args[3] ?? '');
+        const uid = String(args[4] ?? '');
+        const row = this.tables.device_account_sessions.get(sid);
+        if (!row || row.user_id !== uid || row.revoked_at !== null) return 0;
+        row.token_hash = tokenHash;
+        row.last_used_at = lastUsedAt;
+        row.expires_at = expiresAt;
+        return 1;
+      }
+      if (
+        upper.includes('SET REVOKED_AT =') &&
+        upper.includes('WHERE SESSION_ID =') &&
+        upper.includes('AND USER_ID =')
+      ) {
+        const revokedAt = Number(args[0] ?? Date.now());
+        const sid = String(args[1] ?? '');
+        const uid = String(args[2] ?? '');
+        const row = this.tables.device_account_sessions.get(sid);
+        if (!row || row.user_id !== uid || row.revoked_at !== null) return 0;
+        row.revoked_at = revokedAt;
+        return 1;
+      }
+      if (upper.includes('SET REVOKED_AT =') && upper.includes('WHERE USER_ID =')) {
+        const revokedAt = Number(args[0] ?? Date.now());
+        const uid = String(args[1] ?? '');
+        let changes = 0;
+        for (const r of this.tables.device_account_sessions.values()) {
+          if (r.user_id === uid && r.revoked_at === null) {
+            r.revoked_at = revokedAt;
+            changes++;
+          }
+        }
+        return changes;
+      }
     }
 
     return 0;

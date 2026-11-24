@@ -502,6 +502,18 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
         created_at INTEGER NOT NULL
       )`),
       db.prepare(`CREATE INDEX IF NOT EXISTS idx_security_events_user_created ON security_events (user_id, created_at DESC)`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS device_account_sessions (
+        session_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        email TEXT NOT NULL DEFAULT '',
+        device_label TEXT NOT NULL DEFAULT 'Unknown device',
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked_at INTEGER DEFAULT NULL
+      )`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_device_account_sessions_user ON device_account_sessions (user_id, revoked_at, last_used_at DESC)`),
     ]);
   } catch {
     // Tables already initialized
@@ -903,6 +915,7 @@ export interface HandleAuthApiRequestOptions {
   ) => Promise<VerifiedFirebaseToken | null>;
   emailSenderOverride?: EmailSenderFn;
   passwordVerifierOverride?: (email: string, password: string) => Promise<boolean>;
+  customTokenMinterOverride?: (uid: string, nowMs: number) => Promise<string | null>;
   nowMsOverride?: number;
 }
 
@@ -1001,6 +1014,238 @@ function generateWebAuthnChallengeB64Url(): string {
 function buildSessionCookieHeader(sessionId: string, maxAgeSeconds = 30 * 24 * 60 * 60): string {
   const encoded = encodeURIComponent(sessionId);
   return `boardly_session_id=${encoded}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+// ─── Multi-Account Switch Session Vault (HttpOnly AES-256-GCM Cookie + D1) ────
+const SWITCH_VAULT_COOKIE_NAME = 'boardly_acct_vault';
+const SWITCH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const SWITCH_SESSION_COOKIE_MAX_AGE_SEC = 30 * 24 * 60 * 60;
+const MAX_SWITCH_VAULT_ACCOUNTS = 8;
+
+interface SwitchVaultSlot {
+  sid: string;
+  tok: string;
+  exp: number;
+}
+type SwitchVaultMap = Record<string, SwitchVaultSlot>;
+
+function generateSwitchSessionId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return `sws_${base64UrlEncodeBytes(bytes)}`;
+}
+
+function generateSwitchTokenSecret(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64UrlEncodeBytes(bytes);
+}
+
+async function hashSwitchSessionToken(secret: string, sessionId: string, uid: string, rawToken: string): Promise<string> {
+  return computeHmacSha256Hex(secret, `switch_session:v1:${sessionId}:${uid}:${rawToken}`);
+}
+
+async function deriveSwitchVaultAesKey(secret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${secret}:boardly-acct-vault-v1`)
+  );
+  return crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptSwitchVault(vault: SwitchVaultMap, secret: string): Promise<string> {
+  const entries = Object.entries(vault)
+    .filter(([k, v]) => k && v && typeof v.sid === 'string' && typeof v.tok === 'string')
+    .sort((a, b) => (b[1].exp || 0) - (a[1].exp || 0))
+    .slice(0, MAX_SWITCH_VAULT_ACCOUNTS);
+  if (entries.length === 0) return '';
+  const trimmed: SwitchVaultMap = Object.fromEntries(entries);
+  const key = await deriveSwitchVaultAesKey(secret);
+  const iv = new Uint8Array(12);
+  crypto.getRandomValues(iv);
+  const plaintext = new TextEncoder().encode(JSON.stringify(trimmed));
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  return `v1.${base64UrlEncodeBytes(iv)}.${base64UrlEncodeBytes(new Uint8Array(cipherBuf))}`;
+}
+
+async function decryptSwitchVault(rawCookieValue: string | null, secret: string): Promise<SwitchVaultMap> {
+  if (!rawCookieValue) return {};
+  const parts = rawCookieValue.split('.');
+  if (parts.length !== 3 || parts[0] !== 'v1') return {};
+  try {
+    const iv = base64UrlDecodeToBytes(parts[1]);
+    const cipher = base64UrlDecodeToBytes(parts[2]);
+    if (iv.length !== 12 || cipher.length < 16) return {};
+    const key = await deriveSwitchVaultAesKey(secret);
+    const plainBuf = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      key,
+      cipher as BufferSource
+    );
+    const parsed = JSON.parse(new TextDecoder().decode(plainBuf));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: SwitchVaultMap = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (
+        k &&
+        v &&
+        typeof v === 'object' &&
+        typeof (v as any).sid === 'string' &&
+        typeof (v as any).tok === 'string'
+      ) {
+        out[k] = {
+          sid: String((v as any).sid),
+          tok: String((v as any).tok),
+          exp: Number((v as any).exp || 0),
+        };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function extractSwitchVaultCookieFromRequest(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie') || '';
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';');
+  for (const part of parts) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const name = part.slice(0, eq).trim();
+    if (name === SWITCH_VAULT_COOKIE_NAME) {
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch {
+        return part.slice(eq + 1).trim();
+      }
+    }
+  }
+  return null;
+}
+
+function buildSwitchVaultCookieHeader(
+  encryptedValue: string,
+  isHttps: boolean,
+  maxAgeSeconds = SWITCH_SESSION_COOKIE_MAX_AGE_SEC
+): string {
+  const effectiveMaxAge = encryptedValue ? maxAgeSeconds : 0;
+  const encoded = encodeURIComponent(encryptedValue);
+  if (isHttps) {
+    return `${SWITCH_VAULT_COOKIE_NAME}=${encoded}; Path=/; Max-Age=${effectiveMaxAge}; HttpOnly; Secure; SameSite=None; Partitioned`;
+  }
+  return `${SWITCH_VAULT_COOKIE_NAME}=${encoded}; Path=/; Max-Age=${effectiveMaxAge}; HttpOnly; SameSite=Lax`;
+}
+
+function isValidSwitchCsrfRequest(request: Request): boolean {
+  const xrw = (request.headers.get('X-Requested-With') || '').trim().toLowerCase();
+  if (xrw === 'xmlhttprequest' || xrw === 'boardly-web') return true;
+  const origin = (request.headers.get('Origin') || '').trim();
+  if (!origin) return true; // Same-origin non-CORS or server test call
+  try {
+    const originHost = new URL(origin).host.toLowerCase();
+    const expectedHost = (
+      request.headers.get('X-Forwarded-Host') ||
+      request.headers.get('Host') ||
+      new URL(request.url).host
+    )
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    return Boolean(expectedHost && originHost === expectedHost);
+  } catch {
+    return false;
+  }
+}
+
+function switchSessionJsonResponse(
+  request: Request,
+  body: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>
+): Response {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    Vary: 'Origin',
+    ...(extraHeaders || {}),
+  };
+  const origin = (request.headers.get('Origin') || '').trim();
+  if (origin) {
+    try {
+      const originHost = new URL(origin).host.toLowerCase();
+      const expectedHost = (
+        request.headers.get('X-Forwarded-Host') ||
+        request.headers.get('Host') ||
+        new URL(request.url).host
+      )
+        .split(',')[0]
+        .trim()
+        .toLowerCase();
+      if (expectedHost && originHost === expectedHost) {
+        headers['Access-Control-Allow-Origin'] = origin;
+        headers['Access-Control-Allow-Credentials'] = 'true';
+        headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
+        headers['Access-Control-Allow-Headers'] =
+          'Content-Type, Authorization, X-Requested-With, X-Device-Id';
+      }
+    } catch {
+      // Ignore invalid Origin header
+    }
+  }
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+async function mintFirebaseCustomToken(
+  env: AuthWorkerEnv | undefined,
+  uid: string,
+  nowMs: number,
+  override?: (uid: string, nowMs: number) => Promise<string | null>
+): Promise<string | null> {
+  if (override) {
+    return override(uid, nowMs);
+  }
+  try {
+    const sa = parseServiceAccountFromEnv(env);
+    if (!sa || !sa.private_key || !sa.client_email) return null;
+    const header = base64UrlEncodeBytes(
+      new TextEncoder().encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+    );
+    const iat = Math.floor(nowMs / 1000);
+    const claims = base64UrlEncodeBytes(
+      new TextEncoder().encode(
+        JSON.stringify({
+          iss: sa.client_email,
+          sub: sa.client_email,
+          aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+          iat,
+          exp: iat + 3600,
+          uid,
+        })
+      )
+    );
+    const pemBody = sa.private_key
+      .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+      .replace(/-----END PRIVATE KEY-----/g, '')
+      .replace(/\s+/g, '');
+    const keyDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+    const signingKey = await crypto.subtle.importKey(
+      'pkcs8',
+      keyDer,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const sigBuf = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      signingKey,
+      new TextEncoder().encode(`${header}.${claims}`)
+    );
+    return `${header}.${claims}.${base64UrlEncodeBytes(new Uint8Array(sigBuf))}`;
+  } catch {
+    return null;
+  }
 }
 
 function mapAuditEventToSecurityEvent(eventType: string): { type: string; title: string; detail: string } | null {
@@ -1632,20 +1877,26 @@ export async function handleAuthApiRequest(
   const { request, env } = opts;
   const nowMs = opts.nowMsOverride ?? Date.now();
 
+  const url = new URL(request.url);
+  const subPathForOptions = url.pathname.replace(/^\/api\/auth\/?/, '').replace(/\/+$/, '');
+
   if (request.method === 'OPTIONS') {
+    if (subPathForOptions.startsWith('switch-session/')) {
+      return switchSessionJsonResponse(request, {}, 204);
+    }
     return new Response(null, {
       status: 204,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Guest-Session, X-Device-Id',
+        'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, X-Guest-Session, X-Device-Id, X-Requested-With',
       },
     });
   }
 
-  const url = new URL(request.url);
   const isHttps = url.protocol === 'https:' || request.headers.get('X-Forwarded-Proto') === 'https';
-  const subPath = url.pathname.replace(/^\/api\/auth\/?/, '').replace(/\/+$/, '');
+  const subPath = subPathForOptions;
 
   const db: RewardsD1Database = opts.dbOverride || env?.DB || getSharedLocalD1Database();
   await ensureEmailVerificationD1Schema(db);
@@ -4698,6 +4949,268 @@ export async function handleAuthApiRequest(
     });
   }
 
+  // ─── Multi-Account Switch Session: Exchange stored device session for instant sign-in ───
+  if (subPath === 'switch-session/exchange' && request.method === 'POST') {
+    if (!isValidSwitchCsrfRequest(request)) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, error: 'Invalid request origin.', code: 'CSRF_REJECTED' },
+        403
+      );
+    }
+
+    let body: { uid?: string; sessionId?: string } = {};
+    try {
+      body = (await request.json()) as { uid?: string; sessionId?: string };
+    } catch {
+      body = {};
+    }
+
+    const targetUid = typeof body.uid === 'string' ? body.uid.trim() : '';
+    const requestedSessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+    if (!targetUid || targetUid.length > 128 || targetUid.startsWith('guest_')) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, code: 'SWITCH_SESSION_EXPIRED', error: 'Session expired, please sign in again.' },
+        401
+      );
+    }
+
+    const rawVaultCookie = extractSwitchVaultCookieFromRequest(request);
+    const vault = await decryptSwitchVault(rawVaultCookie, secret);
+    const slot = vault[targetUid];
+    if (!slot || !slot.sid || !slot.tok) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, code: 'SWITCH_SESSION_EXPIRED', error: 'Session expired, please sign in again.' },
+        401
+      );
+    }
+    if (requestedSessionId && requestedSessionId !== slot.sid) {
+      // Allow switching if the server cookie already holds a newer rotated/registered session for this same UID
+      // while still authenticating strictly against the cookie's own sessionId + token hash in D1.
+    }
+
+    const row = await db
+      .prepare(
+        `SELECT session_id, user_id, token_hash, email, expires_at, revoked_at
+         FROM device_account_sessions
+         WHERE session_id = ?1 AND user_id = ?2
+         LIMIT 1`
+      )
+      .bind(slot.sid, targetUid)
+      .first<{
+        session_id: string;
+        user_id: string;
+        token_hash: string;
+        email: string;
+        expires_at: number;
+        revoked_at: number | null;
+      }>()
+      .catch(() => null);
+
+    const expectedHash = await hashSwitchSessionToken(secret, slot.sid, targetUid, slot.tok);
+    const isRowValid = Boolean(
+      row &&
+        row.user_id === targetUid &&
+        row.revoked_at === null &&
+        Number(row.expires_at) > nowMs &&
+        constantTimeEqual(expectedHash, String(row.token_hash || ''))
+    );
+
+    if (!isRowValid || !row) {
+      // Remove ONLY this expired/invalid account from the vault cookie; keep all other saved accounts intact
+      delete vault[targetUid];
+      const nextCookieVal = await encryptSwitchVault(vault, secret);
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, code: 'SWITCH_SESSION_EXPIRED', error: 'Session expired, please sign in again.' },
+        401,
+        { 'Set-Cookie': buildSwitchVaultCookieHeader(nextCookieVal, isHttps) }
+      );
+    }
+
+    const customToken = await mintFirebaseCustomToken(
+      env,
+      targetUid,
+      nowMs,
+      opts.customTokenMinterOverride
+    );
+    if (!customToken) {
+      return switchSessionJsonResponse(
+        request,
+        {
+          ok: false,
+          code: 'SWITCH_UNAVAILABLE',
+          error: 'Quick account switching requires server sign-in credentials. Please sign in again.',
+        },
+        503
+      );
+    }
+
+    // Rotate switch token atomically for ONLY this account and extend sliding 30-day expiry
+    const rotatedToken = generateSwitchTokenSecret();
+    const rotatedHash = await hashSwitchSessionToken(secret, slot.sid, targetUid, rotatedToken);
+    const nextExpiresAt = nowMs + SWITCH_SESSION_TTL_MS;
+
+    await db
+      .prepare(
+        `UPDATE device_account_sessions
+         SET token_hash = ?1, last_used_at = ?2, expires_at = ?3
+         WHERE session_id = ?4 AND user_id = ?5`
+      )
+      .bind(rotatedHash, nowMs, nextExpiresAt, slot.sid, targetUid)
+      .run();
+
+    // Mark session verified in email_verification_sessions (with 120s clock buffer for the newly minted custom token)
+    const targetEmail = String(row.email || '').trim().toLowerCase();
+    const targetEmailHash = await hashIdentifier(secret, 'email', targetEmail || targetUid);
+    const switchVerifiedAuthTime = Math.floor(nowMs / 1000) + 120;
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO email_verification_sessions (user_id, email_hash, email_verified, verified_auth_time, verified_at, updated_at)
+         VALUES (?1, ?2, 1, ?3, ?4, ?5)`
+      )
+      .bind(targetUid, targetEmailHash, switchVerifiedAuthTime, nowMs, nowMs)
+      .run()
+      .catch(() => {});
+
+    // Resolve target account's authoritative role for immediate client routing
+    const [roleRow, unameRow] = await Promise.all([
+      db
+        .prepare('SELECT uid, email, role FROM user_roles WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ uid: string; email?: string; role?: string }>()
+        .catch(() => null),
+      db
+        .prepare('SELECT uid, email, role, username_display, display_name FROM user_usernames WHERE uid = ?1 LIMIT 1')
+        .bind(targetUid)
+        .first<{ uid: string; email?: string; role?: string; username_display?: string; display_name?: string }>()
+        .catch(() => null),
+    ]);
+
+    const resolvedEmail = targetEmail || String(roleRow?.email || unameRow?.email || '').trim().toLowerCase();
+    const isSuperAdminAccount =
+      DEFAULT_SUPERADMIN_UIDS.includes(targetUid) ||
+      (Boolean(resolvedEmail) && DEFAULT_SUPERADMIN_EMAILS.includes(resolvedEmail));
+    const dbRole = String(roleRow?.role || unameRow?.role || '').trim().toLowerCase();
+    const resolvedRole = isSuperAdminAccount
+      ? 'super_admin'
+      : dbRole === 'super_admin' || dbRole === 'superadmin'
+      ? 'super_admin'
+      : dbRole === 'admin'
+      ? 'admin'
+      : dbRole === 'captain'
+      ? 'captain'
+      : dbRole === 'teacher'
+      ? 'teacher'
+      : 'student';
+
+    // Update ONLY this account's slot inside the encrypted HttpOnly vault cookie
+    vault[targetUid] = {
+      sid: slot.sid,
+      tok: rotatedToken,
+      exp: nextExpiresAt,
+    };
+    const nextVaultCookie = await encryptSwitchVault(vault, secret);
+
+    return switchSessionJsonResponse(
+      request,
+      {
+        ok: true,
+        uid: targetUid,
+        email: resolvedEmail,
+        role: resolvedRole,
+        sessionId: slot.sid,
+        expiresAt: nextExpiresAt,
+        customToken,
+      },
+      200,
+      { 'Set-Cookie': buildSwitchVaultCookieHeader(nextVaultCookie, isHttps) }
+    );
+  }
+
+  // ─── Multi-Account Switch Session: Revoke ONLY one account's saved session (on logout or remove) ───
+  if (subPath === 'switch-session/revoke' && request.method === 'POST') {
+    if (!isValidSwitchCsrfRequest(request)) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, error: 'Invalid request origin.', code: 'CSRF_REJECTED' },
+        403
+      );
+    }
+
+    let body: { uid?: string; sessionId?: string } = {};
+    try {
+      body = (await request.json()) as { uid?: string; sessionId?: string };
+    } catch {
+      body = {};
+    }
+
+    const targetUid = typeof body.uid === 'string' ? body.uid.trim() : '';
+    const requestedSessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
+    if (!targetUid || targetUid.length > 128) {
+      return switchSessionJsonResponse(request, { ok: true, revokedUid: null }, 200);
+    }
+
+    const rawVaultCookie = extractSwitchVaultCookieFromRequest(request);
+    const vault = await decryptSwitchVault(rawVaultCookie, secret);
+    const slot = vault[targetUid];
+
+    // Also allow an authenticated caller for the same UID to revoke by sessionId if cookie was already cleared
+    let callerMatchesTarget = false;
+    const maybeAuthHeader = request.headers.get('Authorization');
+    if (maybeAuthHeader && maybeAuthHeader.startsWith('Bearer ')) {
+      const pId = env?.FIREBASE_PROJECT_ID || env?.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_PROJECT_ID;
+      const vFn =
+        opts.tokenVerifierOverride || ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, pId));
+      const vTok = await vFn(maybeAuthHeader).catch(() => null);
+      if (vTok && vTok.uid === targetUid) {
+        callerMatchesTarget = true;
+      }
+    }
+
+    if (slot && slot.sid && slot.tok) {
+      const row = await db
+        .prepare(
+          'SELECT session_id, user_id, token_hash FROM device_account_sessions WHERE session_id = ?1 AND user_id = ?2 LIMIT 1'
+        )
+        .bind(slot.sid, targetUid)
+        .first<{ session_id: string; user_id: string; token_hash: string }>()
+        .catch(() => null);
+      if (row) {
+        const computed = await hashSwitchSessionToken(secret, slot.sid, targetUid, slot.tok);
+        if (callerMatchesTarget || constantTimeEqual(computed, String(row.token_hash || ''))) {
+          await db
+            .prepare(
+              'UPDATE device_account_sessions SET revoked_at = ?1 WHERE session_id = ?2 AND user_id = ?3'
+            )
+            .bind(nowMs, slot.sid, targetUid)
+            .run()
+            .catch(() => {});
+        }
+      }
+      delete vault[targetUid];
+    } else if (callerMatchesTarget && requestedSessionId) {
+      await db
+        .prepare(
+          'UPDATE device_account_sessions SET revoked_at = ?1 WHERE session_id = ?2 AND user_id = ?3'
+        )
+        .bind(nowMs, requestedSessionId, targetUid)
+        .run()
+        .catch(() => {});
+    }
+
+    // Write back updated vault cookie keeping all OTHER saved accounts untouched
+    const nextVaultCookie = await encryptSwitchVault(vault, secret);
+    return switchSessionJsonResponse(
+      request,
+      { ok: true, revokedUid: targetUid, remainingCount: Object.keys(vault).length },
+      200,
+      { 'Set-Cookie': buildSwitchVaultCookieHeader(nextVaultCookie, isHttps) }
+    );
+  }
+
   // All remaining `/api/auth/*` endpoints require a valid Firebase ID token in `Authorization: Bearer <token>`
   const authHeader = request.headers.get('Authorization');
   const projectId =
@@ -4733,6 +5246,100 @@ export async function handleAuthApiRequest(
   const studentName =
     verifiedToken.name || (email.includes('@') ? email.split('@')[0] : 'Student');
   const encryptionKey = getTotpEncryptionKey(env);
+
+  // ─── Multi-Account Switch Session: Register/Refresh current verified account in device vault ───
+  if (subPath === 'switch-session/register' && request.method === 'POST') {
+    if (!isValidSwitchCsrfRequest(request)) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, error: 'Invalid request origin.', code: 'CSRF_REJECTED' },
+        403
+      );
+    }
+
+    const sessionVerified = await isD1UserSessionVerified(db, verifiedToken, {
+      request,
+      hmacSecret: secret,
+      nowMs,
+    });
+    if (!sessionVerified) {
+      return switchSessionJsonResponse(
+        request,
+        { ok: false, error: 'Please complete account verification first.', code: 'SESSION_UNVERIFIED' },
+        403
+      );
+    }
+
+    const rawVaultCookie = extractSwitchVaultCookieFromRequest(request);
+    const vault = await decryptSwitchVault(rawVaultCookie, secret);
+    const existingSlot = vault[uid];
+    const devMeta = parseDeviceMetadataFromRequest(request);
+    const expiresAt = nowMs + SWITCH_SESSION_TTL_MS;
+
+    // If this account already has a valid non-revoked session in the vault cookie, refresh its expiry in place
+    if (existingSlot && existingSlot.sid && existingSlot.tok) {
+      const existingRow = await db
+        .prepare(
+          'SELECT session_id, user_id, token_hash, expires_at, revoked_at FROM device_account_sessions WHERE session_id = ?1 AND user_id = ?2 LIMIT 1'
+        )
+        .bind(existingSlot.sid, uid)
+        .first<{
+          session_id: string;
+          user_id: string;
+          token_hash: string;
+          expires_at: number;
+          revoked_at: number | null;
+        }>()
+        .catch(() => null);
+
+      if (existingRow && existingRow.revoked_at === null && Number(existingRow.expires_at) > nowMs) {
+        const expectedHash = await hashSwitchSessionToken(secret, existingSlot.sid, uid, existingSlot.tok);
+        if (constantTimeEqual(expectedHash, String(existingRow.token_hash || ''))) {
+          await db
+            .prepare(
+              `UPDATE device_account_sessions
+               SET token_hash = ?1, last_used_at = ?2, expires_at = ?3
+               WHERE session_id = ?4 AND user_id = ?5`
+            )
+            .bind(expectedHash, nowMs, expiresAt, existingSlot.sid, uid)
+            .run()
+            .catch(() => {});
+          vault[uid] = { sid: existingSlot.sid, tok: existingSlot.tok, exp: expiresAt };
+          const updatedCookie = await encryptSwitchVault(vault, secret);
+          return switchSessionJsonResponse(
+            request,
+            { ok: true, uid, sessionId: existingSlot.sid, expiresAt },
+            200,
+            { 'Set-Cookie': buildSwitchVaultCookieHeader(updatedCookie, isHttps) }
+          );
+        }
+      }
+    }
+
+    const sessionId = generateSwitchSessionId();
+    const switchToken = generateSwitchTokenSecret();
+    const tokenHash = await hashSwitchSessionToken(secret, sessionId, uid, switchToken);
+
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO device_account_sessions
+         (session_id, user_id, token_hash, email, device_label, created_at, last_used_at, expires_at, revoked_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`
+      )
+      .bind(sessionId, uid, tokenHash, email, devMeta.deviceLabel, nowMs, nowMs, expiresAt, null)
+      .run();
+
+    // Merge ONLY this account into the encrypted HttpOnly vault cookie — never overwrite other accounts!
+    vault[uid] = { sid: sessionId, tok: switchToken, exp: expiresAt };
+    const nextVaultCookie = await encryptSwitchVault(vault, secret);
+
+    return switchSessionJsonResponse(
+      request,
+      { ok: true, uid, sessionId, expiresAt },
+      200,
+      { 'Set-Cookie': buildSwitchVaultCookieHeader(nextVaultCookie, isHttps) }
+    );
+  }
 
   // Helper to check and record 2FA verification rate limits (per user & per IP, 15-min lockout after 5 failures)
   const check2faRateLimit = async (rateKey: string): Promise<boolean> => {
@@ -8229,6 +8836,11 @@ export async function handleAuthApiRequest(
       await db
         .prepare('UPDATE trusted_devices SET revoked = 1 WHERE user_id = ?1')
         .bind(uid)
+        .run()
+        .catch(() => {});
+      await db
+        .prepare('UPDATE device_account_sessions SET revoked_at = ?1 WHERE user_id = ?2 AND revoked_at IS NULL')
+        .bind(nowMs, uid)
         .run()
         .catch(() => {});
     }

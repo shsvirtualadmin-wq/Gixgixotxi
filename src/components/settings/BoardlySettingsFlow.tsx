@@ -58,7 +58,6 @@ import {
 import {
   buildAddAccountUrl,
   getSavedAccounts,
-  removeSavedAccount,
   upsertSavedAccount,
   type SavedAccountEntry,
 } from '@/utils/savedAccounts';
@@ -206,6 +205,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     isCaptain,
     signOutUser,
     updateProfile,
+    registerCurrentAccountSwitchSession,
+    switchToSavedAccount,
+    removeSavedAccountSession,
   } = useAuth();
   const { isPro, isPlus, isPaid, planTier, planStatus } = useEffectivePlan();
   const { config: plansConfig } = usePlansConfig();
@@ -240,6 +242,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   const [aboutOpen, setAboutOpen] = useState(false);
   const [switchAccountOpen, setSwitchAccountOpen] = useState(false);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccountEntry[]>(() => getSavedAccounts());
+  const [switchingAccountUid, setSwitchingAccountUid] = useState<string | null>(null);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [appearanceSheetOpen, setAppearanceSheetOpen] = useState(false);
@@ -1827,34 +1830,58 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         equippedFrameId={equippedLoadout.frame}
         planLabel={planLabel}
         savedAccounts={savedAccounts}
-        onSelectSavedAccount={(account) => {
-          if (user?.uid && !isGuest) {
-            const nextList = upsertSavedAccount({
-              uid: user.uid,
-              email: user.email || profile?.email || '',
-              displayName: currentDisplayName || profile?.username || user.email || 'Account',
-              username: profile?.username || null,
-              role: profile?.role || (isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student'),
-              planLabel,
-              equippedAvatar: equippedLoadout.avatar || null,
-              equippedFrameId: equippedLoadout.frame || null,
-            });
-            setSavedAccounts(nextList);
+        switchingUid={switchingAccountUid}
+        onSelectSavedAccount={async (account) => {
+          if (switchingAccountUid) return;
+          setSwitchingAccountUid(account.uid);
+          try {
+            if (user?.uid && !isGuest) {
+              const nextList = upsertSavedAccount({
+                uid: user.uid,
+                email: user.email || profile?.email || '',
+                displayName: currentDisplayName || profile?.username || user.email || 'Account',
+                username: profile?.username || null,
+                role: profile?.role || (isSuperAdmin ? 'super_admin' : isAdmin ? 'admin' : 'student'),
+                planLabel,
+                equippedAvatar: equippedLoadout.avatar || null,
+                equippedFrameId: equippedLoadout.frame || null,
+              });
+              setSavedAccounts(nextList);
+            }
+
+            const result = await switchToSavedAccount(account);
+            setSavedAccounts(getSavedAccounts());
+
+            if (result.ok) {
+              setSwitchAccountOpen(false);
+              const dest = result.redirectTo || '/dashboard';
+              onAfterNavigate?.();
+              navigate(dest, { replace: true });
+              return;
+            }
+
+            // Saved session truly expired or invalid -> prefill email and show session expired notice
+            setSwitchAccountOpen(false);
+            const currentPath =
+              typeof window !== 'undefined' ? window.location.pathname : '/settings';
+            navigateTo(
+              buildAddAccountUrl({
+                email: result.email || account.email || undefined,
+                returnTo: currentPath,
+                reason: 'session_expired',
+              })
+            );
+          } finally {
+            setSwitchingAccountUid(null);
           }
-          const currentPath =
-            typeof window !== 'undefined' ? window.location.pathname : '/settings';
-          navigateTo(
-            buildAddAccountUrl({
-              email: account.email || undefined,
-              returnTo: currentPath,
-            })
-          );
         }}
-        onRemoveSavedAccount={(removeUid) => {
-          setSavedAccounts(removeSavedAccount(removeUid));
+        onRemoveSavedAccount={async (removeUid) => {
+          const next = await removeSavedAccountSession(removeUid);
+          setSavedAccounts(next);
         }}
         onAddAccount={() => {
           if (user?.uid && !isGuest) {
+            void registerCurrentAccountSwitchSession();
             const nextList = upsertSavedAccount({
               uid: user.uid,
               email: user.email || profile?.email || '',

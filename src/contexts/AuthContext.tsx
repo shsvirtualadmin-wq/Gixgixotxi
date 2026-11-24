@@ -14,6 +14,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signInWithCredential,
+  signInWithCustomToken,
   createUserWithEmailAndPassword,
   deleteUser,
   signInWithPopup,
@@ -62,7 +63,12 @@ import {
   syncPublicProfile,
 } from '@/services/publicProfileService';
 import { teardownEffectivePlanListeners } from '@/hooks/useEffectivePlan';
-import { upsertSavedAccount } from '@/utils/savedAccounts';
+import {
+  getSavedAccounts,
+  removeSavedAccount,
+  upsertSavedAccount,
+  type SavedAccountEntry,
+} from '@/utils/savedAccounts';
 import {
   readOptimisticUserSnapshot,
   writeOptimisticUserSnapshot,
@@ -349,6 +355,18 @@ interface AuthContextValue {
   getRoleRedirectUrl: (customRole?: string) => string;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateLocalProfile: (updates: Partial<UserProfile>) => void;
+  registerCurrentAccountSwitchSession: () => Promise<{ ok: boolean; sessionId?: string; expiresAt?: number }>;
+  switchToSavedAccount: (
+    account: Pick<SavedAccountEntry, 'uid' | 'email' | 'sessionId' | 'role'>
+  ) => Promise<{
+    ok: boolean;
+    uid?: string;
+    redirectTo?: string;
+    expired?: boolean;
+    email?: string;
+    error?: string;
+  }>;
+  removeSavedAccountSession: (uid: string) => Promise<SavedAccountEntry[]>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -3293,9 +3311,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentUid = userRef.current?.uid || profileRef.current?.uid || auth.currentUser?.uid || '';
       const guestUid =
         isGuest || currentUid.startsWith('guest_') ? currentUid : '';
+      const currentSavedEntry =
+        currentUid && !guestUid
+          ? getSavedAccounts().find((entry) => entry.uid === currentUid) || null
+          : null;
+      const currentAuthTokenForRevoke =
+        currentUid && !guestUid && auth.currentUser && auth.currentUser.uid === currentUid
+          ? await auth.currentUser.getIdToken(false).catch(() => null)
+          : null;
 
       if (guestUid) {
         signingOutGuestUidRef.current = guestUid;
+      }
+
+      // Remove ONLY the current account from the device's saved-accounts list; keep all other saved accounts intact
+      if (currentUid && !guestUid) {
+        removeSavedAccount(currentUid);
       }
 
       // 1. Unsubscribe all Firestore & realtime listeners BEFORE signing out of Firebase
@@ -3398,6 +3429,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       //    HttpOnly `boardly_guest_session` cookie is cleared and can never resurrect a guest session.
       try {
         await Promise.all([
+          currentUid && !guestUid
+            ? Promise.race([
+                fetch('/api/auth/switch-session/revoke', {
+                  method: 'POST',
+                  credentials: 'include',
+                  keepalive: true,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    ...(currentAuthTokenForRevoke
+                      ? { Authorization: `Bearer ${currentAuthTokenForRevoke}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    uid: currentUid,
+                    sessionId: currentSavedEntry?.sessionId || undefined,
+                  }),
+                }).catch(() => null),
+                new Promise((resolve) => setTimeout(resolve, 1500)),
+              ])
+            : Promise.resolve(null),
           Promise.race([
             fetch('/api/auth/guest/logout', {
               method: 'POST',
@@ -3454,6 +3506,291 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     inFlightSignOutRef.current = p;
     return p;
   }, [guestSessionToken, isGuest]);
+
+  const registeredSwitchUidRef = useRef<string | null>(null);
+
+  const registerCurrentAccountSwitchSession = useCallback(async (): Promise<{
+    ok: boolean;
+    sessionId?: string;
+    expiresAt?: number;
+  }> => {
+    const activeUser = auth.currentUser || userRef.current;
+    if (!activeUser || !activeUser.uid || activeUser.uid.startsWith('guest_') || isGuest) {
+      return { ok: false };
+    }
+    try {
+      const idToken = await activeUser.getIdToken(false);
+      const res = await fetch('/api/auth/switch-session/register', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        sessionId?: string;
+        expiresAt?: number;
+      };
+      if (!res.ok || !data.ok || !data.sessionId) {
+        return { ok: false };
+      }
+      registeredSwitchUidRef.current = activeUser.uid;
+      const curProfile = profileRef.current;
+      upsertSavedAccount({
+        uid: activeUser.uid,
+        email: curProfile?.email || activeUser.email || '',
+        displayName:
+          curProfile?.displayName ||
+          curProfile?.display_name ||
+          curProfile?.username ||
+          activeUser.displayName ||
+          activeUser.email ||
+          'Account',
+        username: curProfile?.username || null,
+        role: curProfile?.role || null,
+        equippedAvatar:
+          curProfile?.equipped?.avatar ||
+          (curProfile as any)?.equippedAvatar ||
+          curProfile?.avatar ||
+          null,
+        equippedFrameId:
+          curProfile?.equipped?.frame ||
+          (curProfile as any)?.equippedFrame ||
+          curProfile?.frame ||
+          null,
+        sessionId: data.sessionId,
+        sessionExpiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : null,
+        isGuest: false,
+      });
+      return { ok: true, sessionId: data.sessionId, expiresAt: data.expiresAt };
+    } catch {
+      return { ok: false };
+    }
+  }, [isGuest]);
+
+  // Automatically register a per-account device switch session once the current user is authenticated & verified
+  useEffect(() => {
+    if (!user?.uid || isGuest || !isSessionVerified) {
+      if (!user?.uid) {
+        registeredSwitchUidRef.current = null;
+      }
+      return;
+    }
+    if (registeredSwitchUidRef.current === user.uid) return;
+    void registerCurrentAccountSwitchSession();
+  }, [user?.uid, isGuest, isSessionVerified, registerCurrentAccountSwitchSession]);
+
+  const switchToSavedAccount = useCallback(
+    async (
+      account: Pick<SavedAccountEntry, 'uid' | 'email' | 'sessionId' | 'role'>
+    ): Promise<{
+      ok: boolean;
+      uid?: string;
+      redirectTo?: string;
+      expired?: boolean;
+      email?: string;
+      error?: string;
+    }> => {
+      const targetUid = String(account.uid || '').trim();
+      const targetEmail = String(account.email || '').trim();
+      if (!targetUid || targetUid.startsWith('guest_')) {
+        return {
+          ok: false,
+          expired: true,
+          email: targetEmail,
+          error: 'Session expired, please sign in again.',
+        };
+      }
+
+      // Ensure the current account has a registered switch session before leaving it
+      if (
+        auth.currentUser &&
+        auth.currentUser.uid !== targetUid &&
+        !isGuest &&
+        isSessionVerified &&
+        registeredSwitchUidRef.current !== auth.currentUser.uid
+      ) {
+        await registerCurrentAccountSwitchSession().catch(() => {});
+      }
+
+      try {
+        const res = await fetch('/api/auth/switch-session/exchange', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({
+            uid: targetUid,
+            sessionId: account.sessionId || undefined,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          uid?: string;
+          email?: string;
+          role?: string;
+          sessionId?: string;
+          expiresAt?: number;
+          customToken?: string;
+          code?: string;
+          error?: string;
+        };
+
+        if (!res.ok || !data.ok || !data.customToken) {
+          const isExpired = res.status === 401 || data.code === 'SWITCH_SESSION_EXPIRED';
+          return {
+            ok: false,
+            expired: true,
+            email: data.email || targetEmail,
+            error: isExpired
+              ? 'Session expired, please sign in again.'
+              : data.error || 'Session expired, please sign in again.',
+          };
+        }
+
+        // Cleanly detach caches/listeners for the previous account before signing into the target account
+        try {
+          teardownSharedUserProfile();
+        } catch {
+          // Ignore
+        }
+        try {
+          teardownNotificationStore();
+        } catch {
+          // Ignore
+        }
+        try {
+          teardownEffectivePlanListeners();
+        } catch {
+          // Ignore
+        }
+        clearOptimisticUserSnapshot();
+        invalidateSwrCache();
+
+        // Reset claims & profile so the newly active account never inherits the previous account's role
+        setTokenClaims({
+          superAdmin: false,
+          admin: false,
+          captain: false,
+          verified: false,
+          rawClaims: {},
+        });
+        setActiveGrants([]);
+        setProfile(null);
+        setProfileLoading(true);
+        registeredSwitchUidRef.current = null;
+
+        const cred = await signInWithCustomToken(auth, data.customToken);
+        const switchedUser = cred.user;
+        registeredSwitchUidRef.current = switchedUser.uid;
+
+        const tokenResult = await switchedUser.getIdTokenResult(true).catch(() => null);
+        let resolvedRole = String(data.role || account.role || 'student').trim().toLowerCase();
+        if (tokenResult && tokenResult.claims) {
+          const resolvedFromToken = evaluateVerifiedRoleState(
+            switchedUser,
+            tokenResult.claims as Record<string, unknown>
+          );
+          setTokenClaims({
+            superAdmin: resolvedFromToken.superAdmin,
+            admin: resolvedFromToken.admin,
+            captain: resolvedFromToken.captain,
+            verified: true,
+            roleSource: resolvedFromToken.roleSource,
+            diagnostics: resolvedFromToken.diagnostics,
+            rawClaims: resolvedFromToken.rawClaims,
+          });
+          if (resolvedFromToken.superAdmin) {
+            resolvedRole = 'super_admin';
+          } else if (resolvedFromToken.admin) {
+            resolvedRole = 'admin';
+          } else if (resolvedFromToken.captain) {
+            resolvedRole = 'captain';
+          }
+        }
+
+        setOtpVerificationState({
+          status: 'verified',
+          purpose: null,
+          email: switchedUser.email || data.email || targetEmail,
+          maskedEmail: maskEmailClient(switchedUser.email || data.email || targetEmail),
+          cooldownSeconds: 0,
+          error: null,
+        });
+
+        try {
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore storage errors
+        }
+
+        // Refresh display metadata + rotated session ID for the switched account
+        upsertSavedAccount({
+          uid: switchedUser.uid,
+          email: switchedUser.email || data.email || targetEmail,
+          displayName: switchedUser.displayName || switchedUser.email || targetEmail || 'Account',
+          role: resolvedRole,
+          sessionId: data.sessionId || account.sessionId || null,
+          sessionExpiresAt: typeof data.expiresAt === 'number' ? data.expiresAt : null,
+          isGuest: false,
+          lastUsedAt: Date.now(),
+        });
+
+        const redirectTo = getRoleRedirectUrl(resolvedRole);
+        return {
+          ok: true,
+          uid: switchedUser.uid,
+          redirectTo,
+        };
+      } catch (err: any) {
+        console.warn('[Boardly Auth] switchToSavedAccount error:', err);
+        return {
+          ok: false,
+          expired: true,
+          email: targetEmail,
+          error: 'Session expired, please sign in again.',
+        };
+      }
+    },
+    [
+      isGuest,
+      isSessionVerified,
+      registerCurrentAccountSwitchSession,
+      getRoleRedirectUrl,
+      evaluateVerifiedRoleState,
+    ]
+  );
+
+  const removeSavedAccountSession = useCallback(async (uidToRemove: string): Promise<SavedAccountEntry[]> => {
+    const cleanUid = String(uidToRemove || '').trim();
+    const existing = getSavedAccounts().find((entry) => entry.uid === cleanUid) || null;
+    const nextList = removeSavedAccount(cleanUid);
+    if (cleanUid) {
+      try {
+        await fetch('/api/auth/switch-session/revoke', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          body: JSON.stringify({
+            uid: cleanUid,
+            sessionId: existing?.sessionId || undefined,
+          }),
+        });
+      } catch {
+        // Non-fatal
+      }
+    }
+    return nextList;
+  }, []);
 
   const signOutUser = useCallback(
     async (opts?: { force?: boolean; confirmGuest?: boolean }) => {
@@ -3910,6 +4247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getRoleRedirectUrl,
       updateProfile,
       updateLocalProfile,
+      registerCurrentAccountSwitchSession,
+      switchToSavedAccount,
+      removeSavedAccountSession,
     }),
     [
       user,
@@ -3953,6 +4293,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getRoleRedirectUrl,
       updateProfile,
       updateLocalProfile,
+      registerCurrentAccountSwitchSession,
+      switchToSavedAccount,
+      removeSavedAccountSession,
     ]
   );
 

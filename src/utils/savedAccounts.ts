@@ -17,6 +17,9 @@ export interface SavedAccountEntry {
   planLabel?: string | null;
   equippedAvatar?: string | null;
   equippedFrameId?: string | null;
+  /** Public opaque session reference ID (raw switch token stays exclusively in HttpOnly server cookie). */
+  sessionId?: string | null;
+  sessionExpiresAt?: number | null;
   isGuest?: boolean;
   lastUsedAt: number;
 }
@@ -80,6 +83,11 @@ export function upsertSavedAccount(
     planLabel: account.planLabel ?? prevMatch?.planLabel ?? null,
     equippedAvatar: account.equippedAvatar ?? prevMatch?.equippedAvatar ?? null,
     equippedFrameId: account.equippedFrameId ?? prevMatch?.equippedFrameId ?? null,
+    sessionId: account.sessionId !== undefined ? account.sessionId : (prevMatch?.sessionId ?? null),
+    sessionExpiresAt:
+      account.sessionExpiresAt !== undefined
+        ? account.sessionExpiresAt
+        : (prevMatch?.sessionExpiresAt ?? null),
     isGuest: false,
     lastUsedAt: typeof account.lastUsedAt === 'number' ? account.lastUsedAt : Date.now(),
   };
@@ -146,14 +154,28 @@ export function getAddAccountPrefillEmail(search: string): string {
   }
 }
 
+export function getAddAccountReason(search: string): 'session_expired' | null {
+  try {
+    const params = new URLSearchParams(search.startsWith('?') ? search : `?${search}`);
+    const reason = (params.get('reason') || '').trim().toLowerCase();
+    return reason === 'session_expired' ? 'session_expired' : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildAddAccountUrl(options?: {
   email?: string | null;
   returnTo?: string | null;
+  reason?: 'session_expired' | null;
 }): string {
   const params = new URLSearchParams();
   params.set('action', 'add-account');
   if (options?.email && options.email.trim()) {
     params.set('email', options.email.trim());
+  }
+  if (options?.reason === 'session_expired') {
+    params.set('reason', 'session_expired');
   }
   if (options?.returnTo && options.returnTo.startsWith('/') && !options.returnTo.startsWith('/login')) {
     params.set('from', options.returnTo);
