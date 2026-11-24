@@ -1444,15 +1444,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         );
       const op = ownProfile as any;
       const liveEquipped = wallet.equipped || {};
-      const nextFrame = liveEquipped.frame || op.equippedFrame || base.equippedFrame || 'none';
-      const nextBanner = liveEquipped.banner || op.equippedBanner || base.equippedBanner || 'none';
-      const nextEffect =
-        liveEquipped.effect ||
-        op.equippedCosmetics?.profileEffect ||
-        base.equippedCosmetics?.profileEffect ||
-        'none';
+      const walletAuthoritative = Boolean(wallet.inventoryLoaded);
+      const nextFrame = walletAuthoritative
+        ? liveEquipped.frame || 'none'
+        : liveEquipped.frame || op.equippedFrame || base.equippedFrame || 'none';
+      const nextBanner = walletAuthoritative
+        ? liveEquipped.banner || 'none'
+        : liveEquipped.banner || op.equippedBanner || base.equippedBanner || 'none';
+      const nextEffect = walletAuthoritative
+        ? liveEquipped.effect || 'none'
+        : liveEquipped.effect ||
+          op.equippedCosmetics?.profileEffect ||
+          base.equippedCosmetics?.profileEffect ||
+          'none';
       const nextTitle = liveEquipped.title || op.equippedTitle || base.equippedTitle || 'title-rookie';
-      const nextNameplate = liveEquipped.nameplate || op.nameplate || base.nameplate || 'none';
+      const nextNameplate = walletAuthoritative
+        ? liveEquipped.nameplate || 'none'
+        : liveEquipped.nameplate || op.nameplate || base.nameplate || 'none';
       const nextAvatar =
         op.equippedAvatar === 'custom'
           ? 'custom'
@@ -1504,6 +1512,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     ownProfile,
     currentUser,
     wallet.equipped,
+    wallet.inventoryLoaded,
     myProBadgeDesign,
     myProBadgeVisible,
     myEffectivePlusBadgeId,

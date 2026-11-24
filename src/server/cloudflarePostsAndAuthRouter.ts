@@ -11809,6 +11809,12 @@ ${postSitemaps}
   app.post('/api/pro/submit-payment', handleProPurchaseGuard);
   app.post('/api/pro/activate', handleProPurchaseGuard);
 
+  app.get('/api/inventory', delegateToEconomyWorker);
+  app.get('/api/locker/inventory', delegateToEconomyWorker);
+  app.post('/api/inventory/equip', delegateToEconomyWorker);
+  app.get('/api/inventory/equip', delegateToEconomyWorker);
+  app.post('/api/admin/backfill-starter-inventory', delegateToEconomyWorker);
+  app.get('/api/admin/backfill-starter-inventory', delegateToEconomyWorker);
   app.post('/api/plan/activate', delegateToEconomyWorker);
   app.get('/api/plan/activate', delegateToEconomyWorker);
   app.get('/api/admin/plan-audit', delegateToEconomyWorker);

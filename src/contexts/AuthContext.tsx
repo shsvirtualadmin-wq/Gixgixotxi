@@ -47,6 +47,7 @@ import {
 import type { UserProfile } from '@/types';
 import { debugTracker } from '@/utils/debugTracker';
 import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
+import { getStarterAvatarForUser } from '@/lib/inventorySource';
 import { processAmbassadorReferralOnSignup } from '@/services/referralService';
 import { validateUsernameFormat } from '@/utils/usernameValidation';
 import {
@@ -967,13 +968,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (snap && typeof snap.exists === 'function' && snap.exists()) {
           loadedProfile = { ...(snap.data() as UserProfile), photoURL: null };
         } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-          // Truly new user: initialize clean defaults (never copy Google photoURL or write protected fields from client)
+          // Truly new user: initialize clean defaults including deterministic starter avatar (never copy Google photoURL or write protected fields from client)
           const seedDisplay = fallbackName || undefined;
+          const starterAvatarKey = getStarterAvatarForUser(firebaseUser.uid).key;
+          const starterEquipped = {
+            avatar: starterAvatarKey,
+            frame: null,
+            banner: null,
+            nameplate: null,
+            effect: null,
+          };
           const baseUserDoc: UserProfile = {
             uid: firebaseUser.uid,
             ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
             email: emailLower,
             photoURL: null,
+            avatar: starterAvatarKey,
+            equippedAvatar: starterAvatarKey,
+            equipped: starterEquipped,
+            ownedCosmetics: [starterAvatarKey],
             role: claimDerivedRole,
             plan: claimSuperAdmin ? 'pro' : 'free',
             status: 'active',
@@ -987,6 +1000,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
             email: emailLower,
             photoURL: null,
+            avatar: starterAvatarKey,
+            equippedAvatar: starterAvatarKey,
+            equipped: starterEquipped,
+            ownedCosmetics: [starterAvatarKey],
             profileCompleted: claimSuperAdmin ? true : false,
             onboardingCompleted: claimSuperAdmin ? true : false,
             streak: 0,
@@ -3416,8 +3433,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void executeForceSignOut();
       }
     };
+    const onEquippedUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent<{
+        uid?: string;
+        equipped?: {
+          avatar?: string | null;
+          frame?: string | null;
+          banner?: string | null;
+          nameplate?: string | null;
+          effect?: string | null;
+        };
+      }>)?.detail;
+      if (!detail?.uid || !detail.equipped) return;
+      setProfile((prev) => {
+        if (!prev || prev.uid !== detail.uid) return prev;
+        const eq = detail.equipped!;
+        return {
+          ...prev,
+          equipped: {
+            ...(prev.equipped || {}),
+            avatar: eq.avatar ?? null,
+            frame: eq.frame ?? null,
+            banner: eq.banner ?? null,
+            nameplate: eq.nameplate ?? null,
+            effect: eq.effect ?? null,
+          },
+          avatar: eq.avatar ?? null,
+          equippedAvatar: eq.avatar ?? null,
+          frame: eq.frame ?? null,
+          equippedFrame: eq.frame ?? null,
+          banner: eq.banner ?? null,
+          equippedBanner: eq.banner ?? null,
+          nameplate: eq.nameplate ?? null,
+          equippedNameplate: eq.nameplate ?? null,
+          effectId: eq.effect ?? null,
+        } as UserProfile;
+      });
+    };
     window.addEventListener('boardly:guest-expired', onGuestExpired);
-    return () => window.removeEventListener('boardly:guest-expired', onGuestExpired);
+    window.addEventListener('boardly:equipped-updated', onEquippedUpdated);
+    return () => {
+      window.removeEventListener('boardly:guest-expired', onGuestExpired);
+      window.removeEventListener('boardly:equipped-updated', onEquippedUpdated);
+    };
   }, [executeForceSignOut]);
 
   const handleConfirmGuestLogout = useCallback(async () => {

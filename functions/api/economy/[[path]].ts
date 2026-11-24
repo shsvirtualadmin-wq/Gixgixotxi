@@ -16,6 +16,14 @@ import {
   COSMETICS_CATALOG,
   LEGACY_COSMETICS_CATALOG,
 } from '../../../src/data/cosmeticsCatalog';
+import {
+  mergeCanonicalInventory,
+  normalizeInventoryItemId,
+  getStarterAvatarForUser,
+  countEquippedLoadout,
+  type CosmeticSlot,
+} from '../../../src/lib/inventorySource';
+import { isValidAvatar } from '../../../src/lib/matrixAvatarsData';
 import { getPlanById, getProPlanById } from '../../../src/config/plans';
 import {
   DEFAULT_PLANS_CONFIG,
@@ -1351,6 +1359,8 @@ export async function handleEconomyApiRequest(context: {
   if (
     (pathClean === '/api/plan/activate' ||
       pathClean === '/api/admin/plan-repair-pkig' ||
+      pathClean === '/api/admin/backfill-starter-inventory' ||
+      pathClean === '/api/inventory/equip' ||
       pathClean === '/api/store/purchase' ||
       pathClean === '/api/store/unlock' ||
       pathClean === '/api/store/buy' ||
@@ -3017,6 +3027,480 @@ export async function handleEconomyApiRequest(context: {
   }
 
   // ==========================================================================
+  // 4D. UNIFIED INVENTORY SOURCE OF TRUTH: GET /api/inventory
+  //     Merges wallets/{uid}, users/{uid}, inventory/{uid}, users/{uid}/inventory,
+  //     users/{uid}/unlocked, publicProfiles/{uid}, D1 users, and starter items.
+  //     Automatically backfills missing starter/equipped items idempotently.
+  // ==========================================================================
+  if (pathClean === '/api/inventory' || pathClean === '/api/locker/inventory') {
+    if (request.method !== 'GET') {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'METHOD_NOT_ALLOWED',
+          error: `Method ${request.method} not allowed on ${pathClean}. Use GET.`,
+        },
+        405
+      );
+    }
+
+    const uid = verifiedUser.uid;
+    try {
+      const readD1Profile = async (): Promise<Record<string, any> | null> => {
+        if (!env?.DB || typeof env.DB.prepare !== 'function') return null;
+        try {
+          const row = await env.DB.prepare(
+            'SELECT uid, username, avatar, frame, banner, nameplate, effect FROM users WHERE uid = ? LIMIT 1'
+          )
+            .bind(uid)
+            .first();
+          return row && typeof row === 'object' ? (row as Record<string, any>) : null;
+        } catch {
+          try {
+            const row = await env.DB.prepare(
+              'SELECT uid, username, avatar, frame FROM users WHERE uid = ? LIMIT 1'
+            )
+              .bind(uid)
+              .first();
+            return row && typeof row === 'object' ? (row as Record<string, any>) : null;
+          } catch {
+            return null;
+          }
+        }
+      };
+
+      const [
+        walletDoc,
+        userDoc,
+        inventoryDoc,
+        publicProfileDoc,
+        userInvSubDocs,
+        userUnlockedSubDocs,
+        d1Profile,
+      ] = await Promise.all([
+        fsHelper.getDoc(`wallets/${uid}`),
+        fsHelper.getDoc(`users/${uid}`),
+        fsHelper.getDoc(`inventory/${uid}`),
+        fsHelper.getDoc(`publicProfiles/${uid}`),
+        fsHelper.listCollection(`users/${uid}/inventory`, 300).catch(() => []),
+        fsHelper.listCollection(`users/${uid}/unlocked`, 300).catch(() => []),
+        readD1Profile(),
+      ]);
+
+      const merged = mergeCanonicalInventory({
+        uid,
+        walletDoc,
+        userDoc,
+        inventoryDoc,
+        publicProfileDoc,
+        d1Profile,
+        userInventorySubDocs: userInvSubDocs,
+        userUnlockedSubDocs: userUnlockedSubDocs,
+        includeStarter: true,
+      });
+
+      let backfilled = false;
+      if (merged.needsBackfill) {
+        const nowIso = new Date().toISOString();
+        const writes: Promise<unknown>[] = [
+          fsHelper.setDoc(
+            `wallets/${uid}`,
+            {
+              balance: merged.balance,
+              owned: merged.owned,
+              equipped: merged.equipped,
+              updatedAt: nowIso,
+            },
+            true
+          ),
+          fsHelper.setDoc(
+            `inventory/${uid}`,
+            {
+              uid,
+              userId: uid,
+              items: merged.owned,
+              owned: merged.owned,
+              equipped: merged.equipped,
+              updatedAt: nowIso,
+            },
+            true
+          ),
+        ];
+        if (userDoc) {
+          writes.push(
+            fsHelper.setDoc(
+              `users/${uid}`,
+              {
+                ownedCosmetics: merged.owned,
+                equipped: merged.equipped,
+                avatar: merged.equipped.avatar,
+                equippedAvatar: merged.equipped.avatar,
+                frame: merged.equipped.frame,
+                equippedFrame: merged.equipped.frame,
+                banner: merged.equipped.banner,
+                equippedBanner: merged.equipped.banner,
+                nameplate: merged.equipped.nameplate,
+                equippedNameplate: merged.equipped.nameplate,
+                effectId: merged.equipped.effect,
+                updatedAt: nowIso,
+              },
+              true
+            )
+          );
+        }
+        try {
+          await Promise.all(writes);
+          backfilled = true;
+        } catch (bfErr) {
+          console.warn('[Inventory] Non-fatal backfill write skipped:', bfErr);
+        }
+      }
+
+      return jsonResponse({
+        ok: true,
+        uid,
+        balance: merged.balance,
+        owned: merged.owned,
+        items: merged.owned,
+        equipped: merged.equipped,
+        equippedCount: merged.equippedCount,
+        starterIds: merged.starterIds,
+        backfilled,
+      });
+    } catch (err: any) {
+      console.error('[Inventory] GET /api/inventory failed:', uid, err);
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'INVENTORY_FETCH_FAILED',
+          error: err?.message || 'Could not load your Locker inventory.',
+        },
+        500
+      );
+    }
+  }
+
+  // ==========================================================================
+  // 4E. UNIFIED EQUIP / UNEQUIP ENDPOINT: POST /api/inventory/equip
+  //     Validates ownership on the server (including starter items & SuperAdmin),
+  //     supports equip & unequip across all 5 slots, and mirrors across
+  //     wallets/{uid}, users/{uid}, publicProfiles/{uid}, inventory/{uid}, and D1.
+  // ==========================================================================
+  if (pathClean === '/api/inventory/equip') {
+    const body = (await request.json().catch(() => null)) as Record<string, any> | null;
+    if (!body || typeof body !== 'object') {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'BAD_INPUT',
+          error: 'Invalid JSON request body for equip.',
+        },
+        400
+      );
+    }
+
+    const uid = verifiedUser.uid;
+    const isSuperAdminCaller = isSuperAdminTokenClaim(verifiedUser, env);
+
+    const slotUpdates: Partial<Record<CosmeticSlot, string | null>> = {};
+    const VALID_SLOTS: CosmeticSlot[] = ['avatar', 'frame', 'banner', 'nameplate', 'effect'];
+
+    if (typeof body.type === 'string' && VALID_SLOTS.includes(body.type as CosmeticSlot)) {
+      slotUpdates[body.type as CosmeticSlot] =
+        body.itemId === null || body.itemId === '' || body.itemId === 'none'
+          ? null
+          : String(body.itemId).trim();
+    }
+    const slotMap =
+      body.slots && typeof body.slots === 'object'
+        ? body.slots
+        : body.equipped && typeof body.equipped === 'object'
+        ? body.equipped
+        : null;
+    if (slotMap) {
+      for (const slot of VALID_SLOTS) {
+        if (Object.prototype.hasOwnProperty.call(slotMap, slot)) {
+          const val = slotMap[slot];
+          slotUpdates[slot] =
+            val === null || val === '' || val === 'none' ? null : String(val).trim();
+        }
+      }
+    }
+
+    const requestedSlots = Object.keys(slotUpdates) as CosmeticSlot[];
+    if (requestedSlots.length === 0) {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'BAD_INPUT',
+          error: 'At least one cosmetic slot update is required.',
+        },
+        400
+      );
+    }
+
+    const [
+      walletDoc,
+      userDoc,
+      inventoryDoc,
+      publicProfileDoc,
+      userInvSubDocs,
+      userUnlockedSubDocs,
+    ] = await Promise.all([
+      fsHelper.getDoc(`wallets/${uid}`),
+      fsHelper.getDoc(`users/${uid}`),
+      fsHelper.getDoc(`inventory/${uid}`),
+      fsHelper.getDoc(`publicProfiles/${uid}`),
+      fsHelper.listCollection(`users/${uid}/inventory`, 300).catch(() => []),
+      fsHelper.listCollection(`users/${uid}/unlocked`, 300).catch(() => []),
+    ]);
+
+    const merged = mergeCanonicalInventory({
+      uid,
+      walletDoc,
+      userDoc,
+      inventoryDoc,
+      publicProfileDoc,
+      userInventorySubDocs: userInvSubDocs,
+      userUnlockedSubDocs: userUnlockedSubDocs,
+      includeStarter: true,
+    });
+
+    const ownedSet = new Set(merged.owned);
+    const nextEquipped = { ...merged.equipped };
+    const starterAvatarKey = getStarterAvatarForUser(uid).key;
+
+    for (const slot of requestedSlots) {
+      const rawVal = slotUpdates[slot];
+      if (rawVal === null || rawVal === undefined) {
+        // Unequipping avatar resets cleanly to deterministic starter avatar; other slots become null
+        nextEquipped[slot] = slot === 'avatar' ? starterAvatarKey : null;
+        continue;
+      }
+
+      const normalizedId = normalizeInventoryItemId(rawVal, slot);
+      if (!normalizedId) {
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'INVALID_ITEM',
+            error: `Invalid ${slot} cosmetic item "${rawVal}".`,
+          },
+          400
+        );
+      }
+
+      const isFreeMatrixAvatar = slot === 'avatar' && isValidAvatar(normalizedId);
+      if (!isSuperAdminCaller && !isFreeMatrixAvatar && !ownedSet.has(normalizedId)) {
+        return jsonResponse(
+          {
+            ok: false,
+            code: 'ITEM_NOT_OWNED',
+            error: 'You do not own this cosmetic item. Please unlock it from the Store first.',
+          },
+          403
+        );
+      }
+
+      nextEquipped[slot] = normalizedId;
+      if (isFreeMatrixAvatar || isSuperAdminCaller) {
+        ownedSet.add(normalizedId);
+      }
+    }
+
+    const nextOwned = Array.from(ownedSet);
+    const nowIso = new Date().toISOString();
+
+    const mirrorFields = {
+      equipped: nextEquipped,
+      avatar: nextEquipped.avatar,
+      equippedAvatar: nextEquipped.avatar,
+      frame: nextEquipped.frame,
+      equippedFrame: nextEquipped.frame,
+      banner: nextEquipped.banner,
+      equippedBanner: nextEquipped.banner,
+      nameplate: nextEquipped.nameplate,
+      equippedNameplate: nextEquipped.nameplate,
+      effectId: nextEquipped.effect,
+      updatedAt: nowIso,
+    };
+
+    const writes: Promise<unknown>[] = [
+      fsHelper.setDoc(
+        `wallets/${uid}`,
+        {
+          balance: merged.balance,
+          owned: nextOwned,
+          equipped: nextEquipped,
+          updatedAt: nowIso,
+        },
+        true
+      ),
+      fsHelper.setDoc(
+        `inventory/${uid}`,
+        {
+          uid,
+          userId: uid,
+          items: nextOwned,
+          owned: nextOwned,
+          equipped: nextEquipped,
+          updatedAt: nowIso,
+        },
+        true
+      ),
+      fsHelper.setDoc(
+        `users/${uid}`,
+        {
+          ownedCosmetics: nextOwned,
+          ...mirrorFields,
+        },
+        true
+      ),
+      fsHelper.setDoc(`publicProfiles/${uid}`, mirrorFields, true),
+    ];
+
+    if (env?.DB && typeof env.DB.prepare === 'function') {
+      writes.push(
+        env.DB.prepare(
+          'UPDATE users SET avatar = ?, frame = ?, updated_at = ? WHERE uid = ?'
+        )
+          .bind(nextEquipped.avatar || '', nextEquipped.frame || null, nowIso, uid)
+          .run()
+          .catch(() => null)
+      );
+    }
+
+    await Promise.all(writes);
+
+    return jsonResponse({
+      ok: true,
+      uid,
+      balance: merged.balance,
+      owned: nextOwned,
+      equipped: nextEquipped,
+      equippedCount: countEquippedLoadout(nextEquipped, uid),
+    });
+  }
+
+  // ==========================================================================
+  // 4F. SUPERADMIN BATCH BACKFILL FOR STARTER & EQUIPPED INVENTORY
+  //     POST /api/admin/backfill-starter-inventory { dryRun?: boolean, limit?: number }
+  //     Idempotently ensures every existing user has their starter avatar +
+  //     any currently equipped cosmetics saved in wallets/{uid}, users/{uid},
+  //     and inventory/{uid} without altering balances, plans, or roles.
+  // ==========================================================================
+  if (pathClean === '/api/admin/backfill-starter-inventory') {
+    if (!isSuperAdminTokenClaim(verifiedUser, env)) {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'FORBIDDEN',
+          error: 'Superadmin role required to backfill starter inventory.',
+        },
+        403
+      );
+    }
+
+    const body = (await request.json().catch(() => ({}))) as Record<string, any>;
+    const dryRun = body?.dryRun === true;
+    const maxUsers = Math.min(Math.max(1, Number(body?.limit) || 500), 1000);
+    const nowIso = new Date().toISOString();
+
+    const userDocs = await fsHelper.listCollection('users', maxUsers);
+    let scanned = 0;
+    let needsBackfillCount = 0;
+    let updatedCount = 0;
+    const sampleUpdated: Array<{ uid: string; added: string[]; equipped: Record<string, any> }> = [];
+
+    for (const uEntry of userDocs) {
+      const targetUid = String(uEntry.id || uEntry.data?.uid || '').trim();
+      if (!targetUid || targetUid.startsWith('guest_')) continue;
+      scanned++;
+
+      const [walletDoc, inventoryDoc, publicProfileDoc, userInvSubDocs, userUnlockedSubDocs] =
+        await Promise.all([
+          fsHelper.getDoc(`wallets/${targetUid}`),
+          fsHelper.getDoc(`inventory/${targetUid}`),
+          fsHelper.getDoc(`publicProfiles/${targetUid}`),
+          fsHelper.listCollection(`users/${targetUid}/inventory`, 200).catch(() => []),
+          fsHelper.listCollection(`users/${targetUid}/unlocked`, 200).catch(() => []),
+        ]);
+
+      const merged = mergeCanonicalInventory({
+        uid: targetUid,
+        walletDoc,
+        userDoc: uEntry.data,
+        inventoryDoc,
+        publicProfileDoc,
+        userInventorySubDocs: userInvSubDocs,
+        userUnlockedSubDocs: userUnlockedSubDocs,
+        includeStarter: true,
+      });
+
+      if (!merged.needsBackfill) continue;
+      needsBackfillCount++;
+
+      if (!dryRun) {
+        await Promise.all([
+          fsHelper.setDoc(
+            `wallets/${targetUid}`,
+            {
+              balance: merged.balance,
+              owned: merged.owned,
+              equipped: merged.equipped,
+              updatedAt: nowIso,
+            },
+            true
+          ),
+          fsHelper.setDoc(
+            `inventory/${targetUid}`,
+            {
+              uid: targetUid,
+              userId: targetUid,
+              items: merged.owned,
+              owned: merged.owned,
+              equipped: merged.equipped,
+              updatedAt: nowIso,
+            },
+            true
+          ),
+          fsHelper.setDoc(
+            `users/${targetUid}`,
+            {
+              ownedCosmetics: merged.owned,
+              equipped: merged.equipped,
+              avatar: merged.equipped.avatar,
+              equippedAvatar: merged.equipped.avatar,
+              frame: merged.equipped.frame,
+              equippedFrame: merged.equipped.frame,
+              updatedAt: nowIso,
+            },
+            true
+          ),
+        ]);
+        updatedCount++;
+      }
+
+      if (sampleUpdated.length < 25) {
+        sampleUpdated.push({
+          uid: targetUid,
+          added: merged.missingFromWalletOwned,
+          equipped: merged.equipped,
+        });
+      }
+    }
+
+    return jsonResponse({
+      ok: true,
+      dryRun,
+      scanned,
+      needsBackfillCount,
+      updatedCount,
+      sampleUpdated,
+    });
+  }
+
+  // ==========================================================================
   // 5. BUY STORE ITEM(S) WITH KOBANS: POST /api/store/purchase
   //    (plus legacy aliases /api/store/unlock, /api/store/buy, /api/kobans/purchase)
   // ==========================================================================
@@ -3143,10 +3627,21 @@ export async function handleEconomyApiRequest(context: {
 
     try {
       const firstItemId = String(uniqueRawItems[0].id);
-      const [walletDoc, userDoc, unlockedDocs, existingBatchLedger] = await Promise.all([
+      const [
+        walletDoc,
+        userDoc,
+        inventoryDoc,
+        publicProfileDoc,
+        userInvDocs,
+        unlockedDocs,
+        existingBatchLedger,
+      ] = await Promise.all([
         fsHelper.getDoc(`wallets/${verifiedUser.uid}`),
         fsHelper.getDoc(`users/${verifiedUser.uid}`),
-        fsHelper.listCollection(`users/${verifiedUser.uid}/unlocked`, 200).catch(() => []),
+        fsHelper.getDoc(`inventory/${verifiedUser.uid}`),
+        fsHelper.getDoc(`publicProfiles/${verifiedUser.uid}`),
+        fsHelper.listCollection(`users/${verifiedUser.uid}/inventory`, 300).catch(() => []),
+        fsHelper.listCollection(`users/${verifiedUser.uid}/unlocked`, 300).catch(() => []),
         explicitIdempotencyRaw
           ? fsHelper.getDoc(
               `wallets/${verifiedUser.uid}/ledger/${explicitIdempotencyRaw}_0_${firstItemId}`
@@ -3154,26 +3649,19 @@ export async function handleEconomyApiRequest(context: {
           : Promise.resolve(null),
       ]);
 
-      const walletBal =
-        walletDoc && typeof walletDoc.balance === 'number' && Number.isFinite(walletDoc.balance)
-          ? Math.max(0, Math.floor(walletDoc.balance))
-          : null;
-      const userKobans =
-        userDoc && typeof userDoc.kobans === 'number' && Number.isFinite(userDoc.kobans)
-          ? Math.max(0, Math.floor(userDoc.kobans))
-          : 0;
-      const userKobanBal =
-        userDoc && typeof userDoc.kobanBalance === 'number' && Number.isFinite(userDoc.kobanBalance)
-          ? Math.max(0, Math.floor(userDoc.kobanBalance))
-          : 0;
-      const currentBalance =
-        walletBal !== null ? walletBal : Math.max(userKobans, userKobanBal);
+      const canonicalBefore = mergeCanonicalInventory({
+        uid: verifiedUser.uid,
+        walletDoc,
+        userDoc,
+        inventoryDoc,
+        publicProfileDoc,
+        userInventorySubDocs: userInvDocs,
+        userUnlockedSubDocs: unlockedDocs,
+        includeStarter: true,
+      });
 
-      const existingOwned = new Set<string>([
-        ...(Array.isArray(walletDoc?.owned) ? walletDoc.owned : []),
-        ...(Array.isArray(userDoc?.ownedCosmetics) ? userDoc.ownedCosmetics : []),
-        ...unlockedDocs.map((d) => String(d.data?.itemId || d.id)),
-      ]);
+      const currentBalance = canonicalBefore.balance;
+      const existingOwned = new Set<string>(canonicalBefore.owned);
 
       // Server-side persistent idempotency check: if this batch idempotencyKey already wrote to ledger, return success without charging again
       if (existingBatchLedger) {

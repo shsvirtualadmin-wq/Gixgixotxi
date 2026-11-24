@@ -14,12 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWallet } from '@/hooks/useWallet';
-import {
-  COSMETICS_CATALOG,
-  type CosmeticItem,
-  type CosmeticRarity,
-  type CosmeticType,
-} from '@/data/cosmeticsCatalog';
+import type { CosmeticItem, CosmeticRarity } from '@/data/cosmeticsCatalog';
 import type { EquippedCosmetics } from '@/types';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
@@ -29,14 +24,14 @@ import { computeLevelFromStats } from '@/components/profile/ProfileView';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { getDisplayName } from '@/utils/displayName';
 import { getEquippedLoadout } from '@/utils/userStateSource';
-
-type LockerCategoryTab =
-  | 'all'
-  | 'avatar'
-  | 'frame'
-  | 'banner'
-  | 'nameplate'
-  | 'effect';
+import {
+  buildOwnedCosmeticItemsList,
+  countEquippedLoadout,
+  filterLockerItemsByCategory,
+  getStarterAvatarForUser,
+  normalizeInventoryItemId,
+  type LockerCategoryTab,
+} from '@/lib/inventorySource';
 
 const CATEGORY_TABS: Array<{ id: LockerCategoryTab; label: string }> = [
   { id: 'all', label: 'All' },
@@ -96,26 +91,74 @@ function deriveDeterministicShortId(uid: string): string {
 
 export const LockerPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, authStatus } = useAuth();
   const wallet = useWallet();
 
-  // Single source of truth for currently equipped loadout
-  const equippedLoadout = useMemo(
-    () =>
-      getEquippedLoadout({
-        uid: user?.uid,
-        equipped: wallet.equipped,
-        photoURL: profile?.photoURL || user?.photoURL || null,
-        avatar: profile?.avatar,
-        equippedAvatar: profile?.equippedAvatar,
-        frame: profile?.frame,
-        equippedFrame: profile?.equippedFrame,
-        banner: profile?.banner,
-        nameplate: profile?.nameplate,
-        effect: (profile as { effect?: string } | null)?.effect,
-      }),
-    [user?.uid, user?.photoURL, wallet.equipped, profile]
+  const starterAvatarKey = useMemo(
+    () => getStarterAvatarForUser(user?.uid).key,
+    [user?.uid]
   );
+
+  const isLoadingInventory =
+    authStatus === 'loading' ||
+    (authStatus === 'authenticated' &&
+      (wallet.loading || !wallet.inventoryLoaded) &&
+      !wallet.walletError);
+  const hasLoadError = Boolean(
+    authStatus === 'authenticated' && wallet.walletError && !wallet.inventoryLoaded
+  );
+
+  // Single canonical source of truth for currently equipped loadout
+  const equippedLoadout = useMemo(() => {
+    const profileRecord = profile as Record<string, any> | null;
+    const fallbackLoadout = getEquippedLoadout({
+      uid: user?.uid,
+      equipped: wallet.inventoryLoaded ? wallet.equipped : undefined,
+      equippedCosmetics: profileRecord?.equippedCosmetics,
+      photoURL: profile?.photoURL || user?.photoURL || null,
+      avatar: profile?.avatar,
+      equippedAvatar: profile?.equippedAvatar,
+      frame: profile?.frame,
+      equippedFrame: profile?.equippedFrame,
+      banner: profile?.banner,
+      equippedBanner: profileRecord?.equippedBanner,
+      nameplate: profile?.nameplate,
+      equippedNameplate: profileRecord?.equippedNameplate,
+      effect: profileRecord?.effect ?? profileRecord?.effectId,
+    });
+
+    const rawAvatar = wallet.inventoryLoaded
+      ? wallet.equipped.avatar ?? starterAvatarKey
+      : wallet.equipped.avatar ?? fallbackLoadout.avatar ?? starterAvatarKey;
+    const rawFrame = wallet.inventoryLoaded
+      ? wallet.equipped.frame ?? null
+      : wallet.equipped.frame ?? fallbackLoadout.frame ?? null;
+    const rawBanner = wallet.inventoryLoaded
+      ? wallet.equipped.banner ?? null
+      : wallet.equipped.banner ?? fallbackLoadout.banner ?? null;
+    const rawNameplate = wallet.inventoryLoaded
+      ? wallet.equipped.nameplate ?? null
+      : wallet.equipped.nameplate ?? fallbackLoadout.nameplate ?? null;
+    const rawEffect = wallet.inventoryLoaded
+      ? wallet.equipped.effect ?? null
+      : wallet.equipped.effect ?? fallbackLoadout.effect ?? null;
+
+    return {
+      avatar: normalizeInventoryItemId(rawAvatar, 'avatar') || starterAvatarKey,
+      frame: normalizeInventoryItemId(rawFrame, 'frame'),
+      banner: normalizeInventoryItemId(rawBanner, 'banner'),
+      nameplate: normalizeInventoryItemId(rawNameplate, 'nameplate'),
+      effect: normalizeInventoryItemId(rawEffect, 'effect'),
+      photoURL: fallbackLoadout.photoURL,
+    };
+  }, [
+    user?.uid,
+    user?.photoURL,
+    wallet.equipped,
+    wallet.inventoryLoaded,
+    profile,
+    starterAvatarKey,
+  ]);
 
   const [activeCategory, setActiveCategory] = useState<LockerCategoryTab>('all');
   // Do NOT auto-select the first item on load — preview starts strictly from what is equipped
@@ -152,27 +195,26 @@ export const LockerPage: React.FC = () => {
     equippedLoadout.effect,
   ]);
 
-  const ownedSet = useMemo(() => new Set(wallet.owned || []), [wallet.owned]);
-
   const ownedItems = useMemo(() => {
-    const allowedTypes = new Set<CosmeticType>([
-      'avatar',
-      'frame',
-      'banner',
-      'nameplate',
-      'effect',
-    ]);
-    return COSMETICS_CATALOG.filter(
-      (item) =>
-        allowedTypes.has(item.type) &&
-        (ownedSet.has(item.id) || wallet.isSuperAdmin || item.priceKobans === 0)
-    );
-  }, [ownedSet, wallet.isSuperAdmin]);
+    if (isLoadingInventory || hasLoadError) return [];
+    return buildOwnedCosmeticItemsList(wallet.owned, {
+      isSuperAdmin: wallet.isSuperAdmin,
+      uid: user?.uid,
+      equipped: equippedLoadout,
+    });
+  }, [
+    isLoadingInventory,
+    hasLoadError,
+    wallet.owned,
+    wallet.isSuperAdmin,
+    user?.uid,
+    equippedLoadout,
+  ]);
 
-  const filteredItems = useMemo(() => {
-    if (activeCategory === 'all') return ownedItems;
-    return ownedItems.filter((item) => item.type === activeCategory);
-  }, [ownedItems, activeCategory]);
+  const filteredItems = useMemo(
+    () => filterLockerItemsByCategory(ownedItems, activeCategory),
+    [ownedItems, activeCategory]
+  );
 
   const selectedItem: CosmeticItem | null = useMemo(
     () => ownedItems.find((i) => i.id === selectedItemId) || null,
@@ -185,6 +227,14 @@ export const LockerPage: React.FC = () => {
       return Boolean(currentValue && currentValue === item.id);
     },
     [equippedLoadout]
+  );
+
+  const canUnequipItem = useCallback(
+    (item: CosmeticItem) => {
+      if (item.type !== 'avatar') return true;
+      return item.id !== starterAvatarKey;
+    },
+    [starterAvatarKey]
   );
 
   // Tapping an item ONLY previews it on the stage until the user taps Equip
@@ -203,12 +253,34 @@ export const LockerPage: React.FC = () => {
     }, 2400);
   };
 
-  const handleEquipSelected = useCallback(
-    async (itemToEquip?: CosmeticItem | null) => {
-      const target = itemToEquip || selectedItem;
+  const handleEquipOrUnequipSelected = useCallback(
+    async (itemToToggle?: CosmeticItem | null) => {
+      const target = itemToToggle || selectedItem;
       if (!target || savingEquip) return;
 
-      if (isItemEquippedInWallet(target)) return;
+      const currentlyEquipped = isItemEquippedInWallet(target);
+      if (currentlyEquipped) {
+        if (!canUnequipItem(target)) return;
+        setSavingEquip(true);
+        try {
+          await wallet.unequipCosmetic(target.type);
+          const nextSlotValue = target.type === 'avatar' ? starterAvatarKey : null;
+          setPreviewEquipped((prev) => ({
+            ...prev,
+            [target.type]: nextSlotValue,
+          }));
+          showToast(
+            target.type === 'avatar'
+              ? 'Reset to starter avatar'
+              : `Unequipped ${target.name}`
+          );
+        } catch (err: any) {
+          showToast(err?.message || 'Failed to unequip item');
+        } finally {
+          setSavingEquip(false);
+        }
+        return;
+      }
 
       setSavingEquip(true);
       try {
@@ -224,18 +296,26 @@ export const LockerPage: React.FC = () => {
         setSavingEquip(false);
       }
     },
-    [selectedItem, savingEquip, isItemEquippedInWallet, wallet]
+    [
+      selectedItem,
+      savingEquip,
+      isItemEquippedInWallet,
+      canUnequipItem,
+      wallet,
+      starterAvatarKey,
+    ]
   );
 
   const hasUnsavedPreview = useMemo(() => {
     return (
-      (previewEquipped.avatar || 'avatar-1') !== (equippedLoadout.avatar || 'avatar-1') ||
+      (previewEquipped.avatar || starterAvatarKey) !==
+        (equippedLoadout.avatar || starterAvatarKey) ||
       (previewEquipped.frame || 'none') !== (equippedLoadout.frame || 'none') ||
       (previewEquipped.banner || 'none') !== (equippedLoadout.banner || 'none') ||
       (previewEquipped.nameplate || 'none') !== (equippedLoadout.nameplate || 'none') ||
       (previewEquipped.effect || 'none') !== (equippedLoadout.effect || 'none')
     );
-  }, [previewEquipped, equippedLoadout]);
+  }, [previewEquipped, equippedLoadout, starterAvatarKey]);
 
   const handleSaveAllPreviewed = async () => {
     if (savingEquip || !hasUnsavedPreview) return;
@@ -285,13 +365,19 @@ export const LockerPage: React.FC = () => {
         handleSelectTile(filteredItems[prevIdx]);
       } else if (e.key === 'Enter' && selectedItem) {
         e.preventDefault();
-        void handleEquipSelected(selectedItem);
+        void handleEquipOrUnequipSelected(selectedItem);
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [filteredItems, selectedItemId, selectedItem, handleSelectTile, handleEquipSelected]);
+  }, [
+    filteredItems,
+    selectedItemId,
+    selectedItem,
+    handleSelectTile,
+    handleEquipOrUnequipSelected,
+  ]);
 
   const displayName = getDisplayName(
     {
@@ -315,21 +401,16 @@ export const LockerPage: React.FC = () => {
     questionsAnswered: profile?.totalQuestionsSolved || 0,
   });
 
-  const equippedCount = useMemo(() => {
-    return [
-      equippedLoadout.avatar,
-      equippedLoadout.frame,
-      equippedLoadout.banner,
-      equippedLoadout.nameplate,
-      equippedLoadout.effect,
-    ].filter((val) => Boolean(val) && val !== 'none').length;
-  }, [equippedLoadout]);
+  const equippedCount = useMemo(
+    () => countEquippedLoadout(equippedLoadout, user?.uid),
+    [equippedLoadout, user?.uid]
+  );
 
-  const stageAvatarId = previewEquipped.avatar || equippedLoadout.avatar || 'avatar-1';
-  const stageFrameId = previewEquipped.frame || equippedLoadout.frame || 'none';
-  const stageBannerId = previewEquipped.banner || equippedLoadout.banner || 'none';
-  const stageNameplateId = previewEquipped.nameplate || equippedLoadout.nameplate || 'none';
-  const stageEffectId = previewEquipped.effect || equippedLoadout.effect || 'none';
+  const stageAvatarId = previewEquipped.avatar || equippedLoadout.avatar || starterAvatarKey;
+  const stageFrameId = previewEquipped.frame || 'none';
+  const stageBannerId = previewEquipped.banner || 'none';
+  const stageNameplateId = previewEquipped.nameplate || 'none';
+  const stageEffectId = previewEquipped.effect || 'none';
 
   const renderItemVisual = (item: CosmeticItem) => {
     if (item.type === 'avatar') {
@@ -338,7 +419,8 @@ export const LockerPage: React.FC = () => {
           size={56}
           uid={user?.uid}
           equippedAvatar={item.id}
-          alt={item.name}
+          equippedFrameId="none"
+          preferExplicitProps
         />
       );
     }
@@ -349,7 +431,7 @@ export const LockerPage: React.FC = () => {
           uid={user?.uid}
           equippedAvatar={stageAvatarId}
           equippedFrameId={item.id}
-          alt={item.name}
+          preferExplicitProps
         />
       );
     }
@@ -394,6 +476,21 @@ export const LockerPage: React.FC = () => {
       </div>
     );
   };
+
+  const selectedIsEquipped = selectedItem ? isItemEquippedInWallet(selectedItem) : false;
+  const selectedCanUnequip = selectedItem ? canUnequipItem(selectedItem) : false;
+  const actionButtonDisabled = Boolean(
+    savingEquip || (selectedIsEquipped && !selectedCanUnequip)
+  );
+  const actionButtonLabel = savingEquip
+    ? selectedIsEquipped
+      ? 'Unequipping…'
+      : 'Equipping…'
+    : selectedIsEquipped
+    ? selectedCanUnequip
+      ? 'Unequip'
+      : 'Equipped'
+    : 'Equip';
 
   return (
     <div
@@ -592,7 +689,17 @@ export const LockerPage: React.FC = () => {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    {equippedCount} equipped
+                    {isLoadingInventory ? (
+                      <span
+                        className="inline-block h-3.5 w-14 animate-pulse rounded-full"
+                        style={{ backgroundColor: 'var(--skeleton)' }}
+                        aria-label="Loading equipped count"
+                      />
+                    ) : hasLoadError ? (
+                      '—'
+                    ) : (
+                      `${equippedCount} equipped`
+                    )}
                   </span>
                 </div>
               </div>
@@ -610,9 +717,8 @@ export const LockerPage: React.FC = () => {
                     size={96}
                     uid={user?.uid}
                     equippedAvatar={stageAvatarId}
-                    customPhotoURL={equippedLoadout.photoURL || undefined}
                     equippedFrameId={stageFrameId}
-                    alt={displayName}
+                    preferExplicitProps
                   />
                 </div>
 
@@ -656,7 +762,10 @@ export const LockerPage: React.FC = () => {
                 >
                   <span>Level {levelInfo.level.toLocaleString()}</span>
                   <span>·</span>
-                  <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--koban)' }}>
+                  <span
+                    className="inline-flex items-center gap-1 font-semibold"
+                    style={{ color: 'var(--koban)' }}
+                  >
                     <KobanIcon size={14} decorative />
                     {!wallet.balanceLoaded || wallet.kobanBalance === null ? (
                       <span
@@ -688,7 +797,17 @@ export const LockerPage: React.FC = () => {
                   </div>
                   <div className="border-x" style={{ borderColor: 'var(--border)' }}>
                     <div className="text-[14px] font-semibold" style={{ color: 'var(--koban)' }}>
-                      {ownedItems.length.toLocaleString()}
+                      {isLoadingInventory ? (
+                        <span
+                          className="inline-block h-3.5 w-8 animate-pulse rounded-full align-middle"
+                          style={{ backgroundColor: 'var(--skeleton)' }}
+                          aria-label="Loading owned count"
+                        />
+                      ) : hasLoadError ? (
+                        '—'
+                      ) : (
+                        ownedItems.length.toLocaleString()
+                      )}
                     </div>
                     <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                       Owned
@@ -779,13 +898,26 @@ export const LockerPage: React.FC = () => {
 
             <div className="flex items-center justify-between px-1">
               <h2
-                className="text-[14px] font-medium"
+                className="text-[14px] font-medium inline-flex items-center gap-2"
                 style={{
                   color: 'var(--text-muted)',
                   fontFamily: 'var(--font-sans, var(--font-heading), system-ui, sans-serif)',
                 }}
               >
-                Owned items ({filteredItems.length})
+                {isLoadingInventory ? (
+                  <>
+                    <span>Owned items</span>
+                    <span
+                      className="inline-block h-3.5 w-7 animate-pulse rounded-full"
+                      style={{ backgroundColor: 'var(--skeleton)' }}
+                      aria-label="Loading owned items count"
+                    />
+                  </>
+                ) : hasLoadError ? (
+                  <span>Owned items</span>
+                ) : (
+                  <span>Owned items ({filteredItems.length})</span>
+                )}
               </h2>
               {hasUnsavedPreview && (
                 <button
@@ -801,90 +933,149 @@ export const LockerPage: React.FC = () => {
 
             {/* 3-Column Mobile / 4-Column Desktop Grid of Owned Item Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {filteredItems.map((item) => {
-                const isEquipped = isItemEquippedInWallet(item);
-                const isSelected = selectedItemId === item.id;
-                const rToken = RARITY_TOKEN_STYLES[item.rarity || 'common'];
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectTile(item)}
-                    className="relative rounded-[24px] p-3 flex flex-col items-center justify-between text-center min-h-[146px] transition-all cursor-pointer"
+              {isLoadingInventory ? (
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={`locker-skel-${idx}`}
+                    aria-hidden="true"
+                    className="rounded-[24px] p-3 flex flex-col items-center justify-between min-h-[146px]"
                     style={{
                       backgroundColor: 'var(--card)',
-                      border: isEquipped
-                        ? '2px solid var(--accent)'
-                        : isSelected
-                        ? '2px solid var(--text)'
-                        : '1px solid var(--border)',
+                      border: '1px solid var(--border)',
                       boxShadow: 'var(--settings-card-shadow)',
                     }}
                   >
-                    {/* Check badge on equipped item */}
-                    {isEquipped && (
-                      <span
-                        title="Equipped"
-                        className="absolute top-2.5 right-2.5 z-10 w-5 h-5 rounded-full text-white flex items-center justify-center"
-                        style={{ backgroundColor: 'var(--accent)' }}
-                      >
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </span>
-                    )}
-
-                    {/* AA Rarity Chip */}
-                    <span
-                      className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
-                      style={{
-                        backgroundColor: rToken.bg,
-                        color: rToken.text,
-                        border: `1px solid ${rToken.border}`,
-                      }}
-                    >
-                      {rToken.label}
-                    </span>
-
-                    {/* Thumbnail */}
-                    <div className="my-2 flex items-center justify-center w-full">
-                      {renderItemVisual(item)}
-                    </div>
-
-                    {/* Item Name */}
                     <div
-                      className="w-full text-[13px] font-semibold truncate"
-                      style={{ color: 'var(--text)' }}
-                    >
-                      {item.name}
-                    </div>
-                  </button>
-                );
-              })}
-
-              {/* Last Tile: "+ Get more in Store" */}
-              <button
-                type="button"
-                onClick={() => navigate('/store')}
-                className="rounded-[24px] p-3 min-h-[146px] border border-dashed flex flex-col items-center justify-center text-center gap-2 transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)]"
-                style={{
-                  backgroundColor: 'var(--card)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)',
-                }}
-              >
+                      className="h-4 w-14 rounded-full animate-pulse"
+                      style={{ backgroundColor: 'var(--skeleton)' }}
+                    />
+                    <div
+                      className="w-14 h-14 rounded-full animate-pulse my-2"
+                      style={{ backgroundColor: 'var(--skeleton)' }}
+                    />
+                    <div
+                      className="h-3.5 w-20 rounded-full animate-pulse"
+                      style={{ backgroundColor: 'var(--skeleton)' }}
+                    />
+                  </div>
+                ))
+              ) : hasLoadError ? (
                 <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  role="alert"
+                  className="col-span-full rounded-[24px] p-6 flex flex-col items-center justify-center text-center gap-3 min-h-[180px]"
                   style={{
-                    backgroundColor: 'var(--accent-soft)',
-                    color: 'var(--accent)',
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    boxShadow: 'var(--settings-card-shadow)',
                   }}
                 >
-                  <Plus className="w-5 h-5" />
+                  <AlertCircle className="w-6 h-6" style={{ color: 'var(--danger)' }} />
+                  <div className="space-y-1 max-w-sm">
+                    <div className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
+                      Couldn&apos;t load your Locker items
+                    </div>
+                    <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
+                      {wallet.walletError || 'Please check your connection and try again.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void wallet.refreshWallet()}
+                    className="inline-flex min-h-[40px] items-center gap-2 rounded-full px-5 text-[13.5px] font-semibold text-white cursor-pointer"
+                    style={{ backgroundColor: 'var(--accent)' }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Retry</span>
+                  </button>
                 </div>
-                <span className="text-[13px] font-semibold leading-snug">
-                  Get more in Store
-                </span>
-              </button>
+              ) : (
+                <>
+                  {filteredItems.map((item) => {
+                    const isEquipped = isItemEquippedInWallet(item);
+                    const isSelected = selectedItemId === item.id;
+                    const rToken = RARITY_TOKEN_STYLES[item.rarity || 'common'];
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectTile(item)}
+                        className="relative rounded-[24px] p-3 flex flex-col items-center justify-between text-center min-h-[146px] transition-all cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--card)',
+                          border: isEquipped
+                            ? '2px solid var(--accent)'
+                            : isSelected
+                            ? '2px solid var(--text)'
+                            : '1px solid var(--border)',
+                          boxShadow: 'var(--settings-card-shadow)',
+                        }}
+                      >
+                        {/* Check badge on equipped item */}
+                        {isEquipped && (
+                          <span
+                            title="Equipped"
+                            className="absolute top-2.5 right-2.5 z-10 w-5 h-5 rounded-full text-white flex items-center justify-center"
+                            style={{ backgroundColor: 'var(--accent)' }}
+                          >
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </span>
+                        )}
+
+                        {/* AA Rarity Chip */}
+                        <span
+                          className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold"
+                          style={{
+                            backgroundColor: rToken.bg,
+                            color: rToken.text,
+                            border: `1px solid ${rToken.border}`,
+                          }}
+                        >
+                          {rToken.label}
+                        </span>
+
+                        {/* Thumbnail */}
+                        <div className="my-2 flex items-center justify-center w-full">
+                          {renderItemVisual(item)}
+                        </div>
+
+                        {/* Item Name */}
+                        <div
+                          className="w-full text-[13px] font-semibold truncate"
+                          style={{ color: 'var(--text)' }}
+                        >
+                          {item.name}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* Last Tile: "+ Get more in Store" */}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/store')}
+                    className="rounded-[24px] p-3 min-h-[146px] border border-dashed flex flex-col items-center justify-center text-center gap-2 transition-colors cursor-pointer hover:bg-[var(--settings-row-hover)]"
+                    style={{
+                      backgroundColor: 'var(--card)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text)',
+                    }}
+                  >
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{
+                        backgroundColor: 'var(--accent-soft)',
+                        color: 'var(--accent)',
+                      }}
+                    >
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <span className="text-[13px] font-semibold leading-snug">
+                      Get more in Store
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Desktop Item Detail Strip at the Bottom */}
@@ -909,7 +1100,10 @@ export const LockerPage: React.FC = () => {
                     >
                       {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label}
                     </span>
-                    <span className="text-[12px] capitalize" style={{ color: 'var(--text-muted)' }}>
+                    <span
+                      className="text-[12px] capitalize"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
                       {selectedItem.type}
                     </span>
                   </div>
@@ -926,15 +1120,15 @@ export const LockerPage: React.FC = () => {
 
                 <button
                   type="button"
-                  disabled={savingEquip || isItemEquippedInWallet(selectedItem)}
-                  onClick={() => void handleEquipSelected(selectedItem)}
+                  disabled={actionButtonDisabled}
+                  onClick={() => void handleEquipOrUnequipSelected(selectedItem)}
                   className="h-[46px] px-6 rounded-full text-[14px] font-semibold shrink-0 cursor-pointer disabled:opacity-60"
                   style={
-                    isItemEquippedInWallet(selectedItem)
+                    selectedIsEquipped
                       ? {
                           backgroundColor: 'var(--bg)',
                           border: '1px solid var(--border)',
-                          color: 'var(--text-muted)',
+                          color: selectedCanUnequip ? 'var(--text)' : 'var(--text-muted)',
                         }
                       : {
                           backgroundColor: 'var(--accent)',
@@ -942,11 +1136,7 @@ export const LockerPage: React.FC = () => {
                         }
                   }
                 >
-                  {savingEquip
-                    ? 'Equipping…'
-                    : isItemEquippedInWallet(selectedItem)
-                    ? 'Equipped'
-                    : 'Equip'}
+                  {actionButtonLabel}
                 </button>
               </div>
             )}
@@ -969,7 +1159,10 @@ export const LockerPage: React.FC = () => {
             }}
           >
             <div className="min-w-0 pl-1">
-              <div className="text-[12px] capitalize truncate" style={{ color: 'var(--text-muted)' }}>
+              <div
+                className="text-[12px] capitalize truncate"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 {RARITY_TOKEN_STYLES[selectedItem.rarity || 'common'].label} · {selectedItem.type}
               </div>
               <div className="text-[15px] font-semibold truncate" style={{ color: 'var(--text)' }}>
@@ -979,15 +1172,15 @@ export const LockerPage: React.FC = () => {
 
             <button
               type="button"
-              disabled={savingEquip || isItemEquippedInWallet(selectedItem)}
-              onClick={() => void handleEquipSelected(selectedItem)}
+              disabled={actionButtonDisabled}
+              onClick={() => void handleEquipOrUnequipSelected(selectedItem)}
               className="min-h-[44px] px-5 rounded-full text-[14px] font-semibold shrink-0 cursor-pointer disabled:opacity-60"
               style={
-                isItemEquippedInWallet(selectedItem)
+                selectedIsEquipped
                   ? {
                       backgroundColor: 'var(--bg)',
                       border: '1px solid var(--border)',
-                      color: 'var(--text-muted)',
+                      color: selectedCanUnequip ? 'var(--text)' : 'var(--text-muted)',
                     }
                   : {
                       backgroundColor: 'var(--accent)',
@@ -995,11 +1188,7 @@ export const LockerPage: React.FC = () => {
                     }
               }
             >
-              {savingEquip
-                ? 'Equipping…'
-                : isItemEquippedInWallet(selectedItem)
-                ? 'Equipped'
-                : 'Equip'}
+              {actionButtonLabel}
             </button>
           </div>
         </div>

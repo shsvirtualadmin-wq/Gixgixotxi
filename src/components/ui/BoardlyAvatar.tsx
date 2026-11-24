@@ -156,6 +156,8 @@ export interface BoardlyAvatarProps {
   frameId?: string | null;
   equippedFrameId?: string | null;
   fallbackInitials?: string | null;
+  /** When true (e.g. Locker item tiles & try-on stage), explicit props override liveProfile */
+  preferExplicitProps?: boolean;
 }
 
 function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
@@ -166,6 +168,44 @@ function normalizeAvatarSize(size?: number | 'sm' | 'md' | 'lg'): number {
   if (size === 'lg') return 56;
   if (size === 'md') return 44;
   return 36;
+}
+
+function resolveExplicitAvatarOnly(
+  uid: string,
+  ...avatarCandidates: Array<string | null | undefined>
+): ResolvedUserAvatar {
+  const matrix = getDefaultAvatar(uid);
+  for (const cand of avatarCandidates) {
+    const resolvedId = resolveCosmeticItemId(cand, 'avatar');
+    if (resolvedId) {
+      const catalogItem = getCosmeticById(resolvedId);
+      if (catalogItem && catalogItem.type === 'avatar') {
+        return {
+          type: 'store',
+          storeAvatarId: catalogItem.id,
+          uid,
+          matrixKey: matrix.key,
+          matrixVariant: matrix.variant,
+        };
+      }
+      if (isValidAvatar(resolvedId)) {
+        return {
+          type: 'matrix',
+          storeAvatarId: null,
+          uid,
+          matrixKey: resolvedId,
+          matrixVariant: matrix.variant,
+        };
+      }
+    }
+  }
+  return {
+    type: 'matrix',
+    storeAvatarId: null,
+    uid,
+    matrixKey: matrix.key,
+    matrixVariant: matrix.variant,
+  };
 }
 
 /**
@@ -193,9 +233,10 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   equippedAvatarId,
   frameId,
   equippedFrameId,
+  preferExplicitProps = false,
 }) => {
   const cleanUid = typeof uid === 'string' ? uid.trim() : '';
-  const canLookupLive = Boolean(cleanUid && cleanUid !== 'anonymous');
+  const canLookupLive = Boolean(!preferExplicitProps && cleanUid && cleanUid !== 'anonymous');
 
   const [liveProfile, setLiveProfile] = useState<PublicUserProfile | null>(() =>
     canLookupLive ? getCachedPublicProfile(cleanUid) : null
@@ -223,30 +264,48 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   }, [cleanUid, canLookupLive]);
 
   const size = normalizeAvatarSize(rawSize);
-  const effectiveFrame =
-    liveProfile?.equipped?.frame ||
-    liveProfile?.equippedFrame ||
-    liveProfile?.frame ||
-    frame ||
-    frameId ||
-    equippedFrameId ||
-    null;
+  const hasExplicitLiveFrame = Boolean(
+    !preferExplicitProps &&
+      liveProfile?.equipped &&
+      Object.prototype.hasOwnProperty.call(liveProfile.equipped, 'frame')
+  );
+  const effectiveFrame = preferExplicitProps
+    ? equippedFrameId ?? frameId ?? frame ?? null
+    : hasExplicitLiveFrame
+    ? liveProfile!.equipped!.frame ?? null
+    : liveProfile?.equippedFrame ||
+      liveProfile?.frame ||
+      frame ||
+      frameId ||
+      equippedFrameId ||
+      null;
 
   // Fallback order: 1. Equipped store or free system avatar -> 2. Profile avatar -> 3. Default matrix avatar
-  const resolved = resolveUserAvatar(
-    cleanUid,
-    liveProfile?.equipped?.avatar,
-    liveProfile?.equippedAvatar,
-    equippedAvatar,
-    equippedAvatarId,
-    liveProfile?.avatar,
-    liveProfile?.avatarUrl,
-    avatarId,
-    avatar,
-    avatarKey,
-    avatarUrl,
-    customAvatarUrl
-  );
+  const resolved = preferExplicitProps
+    ? resolveExplicitAvatarOnly(
+        cleanUid,
+        equippedAvatar,
+        equippedAvatarId,
+        avatarId,
+        avatar,
+        avatarKey,
+        avatarUrl,
+        customAvatarUrl
+      )
+    : resolveUserAvatar(
+        cleanUid,
+        liveProfile?.equipped?.avatar,
+        liveProfile?.equippedAvatar,
+        equippedAvatar,
+        equippedAvatarId,
+        liveProfile?.avatar,
+        liveProfile?.avatarUrl,
+        avatarId,
+        avatar,
+        avatarKey,
+        avatarUrl,
+        customAvatarUrl
+      );
 
   const skeletonPlaceholder = (
     <div
@@ -294,10 +353,12 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   }
 
   const resolvedFrame =
-    resolveCosmeticItemId(effectiveFrame, 'frame') ||
-    resolveCosmeticItemId(frame, 'frame') ||
-    resolveCosmeticItemId(frameId, 'frame') ||
-    null;
+    preferExplicitProps || hasExplicitLiveFrame
+      ? resolveCosmeticItemId(effectiveFrame, 'frame')
+      : resolveCosmeticItemId(effectiveFrame, 'frame') ||
+        resolveCosmeticItemId(frame, 'frame') ||
+        resolveCosmeticItemId(frameId, 'frame') ||
+        null;
 
   if (resolvedFrame) {
     return (

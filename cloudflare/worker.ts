@@ -6748,6 +6748,10 @@ ${urls
     }
 
     if (
+      cleanWorkerPath === '/api/inventory' ||
+      cleanWorkerPath === '/api/locker/inventory' ||
+      cleanWorkerPath === '/api/inventory/equip' ||
+      cleanWorkerPath === '/api/admin/backfill-starter-inventory' ||
       cleanWorkerPath === '/api/coupons' ||
       cleanWorkerPath.startsWith('/api/coupons/') ||
       cleanWorkerPath === '/api/plan/activate' ||
