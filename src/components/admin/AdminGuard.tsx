@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
+import { perfMarkStart } from '@/lib/perfMetrics';
 
 interface AdminGuardProps {
   children: ReactNode;
@@ -27,8 +28,14 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
   } = useAuth();
   const location = useLocation();
 
+  useEffect(() => {
+    if (location.pathname === '/admin' || location.pathname === '/admin/') {
+      perfMarkStart('admin_student_count');
+    }
+  }, [location.pathname]);
+
   if (authStatus === 'loading' || profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
-    return <RoutePageSkeleton />;
+    return <RoutePageSkeleton pathname={location.pathname} />;
   }
 
   if (!user || isGuest) {

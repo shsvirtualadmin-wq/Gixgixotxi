@@ -35,10 +35,12 @@ import {
   fetchOverviewReviewsCard,
   fetchOverviewSubjectsCard,
   fetchPlanAnalyticsStats,
+  getCachedPlanAnalyticsStats,
   type PlanAnalyticsStats,
   AdminStatCardError,
   CORE_SUBJECTS,
 } from '@/services/adminService';
+import { perfMarkEnd } from '@/lib/perfMetrics';
 import { getCachedAdminOverview } from '@/services/adminTabCache';
 import {
   fetchAdminWingmatesRadar,
@@ -139,7 +141,9 @@ export function AdminOverviewPage() {
       : null,
     error: null,
   }));
-  const [planAnalytics, setPlanAnalytics] = useState<PlanAnalyticsStats | null>(null);
+  const [planAnalytics, setPlanAnalytics] = useState<PlanAnalyticsStats | null>(() =>
+    getCachedPlanAnalyticsStats()
+  );
 
   const [questionsCard, setQuestionsCard] = useState<CardState<{ totalQuestions: number }>>(() => ({
     loading: !initialStats,
@@ -253,6 +257,12 @@ export function AdminOverviewPage() {
     []
   );
 
+  useEffect(() => {
+    if (usersCard.data && typeof usersCard.data.totalUsers === 'number') {
+      perfMarkEnd('admin_student_count', { totalUsers: usersCard.data.totalUsers });
+    }
+  }, [usersCard.data]);
+
   const loadUsersCard = useCallback(
     async (force = false) => {
       setUsersCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
@@ -260,11 +270,6 @@ export function AdminOverviewPage() {
         const data = await fetchOverviewUsersCard({ force });
         if (!isMountedRef.current) return;
         setUsersCard({ loading: false, data, error: null });
-        fetchPlanAnalyticsStats()
-          .then((analytics) => {
-            if (isMountedRef.current) setPlanAnalytics(analytics);
-          })
-          .catch(() => {});
       } catch (err) {
         if (!isMountedRef.current) return;
         const parsed = reportCardFailure(err, 'firestore:users | GET /api/admin/stats');
@@ -446,6 +451,12 @@ export function AdminOverviewPage() {
 
       // Fire every stat card independently in parallel so a single failure never blocks or zeros out others
       const tasks: Promise<unknown>[] = [
+        loadUsersCard(force),
+        fetchPlanAnalyticsStats({ force })
+          .then((analytics) => {
+            if (isMountedRef.current) setPlanAnalytics(analytics);
+          })
+          .catch(() => {}),
         loadQuestionsCard(force),
         loadAttemptsCard(force),
         loadApplicationsCard(force),
@@ -457,7 +468,6 @@ export function AdminOverviewPage() {
 
       if (isSuperAdmin) {
         tasks.push(
-          loadUsersCard(force),
           fetchAuditLogs(5)
             .then((logs) => {
               if (isMountedRef.current && Array.isArray(logs)) {
@@ -486,8 +496,6 @@ export function AdminOverviewPage() {
               reportCardFailure(err, 'GET /api/rewards/health');
             })
         );
-      } else {
-        tasks.push(loadUsersCard(force));
       }
 
       await Promise.allSettled(tasks);

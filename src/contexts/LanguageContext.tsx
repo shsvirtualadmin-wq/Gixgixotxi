@@ -13,16 +13,19 @@ import { useAuth } from './AuthContext';
 import {
   applyDocumentLanguage,
   detectSystemLanguage,
+  ensureLocaleLoaded,
   formatDate,
   formatNumber,
   formatPKR,
   formatRelativeTime,
   getDisplayLabelForSetting,
   getLanguageMeta,
+  isLocaleLoaded,
   normalizeAppLanguage,
   readBootStoredLanguage,
   readStoredLanguageForUid,
   resolveLanguage,
+  subscribeLocaleLoaded,
   translate,
   writeStoredLanguage,
   type AppLanguage,
@@ -82,9 +85,20 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const meta = useMemo(() => getLanguageMeta(resolvedLanguage), [resolvedLanguage]);
 
-  // Apply dir, lang, and data-lang synchronously on every resolvedLanguage change
+  const [localeVersion, setLocaleVersion] = useState(0);
+
+  // Apply dir, lang, and data-lang synchronously on every resolvedLanguage change,
+  // and ensure lazy-loaded non-English dictionaries trigger a re-render when ready
   useEffect(() => {
     applyDocumentLanguage(resolvedLanguage);
+    if (!isLocaleLoaded(resolvedLanguage)) {
+      void ensureLocaleLoaded(resolvedLanguage);
+    }
+    return subscribeLocaleLoaded((loadedLang) => {
+      if (loadedLang === resolvedLanguage) {
+        setLocaleVersion((v) => v + 1);
+      }
+    });
   }, [resolvedLanguage]);
 
   // React to OS / browser language changes when set to 'auto'
@@ -202,13 +216,19 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
 
   const tFn = useCallback(
-    (key: string, params?: TranslationParams) => translate(resolvedLanguage, key, params),
-    [resolvedLanguage]
+    (key: string, params?: TranslationParams) => {
+      void localeVersion;
+      return translate(resolvedLanguage, key, params);
+    },
+    [resolvedLanguage, localeVersion]
   );
 
   const getLanguageLabel = useCallback(
-    (setting: AppLanguage = language) => getDisplayLabelForSetting(setting, resolvedLanguage),
-    [language, resolvedLanguage]
+    (setting: AppLanguage = language) => {
+      void localeVersion;
+      return getDisplayLabelForSetting(setting, resolvedLanguage);
+    },
+    [language, resolvedLanguage, localeVersion]
   );
 
   const formatNumberFn = useCallback(

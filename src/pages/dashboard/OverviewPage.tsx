@@ -72,10 +72,12 @@ const UniversityCardLogo = memo(function UniversityCardLogo({
   logoUrl,
   name,
   variant,
+  eager = false,
 }: {
   logoUrl?: string | null;
   name: string;
   variant: 'badge' | 'hero';
+  eager?: boolean;
 }) {
   const cleanUrl = normalizeUniversityLogoUrl(logoUrl);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -150,7 +152,7 @@ const UniversityCardLogo = memo(function UniversityCardLogo({
         alt={name}
         width={sizePx}
         height={sizePx}
-        loading="eager"
+        loading={eager ? 'eager' : 'lazy'}
         decoding="async"
         onLoad={() => {
           if (retryTimerRef.current) {
@@ -1035,8 +1037,9 @@ export function OverviewPage() {
                         liveUniversities.length === 1 ? ' uni-lg-carousel--single' : ''
                       }`}
                     >
-                      {liveUniversities.map((uni) => {
+                      {liveUniversities.map((uni, uniIdx) => {
                         const mcqCount = Number(uni.mcq_count || 0);
+                        const isEagerLogo = uniIdx < 2;
                         return (
                           <button
                             key={uni.id}
@@ -1057,6 +1060,7 @@ export function OverviewPage() {
                                   logoUrl={uni.logo_url}
                                   name={uni.name}
                                   variant="badge"
+                                  eager={isEagerLogo}
                                 />
                               </span>
 
@@ -1074,6 +1078,7 @@ export function OverviewPage() {
                                   logoUrl={uni.logo_url}
                                   name={uni.name}
                                   variant="hero"
+                                  eager={isEagerLogo}
                                 />
                               </span>
                             </div>

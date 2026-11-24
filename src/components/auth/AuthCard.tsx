@@ -28,6 +28,7 @@ import {
   type SavedAccountEntry,
 } from '@/utils/savedAccounts';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { perfMarkStart } from '@/lib/perfMetrics';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
@@ -401,6 +402,9 @@ export function AuthCard({
     clearProfileError();
     setFieldErrors({});
     setGoogleLoading(true);
+    perfMarkStart('login_to_dashboard');
+    void import('@/components/dashboard/DashboardShell').catch(() => {});
+    void import('@/pages/dashboard/OverviewPage').catch(() => {});
 
     try {
       await signInWithGoogle();
@@ -477,6 +481,11 @@ export function AuthCard({
 
     setFieldErrors({});
     setLoading(true);
+    if (mode === 'signin') {
+      perfMarkStart('login_to_dashboard');
+      void import('@/components/dashboard/DashboardShell').catch(() => {});
+      void import('@/pages/dashboard/OverviewPage').catch(() => {});
+    }
 
     try {
       if (mode === 'signin') {

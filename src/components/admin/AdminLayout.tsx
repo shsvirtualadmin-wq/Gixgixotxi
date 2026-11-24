@@ -239,8 +239,8 @@ export function AdminLayout() {
   };
 
   // Fail-closed route guard before rendering any admin shell or children
-  if (profileLoading || otpVerificationState.status === 'checking') {
-    return <RoutePageSkeleton />;
+  if (!isAdmin && !isSuperAdmin && (profileLoading || otpVerificationState.status === 'checking')) {
+    return <RoutePageSkeleton pathname={location.pathname} />;
   }
   if (!user || !isSessionVerified) {
     return <Navigate to="/login?redirect=/admin" replace />;
@@ -420,11 +420,7 @@ export function AdminLayout() {
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
       <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100dvh-3.5rem)] md:min-h-[100dvh] p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
-        {profileLoading || otpVerificationState.status === 'checking' ? (
-          <RoutePageSkeleton pathname={location.pathname} />
-        ) : !user || !isSessionVerified ? (
-          <Navigate to="/login?redirect=/admin" replace />
-        ) : !isAdmin ? (
+        {!isAdmin && !isSuperAdmin ? (
           <div className="flex items-center justify-center py-12 px-4">
             <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[32px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] text-center">
               <div className="w-14 h-14 rounded-full bg-[var(--bg)] border border-[var(--danger-border)] text-[var(--danger)] flex items-center justify-center mx-auto mb-5">

@@ -13,6 +13,29 @@ import {
   shouldAutoRedirectFromAuthScreen,
 } from '@/utils/savedAccounts';
 
+import { perfMarkEnd } from '@/lib/perfMetrics';
+
+function preloadTargetChunksForDest(dest: string): Promise<unknown> {
+  if (dest.startsWith('/superadmin')) {
+    return Promise.allSettled([
+      import('@/components/admin/AdminGuard'),
+      import('@/components/admin/AdminLayout'),
+      import('@/pages/admin/AdminUsersPage'),
+    ]);
+  }
+  if (dest.startsWith('/admin')) {
+    return Promise.allSettled([
+      import('@/components/admin/AdminGuard'),
+      import('@/components/admin/AdminLayout'),
+      import('@/pages/admin/AdminOverviewPage'),
+    ]);
+  }
+  return Promise.allSettled([
+    import('@/components/dashboard/DashboardShell'),
+    import('@/pages/dashboard/OverviewPage'),
+  ]);
+}
+
 export function LoginPage() {
   const {
     user,
@@ -31,11 +54,21 @@ export function LoginPage() {
   const initialUidRef = useRef<string | null>(null);
   const [hasCompletedNewAuthSubmit, setHasCompletedNewAuthSubmit] = useState(false);
   const [submittedTargetUid, setSubmittedTargetUid] = useState<string | null>(null);
+  const hasRedirectedRef = useRef(false);
 
   // Capture the UID that was already signed in when opening the Add Account flow
   if (isAddAccountFlow && initialUidRef.current === null && user?.uid) {
     initialUidRef.current = user.uid;
   }
+
+  // Warm the core dashboard shell chunk while the user is typing credentials so post-login redirect is instant (no second loading screen)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void import('@/components/dashboard/DashboardShell').catch(() => {});
+      void import('@/pages/dashboard/OverviewPage').catch(() => {});
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     try {
@@ -56,6 +89,7 @@ export function LoginPage() {
 
   // Only redirect to intended target or dashboard once session is verified AND not blocked by Add Account flow
   useEffect(() => {
+    if (hasRedirectedRef.current) return;
     const canRedirect = shouldAutoRedirectFromAuthScreen({
       isAddAccountFlow,
       hasCompletedNewAuthSubmit,
@@ -97,8 +131,23 @@ export function LoginPage() {
       sessionStorage.removeItem('boardly_post_login_redirect');
     }
 
-    logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
-    navigate(dest, { replace: true });
+    hasRedirectedRef.current = true;
+    let cancelled = false;
+
+    // Ensure the target shell + page chunks are already loaded before navigating so React Router never shows a second Suspense loading screen
+    void Promise.race([
+      preloadTargetChunksForDest(dest),
+      new Promise((resolve) => window.setTimeout(resolve, 600)),
+    ]).finally(() => {
+      if (cancelled) return;
+      logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
+      perfMarkEnd('login_to_dashboard', { dest, role: profile?.role || 'student' });
+      navigate(dest, { replace: true });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     isAddAccountFlow,
     hasCompletedNewAuthSubmit,

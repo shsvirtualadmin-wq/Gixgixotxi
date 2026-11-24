@@ -68,6 +68,27 @@
           root.setAttribute('lang', htmlLangMap[finalLang]);
           root.setAttribute('dir', finalLang === 'ur' || finalLang === 'ar' ? 'rtl' : 'ltr');
           root.setAttribute('data-lang', finalLang);
+          // Load non-Latin Noto script fonts ONLY when active language requires them (display=swap, non-blocking)
+          var scriptFontHref = '';
+          if (finalLang === 'ur' || finalLang === 'ar') {
+            scriptFontHref =
+              'https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap';
+          } else if (finalLang === 'hi') {
+            scriptFontHref =
+              'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap';
+          } else if (finalLang === 'zh') {
+            scriptFontHref =
+              'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap';
+          }
+          if (scriptFontHref && document.head) {
+            var fontLink = document.createElement('link');
+            fontLink.id = 'boardly-script-font-' + finalLang;
+            fontLink.rel = 'stylesheet';
+            fontLink.href = scriptFontHref;
+            fontLink.media = 'print';
+            fontLink.onload = function () { fontLink.media = 'all'; };
+            document.head.appendChild(fontLink);
+          }
           // Kick off first-screen public API fetches in parallel with JS download
           var p = window.location.pathname.toLowerCase();
           if (
@@ -148,46 +169,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://storage.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
-    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
 
-    <!-- Non-blocking Google Fonts & KaTeX CSS -->
-    <link
-      rel="preload"
-      as="style"
-      href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
-    />
+    <!-- Non-blocking Google Fonts (font-display: swap); non-Latin scripts load on demand -->
     <link
       href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"
     />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media='all'"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css"
-      crossorigin="anonymous"
-      media="print"
-      onload="this.media='all'"
-    />
-    <script
-      defer
-      src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"
-      crossorigin="anonymous"
-    ></script>
-    <script
-      defer
-      src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/mhchem.min.js"
-      crossorigin="anonymous"
-    ></script>
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Doto:wght@600..900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
     <!-- Google AdSense script is loaded dynamically only when ads are allowed for the viewer (never for Pro/Plus with Ad-free ON) -->
 

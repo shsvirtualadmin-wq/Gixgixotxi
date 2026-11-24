@@ -9,17 +9,17 @@ import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { scheduleIdleTabPrefetch } from '@/lib/routePrefetch';
+import { perfMarkEnd } from '@/lib/perfMetrics';
 import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
-import { useNavStore } from '@/lib/navStore';
 import { UserPlus, X } from 'lucide-react';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
 );
 
-function KeepAliveTabsOutlet() {
+function SingleSuspenseOutlet() {
   const currentOutlet = useOutlet();
   return <BoardlySuspenseBoundary variant="page">{currentOutlet}</BoardlySuspenseBoundary>;
 }
@@ -40,11 +40,12 @@ export function DashboardShell() {
   const isAuthenticated = isUserAuthenticated(user, profileLoading, authStatus);
   const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
-  const { isMenuOpen } = useNavStore();
 
-  // Safety cleanup on dashboard mount & route change to clear any leftover scroll lock
+  // Safety cleanup on dashboard mount & route change to clear any leftover scroll lock and finish tab timing
   useEffect(() => {
     safetyCleanupScrollLocks();
+    perfMarkEnd('tab_switch', { path: location.pathname });
+    perfMarkEnd('login_to_dashboard', { path: location.pathname });
   }, [location.pathname]);
 
   const isProfileRoute =
@@ -211,11 +212,7 @@ export function DashboardShell() {
 
       {/* Main Content Container — full viewport width centered up to 1400px, ad-free dashboard cockpit */}
       <main
-        inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
-        aria-hidden={isMenuOpen ? 'true' : undefined}
-        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
-          isMenuOpen ? 'pointer-events-none invisible select-none' : ''
-        } ${
+        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col ${
           isSettingsRoute
             ? 'max-w-none p-0'
             : isProfileRoute
@@ -224,9 +221,7 @@ export function DashboardShell() {
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
-          <BoardlySuspenseBoundary variant="page">
-            <KeepAliveTabsOutlet />
-          </BoardlySuspenseBoundary>
+          <SingleSuspenseOutlet />
         </DashboardErrorBoundary>
       </main>
 

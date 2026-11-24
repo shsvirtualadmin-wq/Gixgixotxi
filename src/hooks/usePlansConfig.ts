@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
   DEFAULT_PLANS_CONFIG,
@@ -7,15 +7,18 @@ import {
   type PlansConfigDoc,
 } from '@/lib/planTier';
 
-// Shared singleton subscription so every screen using usePlansConfig() shares ONE Firestore listener
+// Shared singleton cache with 5-minute TTL (one-time fetch instead of permanent onSnapshot listener)
+const PLANS_CONFIG_TTL_MS = 5 * 60 * 1000;
 let cachedPlansConfig: PlansConfigDoc = DEFAULT_PLANS_CONFIG;
 let hasLoadedOnce = false;
-let activeUnsub: (() => void) | null = null;
+let lastFetchedAt = 0;
+let inFlightFetch: Promise<PlansConfigDoc> | null = null;
 const listeners = new Set<(cfg: PlansConfigDoc) => void>();
 
 function notifyAll(cfg: PlansConfigDoc) {
   cachedPlansConfig = cfg;
   hasLoadedOnce = true;
+  lastFetchedAt = Date.now();
   for (const cb of listeners) {
     try {
       cb(cfg);
@@ -25,31 +28,32 @@ function notifyAll(cfg: PlansConfigDoc) {
   }
 }
 
-function ensureSubscribed() {
-  if (activeUnsub) return;
-  try {
-    const ref = doc(db, 'config', 'plans');
-    activeUnsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (snap.exists()) {
-          notifyAll(normalizePlansConfig(snap.data() as Record<string, any>));
-        } else {
-          notifyAll(DEFAULT_PLANS_CONFIG);
-        }
-      },
-      () => {
-        // Fallback silently to defaults on network/permission error
-        notifyAll(cachedPlansConfig);
-      }
-    );
-  } catch {
-    notifyAll(DEFAULT_PLANS_CONFIG);
+function ensureFetched() {
+  if (hasLoadedOnce && Date.now() - lastFetchedAt < PLANS_CONFIG_TTL_MS) {
+    return;
   }
+  if (inFlightFetch) return;
+  inFlightFetch = getDoc(doc(db, 'config', 'plans'))
+    .then((snap) => {
+      if (snap.exists()) {
+        const normalized = normalizePlansConfig(snap.data() as Record<string, any>);
+        notifyAll(normalized);
+        return normalized;
+      }
+      notifyAll(DEFAULT_PLANS_CONFIG);
+      return DEFAULT_PLANS_CONFIG;
+    })
+    .catch(() => {
+      notifyAll(cachedPlansConfig);
+      return cachedPlansConfig;
+    })
+    .finally(() => {
+      inFlightFetch = null;
+    });
 }
 
 /**
- * Returns live `config/plans` from Firestore with instant built-in defaults as fallback.
+ * Returns `config/plans` from Firestore via a shared cached fetch with instant built-in defaults.
  */
 export function usePlansConfig(): {
   config: PlansConfigDoc;
@@ -64,17 +68,13 @@ export function usePlansConfig(): {
       setLoading(false);
     };
     listeners.add(onUpdate);
-    ensureSubscribed();
+    ensureFetched();
     if (hasLoadedOnce) {
       setConfig(cachedPlansConfig);
       setLoading(false);
     }
     return () => {
       listeners.delete(onUpdate);
-      if (listeners.size === 0 && activeUnsub) {
-        activeUnsub();
-        activeUnsub = null;
-      }
     };
   }, []);
 

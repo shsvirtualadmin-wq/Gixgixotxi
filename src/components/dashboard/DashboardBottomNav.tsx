@@ -30,15 +30,12 @@ import {
   BOTTOM_NAV_TAB_INDEX,
   markNavTapStart,
   recordNavFirstPaint,
-  setNavMenuOpen,
   setOptimisticNavTab,
   syncNavRouteFromRouter,
   useNavStore,
   type BottomNavTabId,
 } from '@/lib/navStore';
-const LazyHamburgerMenuSheet = React.lazy(() =>
-  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
-);
+import { perfMarkStart } from '@/lib/perfMetrics';
 
 interface DockTabItem {
   id: BottomNavTabId;
@@ -225,9 +222,10 @@ function DashboardBottomNavComponent() {
         }
       }
     });
+    // Watch direct portal children of document.body only (subtree:false avoids scanning every DOM edit in the app)
     modalChildObserver.observe(document.body, {
       childList: true,
-      subtree: true,
+      subtree: false,
     });
 
     window.addEventListener('boardly:modal-change', scheduleModalCheck);
@@ -380,7 +378,7 @@ function DashboardBottomNavComponent() {
         stretchTimerRef.current = window.setTimeout(() => {
           setIsStretching(false);
           stretchTimerRef.current = null;
-        }, 480);
+        }, 200);
       });
     }
   }, []);
@@ -509,6 +507,11 @@ function DashboardBottomNavComponent() {
       const changed = prevTabIdRef.current !== item.id;
       prevTabIdRef.current = item.id;
       markNavTapStart(item.id);
+      if (item.id === 'menu') {
+        perfMarkStart('menu_open');
+      } else {
+        perfMarkStart('tab_switch');
+      }
       setOptimisticNavTab(item.id, false);
       prefetchTabRouteAndData(item.id, user?.uid);
 
@@ -783,8 +786,15 @@ function DashboardBottomNavComponent() {
                     data-testid="bottom-nav-ai-fab"
                     aria-label={t('nav.aiMentors')}
                     title={t('nav.aiMentors')}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      prefetchTabRouteAndData('ai', user?.uid);
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      prefetchTabRouteAndData('ai', user?.uid);
+                    }}
+                    onMouseEnter={() => prefetchTabRouteAndData('ai', user?.uid)}
                     onClick={handleOpenAiMentors}
                     className="sdn-ai-fab"
                   >
@@ -842,30 +852,9 @@ function DashboardBottomNavComponent() {
     </nav>
   );
 
-  const handleCloseMenu = useCallback(() => {
-    setNavMenuOpen(false, isApprovedCaptain);
-    if (location.pathname === '/menu' || location.pathname === '/dashboard/menu') {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [isApprovedCaptain, location.pathname, navigate]);
-
-  return (
-    <>
-      {typeof document !== 'undefined'
-        ? createPortal(navBarElement, document.body)
-        : navBarElement}
-
-      {/* ─── FULL-SCREEN MENU PAGE (SLIDES IN FROM RIGHT) ───────────────── */}
-      {isMenuOpen && (
-        <React.Suspense fallback={null}>
-          <LazyHamburgerMenuSheet
-            isOpen={isMenuOpen}
-            onClose={handleCloseMenu}
-          />
-        </React.Suspense>
-      )}
-    </>
-  );
+  return typeof document !== 'undefined'
+    ? createPortal(navBarElement, document.body)
+    : navBarElement;
 }
 
 export const DashboardBottomNav = memo(DashboardBottomNavComponent, () => true);

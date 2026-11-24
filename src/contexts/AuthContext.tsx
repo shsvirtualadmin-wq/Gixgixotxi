@@ -454,10 +454,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return restored;
   });
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
-  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState<boolean>(() => !profile);
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const inFlightLoadProfileRef = useRef<{ uid: string; promise: Promise<void> } | null>(null);
+  const inFlightVerificationGateRef = useRef<{
+    uid: string;
+    key: string;
+    promise: Promise<boolean>;
+  } | null>(null);
   // Strict Firebase Auth ID token claims + verified owner email state — FAIL-CLOSED by default
   // Hierarchy: superAdmin > admin > captain > student. superAdmin implies admin and captain; admin implies captain.
   const [tokenClaims, setTokenClaims] = useState<{
@@ -734,13 +740,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       diagnostics: RoleCheckDiagnostics;
       rawClaims: Record<string, unknown>;
     }> => {
-      // 1. Read token (fall back to cached token if force-refresh hits a transient network error)
-      const currentToken =
+      // 1. Read token & cached tokenResult (fall back to cached token if force-refresh hits a transient network error)
+      const [currentToken, initialTokenResult] = await Promise.all([
         typeof targetUser.getIdToken === 'function'
-          ? await targetUser
+          ? targetUser
               .getIdToken(forceRefresh)
               .catch(() => targetUser.getIdToken(false).catch(() => ''))
-          : '';
+          : Promise.resolve(''),
+        typeof targetUser.getIdTokenResult === 'function'
+          ? targetUser.getIdTokenResult(false).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
       // 2. Call server-side self-healing owner bootstrap: POST /api/me/roles
       // If it returns { refreshed: true }, force-refresh the Firebase ID token immediately so new claims apply without re-login!
@@ -786,14 +796,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               : null;
           serverRolesCheck.error =
             rolesData?.claimMintError || rolesData?.error || null;
-
-          if (
-            rolesRes.ok &&
-            rolesData?.refreshed === true &&
-            typeof targetUser.getIdToken === 'function'
-          ) {
-            await targetUser.getIdToken(true).catch(() => {});
-          }
         } catch (err: any) {
           serverRolesCheck.error = err?.message || 'Network error calling /api/me/roles';
         }
@@ -805,9 +807,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const shouldForceTokenResult = Boolean(forceRefresh || serverRolesCheck.refreshed);
-      const idTokenResult = await targetUser
-        .getIdTokenResult(shouldForceTokenResult)
-        .catch(() => targetUser.getIdTokenResult(false));
+      const idTokenResult =
+        !shouldForceTokenResult && initialTokenResult?.claims
+          ? initialTokenResult
+          : await targetUser
+              .getIdTokenResult(shouldForceTokenResult)
+              .catch(() => initialTokenResult ?? targetUser.getIdTokenResult(false));
       if (!idTokenResult || !idTokenResult.claims) {
         throw new Error('Empty ID token result');
       }
@@ -885,180 +890,198 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [bootstrapAndReadVerifiedClaims]
   );
 
-  // ── Fetch / create user profile (protected with fast race & fallback) ────
+  // ── Fetch / create user profile (protected with parallel role + profile fetch & in-flight deduplication) ──
   const loadProfile = useCallback(async (firebaseUser: User) => {
-    setProfileLoading(true);
-    setProfileError(null);
-    const path = `users/${firebaseUser.uid}`;
-
-    const emailLower = (firebaseUser.email ?? '').toLowerCase();
-
-    // SECURITY (Requirements 2, 4, 5): Call POST /api/me/roles (self-healing owner bootstrap),
-    // force a token refresh (getIdToken(true)) on login/app load, and read roles
-    // ONLY from verified Firebase Auth ID token (custom claims or verified owner email).
-    // Fail closed on any error.
-    let claimSuperAdmin = false;
-    let claimAdmin = false;
-    let claimCaptain = false;
-    let claimVerified = false;
-    let resolvedRoleSource: RoleResolutionSource = 'none';
-    let resolvedDiagnostics: RoleCheckDiagnostics | undefined;
-    let rawClaims: Record<string, unknown> = {};
-    try {
-      const verifiedClaims = await bootstrapAndReadVerifiedClaims(firebaseUser, false);
-      claimSuperAdmin = verifiedClaims.superAdmin;
-      claimAdmin = verifiedClaims.admin;
-      claimCaptain = verifiedClaims.captain;
-      claimVerified = true;
-      resolvedRoleSource = verifiedClaims.roleSource;
-      resolvedDiagnostics = verifiedClaims.diagnostics;
-      rawClaims = verifiedClaims.rawClaims;
-    } catch (tokenErr) {
-      // Fail closed on elevated role claims, but NEVER wipe or sign out an active user on transient network/STS failure.
-      console.warn('[Boardly Auth] Token claims check failed transiently during loadProfile; keeping session fail-closed:', tokenErr);
-      setTokenClaims({
-        superAdmin: false,
-        admin: false,
-        captain: false,
-        verified: false,
-        roleSource: 'none',
-        rawClaims: {},
-      });
+    if (inFlightLoadProfileRef.current?.uid === firebaseUser.uid) {
+      return inFlightLoadProfileRef.current.promise;
     }
 
-    if (claimVerified) {
-      setTokenClaims({
-        superAdmin: claimSuperAdmin,
-        admin: claimAdmin,
-        captain: claimCaptain,
-        verified: true,
-        roleSource: resolvedRoleSource,
-        diagnostics: resolvedDiagnostics,
-        rawClaims,
-      });
-    }
-
-    const existingCached =
-      (profileRef.current && profileRef.current.uid === firebaseUser.uid ? profileRef.current : null) ||
-      (() => {
-        const snap = readOptimisticUserSnapshot();
-        return snap && snap.uid === firebaseUser.uid ? snap : null;
-      })();
-
-    const authDisplayName = firebaseUser.displayName?.trim() || '';
-    const existingDisplayName =
-      typeof (existingCached as any)?.displayName === 'string' &&
-      (existingCached as any).displayName.trim() &&
-      (existingCached as any).displayName.trim() !== 'Student'
-        ? (existingCached as any).displayName.trim()
-        : '';
-    const fallbackName = existingDisplayName || authDisplayName;
-
-    const claimDerivedRole: UserProfile['role'] = claimSuperAdmin
-      ? 'super_admin'
-      : claimAdmin
-      ? 'admin'
-      : claimCaptain
-      ? 'captain'
-      : existingCached?.role === 'teacher'
-      ? 'teacher'
-      : 'student';
-
-    const defaultProfile: UserProfile = {
-      ...(profileRef.current && profileRef.current.uid === firebaseUser.uid ? profileRef.current : {}),
-      uid: firebaseUser.uid,
-      email: emailLower,
-      ...(fallbackName ? { displayName: fallbackName, display_name: fallbackName, name: fallbackName } : {}),
-      ...(existingCached?.username ? { username: existingCached.username } : {}),
-      ...(existingCached?.customRole ? { customRole: existingCached.customRole } : {}),
-      photoURL: null,
-      role: claimDerivedRole,
-      plan: claimSuperAdmin ? 'plus' : (existingCached as any)?.plan || 'free',
-      status: 'active',
-      profileCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.profileCompleted),
-      onboardingCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.onboardingCompleted),
-      streak: Number((existingCached as any)?.streak || 0),
-    };
-
-    try {
+    const runLoadProfile = async () => {
+      const hasExistingSameUidProfile = Boolean(
+        profileRef.current && profileRef.current.uid === firebaseUser.uid
+      );
+      if (!hasExistingSameUidProfile) {
+        setProfileLoading(true);
+      }
+      setProfileError(null);
+      const path = `users/${firebaseUser.uid}`;
+      const emailLower = (firebaseUser.email ?? '').toLowerCase();
       const docRef = doc(db, 'users', firebaseUser.uid);
 
-      let loadedProfile: UserProfile | null = null;
-
-      // 1. Fast path read: 99.9% of users already have a profile document
-      try {
-        const snap = await Promise.race([
+      // Run verified role claims check AND Firestore profile document read IN PARALLEL (eliminates sequential waterfall)
+      const [claimsOutcome, docOutcome] = await Promise.allSettled([
+        bootstrapAndReadVerifiedClaims(firebaseUser, false),
+        Promise.race([
           getDoc(docRef),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
-        ]);
-        if (snap && typeof snap.exists === 'function' && snap.exists()) {
-          loadedProfile = { ...(snap.data() as UserProfile), photoURL: null };
-        } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-          // Truly new user: initialize clean defaults including deterministic starter avatar (never copy Google photoURL or write protected fields from client)
-          const seedDisplay = fallbackName || undefined;
-          const starterAvatarKey = getStarterAvatarForUser(firebaseUser.uid).key;
-          const starterEquipped = {
-            avatar: starterAvatarKey,
-            frame: null,
-            banner: null,
-            nameplate: null,
-            effect: null,
-          };
-          const baseUserDoc: UserProfile = {
-            uid: firebaseUser.uid,
-            ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
-            email: emailLower,
-            photoURL: null,
-            avatar: starterAvatarKey,
-            equippedAvatar: starterAvatarKey,
-            equipped: starterEquipped,
-            ownedCosmetics: [starterAvatarKey],
-            role: claimDerivedRole,
-            plan: claimSuperAdmin ? 'plus' : 'free',
-            status: 'active',
-            profileCompleted: claimSuperAdmin ? true : false,
-            onboardingCompleted: claimSuperAdmin ? true : false,
-            streak: 0,
-            shortId: deriveFallbackShortId(firebaseUser.uid),
-          };
-          await setDoc(docRef, {
-            uid: firebaseUser.uid,
-            ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
-            email: emailLower,
-            photoURL: null,
-            avatar: starterAvatarKey,
-            equippedAvatar: starterAvatarKey,
-            equipped: starterEquipped,
-            ownedCosmetics: [starterAvatarKey],
-            profileCompleted: claimSuperAdmin ? true : false,
-            onboardingCompleted: claimSuperAdmin ? true : false,
-            streak: 0,
-            shortId: baseUserDoc.shortId,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          loadedProfile = baseUserDoc;
-          createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
-          processAmbassadorReferralOnSignup({
-            newUid: firebaseUser.uid,
-            newEmail: firebaseUser.email ?? '',
-            newName: seedDisplay || emailLower.split('@')[0] || '',
-            newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
-          }).catch(() => {});
-          ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
-        }
-      } catch (readErr: unknown) {
-        console.warn(`[Boardly] User doc read notice at ${path}:`, readErr);
-        const code = (readErr as { code?: string })?.code;
-        if (code === 'permission-denied') {
-          debugTracker.recordPlanLog({
-            action: 'auth_load_profile',
-            status: 'permission_denied',
-            errorCode: code,
-            details: (readErr as Error)?.message,
-          });
-        }
+        ]),
+      ]);
+
+      // SECURITY (Requirements 2, 4, 5): Read roles ONLY from verified Firebase Auth ID token
+      // (custom claims or verified owner email). Fail closed on any error.
+      let claimSuperAdmin = false;
+      let claimAdmin = false;
+      let claimCaptain = false;
+      let claimVerified = false;
+      let resolvedRoleSource: RoleResolutionSource = 'none';
+      let resolvedDiagnostics: RoleCheckDiagnostics | undefined;
+      let rawClaims: Record<string, unknown> = {};
+
+      if (claimsOutcome.status === 'fulfilled') {
+        const verifiedClaims = claimsOutcome.value;
+        claimSuperAdmin = verifiedClaims.superAdmin;
+        claimAdmin = verifiedClaims.admin;
+        claimCaptain = verifiedClaims.captain;
+        claimVerified = true;
+        resolvedRoleSource = verifiedClaims.roleSource;
+        resolvedDiagnostics = verifiedClaims.diagnostics;
+        rawClaims = verifiedClaims.rawClaims;
+      } else {
+        console.warn(
+          '[Boardly Auth] Token claims check failed transiently during loadProfile; keeping session fail-closed:',
+          claimsOutcome.reason
+        );
+        setTokenClaims({
+          superAdmin: false,
+          admin: false,
+          captain: false,
+          verified: false,
+          roleSource: 'none',
+          rawClaims: {},
+        });
       }
+
+      if (claimVerified) {
+        setTokenClaims({
+          superAdmin: claimSuperAdmin,
+          admin: claimAdmin,
+          captain: claimCaptain,
+          verified: true,
+          roleSource: resolvedRoleSource,
+          diagnostics: resolvedDiagnostics,
+          rawClaims,
+        });
+      }
+
+      const existingCached =
+        (profileRef.current && profileRef.current.uid === firebaseUser.uid ? profileRef.current : null) ||
+        (() => {
+          const snap = readOptimisticUserSnapshot();
+          return snap && snap.uid === firebaseUser.uid ? snap : null;
+        })();
+
+      const authDisplayName = firebaseUser.displayName?.trim() || '';
+      const existingDisplayName =
+        typeof (existingCached as any)?.displayName === 'string' &&
+        (existingCached as any).displayName.trim() &&
+        (existingCached as any).displayName.trim() !== 'Student'
+          ? (existingCached as any).displayName.trim()
+          : '';
+      const fallbackName = existingDisplayName || authDisplayName;
+
+      const claimDerivedRole: UserProfile['role'] = claimSuperAdmin
+        ? 'super_admin'
+        : claimAdmin
+        ? 'admin'
+        : claimCaptain
+        ? 'captain'
+        : existingCached?.role === 'teacher'
+        ? 'teacher'
+        : 'student';
+
+      const defaultProfile: UserProfile = {
+        ...(profileRef.current && profileRef.current.uid === firebaseUser.uid ? profileRef.current : {}),
+        uid: firebaseUser.uid,
+        email: emailLower,
+        ...(fallbackName ? { displayName: fallbackName, display_name: fallbackName, name: fallbackName } : {}),
+        ...(existingCached?.username ? { username: existingCached.username } : {}),
+        ...(existingCached?.customRole ? { customRole: existingCached.customRole } : {}),
+        photoURL: null,
+        role: claimDerivedRole,
+        plan: claimSuperAdmin ? 'plus' : (existingCached as any)?.plan || 'free',
+        status: 'active',
+        profileCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.profileCompleted),
+        onboardingCompleted: claimSuperAdmin ? true : Boolean((existingCached as any)?.onboardingCompleted),
+        streak: Number((existingCached as any)?.streak || 0),
+      };
+
+      try {
+        let loadedProfile: UserProfile | null = null;
+
+        // 1. Fast path read result (already fetched in parallel with role claims above)
+        try {
+          if (docOutcome.status === 'rejected') {
+            throw docOutcome.reason;
+          }
+          const snap = docOutcome.value;
+          if (snap && typeof snap.exists === 'function' && snap.exists()) {
+            loadedProfile = { ...(snap.data() as UserProfile), photoURL: null };
+          } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
+            // Truly new user: initialize clean defaults including deterministic starter avatar (never copy Google photoURL or write protected fields from client)
+            const seedDisplay = fallbackName || undefined;
+            const starterAvatarKey = getStarterAvatarForUser(firebaseUser.uid).key;
+            const starterEquipped = {
+              avatar: starterAvatarKey,
+              frame: null,
+              banner: null,
+              nameplate: null,
+              effect: null,
+            };
+            const baseUserDoc: UserProfile = {
+              uid: firebaseUser.uid,
+              ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
+              email: emailLower,
+              photoURL: null,
+              avatar: starterAvatarKey,
+              equippedAvatar: starterAvatarKey,
+              equipped: starterEquipped,
+              ownedCosmetics: [starterAvatarKey],
+              role: claimDerivedRole,
+              plan: claimSuperAdmin ? 'plus' : 'free',
+              status: 'active',
+              profileCompleted: claimSuperAdmin ? true : false,
+              onboardingCompleted: claimSuperAdmin ? true : false,
+              streak: 0,
+              shortId: deriveFallbackShortId(firebaseUser.uid),
+            };
+            await setDoc(docRef, {
+              uid: firebaseUser.uid,
+              ...(seedDisplay ? { name: seedDisplay, displayName: seedDisplay } : {}),
+              email: emailLower,
+              photoURL: null,
+              avatar: starterAvatarKey,
+              equippedAvatar: starterAvatarKey,
+              equipped: starterEquipped,
+              ownedCosmetics: [starterAvatarKey],
+              profileCompleted: claimSuperAdmin ? true : false,
+              onboardingCompleted: claimSuperAdmin ? true : false,
+              streak: 0,
+              shortId: baseUserDoc.shortId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            loadedProfile = baseUserDoc;
+            createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+            processAmbassadorReferralOnSignup({
+              newUid: firebaseUser.uid,
+              newEmail: firebaseUser.email ?? '',
+              newName: seedDisplay || emailLower.split('@')[0] || '',
+              newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
+            }).catch(() => {});
+            ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
+          }
+        } catch (readErr: unknown) {
+          console.warn(`[Boardly] User doc read notice at ${path}:`, readErr);
+          const code = (readErr as { code?: string })?.code;
+          if (code === 'permission-denied') {
+            debugTracker.recordPlanLog({
+              action: 'auth_load_profile',
+              status: 'permission_denied',
+              errorCode: code,
+              details: (readErr as Error)?.message,
+            });
+          }
+        }
 
       if (loadedProfile) {
         // Suspension check
@@ -1176,12 +1199,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return merged;
         });
       }
-    } catch (err: unknown) {
-      console.warn(`[Boardly] Firestore profile read fallback at ${path}:`, err);
-      setProfile((prev) => (prev && prev.uid === firebaseUser.uid ? prev : defaultProfile));
-    } finally {
-      setProfileLoading(false);
-    }
+      } catch (err: unknown) {
+        console.warn(`[Boardly] Firestore profile read fallback at ${path}:`, err);
+        setProfile((prev) => (prev && prev.uid === firebaseUser.uid ? prev : defaultProfile));
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    const promise = runLoadProfile().finally(() => {
+      if (inFlightLoadProfileRef.current?.uid === firebaseUser.uid) {
+        inFlightLoadProfileRef.current = null;
+      }
+    });
+    inFlightLoadProfileRef.current = { uid: firebaseUser.uid, promise };
+    return promise;
   }, [createReferralDoc, bootstrapAndReadVerifiedClaims]);
 
   // ── Request 6-digit OTP code from Worker (`/api/auth/send-code`) ─────────
@@ -1663,8 +1695,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isFreshLogin = false,
       syncPasswordLink = false
     ): Promise<boolean> => {
+      const dedupeKey = `${firebaseUser.uid}:${syncPasswordLink ? '1' : '0'}`;
+      if (
+        inFlightVerificationGateRef.current &&
+        inFlightVerificationGateRef.current.uid === firebaseUser.uid &&
+        (inFlightVerificationGateRef.current.key === dedupeKey || !isFreshLogin)
+      ) {
+        return inFlightVerificationGateRef.current.promise;
+      }
+
       setOtpVerificationState((prev) =>
-        prev.status === 'pending' && prev.email === (firebaseUser.email || '')
+        (prev.status === 'pending' || prev.status === 'verified') &&
+        prev.email === (firebaseUser.email || '')
           ? prev
           : {
               status: 'checking',
@@ -1676,6 +1718,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
       );
 
+      const runGate = async (): Promise<boolean> => {
       try {
         const idToken = await firebaseUser.getIdToken(syncPasswordLink);
         const savedTrustedDevice = getStoredTrustedDeviceToken();
@@ -1806,6 +1849,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }));
         return false;
       }
+      };
+
+      const promise = runGate().finally(() => {
+        if (inFlightVerificationGateRef.current?.uid === firebaseUser.uid) {
+          inFlightVerificationGateRef.current = null;
+        }
+      });
+      inFlightVerificationGateRef.current = { uid: firebaseUser.uid, key: dedupeKey, promise };
+      return promise;
     },
     []
   );
@@ -3064,8 +3116,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setAuthStatus('authenticated');
       setUser(loggedInUser);
-      await evaluateUserVerificationGate(loggedInUser, true);
-      await loadProfile(loggedInUser).catch(() => {});
+      // Run verification gate and profile + role claims fetch in parallel (not sequentially)
+      await Promise.all([
+        evaluateUserVerificationGate(loggedInUser, true).catch(() => false),
+        loadProfile(loggedInUser).catch(() => {}),
+      ]);
     },
     [evaluateUserVerificationGate, loadProfile]
   );
@@ -3258,13 +3313,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (credential?.user) {
         setAuthStatus('authenticated');
         setUser(credential.user);
-        await evaluateUserVerificationGate(credential.user, true);
-        // Load profile with timeout; non-fatal if Firestore rules are slow
-        try {
-          await loadProfile(credential.user);
-        } catch (dbErr) {
-          console.warn('[Boardly Auth] Profile sync issue during Google sign-in:', dbErr);
-        }
+        // Run verification gate and profile + role claims fetch in parallel
+        await Promise.all([
+          evaluateUserVerificationGate(credential.user, true).catch(() => false),
+          loadProfile(credential.user).catch((dbErr) => {
+            console.warn('[Boardly Auth] Profile sync issue during Google sign-in:', dbErr);
+          }),
+        ]);
         return credential.user;
       }
       return null;

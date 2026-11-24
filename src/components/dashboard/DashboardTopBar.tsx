@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Sun, Moon, ArrowLeft, Sparkles } from 'lucide-react';
@@ -16,10 +16,8 @@ import {
   DashboardMenuContent,
   clearCachedAuthAndAdminStorage,
 } from './HamburgerMenuSheet';
-
-const LazyHamburgerMenuSheet = lazy(() =>
-  import('./HamburgerMenuSheet').then((m) => ({ default: m.HamburgerMenuSheet }))
-);
+import { prefetchTabRouteAndData } from '@/lib/routePrefetch';
+import { perfMarkStart } from '@/lib/perfMetrics';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
@@ -321,7 +319,12 @@ export function DashboardTopBar({
               {isAdmin && !autoSubPageTitle && (
                 <button
                   type="button"
-                  onClick={() => navigate('/admin')}
+                  onMouseEnter={() => prefetchTabRouteAndData('admin', user?.uid)}
+                  onTouchStart={() => prefetchTabRouteAndData('admin', user?.uid)}
+                  onClick={() => {
+                    perfMarkStart('admin_student_count');
+                    navigate('/admin');
+                  }}
                   className="inline-flex items-center text-[9px] leading-none font-bold hover:underline tracking-tight mt-0.5 text-start cursor-pointer w-fit whitespace-nowrap"
                   style={{
                     fontFamily: 'var(--font-heading)',
@@ -340,6 +343,8 @@ export function DashboardTopBar({
             <button
               type="button"
               data-testid="topbar-ai-mentors-btn"
+              onMouseEnter={() => prefetchTabRouteAndData('ai', user?.uid)}
+              onTouchStart={() => prefetchTabRouteAndData('ai', user?.uid)}
               onClick={() => {
                 if (!user) {
                   requireAuth(t('nav.aiMentors'));
@@ -383,6 +388,8 @@ export function DashboardTopBar({
             <button
               ref={avatarBtnRef}
               type="button"
+              onMouseEnter={() => prefetchTabRouteAndData('profile', user?.uid)}
+              onTouchStart={() => prefetchTabRouteAndData('profile', user?.uid)}
               onClick={handleOpenProfile}
               aria-label={t('nav.viewProfile')}
               title={t('nav.viewProfile')}
@@ -413,15 +420,7 @@ export function DashboardTopBar({
         </div>
       </header>
 
-      {/* Mobile (<640px): Tapping avatar opens the unified Hamburger Bottom Sheet */}
-      {isMobileViewport && menuOpen && (
-        <Suspense fallback={null}>
-          <LazyHamburgerMenuSheet
-            isOpen={menuOpen}
-            onClose={() => setMenuOpen(false)}
-          />
-        </Suspense>
-      )}
+      {/* Mobile (<640px): Menu navigates straight to /settings without a blank lazy sheet */}
 
       {/* Desktop (>=640px): Portal-mounted dimmed/blurred backdrop + Nothing OS Avatar Dropdown */}
       {!isMobileViewport &&

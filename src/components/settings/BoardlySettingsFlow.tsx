@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeftRight,
@@ -47,9 +47,7 @@ import { useTheme, type ThemeSetting } from '@/hooks/useTheme';
 import { useSmoothMode } from '@/utils/smoothMode';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { KobanIcon } from '@/components/koban/KobanIcon';
-import { ProBadgeCustomizer } from '@/components/plans/ProBadgeCustomizer';
-import { PlusBadgeCustomizer } from '@/components/plans/PlusBadgeCustomizer';
-import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
+import { perfMarkEnd } from '@/lib/perfMetrics';
 import {
   readCachedNotificationPrefsForUid,
   writeCachedNotificationPrefsForUid,
@@ -85,8 +83,39 @@ import {
   SettingsConfirmSheet,
   SwitchAccountSheet,
 } from './SettingsSheet';
-import { SecurityCenterPages } from './SecurityCenterPages';
-import { PrivacyCenterPage } from './PrivacyCenterPage';
+
+const LazySecurityCenterPages = lazy(() =>
+  import('./SecurityCenterPages').then((m) => ({ default: m.SecurityCenterPages }))
+);
+const LazyPrivacyCenterPage = lazy(() =>
+  import('./PrivacyCenterPage').then((m) => ({ default: m.PrivacyCenterPage }))
+);
+const LazyProBadgeCustomizer = lazy(() =>
+  import('@/components/plans/ProBadgeCustomizer').then((m) => ({ default: m.ProBadgeCustomizer }))
+);
+const LazyPlusBadgeCustomizer = lazy(() =>
+  import('@/components/plans/PlusBadgeCustomizer').then((m) => ({ default: m.PlusBadgeCustomizer }))
+);
+const LazyKobanStyleCustomizer = lazy(() =>
+  import('@/components/koban/KobanStyleCustomizer').then((m) => ({ default: m.KobanStyleCustomizer }))
+);
+
+function SettingsSubpageSkeleton() {
+  return (
+    <div className="min-h-[60dvh] max-w-[680px] mx-auto px-4 py-6 space-y-4 animate-pulse">
+      <div className="h-7 w-40 rounded-full bg-[var(--surface-hover)]" />
+      <div className="rounded-[28px] p-5 bg-[var(--card)] border border-[var(--border)] space-y-3">
+        <div className="h-4 w-3/4 rounded bg-[var(--surface-hover)]" />
+        <div className="h-4 w-1/2 rounded bg-[var(--surface-hover)]" />
+        <div className="h-12 w-full rounded-2xl bg-[var(--surface-hover)]" />
+      </div>
+      <div className="rounded-[28px] p-5 bg-[var(--card)] border border-[var(--border)] space-y-3">
+        <div className="h-4 w-2/3 rounded bg-[var(--surface-hover)]" />
+        <div className="h-10 w-full rounded-2xl bg-[var(--surface-hover)]" />
+      </div>
+    </div>
+  );
+}
 
 export const BOARDLY_APP_VERSION = 'v1.0.0';
 
@@ -300,6 +329,10 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       }),
     [user?.uid, user?.photoURL, walletEquipped, profile]
   );
+
+  useEffect(() => {
+    perfMarkEnd('menu_open');
+  }, []);
 
   const [section, setSectionState] = useState<SettingsSectionId>(() =>
     mapRouteParamToSection(initialSubPage)
@@ -650,22 +683,26 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   // ── SUB-PAGES ──────────────────────────────────────────────────────────────
   if (section === 'security') {
     return (
-      <SecurityCenterPages
-        onBack={() => setSection('main')}
-        scrollContainer={scrollContainer}
-        onSummaryChange={setSecuritySummary}
-      />
+      <Suspense fallback={<SettingsSubpageSkeleton />}>
+        <LazySecurityCenterPages
+          onBack={() => setSection('main')}
+          scrollContainer={scrollContainer}
+          onSummaryChange={setSecuritySummary}
+        />
+      </Suspense>
     );
   }
 
   if (section === 'privacy') {
     return (
-      <PrivacyCenterPage
-        onBack={() => setSection('main')}
-        onNavigate={navigateTo}
-        onOpenAiPrivacy={() => setSection('boardly-ai')}
-        scrollContainer={scrollContainer}
-      />
+      <Suspense fallback={<SettingsSubpageSkeleton />}>
+        <LazyPrivacyCenterPage
+          onBack={() => setSection('main')}
+          onNavigate={navigateTo}
+          onOpenAiPrivacy={() => setSection('boardly-ai')}
+          scrollContainer={scrollContainer}
+        />
+      </Suspense>
     );
   }
 
@@ -1026,7 +1063,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             boxShadow: 'var(--settings-card-shadow)',
           }}
         >
-          <KobanStyleCustomizer />
+          <Suspense fallback={<div className="h-44 rounded-2xl bg-[var(--surface-hover)] animate-pulse" />}>
+            <LazyKobanStyleCustomizer />
+          </Suspense>
         </div>
       </SettingsPage>
     );
@@ -1047,7 +1086,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             boxShadow: 'var(--settings-card-shadow)',
           }}
         >
-          <ProBadgeCustomizer userDisplayName={currentDisplayName} />
+          <Suspense fallback={<div className="h-44 rounded-2xl bg-[var(--surface-hover)] animate-pulse" />}>
+            <LazyProBadgeCustomizer userDisplayName={currentDisplayName} />
+          </Suspense>
         </div>
       </SettingsPage>
     );
@@ -1068,7 +1109,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             boxShadow: 'var(--settings-card-shadow)',
           }}
         >
-          <PlusBadgeCustomizer userDisplayName={currentDisplayName} />
+          <Suspense fallback={<div className="h-44 rounded-2xl bg-[var(--surface-hover)] animate-pulse" />}>
+            <LazyPlusBadgeCustomizer userDisplayName={currentDisplayName} />
+          </Suspense>
         </div>
       </SettingsPage>
     );

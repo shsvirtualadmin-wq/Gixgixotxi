@@ -60,11 +60,30 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
       break;
     }
     case 'menu':
+    case 'settings': {
+      void import('@/pages/dashboard/SettingsPage').catch(() => {});
+      void import('@/components/settings/BoardlySettingsFlow').catch(() => {});
+      break;
+    }
     case 'rewards': {
       void import('@/pages/RewardsPage').catch(() => {});
       void import('@/services/rewardsService')
         .then((m) => m.prefetchRewardsSummary(uid))
         .catch(() => {});
+      break;
+    }
+    case 'store': {
+      void import('@/pages/store/StorePage').catch(() => {});
+      break;
+    }
+    case 'ai': {
+      void import('@/pages/dashboard/AiMentorsPage').catch(() => {});
+      break;
+    }
+    case 'admin': {
+      void import('@/components/admin/AdminGuard').catch(() => {});
+      void import('@/components/admin/AdminLayout').catch(() => {});
+      void import('@/pages/admin/AdminOverviewPage').catch(() => {});
       break;
     }
     default:
@@ -75,8 +94,8 @@ export function prefetchTabRouteAndData(tabId: string, uid?: string | null): voi
 let idlePrefetchScheduled = false;
 
 /**
- * Schedules background prefetching of core dock tabs and Rewards summary after initial paint + idle
- * so the first tap on any bottom-nav tab or the Rewards page is instant.
+ * Schedules background prefetching of all bottom-nav tabs (including Menu/Settings)
+ * and heavy pages during idle time after initial paint so switching tabs feels instant.
  */
 export function scheduleIdleTabPrefetch(uid?: string | null): void {
   if (typeof window === 'undefined' || idlePrefetchScheduled) return;
@@ -89,22 +108,35 @@ export function scheduleIdleTabPrefetch(uid?: string | null): void {
   }
   idlePrefetchScheduled = true;
 
-  const runPrefetch = () => {
-    const tabs = ['commons', 'home', 'rewards', 'streaks', 'messages', 'crew'];
-    tabs.forEach((tab, idx) => {
-      setTimeout(() => {
-        prefetchTabRouteAndData(tab, uid);
-      }, idx * 160);
-    });
+  const scheduleIdle = (cb: () => void, timeout: number) => {
+    if ('requestIdleCallback' in window) {
+      (
+        window as Window & {
+          requestIdleCallback: (fn: () => void, opts?: { timeout: number }) => number;
+        }
+      ).requestIdleCallback(cb, { timeout });
+    } else {
+      setTimeout(cb, Math.min(timeout, 600));
+    }
   };
 
-  if ('requestIdleCallback' in window) {
-    (
-      window as Window & {
-        requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number;
-      }
-    ).requestIdleCallback(runPrefetch, { timeout: 2000 });
-  } else {
-    setTimeout(runPrefetch, 900);
-  }
+  // Phase 1: Core bottom-nav tabs & hamburger menu (high priority after first paint)
+  scheduleIdle(() => {
+    const coreTabs = ['menu', 'commons', 'messages', 'streaks', 'crew', 'home'];
+    coreTabs.forEach((tab, idx) => {
+      setTimeout(() => {
+        prefetchTabRouteAndData(tab, uid);
+      }, idx * 120);
+    });
+  }, 1200);
+
+  // Phase 2: Heavy secondary pages preloaded gently in idle time
+  scheduleIdle(() => {
+    const secondary = ['profile', 'practice', 'store', 'rewards', 'ai'];
+    secondary.forEach((tab, idx) => {
+      setTimeout(() => {
+        prefetchTabRouteAndData(tab, uid);
+      }, idx * 260);
+    });
+  }, 3500);
 }

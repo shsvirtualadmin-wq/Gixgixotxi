@@ -399,113 +399,94 @@ function AppInner() {
           <Route path="*" element={<AdminUsersPage />} />
         </Route>
 
-        {/* Dashboard shell (Student Portal) — Login-only, noindex */}
-        <Route path="/dashboard" element={<DashboardShell />}>
-          <Route index element={<OverviewPage />} />
-          <Route path="commons" element={<CommonsFeedPage />} />
-          <Route path="formulas" element={<FormulaVaultPage />} />
-          <Route path="formulas/:formulaId" element={<FormulaVaultPage />} />
-          <Route path="formula-vault" element={<FormulaVaultPage />} />
-          <Route path="formula-vault/:formulaId" element={<FormulaVaultPage />} />
-          <Route path="practice" element={<PracticePage />} />
-          <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="messages" element={<MessagesPage />} />
-          <Route path="messages/:conversationId" element={<MessagesPage />} />
-          <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
-          <Route path="streaks" element={<StreaksPage />} />
-          <Route path="history" element={<ResultsListPage />} />
-          <Route path="history/:attemptId" element={<TestResultPage />} />
-          <Route path="results" element={<ResultsListPage />} />
-          <Route path="results/:attemptId" element={<TestResultPage />} />
-          <Route path="certificates" element={<MyCertificatesPage />} />
-          <Route path="store" element={<StorePage />} />
-          <Route path="store/item/:item" element={<StoreItemDetailPage />} />
-          <Route path="store/:item" element={<StoreItemDetailPage />} />
-          <Route path="locker" element={<LockerPage />} />
-          <Route path="rewards" element={<Navigate to="/rewards" replace />} />
-          <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
-          <Route path="arena" element={<ArenaDashboardPage />} />
-          <Route path="ai" element={<AiMentorsPage />} />
-          <Route path="ai-tutor" element={<Navigate to="/dashboard/ai" replace />} />
-          <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
-          <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
-          <Route path="crew" element={<CrewDashboardPage />} />
-          <Route
-            path="captain"
-            element={
-              <RoleGuard requiredRole="captain">
-                <AmbassadorDashboardPage />
-              </RoleGuard>
-            }
-          />
-          <Route
-            path="ambassador"
-            element={
-              <RoleGuard requiredRole="captain">
-                <AmbassadorDashboardPage />
-              </RoleGuard>
-            }
-          />
-          <Route path="plan" element={<PlansBillingPage />} />
-          <Route path="plans" element={<PlansBillingPage />} />
-          <Route path="profile" element={<Navigate to="/profile" replace />} />
-          <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
-          <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
-          <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="settings/:subPage" element={<SettingsPage />} />
-          <Route path="menu" element={<Navigate to="/settings" replace />} />
-          <Route path="contact" element={<Navigate to="/contact" replace />} />
-          <Route path="*" element={<NotFoundPage />} />
+        {/* Single Persistent DashboardShell Layout — prevents shell unmount/remount across /dashboard, /settings (Menu), /profile, /messages, /crew, etc. */}
+        <Route element={<DashboardShell />}>
+          {/* Dashboard shell (Student Portal) — Login-only, noindex */}
+          <Route path="/dashboard">
+            <Route index element={<OverviewPage />} />
+            <Route path="commons" element={<CommonsFeedPage />} />
+            <Route path="formulas" element={<FormulaVaultPage />} />
+            <Route path="formulas/:formulaId" element={<FormulaVaultPage />} />
+            <Route path="formula-vault" element={<FormulaVaultPage />} />
+            <Route path="formula-vault/:formulaId" element={<FormulaVaultPage />} />
+            <Route path="practice" element={<PracticePage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="messages" element={<MessagesPage />} />
+            <Route path="messages/:conversationId" element={<MessagesPage />} />
+            <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
+            <Route path="streaks" element={<StreaksPage />} />
+            <Route path="history" element={<ResultsListPage />} />
+            <Route path="history/:attemptId" element={<TestResultPage />} />
+            <Route path="results" element={<ResultsListPage />} />
+            <Route path="results/:attemptId" element={<TestResultPage />} />
+            <Route path="certificates" element={<MyCertificatesPage />} />
+            <Route path="store" element={<StorePage />} />
+            <Route path="store/item/:item" element={<StoreItemDetailPage />} />
+            <Route path="store/:item" element={<StoreItemDetailPage />} />
+            <Route path="locker" element={<LockerPage />} />
+            <Route path="rewards" element={<Navigate to="/rewards" replace />} />
+            <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
+            <Route path="arena" element={<ArenaDashboardPage />} />
+            <Route path="ai" element={<AiMentorsPage />} />
+            <Route path="ai-tutor" element={<Navigate to="/dashboard/ai" replace />} />
+            <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
+            <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
+            <Route path="crew" element={<CrewDashboardPage />} />
+            <Route
+              path="captain"
+              element={
+                <RoleGuard requiredRole="captain">
+                  <AmbassadorDashboardPage />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="ambassador"
+              element={
+                <RoleGuard requiredRole="captain">
+                  <AmbassadorDashboardPage />
+                </RoleGuard>
+              }
+            />
+            <Route path="plan" element={<PlansBillingPage />} />
+            <Route path="plans" element={<PlansBillingPage />} />
+            <Route path="profile" element={<Navigate to="/profile" replace />} />
+            <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
+            <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
+            <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/:subPage" element={<SettingsPage />} />
+            <Route path="menu" element={<Navigate to="/settings" replace />} />
+            <Route path="contact" element={<Navigate to="/contact" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+
+          {/* Dedicated Login-Only Top-Level Routes (sharing the same persistent DashboardShell) */}
+          <Route path="/practice" element={<PracticePage />} />
+          <Route path="/results" element={<ResultsListPage />} />
+          <Route path="/certificates" element={<MyCertificatesPage />} />
+          <Route path="/commons/new" element={<CommonsFeedPage initialCompose={true} />} />
+          <Route path="/messages" element={<MessagesPage />} />
+          <Route path="/messages/:conversationId" element={<MessagesPage />} />
+          <Route path="/locker" element={<LockerPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/saved" element={<CommonsFeedPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/:subPage" element={<SettingsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/profile/edit" element={<ProfilePage />} />
+          <Route path="/wallet" element={<PlansBillingPage />} />
+          <Route path="/checkout" element={<PlansBillingPage />} />
+          <Route path="/crew/my" element={<CrewDashboardPage />} />
+          <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
         </Route>
 
-        {/* Dedicated Login-Only Top-Level Routes (wrapped in DashboardShell, noindex) */}
-        <Route path="/practice" element={<DashboardShell />}>
-          <Route index element={<PracticePage />} />
-        </Route>
-        <Route path="/results" element={<DashboardShell />}>
-          <Route index element={<ResultsListPage />} />
-        </Route>
-        <Route path="/certificates" element={<DashboardShell />}>
-          <Route index element={<MyCertificatesPage />} />
-        </Route>
-        <Route path="/commons/new" element={<DashboardShell />}>
-          <Route index element={<CommonsFeedPage initialCompose={true} />} />
-        </Route>
-        <Route path="/messages" element={<DashboardShell />}>
-          <Route index element={<MessagesPage />} />
-          <Route path=":conversationId" element={<MessagesPage />} />
-        </Route>
-        <Route path="/locker" element={<DashboardShell />}>
-          <Route index element={<LockerPage />} />
-        </Route>
-        <Route path="/notifications" element={<DashboardShell />}>
-          <Route index element={<NotificationsPage />} />
-        </Route>
-        <Route path="/saved" element={<DashboardShell />}>
-          <Route index element={<CommonsFeedPage />} />
-        </Route>
+        {/* Legacy profile/settings/menu redirects */}
         <Route path="/settings/profile-layout" element={<Navigate to="/profile" replace />} />
         <Route path="/settings/layout" element={<Navigate to="/profile" replace />} />
         <Route path="/profile/layout" element={<Navigate to="/profile" replace />} />
         <Route path="/profile-layout" element={<Navigate to="/profile" replace />} />
-        <Route path="/settings" element={<DashboardShell />}>
-          <Route index element={<SettingsPage />} />
-          <Route path=":subPage" element={<SettingsPage />} />
-        </Route>
         <Route path="/menu" element={<Navigate to="/settings" replace />} />
-        <Route path="/profile" element={<DashboardShell />}>
-          <Route index element={<ProfilePage />} />
-        </Route>
-        <Route path="/profile/edit" element={<DashboardShell />}>
-          <Route index element={<ProfilePage />} />
-        </Route>
-        <Route path="/wallet" element={<DashboardShell />}>
-          <Route index element={<PlansBillingPage />} />
-        </Route>
-        <Route path="/checkout" element={<DashboardShell />}>
-          <Route index element={<PlansBillingPage />} />
-        </Route>
 
         {/* Global shortcuts for plans */}
         <Route path="/plan" element={<Navigate to="/dashboard/plan" replace />} />
@@ -521,13 +502,6 @@ function AppInner() {
         {/* Onboarding — uses OnboardingShell */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Crew Login-Only Routes */}
-        <Route path="/crew/my" element={<DashboardShell />}>
-          <Route index element={<CrewDashboardPage />} />
-        </Route>
-        <Route path="/crew/dashboard" element={<DashboardShell />}>
-          <Route index element={<CrewDashboardPage />} />
-        </Route>
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
 

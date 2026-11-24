@@ -11578,11 +11578,13 @@ button.section-chip:active:not(:disabled),
 }
 
 .page-slide-left {
-  animation: page-slide-in-left 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: page-slide-in-left 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
 }
 
 .page-slide-right {
-  animation: page-slide-in-right 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: page-slide-in-right 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
 }
 
 /* 5. Segmented Control in a Glass Track with Shared Liquid Stretch Thumb */

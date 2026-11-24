@@ -62,7 +62,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
 import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
@@ -1069,13 +1069,14 @@ export function AdminUsersPage() {
       setHasMore(cached.hasMore);
       setLoadState('loaded');
       setLoading(false);
-      if (Date.now() - cached.loadedAt > 30_000 && !selectedUser) {
+      // Silently revalidate in background if hydrated from sessionStorage or stale (> 30s)
+      if (cached.fromSessionStorage || Date.now() - cached.loadedAt > 30_000) {
         void loadUsers({ sortOverride: sortBy });
       }
     } else {
       void loadUsers({ sortOverride: sortBy });
     }
-  }, [profileLoading, user, isAdmin, canViewUsers, sortBy, loadUsers, selectedUser]);
+  }, [profileLoading, user, isAdmin, canViewUsers, sortBy, loadUsers]);
 
   const handleSortChange = (nextSort: AdminUserSortKey) => {
     if (nextSort === sortBy) return;
@@ -2082,7 +2083,7 @@ export function AdminUsersPage() {
                     No users match your current filters
                   </p>
                   <p className="font-heading text-[12px] text-[var(--muted)]">
-                    Try adjusting or clearing your filters{hasMore ? ', or load the next 50 users' : ''}.
+                    Try adjusting or clearing your filters{hasMore ? `, or load the next ${PAGE_SIZE} users` : ''}.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-center pt-1">
@@ -2102,7 +2103,7 @@ export function AdminUsersPage() {
                       disabled={loadingMore}
                       className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] cursor-pointer disabled:opacity-50"
                     >
-                      {loadingMore ? 'Loading...' : 'Load next 50'}
+                      {loadingMore ? 'Loading...' : `Load next ${PAGE_SIZE}`}
                     </button>
                   )}
                 </div>
@@ -2235,7 +2236,7 @@ export function AdminUsersPage() {
                             </p>
                             <p className="font-heading text-[12px] text-[var(--muted)]">
                               Adjust or reset your filters to view the directory
-                              {hasMore ? ', or load the next 50 users from the database' : ''}.
+                              {hasMore ? `, or load the next ${PAGE_SIZE} users from the database` : ''}.
                             </p>
                           </div>
                           <div className="flex items-center gap-2 pt-1">
@@ -2255,7 +2256,7 @@ export function AdminUsersPage() {
                                 disabled={loadingMore}
                                 className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] hover:border-white/35 cursor-pointer disabled:opacity-50"
                               >
-                                {loadingMore ? 'Loading...' : 'Load next 50 users'}
+                                {loadingMore ? 'Loading...' : `Load next ${PAGE_SIZE} users`}
                               </button>
                             )}
                           </div>
@@ -2288,11 +2289,11 @@ export function AdminUsersPage() {
             </div>
           </div>
 
-          {/* ─── PAGINATION & LOAD MORE FOOTER (50 PER PAGE) ────────────────── */}
+          {/* ─── PAGINATION & LOAD MORE FOOTER (20 PER PAGE) ────────────────── */}
           {!isTableBusy && (filteredUsers.length > 0 || hasMore) && (
             <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-4 text-xs font-mono text-[var(--muted)]">
               <span>
-                {resultSummaryText} &middot; 50 per page
+                {resultSummaryText} &middot; {PAGE_SIZE} per page
               </span>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -2333,7 +2334,9 @@ export function AdminUsersPage() {
                     disabled={loadingMore}
                     className="press-scale relative overflow-hidden inline-flex items-center justify-center gap-2 h-9 px-4 rounded-[12px] border border-[#D71921]/45 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[12px] font-heading font-semibold text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[140px]"
                   >
-                    <span>{loadingMore ? 'Loading next 50...' : 'Load more (50)'}</span>
+                    <span>
+                      {loadingMore ? `Loading next ${PAGE_SIZE}...` : `Load more (${PAGE_SIZE})`}
+                    </span>
                     {loadingMore && <ButtonLineLoader />}
                   </button>
                 )}

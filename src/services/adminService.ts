@@ -339,6 +339,74 @@ export interface CachedAdminUsersDirectory {
   hasMore: boolean;
   loadedAt: number;
   queryTimeMs: number;
+  fromSessionStorage?: boolean;
+}
+
+const ADMIN_SWR_FRESH_MS = 45_000;
+const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
+const ADMIN_STATS_SESSION_KEY = 'boardly_admin_stats_swr_v1';
+const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v1';
+const ADMIN_PLAN_ANALYTICS_SESSION_KEY = 'boardly_admin_plan_analytics_swr_v1';
+
+function readAdminSessionCache<T>(key: string): { at: number; data: T } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { at?: number; data?: T };
+    if (!parsed || typeof parsed.at !== 'number' || !parsed.data) return null;
+    if (Date.now() - parsed.at > ADMIN_SESSION_MAX_AGE_MS) return null;
+    return { at: parsed.at, data: parsed.data };
+  } catch {
+    return null;
+  }
+}
+
+function writeAdminSessionCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
+  } catch {
+    // ignore quota / private-mode storage failures
+  }
+}
+
+function projectUserForListCache(u: UserProfile): UserProfile {
+  return {
+    uid: u.uid,
+    email: u.email,
+    username: (u as any).username,
+    displayName: u.displayName,
+    display_name: (u as any).display_name,
+    name: u.name,
+    realName: (u as any).realName,
+    shortId: u.shortId,
+    role: u.role,
+    plan: u.plan,
+    planTier: (u as any).planTier,
+    isPremium: (u as any).isPremium,
+    isPro: (u as any).isPro,
+    isPlus: (u as any).isPlus,
+    suspended: u.suspended,
+    isSuspended: (u as any).isSuspended,
+    isGuest: u.isGuest,
+    accountType: u.accountType,
+    targetUniversity: u.targetUniversity,
+    totalQuestionsSolved: u.totalQuestionsSolved,
+    streak: u.streak,
+    createdAt: u.createdAt,
+    lastActiveAt: u.lastActiveAt,
+    avatar: u.avatar,
+    equipped: u.equipped ? { avatar: u.equipped.avatar } : undefined,
+    twoFactorStatus: u.twoFactorStatus,
+    proBadgeDesign: (u as any).proBadgeDesign,
+    proBadgeVisible: (u as any).proBadgeVisible,
+    proBadge: (u as any).proBadge,
+    plus_badge_design: (u as any).plus_badge_design,
+    plus_badge_visible: (u as any).plus_badge_visible,
+    plus_badge_id: (u as any).plus_badge_id,
+    plusBadge: (u as any).plusBadge,
+  } as unknown as UserProfile;
 }
 
 let cachedAdminStats: AdminStats | null = null;
@@ -349,11 +417,29 @@ let inFlightUsersFirstPagePromise: Promise<PaginatedUsersResult> | null = null;
 let cachedUsersCollectionCount: { count: number; fetchedAt: number } | null = null;
 
 export function getCachedAdminStats(): AdminStats | null {
-  return cachedAdminStats;
+  if (cachedAdminStats) return cachedAdminStats;
+  const restored = readAdminSessionCache<AdminStats>(ADMIN_STATS_SESSION_KEY);
+  if (restored) {
+    cachedAdminStats = restored.data;
+    return cachedAdminStats;
+  }
+  return null;
 }
 
 export function getCachedAdminUsersState(): CachedAdminUsersDirectory | null {
-  return cachedAdminUsersDirectory;
+  if (cachedAdminUsersDirectory) return cachedAdminUsersDirectory;
+  const restored = readAdminSessionCache<Omit<CachedAdminUsersDirectory, 'lastDoc'>>(
+    ADMIN_USERS_P1_SESSION_KEY
+  );
+  if (restored) {
+    cachedAdminUsersDirectory = {
+      ...restored.data,
+      lastDoc: null,
+      fromSessionStorage: true,
+    };
+    return cachedAdminUsersDirectory;
+  }
+  return null;
 }
 
 function computeUserDirectoryBreakdown(
@@ -739,13 +825,13 @@ export async function fetchServerAdminStatsSnapshot(force = false): Promise<{
   stats: Record<string, any> | null;
   errorMessage?: string;
 }> {
-  if (!force && serverAdminStatsCache && Date.now() - serverAdminStatsCache.at < 5000) {
+  if (!force && serverAdminStatsCache && Date.now() - serverAdminStatsCache.at < ADMIN_SWR_FRESH_MS) {
     return serverAdminStatsCache.res;
   }
   if (!force && serverAdminStatsInFlight) {
     return serverAdminStatsInFlight;
   }
-  serverAdminStatsInFlight = (async () => {
+  const fetchPromise = (async () => {
     const resp = await fetchAdminJsonWithRetry<{ ok?: boolean; stats?: Record<string, any>; error?: any }>(
       '/api/admin/stats'
     );
@@ -757,12 +843,21 @@ export async function fetchServerAdminStatsSnapshot(force = false): Promise<{
         resp.errorMessage ||
         (typeof resp.data?.error === 'string' ? resp.data.error : resp.data?.error?.message),
     };
-    serverAdminStatsCache = { at: Date.now(), res: out };
+    if (out.ok) {
+      serverAdminStatsCache = { at: Date.now(), res: out };
+    }
     return out;
   })().finally(() => {
     serverAdminStatsInFlight = null;
   });
-  return serverAdminStatsInFlight;
+  serverAdminStatsInFlight = fetchPromise;
+
+  // Stale-while-revalidate: return stale cached snapshot immediately while refreshing in background
+  if (!force && serverAdminStatsCache && serverAdminStatsCache.res.ok) {
+    void fetchPromise.catch(() => {});
+    return serverAdminStatsCache.res;
+  }
+  return fetchPromise;
 }
 
 async function strictCountOrThrow(
@@ -785,7 +880,7 @@ async function strictCountOrThrow(
           const tErr: any = new Error(`Timed out reading ${collectionLabel}`);
           tErr.code = 'DEADLINE_EXCEEDED';
           reject(tErr);
-        }, 2500)
+        }, 1500)
       ),
     ]);
     if (snap && typeof snap.data === 'function') {
@@ -797,13 +892,17 @@ async function strictCountOrThrow(
   try {
     const c = await tryFirestoreCount(false);
     if (typeof c === 'number') return c;
-  } catch (err1) {
+  } catch (err1: any) {
     firestoreErr = err1;
-    try {
-      const c2 = await tryFirestoreCount(true);
-      if (typeof c2 === 'number') return c2;
-    } catch (err2) {
-      firestoreErr = err2;
+    const code = String(err1?.code || '');
+    // Only retry with forced token refresh on auth/permission failures, never on slow timeouts
+    if (code === 'permission-denied' || code === 'unauthenticated') {
+      try {
+        const c2 = await tryFirestoreCount(true);
+        if (typeof c2 === 'number') return c2;
+      } catch (err2) {
+        firestoreErr = err2;
+      }
     }
   }
 
@@ -836,6 +935,20 @@ let inFlightOverviewUsersCard: Promise<{
   guestCount: number | null;
   previewUsers: UserProfile[];
 }> | null = null;
+let cachedOverviewUsersCard: {
+  at: number;
+  data: {
+    totalUsers: number;
+    studentCount: number | null;
+    captainCount: number | null;
+    freeCount: number | null;
+    proCount: number | null;
+    plusCount: number | null;
+    expiringSoonCount: number | null;
+    guestCount: number | null;
+    previewUsers: UserProfile[];
+  };
+} | null = null;
 let inFlightOverviewQuestionsCard: Promise<{ totalQuestions: number }> | null = null;
 let inFlightOverviewAttemptsCard: Promise<{ totalAttempts: number }> | null = null;
 let inFlightOverviewApplicationsCard: Promise<{
@@ -846,6 +959,21 @@ let inFlightOverviewApplicationsCard: Promise<{
 let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
 let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
 let inFlightOverviewSubjectsCard: Promise<{ subjectCounts: Record<string, number> }> | null = null;
+
+async function safeCountQuery(
+  targetQuery: Parameters<typeof getCountFromServer>[0],
+  timeoutMs = 1500
+): Promise<number | null> {
+  try {
+    const snap = await Promise.race([
+      getCountFromServer(targetQuery),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('count-timeout')), timeoutMs)),
+    ]);
+    return snap && typeof snap.data === 'function' ? Number(snap.data().count) : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function fetchOverviewUsersCard(options?: { force?: boolean }): Promise<{
   totalUsers: number;
@@ -858,27 +986,37 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
   guestCount: number | null;
   previewUsers: UserProfile[];
 }> {
+  if (
+    !options?.force &&
+    cachedOverviewUsersCard &&
+    Date.now() - cachedOverviewUsersCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewUsersCard.data;
+  }
   if (!options?.force && inFlightOverviewUsersCard) {
     return inFlightOverviewUsersCard;
   }
   const run = async () => {
-    const [usersCountResult, usersPageResult, srvSnapshot] = await Promise.allSettled([
-      strictCountOrThrow(collection(db, 'users'), 'firestore:users', 'totalUsers', Boolean(options?.force)),
-      fetchUsersPaginated({ limitCount: 50, force: options?.force }),
-      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-    ]);
+    const usersCol = collection(db, 'users');
+    // Use lightweight count aggregation queries + server stats summary in parallel — NEVER download the user list here
+    const [usersCountResult, proCountRes, plusCountRes, captainCountRes, srvSnapshot] =
+      await Promise.allSettled([
+        strictCountOrThrow(usersCol, 'firestore:users', 'totalUsers', Boolean(options?.force)),
+        safeCountQuery(query(usersCol, where('plan', '==', 'pro'))),
+        safeCountQuery(query(usersCol, where('plan', '==', 'plus'))),
+        safeCountQuery(query(usersCol, where('role', '==', 'captain'))),
+        fetchServerAdminStatsSnapshot(Boolean(options?.force)),
+      ]);
 
     const srv = srvSnapshot.status === 'fulfilled' ? srvSnapshot.value : null;
-    const page = usersPageResult.status === 'fulfilled' ? usersPageResult.value : null;
     const countVal = usersCountResult.status === 'fulfilled' ? usersCountResult.value : null;
+    const proAgg = proCountRes.status === 'fulfilled' ? proCountRes.value : null;
+    const plusAgg = plusCountRes.status === 'fulfilled' ? plusCountRes.value : null;
+    const captainAgg = captainCountRes.status === 'fulfilled' ? captainCountRes.value : null;
 
-    if (countVal === null && !page && (!srv || !srv.ok || !srv.stats)) {
+    if (countVal === null && (!srv || !srv.ok || !srv.stats)) {
       const errReason: any =
-        usersCountResult.status === 'rejected'
-          ? usersCountResult.reason
-          : usersPageResult.status === 'rejected'
-          ? usersPageResult.reason
-          : null;
+        usersCountResult.status === 'rejected' ? usersCountResult.reason : null;
       if (errReason instanceof AdminStatCardError) throw errReason;
       throw new AdminStatCardError(
         'firestore:users | GET /api/admin/stats',
@@ -890,31 +1028,79 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
     const directoryState = getCachedAdminUsersState();
     const totalUsers = Math.max(
       countVal ?? 0,
-      page?.totalCount ?? 0,
       directoryState?.totalCount ?? 0,
       Number(srv?.stats?.totalUsers ?? 0)
     );
 
-    const resolveKnownCount = (dirVal: number | undefined, srvVal: unknown): number | null => {
-      if (typeof dirVal === 'number') return dirVal;
+    const resolveKnownCount = (
+      aggVal: number | null,
+      srvVal: unknown,
+      dirVal: number | undefined
+    ): number | null => {
       if (typeof srvVal === 'number' && Number.isFinite(srvVal)) return srvVal;
+      if (typeof aggVal === 'number' && Number.isFinite(aggVal)) return aggVal;
+      if (typeof dirVal === 'number') return dirVal;
       return null;
     };
 
-    return {
+    const proCount = resolveKnownCount(proAgg, srv?.stats?.proCount, directoryState?.proCount);
+    const plusCount = resolveKnownCount(plusAgg, srv?.stats?.plusCount, directoryState?.plusCount);
+    const captainCount = resolveKnownCount(
+      captainAgg,
+      srv?.stats?.captainCount,
+      directoryState?.captainCount
+    );
+    const guestCount = resolveKnownCount(null, srv?.stats?.guestCount, directoryState?.guestCount);
+    const derivedFree =
+      typeof srv?.stats?.freeCount === 'number' && Number.isFinite(srv.stats.freeCount)
+        ? Number(srv.stats.freeCount)
+        : proCount !== null && plusCount !== null
+        ? Math.max(0, totalUsers - proCount - plusCount - (guestCount ?? 0))
+        : directoryState?.freeCount ?? null;
+
+    const data = {
       totalUsers,
-      studentCount: resolveKnownCount(directoryState?.studentCount, srv?.stats?.studentCount),
-      captainCount: resolveKnownCount(directoryState?.captainCount, srv?.stats?.captainCount),
-      freeCount: resolveKnownCount(directoryState?.freeCount, srv?.stats?.freeCount),
-      proCount: resolveKnownCount(directoryState?.proCount, srv?.stats?.proCount),
-      plusCount: resolveKnownCount(directoryState?.plusCount, srv?.stats?.plusCount),
-      expiringSoonCount: resolveKnownCount(
-        directoryState?.expiringSoonCount,
-        srv?.stats?.expiringSoonCount
+      studentCount: resolveKnownCount(
+        captainCount !== null ? Math.max(0, totalUsers - captainCount) : null,
+        srv?.stats?.studentCount,
+        directoryState?.studentCount
       ),
-      guestCount: resolveKnownCount(directoryState?.guestCount, srv?.stats?.guestCount),
-      previewUsers: page?.users ?? directoryState?.users ?? [],
+      captainCount,
+      freeCount: derivedFree,
+      proCount,
+      plusCount,
+      expiringSoonCount: resolveKnownCount(
+        null,
+        srv?.stats?.expiringSoonCount,
+        directoryState?.expiringSoonCount
+      ),
+      guestCount,
+      previewUsers: directoryState?.users ?? [],
     };
+
+    cachedOverviewUsersCard = { at: Date.now(), data };
+    cachedAdminStats = {
+      ...(cachedAdminStats || {
+        totalUsers: 0,
+        totalQuestions: 0,
+        totalAttempts: 0,
+        pendingCaptains: 0,
+        pendingCrew: 0,
+        pendingPayments: 0,
+        pendingReviews: 0,
+        subjectCounts: {},
+      }),
+      totalUsers: data.totalUsers,
+      studentCount: data.studentCount ?? undefined,
+      captainCount: data.captainCount ?? undefined,
+      freeCount: data.freeCount ?? undefined,
+      proCount: data.proCount ?? undefined,
+      plusCount: data.plusCount ?? undefined,
+      expiringSoonCount: data.expiringSoonCount ?? undefined,
+      guestCount: data.guestCount ?? undefined,
+    };
+    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
+    return data;
   };
   inFlightOverviewUsersCard = run().finally(() => {
     inFlightOverviewUsersCard = null;
@@ -1138,6 +1324,7 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
     };
 
     cachedAdminStats = result;
+    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, result);
     return result;
   };
 
@@ -1195,7 +1382,7 @@ export async function fetchUsersPaginated(options?: {
   sortBy?: AdminUserSortKey;
   force?: boolean;
 }): Promise<PaginatedUsersResult> {
-  const count = Math.min(Math.max(1, options?.limitCount ?? 50), 100);
+  const count = Math.min(Math.max(1, options?.limitCount ?? 20), 100);
   const sortBy: AdminUserSortKey = options?.sortBy ?? 'newest';
   const hasSearch = Boolean(options?.searchQuery && options.searchQuery.trim());
   const isFirstPage = !options?.startAfterDoc;
@@ -1205,7 +1392,27 @@ export async function fetchUsersPaginated(options?: {
     sortBy === 'newest' &&
     (!options?.role || options.role === 'all') &&
     (!options?.plan || options.plan === 'all') &&
-    count === 50;
+    count === 20;
+
+  // Return fresh in-memory first-page cache immediately (45s SWR) unless forced
+  if (
+    isDefaultFirstPage &&
+    !options?.force &&
+    cachedAdminUsersDirectory &&
+    !cachedAdminUsersDirectory.fromSessionStorage &&
+    Date.now() - cachedAdminUsersDirectory.loadedAt < ADMIN_SWR_FRESH_MS
+  ) {
+    return {
+      users: cachedAdminUsersDirectory.users,
+      totalCount: cachedAdminUsersDirectory.totalCount,
+      user2faMap: cachedAdminUsersDirectory.user2faMap,
+      securityLogs: cachedAdminUsersDirectory.securityLogs,
+      lastDoc: cachedAdminUsersDirectory.lastDoc,
+      hasMore: cachedAdminUsersDirectory.hasMore,
+      queryTimeMs: 0,
+      sortBy,
+    };
+  }
 
   if (isDefaultFirstPage && inFlightUsersFirstPagePromise && !options?.force) {
     return inFlightUsersFirstPagePromise;
@@ -1714,8 +1921,26 @@ export async function fetchUsersPaginated(options?: {
           hasMore,
           loadedAt: Date.now(),
           queryTimeMs,
+          fromSessionStorage: false,
         };
         syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
+        // Save compact list-only snapshot to sessionStorage for instant reopen (SWR)
+        const compactUsers = sortedUsers.slice(0, 20).map(projectUserForListCache);
+        writeAdminSessionCache(ADMIN_USERS_P1_SESSION_KEY, {
+          users: compactUsers,
+          allDirectoryUsers: compactUsers,
+          user2faMap,
+          proBadgesByUid,
+          plusBadgesByUid,
+          securityLogs: [],
+          ...breakdown,
+          totalCount: estimatedTotal,
+          firestoreTotalCount: firestoreCount ?? undefined,
+          sortBy,
+          hasMore,
+          loadedAt: Date.now(),
+          queryTimeMs,
+        });
       }
 
       console.log(
@@ -2663,66 +2888,109 @@ export interface PlanAnalyticsStats {
   proToPlusConversions: number;
 }
 
-export async function fetchPlanAnalyticsStats(): Promise<PlanAnalyticsStats> {
-  const dir = getCachedAdminUsersState();
-  let freeCount = dir?.freeCount ?? 0;
-  let proCount = dir?.proCount ?? 0;
-  let plusCount = dir?.plusCount ?? 0;
-  let expiringSoonCount = dir?.expiringSoonCount ?? 0;
+let cachedPlanAnalytics: { at: number; data: PlanAnalyticsStats } | null = null;
+let inFlightPlanAnalytics: Promise<PlanAnalyticsStats> | null = null;
 
-  if (!dir) {
-    try {
-      const page = await fetchUsersPaginated({ limitCount: 50 });
-      const freshDir = getCachedAdminUsersState();
-      freeCount = freshDir?.freeCount ?? 0;
-      proCount = freshDir?.proCount ?? 0;
-      plusCount = freshDir?.plusCount ?? 0;
-      expiringSoonCount = freshDir?.expiringSoonCount ?? 0;
-      void page;
-    } catch {
-      // ignore fallback
-    }
+export function getCachedPlanAnalyticsStats(): PlanAnalyticsStats | null {
+  if (cachedPlanAnalytics) return cachedPlanAnalytics.data;
+  const restored = readAdminSessionCache<PlanAnalyticsStats>(ADMIN_PLAN_ANALYTICS_SESSION_KEY);
+  if (restored) {
+    cachedPlanAnalytics = restored;
+    return restored.data;
+  }
+  return null;
+}
+
+export async function fetchPlanAnalyticsStats(options?: {
+  force?: boolean;
+}): Promise<PlanAnalyticsStats> {
+  if (
+    !options?.force &&
+    cachedPlanAnalytics &&
+    Date.now() - cachedPlanAnalytics.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedPlanAnalytics.data;
+  }
+  if (!options?.force && inFlightPlanAnalytics) {
+    return inFlightPlanAnalytics;
   }
 
-  let proRevenuePkr = 0;
-  let plusRevenuePkr = 0;
-  let proToPlusConversions = 0;
+  const run = async (): Promise<PlanAnalyticsStats> => {
+    const dir = getCachedAdminUsersState();
+    const cachedStats = getCachedAdminStats();
 
-  try {
-    const snap = await getDocs(
-      query(collection(db, 'paymentRequests'), where('status', '==', 'approved'), limit(500))
-    );
-    for (const d of snap.docs) {
-      const data = d.data() as Record<string, any>;
-      if (data.plan === 'large_crew' || data.crewId) continue;
-      const tier = getPlanTierFromPlanId(data.planId || data.plan || data.planTier);
-      const amt = Math.max(0, Number(data.amount_pkr ?? data.amount ?? 0) || 0);
-      if (tier === 'plus') {
-        plusRevenuePkr += amt;
-        if (
-          data.upgradedFromPro === true ||
-          Number(data.proCreditDays ?? 0) > 0 ||
-          data.previousPlan === 'pro'
-        ) {
-          proToPlusConversions += 1;
+    // Run server stats lookup + approved payment requests in parallel; never download full user docs
+    const [srvRes, paymentsSnap] = await Promise.all([
+      fetchServerAdminStatsSnapshot(Boolean(options?.force)).catch(() => null),
+      getDocs(
+        query(collection(db, 'paymentRequests'), where('status', '==', 'approved'), limit(500))
+      ).catch((err) => {
+        console.warn('[AdminService] fetchPlanAnalyticsStats paymentRequests notice:', err);
+        return null;
+      }),
+    ]);
+
+    const srvStats = srvRes?.ok ? srvRes.stats : null;
+    const freeCount =
+      typeof srvStats?.freeCount === 'number'
+        ? srvStats.freeCount
+        : cachedStats?.freeCount ?? dir?.freeCount ?? 0;
+    const proCount =
+      typeof srvStats?.proCount === 'number'
+        ? srvStats.proCount
+        : cachedStats?.proCount ?? dir?.proCount ?? 0;
+    const plusCount =
+      typeof srvStats?.plusCount === 'number'
+        ? srvStats.plusCount
+        : cachedStats?.plusCount ?? dir?.plusCount ?? 0;
+    const expiringSoonCount =
+      typeof srvStats?.expiringSoonCount === 'number'
+        ? srvStats.expiringSoonCount
+        : cachedStats?.expiringSoonCount ?? dir?.expiringSoonCount ?? 0;
+
+    let proRevenuePkr = 0;
+    let plusRevenuePkr = 0;
+    let proToPlusConversions = 0;
+
+    if (paymentsSnap) {
+      for (const d of paymentsSnap.docs) {
+        const data = d.data() as Record<string, any>;
+        if (data.plan === 'large_crew' || data.crewId) continue;
+        const tier = getPlanTierFromPlanId(data.planId || data.plan || data.planTier);
+        const amt = Math.max(0, Number(data.amount_pkr ?? data.amount ?? 0) || 0);
+        if (tier === 'plus') {
+          plusRevenuePkr += amt;
+          if (
+            data.upgradedFromPro === true ||
+            Number(data.proCreditDays ?? 0) > 0 ||
+            data.previousPlan === 'pro'
+          ) {
+            proToPlusConversions += 1;
+          }
+        } else {
+          proRevenuePkr += amt;
         }
-      } else {
-        proRevenuePkr += amt;
       }
     }
-  } catch (err) {
-    console.warn('[AdminService] fetchPlanAnalyticsStats paymentRequests notice:', err);
-  }
 
-  return {
-    freeCount,
-    proCount,
-    plusCount,
-    expiringSoonCount,
-    proRevenuePkr,
-    plusRevenuePkr,
-    proToPlusConversions,
+    const result: PlanAnalyticsStats = {
+      freeCount,
+      proCount,
+      plusCount,
+      expiringSoonCount,
+      proRevenuePkr,
+      plusRevenuePkr,
+      proToPlusConversions,
+    };
+    cachedPlanAnalytics = { at: Date.now(), data: result };
+    writeAdminSessionCache(ADMIN_PLAN_ANALYTICS_SESSION_KEY, result);
+    return result;
   };
+
+  inFlightPlanAnalytics = run().finally(() => {
+    inFlightPlanAnalytics = null;
+  });
+  return inFlightPlanAnalytics;
 }
 
 export interface DeleteUserAccountResult {

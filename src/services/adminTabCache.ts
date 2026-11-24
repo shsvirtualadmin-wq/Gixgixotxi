@@ -667,7 +667,7 @@ export function prefetchAdminTabData(rawPath: string, uid?: string): void {
     void fetchAdminOverviewSWR(uid).catch(() => {});
   } else if (cleanPath === '/admin/users') {
     if (!getCachedAdminUsersState()) {
-      void fetchUsersPaginated({ limitCount: 50 }).catch(() => {});
+      void fetchUsersPaginated({ limitCount: 20 }).catch(() => {});
     }
   } else if (cleanPath === '/admin/crews') {
     void fetchAdminCrewsSWR().catch(() => {});

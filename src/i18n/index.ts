@@ -9,26 +9,114 @@ import {
   type TranslationParams,
 } from './types';
 import { en } from './locales/en';
-import { urLatn } from './locales/ur-latn';
-import { ur } from './locales/ur';
-import { es } from './locales/es';
-import { zh } from './locales/zh';
-import { hi } from './locales/hi';
-import { ar } from './locales/ar';
-import { fr } from './locales/fr';
 
 export * from './types';
 
-export const LOCALES: Record<ResolvedLanguage, TranslationDictionary> = {
+export const LOCALES: Partial<Record<ResolvedLanguage, TranslationDictionary>> = {
   en,
-  'ur-latn': urLatn,
-  ur,
-  es,
-  zh,
-  hi,
-  ar,
-  fr,
 };
+
+const localeLoadPromises = new Map<ResolvedLanguage, Promise<TranslationDictionary>>();
+const localeLoadedListeners = new Set<(lang: ResolvedLanguage) => void>();
+
+export function isLocaleLoaded(lang: ResolvedLanguage): boolean {
+  return Boolean(LOCALES[lang]);
+}
+
+export function subscribeLocaleLoaded(listener: (lang: ResolvedLanguage) => void): () => void {
+  localeLoadedListeners.add(listener);
+  return () => {
+    localeLoadedListeners.delete(listener);
+  };
+}
+
+export function ensureLocaleLoaded(lang: ResolvedLanguage): Promise<TranslationDictionary> {
+  if (LOCALES[lang]) {
+    return Promise.resolve(LOCALES[lang]!);
+  }
+  const existing = localeLoadPromises.get(lang);
+  if (existing) return existing;
+
+  const loader = (async (): Promise<TranslationDictionary> => {
+    let dict: TranslationDictionary = en;
+    switch (lang) {
+      case 'ur-latn':
+        dict = (await import('./locales/ur-latn')).urLatn;
+        break;
+      case 'ur':
+        dict = (await import('./locales/ur')).ur;
+        break;
+      case 'es':
+        dict = (await import('./locales/es')).es;
+        break;
+      case 'zh':
+        dict = (await import('./locales/zh')).zh;
+        break;
+      case 'hi':
+        dict = (await import('./locales/hi')).hi;
+        break;
+      case 'ar':
+        dict = (await import('./locales/ar')).ar;
+        break;
+      case 'fr':
+        dict = (await import('./locales/fr')).fr;
+        break;
+      case 'en':
+      default:
+        dict = en;
+        break;
+    }
+    LOCALES[lang] = dict;
+    for (const cb of localeLoadedListeners) {
+      try {
+        cb(lang);
+      } catch {
+        // Ignore subscriber error
+      }
+    }
+    return dict;
+  })().finally(() => {
+    localeLoadPromises.delete(lang);
+  });
+
+  localeLoadPromises.set(lang, loader);
+  return loader;
+}
+
+function ensureScriptFontLoaded(resolved: ResolvedLanguage): void {
+  if (typeof document === 'undefined' || !document.head) return;
+  let href = '';
+  let id = '';
+  if (resolved === 'ur' || resolved === 'ar') {
+    id = 'boardly-script-font-rtl';
+    href =
+      'https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap';
+  } else if (resolved === 'hi') {
+    id = 'boardly-script-font-hi';
+    href =
+      'https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap';
+  } else if (resolved === 'zh') {
+    id = 'boardly-script-font-zh';
+    href =
+      'https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap';
+  }
+  if (!href || !id) return;
+  if (
+    document.getElementById(id) ||
+    document.getElementById(`boardly-script-font-${resolved}`)
+  ) {
+    return;
+  }
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = href;
+  link.media = 'print';
+  link.onload = () => {
+    link.media = 'all';
+  };
+  document.head.appendChild(link);
+}
 
 export const APP_LANGUAGE_STORAGE_KEY = 'boardly_app_language';
 export const APP_LANGUAGE_BY_UID_STORAGE_KEY = 'boardly_app_language_by_uid';
@@ -96,12 +184,16 @@ export function setActiveResolvedLanguage(lang: ResolvedLanguage): void {
 
 export function applyDocumentLanguage(resolved: ResolvedLanguage): void {
   setActiveResolvedLanguage(resolved);
+  if (resolved !== 'en' && !LOCALES[resolved]) {
+    void ensureLocaleLoaded(resolved);
+  }
   if (typeof document === 'undefined') return;
   const meta = getLanguageMeta(resolved);
   const root = document.documentElement;
   root.setAttribute('lang', meta.htmlLang);
   root.setAttribute('dir', meta.dir);
   root.setAttribute('data-lang', resolved);
+  ensureScriptFontLoaded(resolved);
 }
 
 function interpolate(template: string, params?: TranslationParams): string {
