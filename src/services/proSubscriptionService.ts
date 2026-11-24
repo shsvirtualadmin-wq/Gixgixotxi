@@ -12,8 +12,6 @@ import {
 import { db, auth } from '@/lib/firebase';
 import {
   validateCouponReadOnly,
-  redeemCouponAndSavePaymentTransaction,
-  commitCouponRedemptionTransaction,
   normalizeCouponCode,
 } from '@/services/couponService';
 import {
@@ -302,6 +300,82 @@ export interface ValidatedCouponInfo {
 export type ValidatedProCoupon = ValidatedCouponInfo;
 
 /**
+ * Maps server or network errors from plan activation into specific, friendly user messages.
+ * Never exposes raw Firestore "Missing or insufficient permissions" strings to the user.
+ */
+export function mapPlanActivationError(
+  errOrInput: unknown,
+  fallback = "Couldn't activate. Try again"
+): string {
+  const errObj = (errOrInput && typeof errOrInput === 'object'
+    ? (errOrInput as { code?: unknown; status?: unknown; message?: unknown; error?: unknown })
+    : null);
+  const code = String(errObj?.code || '').trim().toUpperCase();
+  const status = Number(errObj?.status || 0);
+  const rawMessage = String(
+    errObj?.message || errObj?.error || (typeof errOrInput === 'string' ? errOrInput : '')
+  ).trim();
+  const lowerMsg = rawMessage.toLowerCase();
+
+  if (
+    status === 401 ||
+    code === 'UNAUTHENTICATED' ||
+    code === 'AUTH/ID-TOKEN-EXPIRED' ||
+    code === 'AUTH/USER-TOKEN-EXPIRED' ||
+    lowerMsg.includes('sign in again') ||
+    lowerMsg.includes('authentication required') ||
+    lowerMsg.includes('id token')
+  ) {
+    return 'Please sign in again';
+  }
+
+  if (
+    code === 'ALREADY_USED' ||
+    code === 'ALREADY_REDEEMED' ||
+    lowerMsg.includes('already used') ||
+    lowerMsg.includes('already redeemed')
+  ) {
+    return 'Coupon already used';
+  }
+
+  if (
+    code === 'EXPIRED' ||
+    code === 'COUPON_EXPIRED' ||
+    lowerMsg.includes('expired')
+  ) {
+    return 'Coupon expired';
+  }
+
+  if (code === 'INVALID_COUPON' || code === 'COUPON_INACTIVE') {
+    return 'Invalid coupon';
+  }
+
+  if (code === 'FULLY_CLAIMED' || code === 'COUPON_MAX_REDEMPTIONS') {
+    return 'This coupon is fully claimed';
+  }
+
+  if (code === 'WRONG_ITEM' || code === 'COUPON_PLAN_MISMATCH') {
+    return 'Not valid for this item';
+  }
+
+  if (code === 'PLUS_ALREADY_INCLUDES_PRO') {
+    return PLUS_ALREADY_INCLUDES_PRO_MSG;
+  }
+
+  if (
+    code.includes('PERMISSION') ||
+    lowerMsg.includes('missing or insufficient permissions') ||
+    lowerMsg.includes('permission-denied') ||
+    lowerMsg.includes('permission denied') ||
+    status >= 500
+  ) {
+    return fallback;
+  }
+
+  return rawMessage || fallback;
+}
+
+/**
  * Step 1 (Apply button): Strictly read-only coupon validation against Firestore
  * `coupons/{CODE}` and `coupons/{CODE}/redemptions/{uid}`.
  * Writes NOTHING. Recomputes authoritative prices from `config/plans`.
@@ -311,23 +385,35 @@ export async function validateProCoupon(params: {
   planId: ProPlanId;
   amount?: number;
   uid?: string | null;
+  plansConfig?: Partial<PlansConfigDoc> | null;
 }): Promise<ValidatedCouponInfo> {
   const uid = params.uid ?? auth.currentUser?.uid ?? null;
   if (!uid) {
-    throw new Error('Please sign in to apply a coupon code.');
+    throw new Error('Please sign in again');
   }
 
-  const plansConfig = await fetchPlansConfigOnce();
+  const plansConfig = params.plansConfig ?? (await fetchPlansConfigOnce());
   const plan = getProPlanById(params.planId, plansConfig);
   const billing = getBillingFromPlanId(plan.id);
   const planTier = getPlanTierFromPlanId(plan.id);
 
-  const { coupon, breakdown } = await validateCouponReadOnly({
-    code: params.code,
-    uid,
-    itemKey: plan.id,
-    plansConfig,
-  });
+  let couponResult: Awaited<ReturnType<typeof validateCouponReadOnly>>;
+  try {
+    couponResult = await validateCouponReadOnly({
+      code: params.code,
+      uid,
+      itemKey: plan.id,
+      plansConfig,
+    });
+  } catch (err: any) {
+    const friendly = new Error(mapPlanActivationError(err, 'Invalid coupon')) as Error & {
+      code?: string;
+    };
+    friendly.code = err?.code;
+    throw friendly;
+  }
+
+  const { coupon, breakdown } = couponResult;
 
   const discountType: ValidatedCouponInfo['discountType'] =
     coupon.type === 'pct'
@@ -369,10 +455,10 @@ export async function validateProCoupon(params: {
 }
 
 /**
- * 100%-Off / Free Coupon Activation via ONE atomic Firestore transaction:
- * Re-reads coupon & redemptions/{uid}, verifies finalPkr === 0 from authoritative catalog,
- * writes redemptions/{uid}, increments redeemedCount, and records a PKR 0 payment request.
- * If any step fails, nothing is written.
+ * 100%-Off / Free Coupon Plan Activation:
+ * Calls server endpoint `POST /api/plan/activate` with the verified Firebase ID token.
+ * Performs ZERO direct client Firestore writes; the server validates auth, re-validates
+ * the coupon, recalculates pricing, and executes ONE atomic Admin Firestore transaction.
  */
 export async function redeemProCoupon(params: {
   uid?: string;
@@ -380,8 +466,12 @@ export async function redeemProCoupon(params: {
   userName?: string;
   code: string;
   planId: ProPlanId;
+  billing?: 'monthly' | 'annual';
+  idempotencyKey?: string;
 }): Promise<{
   activatedPro: boolean;
+  activatedPlus?: boolean;
+  idempotentReplay?: boolean;
   redemptionId?: string;
   planId: ProPlanId;
   planTier?: 'pro' | 'plus';
@@ -392,108 +482,185 @@ export async function redeemProCoupon(params: {
   newExpiryLabel?: string;
   coupon: ValidatedCouponInfo;
 }> {
-  const uid = params.uid || auth.currentUser?.uid;
-  if (!uid) {
-    throw new Error('Please sign in to redeem a coupon code.');
+  const currentUser = auth.currentUser;
+  const uid = params.uid || currentUser?.uid;
+  if (!uid || !currentUser) {
+    const err = new Error('Please sign in again') as Error & { code?: string; status?: number };
+    err.code = 'UNAUTHENTICATED';
+    err.status = 401;
+    throw err;
   }
+
+  const token = await currentUser.getIdToken().catch(() => null);
+  if (!token) {
+    const err = new Error('Please sign in again') as Error & { code?: string; status?: number };
+    err.code = 'UNAUTHENTICATED';
+    err.status = 401;
+    throw err;
+  }
+
   const cleanCode = normalizeCouponCode(params.code);
   const plansConfig = await fetchPlansConfigOnce();
   const plan = getProPlanById(params.planId, plansConfig);
-  const planTier = getPlanTierFromPlanId(plan.id);
-  const billing = getBillingFromPlanId(plan.id);
-  const durationMonths = billing === 'annual' ? 12 : 1;
+  const billing: 'monthly' | 'annual' = params.billing || getBillingFromPlanId(plan.id);
+  const safeIdempotencyKey = sanitizeIdempotencyKey(params.idempotencyKey);
 
-  const txResult = await redeemCouponAndSavePaymentTransaction({
-    uid,
-    itemKey: plan.id,
-    paymentCollection: 'paymentRequests',
-    couponCode: cleanCode,
-    buildPaymentPayload: ({ paymentId, itemPricing, coupon, breakdown }) => {
-      if (!coupon || !breakdown.isFreeActivation) {
-        throw new Error('This coupon requires a payment method to complete checkout.');
-      }
-      return {
-        id: paymentId,
-        uid,
-        userId: uid,
-        userEmail: params.userEmail || auth.currentUser?.email || '',
-        userName: params.userName || auth.currentUser?.displayName || 'Student',
-        requestType: planTier === 'plus' ? 'plus_pass' : 'pro_pass',
-        plan: plan.id,
+  let resp: Response;
+  try {
+    resp = await fetch('/api/plan/activate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Idempotency-Key': safeIdempotencyKey,
+      },
+      body: JSON.stringify({
         planId: plan.id,
-        planTier,
         billing,
-        planName: itemPricing.label,
-        durationDays: plan.duration_days,
-        durationMonths,
-        amount: 0,
-        amount_pkr: 0,
-        expectedAmountPkr: 0,
-        originalAmountPkr: breakdown.originalPkr,
-        discountPkr: breakdown.discountPkr,
-        bonusKobans: breakdown.bonusKobans,
-        couponCode: coupon.code,
-        couponType: coupon.type,
-        method: 'coupon_free',
-        TID: `COUPON-${coupon.code}-${paymentId.slice(0, 6).toUpperCase()}`,
-        transactionId: `COUPON-${coupon.code}-${paymentId.slice(0, 6).toUpperCase()}`,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      };
-    },
-  });
+        couponCode: cleanCode,
+        idempotencyKey: safeIdempotencyKey,
+      }),
+    });
+  } catch {
+    const err = new Error("Couldn't activate. Try again") as Error & {
+      code?: string;
+      status?: number;
+    };
+    err.code = 'NETWORK_ERROR';
+    err.status = 0;
+    throw err;
+  }
 
-  const nowMs = Date.now();
-  const expiryPreview = computeExtendedProExpiry(null, plan.duration_days, nowMs);
+  const data = (await resp.json().catch(() => ({}))) as Record<string, any>;
+  if (!resp.ok || !data?.ok) {
+    const friendlyMsg = mapPlanActivationError(
+      {
+        status: resp.status,
+        code: data?.code,
+        message: data?.error || data?.message,
+      },
+      "Couldn't activate. Try again"
+    );
+    const err = new Error(friendlyMsg) as Error & { code?: string; status?: number };
+    err.code = String(data?.code || 'ACTIVATION_FAILED');
+    err.status = resp.status;
+    throw err;
+  }
+
+  const resolvedPlanId = (data.planId || plan.id) as ProPlanId;
+  const resolvedTier = getPlanTierFromPlanId(resolvedPlanId);
+  const resolvedBilling = getBillingFromPlanId(resolvedPlanId);
+  const durationMonths = resolvedBilling === 'annual' ? 12 : 1;
+  const resolvedDurationDays = Number(data.durationDays || plan.duration_days);
+  const resolvedExpiryMs = Number(
+    data.newExpiryMs || Date.now() + resolvedDurationDays * 86_400_000
+  );
+  const resolvedExpiryIso = String(
+    data.newExpiryIso || new Date(resolvedExpiryMs).toISOString()
+  );
+  const resolvedExpiryLabel = String(
+    data.newExpiryLabel || computeExtendedProExpiry(null, resolvedDurationDays).newExpiryLabel
+  );
+  const startedAtIso = String(data.startedAtIso || new Date().toISOString());
 
   clearPlanCache(uid);
-  forceRefreshPaymentRequests(uid).catch(() => {});
+
+  // Sync local profile SWR cache immediately while refreshing authoritative server state
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      for (const lsKey of [`cached_profile_${uid}`, `boardly_user_profile_${uid}`]) {
+        const existingRaw = window.localStorage.getItem(lsKey);
+        const parsed = existingRaw ? JSON.parse(existingRaw) : { uid };
+        parsed.plan = resolvedTier;
+        parsed.tier = resolvedTier;
+        parsed.planTier = resolvedTier;
+        parsed.isPremium = true;
+        parsed.isPro = resolvedTier === 'pro';
+        parsed.isPlus = resolvedTier === 'plus';
+        parsed.planId = resolvedPlanId;
+        parsed.proPlanId = resolvedTier === 'pro' ? resolvedPlanId : null;
+        parsed.plusPlanId = resolvedTier === 'plus' ? resolvedPlanId : null;
+        parsed.premiumSource = 'coupon';
+        parsed.planStartedAt = startedAtIso;
+        parsed.planExpiresAt = resolvedExpiryIso;
+        parsed.premiumExpiresAt = resolvedExpiryMs;
+        parsed.proUntil = resolvedTier === 'pro' ? resolvedExpiryIso : null;
+        parsed.plusUntil = resolvedTier === 'plus' ? resolvedExpiryIso : null;
+        window.localStorage.setItem(lsKey, JSON.stringify(parsed));
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  // Refresh authoritative user profile & plan status from server before closing sheet
+  await Promise.all([
+    forceRefreshUserProfile(uid).catch(() => {}),
+    forceRefreshPaymentRequests(uid).catch(() => {}),
+  ]);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('boardly:plan-refresh'));
   }
 
-  const couponDoc = txResult.coupon!;
-  const breakdown = txResult.breakdown;
+  const couponPayload = data.coupon || {};
+  const couponType: CouponType =
+    couponPayload.type === 'flat'
+      ? 'flat'
+      : couponPayload.type === 'kob'
+        ? 'kob'
+        : 'pct';
+  const couponValue = Number(couponPayload.value ?? 100);
+  const originalPkr = Number(data.originalPkr ?? plan.price_pkr);
+  const discountPkr = Number(data.discountPkr ?? originalPkr);
+  const originalKobans = Number(data.originalKobans ?? plan.price_kobans);
+  const discountKobans = Number(data.discountKobans ?? originalKobans);
 
   return {
-    activatedPro: false,
-    redemptionId: txResult.paymentId,
-    planId: plan.id,
-    planTier,
-    planName: plan.name,
-    durationDays: plan.duration_days,
-    newExpiryMs: expiryPreview.newExpiryMs,
-    newExpiryIso: new Date(expiryPreview.newExpiryMs).toISOString(),
-    newExpiryLabel: expiryPreview.newExpiryLabel,
+    activatedPro: true,
+    activatedPlus: resolvedTier === 'plus',
+    idempotentReplay: Boolean(data.idempotentReplay),
+    redemptionId: String(data.activationId || data.redemptionId || ''),
+    planId: resolvedPlanId,
+    planTier: resolvedTier,
+    planName: String(data.planName || plan.name),
+    durationDays: resolvedDurationDays,
+    newExpiryMs: resolvedExpiryMs,
+    newExpiryIso: resolvedExpiryIso,
+    newExpiryLabel: resolvedExpiryLabel,
     coupon: {
-      id: couponDoc.code,
-      code: couponDoc.code,
-      label: formatCouponBenefitLabel(couponDoc),
-      couponType: couponDoc.type,
-      couponValue: couponDoc.value,
-      appliesTo: couponDoc.appliesTo,
-      discountType: couponDoc.type === 'pct' ? 'percent' : couponDoc.type === 'flat' ? 'fixed_pkr' : 'fixed_kobans',
-      percentOff: couponDoc.type === 'pct' ? couponDoc.value : 0,
-      discountPercent: couponDoc.type === 'pct' ? couponDoc.value : 0,
-      amountOffPkr: breakdown.discountPkr,
-      amountOffKobans: breakdown.discountKobans,
-      bonusKobans: breakdown.bonusKobans,
+      id: String(couponPayload.code || cleanCode),
+      code: String(couponPayload.code || cleanCode),
+      label: formatCouponBenefitLabel({ type: couponType, value: couponValue }),
+      couponType,
+      couponValue,
+      appliesTo: String(couponPayload.appliesTo || 'any'),
+      discountType:
+        couponType === 'pct'
+          ? 'percent'
+          : couponType === 'flat'
+            ? 'fixed_pkr'
+            : 'fixed_kobans',
+      percentOff: couponType === 'pct' ? couponValue : 0,
+      discountPercent: couponType === 'pct' ? couponValue : 0,
+      amountOffPkr: discountPkr,
+      amountOffKobans: discountKobans,
+      bonusKobans: 0,
       durationMonths,
-      durationDays: plan.duration_days,
-      maxRedemptions: couponDoc.maxRedemptions,
-      redemptionCount: couponDoc.redeemedCount + 1,
-      planId: plan.id,
-      planTier,
-      planName: plan.name,
-      originalPkr: breakdown.originalPkr,
-      discountPkr: breakdown.discountPkr,
-      finalPkr: breakdown.finalPkr,
-      originalKobans: breakdown.originalKobans,
-      discountKobans: breakdown.discountKobans,
-      finalKobans: breakdown.finalKobans,
-      isFreeGrant: breakdown.isFreeActivation,
-      isFreeActivation: breakdown.isFreeActivation,
-      effectiveDurationDays: plan.duration_days,
+      durationDays: resolvedDurationDays,
+      maxRedemptions: couponPayload.maxRedemptions ?? null,
+      redemptionCount: Number(couponPayload.redeemedCount ?? couponPayload.redemptionCount ?? 1),
+      planId: resolvedPlanId,
+      planTier: resolvedTier,
+      planName: String(data.planName || plan.name),
+      originalPkr,
+      discountPkr,
+      finalPkr: 0,
+      originalKobans,
+      discountKobans,
+      finalKobans: 0,
+      isFreeGrant: true,
+      isFreeActivation: true,
+      effectiveDurationDays: resolvedDurationDays,
     },
   };
 }
@@ -600,15 +767,7 @@ export async function purchaseProWithKobans(params: {
       throw err;
     }
 
-    // Redeem coupon atomically ONLY AFTER Kobans purchase succeeded (failed payments never consume a coupon)
-    if (cleanCouponCode) {
-      await commitCouponRedemptionTransaction({
-        uid,
-        couponCode: cleanCouponCode,
-        itemKey: plan.id,
-        paymentId: String(data.ledgerId || `${planTier}_koban_${safeKey}`),
-      });
-    }
+    // Coupon redemption is recorded server-side inside /api/pro/purchase-kobans (no direct client writes).
 
     const resolvedTier = getPlanTierFromPlanId(data.planId || plan.id);
 
@@ -926,18 +1085,57 @@ export async function submitProPaymentRequest(params: {
     const cleanCouponCode = normalizeCouponCode(params.couponCode) || null;
     const durationMonths = billing === 'annual' ? 12 : 1;
 
-    // ONE atomic Firestore transaction:
-    // Re-reads `config/plans`, re-reads `coupons/{CODE}` & `coupons/{CODE}/redemptions/{uid}`,
-    // recomputes the authoritative discounted price (never trusting client price),
-    // creates `redemptions/{uid}`, increments `redeemedCount`, and writes `paymentRequests/{id}`.
-    // If any check fails, nothing is written.
-    const txResult = await redeemCouponAndSavePaymentTransaction({
-      uid: params.uid,
-      itemKey: plan.id,
-      paymentCollection: 'paymentRequests',
-      couponCode: cleanCouponCode,
-      buildPaymentPayload: ({ paymentId, itemPricing, coupon, breakdown }) => ({
-        id: paymentId,
+    let finalDocId: string;
+    let finalAmountPkr: number;
+
+    if (cleanCouponCode) {
+      // Route coupon-bearing payment requests through the server so coupon redemptions stay server-only
+      const token = await auth.currentUser?.getIdToken().catch(() => null);
+      if (!token) {
+        const err = new Error('Please sign in again') as Error & { code?: string; status?: number };
+        err.code = 'UNAUTHENTICATED';
+        err.status = 401;
+        throw err;
+      }
+      const resp = await fetch('/api/pro/submit-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+          planTier,
+          billing,
+          paymentMethod: normalizedMethod,
+          method: normalizedMethod,
+          transactionId: normalizedTid,
+          tid: normalizedTid,
+          couponCode: cleanCouponCode,
+          userEmail: params.userEmail || userData?.email || '',
+          userName: params.userName || userData?.displayName || userData?.name || 'Student',
+        }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as Record<string, any>;
+      if (!resp.ok || !data?.ok) {
+        const err = new Error(
+          mapPlanActivationError(
+            { status: resp.status, code: data?.code, message: data?.error || data?.message },
+            'Could not submit payment request. Please try again.'
+          )
+        ) as Error & { code?: string; status?: number };
+        err.code = data?.code || 'PAYMENT_SUBMIT_FAILED';
+        err.status = resp.status;
+        throw err;
+      }
+      finalDocId = String(data.requestId || `pay_${Date.now()}`);
+      finalAmountPkr = Number(data.amountPkr ?? plan.price_pkr);
+    } else {
+      const paymentRef = doc(collection(db, 'paymentRequests'));
+      finalDocId = paymentRef.id;
+      finalAmountPkr = plan.price_pkr;
+      await setDoc(paymentRef, {
+        id: finalDocId,
         uid: params.uid,
         userId: params.uid,
         userEmail: params.userEmail || userData?.email || '',
@@ -947,17 +1145,17 @@ export async function submitProPaymentRequest(params: {
         planId: plan.id,
         planTier,
         billing,
-        planName: itemPricing.label,
+        planName: plan.name,
         durationDays: plan.duration_days,
         durationMonths,
-        amount: breakdown.finalPkr,
-        amount_pkr: breakdown.finalPkr,
-        expectedAmountPkr: breakdown.finalPkr,
-        originalAmountPkr: breakdown.originalPkr,
-        discountPkr: breakdown.discountPkr,
-        bonusKobans: breakdown.bonusKobans,
-        couponCode: coupon ? coupon.code : null,
-        couponType: coupon ? coupon.type : null,
+        amount: plan.price_pkr,
+        amount_pkr: plan.price_pkr,
+        expectedAmountPkr: plan.price_pkr,
+        originalAmountPkr: plan.price_pkr,
+        discountPkr: 0,
+        bonusKobans: 0,
+        couponCode: null,
+        couponType: null,
         proToPlusCreditDays: eligibility.extraPlusDays,
         previousPlan: currentStatus.planTier,
         method: normalizedMethod,
@@ -965,11 +1163,8 @@ export async function submitProPaymentRequest(params: {
         transactionId: normalizedTid,
         status: 'pending',
         createdAt: serverTimestamp(),
-      }),
-    });
-
-    const finalDocId = txResult.paymentId;
-    const finalAmountPkr = txResult.breakdown.finalPkr;
+      });
+    }
 
     clearPlanCache(params.uid);
     forceRefreshPaymentRequests(params.uid).catch(() => {});

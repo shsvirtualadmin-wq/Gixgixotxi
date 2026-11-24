@@ -112,6 +112,9 @@ service cloud.firestore {
         'proPlanId',
         'plusPlanId',
         'premiumSource',
+        'planStartedAt',
+        'appliedCouponCode',
+        'AppliedCouponCode',
         'aiUsage',
         'aiCreditsUsed',
         'isBanned',
@@ -151,6 +154,9 @@ service cloud.firestore {
         (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
         (!('proPlanId' in request.resource.data) || request.resource.data.proPlanId == null) &&
         (!('plusPlanId' in request.resource.data) || request.resource.data.plusPlanId == null) &&
+        (!('planStartedAt' in request.resource.data) || request.resource.data.planStartedAt == null) &&
+        (!('appliedCouponCode' in request.resource.data) || request.resource.data.appliedCouponCode == null) &&
+        (!('AppliedCouponCode' in request.resource.data) || request.resource.data.AppliedCouponCode == null) &&
         (!('aiUsage' in request.resource.data)) &&
         (!('aiCreditsUsed' in request.resource.data) || request.resource.data.aiCreditsUsed == 0)
       );
@@ -476,15 +482,8 @@ service cloud.firestore {
           resource.data.userId == request.auth.uid
         )
       );
-      allow create: if isAdmin() || (
-        signedIn() && (
-          request.resource.data.uid == request.auth.uid ||
-          request.resource.data.userId == request.auth.uid
-        ) &&
-        (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
-        (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid)
-      );
-      allow update, delete: if isAdmin();
+      // Coupon redemptions are written exclusively by server endpoints using Admin credentials
+      allow create, update, delete: if isAdmin();
     }
 
     match /promoRedemptions/{redemptionId} {
@@ -494,15 +493,15 @@ service cloud.firestore {
           resource.data.userId == request.auth.uid
         )
       );
-      allow create: if isAdmin() || (
-        signedIn() && (
-          request.resource.data.uid == request.auth.uid ||
-          request.resource.data.userId == request.auth.uid
-        ) &&
-        (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
-        (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid)
+      // Promo redemptions are written exclusively by server endpoints using Admin credentials
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /planActivations/{activationId} {
+      allow read: if isAdmin() || (
+        signedIn() && resource.data.uid == request.auth.uid
       );
-      allow update, delete: if isAdmin();
+      allow write: if false;
     }
 
     match /coupons/{couponCode} {
@@ -523,52 +522,17 @@ service cloud.firestore {
         request.resource.data.active is bool &&
         request.resource.data.createdBy == request.auth.uid;
 
-      // Admins can pause/activate; signed-in users can ONLY increment redeemedCount by +1
-      // in the same atomic transaction that creates their redemptions/{uid} doc
-      allow update: if isAdmin() || (
-        signedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['redeemedCount']) &&
-        resource.data.active == true &&
-        (!('expiresAt' in resource.data) || resource.data.expiresAt == null || resource.data.expiresAt > request.time) &&
-        (!('maxRedemptions' in resource.data) || resource.data.maxRedemptions == null || resource.data.redeemedCount < resource.data.maxRedemptions) &&
-        request.resource.data.redeemedCount == resource.data.redeemedCount + 1 &&
-        !exists(/databases/$(database)/documents/coupons/$(couponCode)/redemptions/$(request.auth.uid)) &&
-        existsAfter(/databases/$(database)/documents/coupons/$(couponCode)/redemptions/$(request.auth.uid))
-      );
+      // Only admins (or server Admin SDK which bypasses rules) may update coupons or redeemedCount
+      allow update: if isAdmin();
 
       // Never hard-delete coupons
       allow delete: if false;
 
       match /redemptions/{uid} {
+        // Users can read their own redemption record; writes are server-only via Admin SDK
         allow get: if isAdmin() || isOwner(uid);
         allow list: if isAdmin();
-
-        // Once per account: doc ID MUST equal request.auth.uid, and parent redeemedCount
-        // MUST increment by +1 in the same transaction
-        allow create: if signedIn() &&
-          request.auth.uid == uid &&
-          request.resource.data.uid == request.auth.uid &&
-          request.resource.data.usedOn is string &&
-          request.resource.data.paymentId is string &&
-          request.resource.data.discountApplied is number &&
-          request.resource.data.discountApplied >= 0 &&
-          exists(/databases/$(database)/documents/coupons/$(couponCode)) &&
-          get(/databases/$(database)/documents/coupons/$(couponCode)).data.active == true &&
-          (
-            !('expiresAt' in get(/databases/$(database)/documents/coupons/$(couponCode)).data) ||
-            get(/databases/$(database)/documents/coupons/$(couponCode)).data.expiresAt == null ||
-            get(/databases/$(database)/documents/coupons/$(couponCode)).data.expiresAt > request.time
-          ) &&
-          (
-            !('maxRedemptions' in get(/databases/$(database)/documents/coupons/$(couponCode)).data) ||
-            get(/databases/$(database)/documents/coupons/$(couponCode)).data.maxRedemptions == null ||
-            get(/databases/$(database)/documents/coupons/$(couponCode)).data.redeemedCount <
-              get(/databases/$(database)/documents/coupons/$(couponCode)).data.maxRedemptions
-          ) &&
-          getAfter(/databases/$(database)/documents/coupons/$(couponCode)).data.redeemedCount ==
-            get(/databases/$(database)/documents/coupons/$(couponCode)).data.redeemedCount + 1;
-
-        allow update, delete: if false;
+        allow create, update, delete: if false;
       }
     }
 

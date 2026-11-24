@@ -39,6 +39,7 @@ import {
   submitProPaymentRequest,
   validateProCoupon,
   redeemProCoupon,
+  mapPlanActivationError,
   type ValidatedProCoupon,
 } from '@/services/proSubscriptionService';
 
@@ -130,6 +131,7 @@ export function ProCheckoutSheet({
   refreshPlanStatusRef.current = refreshPlanStatus;
   const submittingRef = useRef(submitting);
   submittingRef.current = submitting;
+  const submitLockRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -185,18 +187,19 @@ export function ProCheckoutSheet({
     if (appliedCoupon?.code) {
       setCouponLoading(true);
       try {
-        const nextPlan = getProPlanById(nextPlanId, plansConfigRef.current);
+        const nextPlan = catalog[nextPlanId] || getProPlanById(nextPlanId, plansConfigRef.current);
         const revalidated = await validateProCoupon({
           code: appliedCoupon.code,
           planId: nextPlanId,
           amount: nextPlan.price_pkr,
           uid,
+          plansConfig: plansConfigRef.current,
         });
         setAppliedCoupon(revalidated);
         setCouponError(null);
       } catch (err: any) {
         setAppliedCoupon(null);
-        setCouponError(err?.message || 'Not valid for this item');
+        setCouponError(mapPlanActivationError(err, 'Not valid for this item'));
       } finally {
         setCouponLoading(false);
       }
@@ -213,15 +216,19 @@ export function ProCheckoutSheet({
     setCouponError(null);
     setErrorMsg(null);
     try {
-      const currentPlan = getProPlanById(selectedPlanId, plansConfigRef.current);
+      const currentPlan = catalog[selectedPlanId] || getProPlanById(selectedPlanId, plansConfigRef.current);
       const validated = await validateProCoupon({
         code: clean,
         planId: selectedPlanId,
         amount: currentPlan.price_pkr,
         uid,
+        plansConfig: plansConfigRef.current,
       });
       setAppliedCoupon(validated);
       setCouponInput(validated.code);
+      setIdempotencyKey(
+        `plan_chk_${selectedPlanId}_${validated.code}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      );
       if (
         !validated.isFreeActivation &&
         balanceLoadedRef.current &&
@@ -234,7 +241,7 @@ export function ProCheckoutSheet({
       }
     } catch (err: any) {
       setAppliedCoupon(null);
-      setCouponError(err?.message || 'Invalid coupon');
+      setCouponError(mapPlanActivationError(err, 'Invalid coupon'));
     } finally {
       setCouponLoading(false);
     }
@@ -246,7 +253,11 @@ export function ProCheckoutSheet({
     setCouponError(null);
   };
 
-  const plan = useMemo(() => getProPlanById(selectedPlanId, plansConfig), [selectedPlanId, plansConfig]);
+  // Single source of truth: reuse the exact catalog entry rendered on the Monthly / Annual tabs
+  const plan = useMemo(
+    () => catalog[selectedPlanId] || getProPlanById(selectedPlanId, plansConfig),
+    [catalog, selectedPlanId, plansConfig]
+  );
   const selectedTier = getPlanTierFromPlanId(plan.id);
   const isPlusCheckout = selectedTier === 'plus';
   const tierPlanPair: [ProPlanId, ProPlanId] = isPlusCheckout
@@ -259,8 +270,17 @@ export function ProCheckoutSheet({
   );
 
   const effectiveDurationDays = appliedCoupon?.durationDays || plan.duration_days;
-  const effectivePkr = appliedCoupon ? appliedCoupon.finalPkr : plan.price_pkr;
-  const effectiveKobans = appliedCoupon ? appliedCoupon.finalKobans : plan.price_kobans;
+  const displayOriginalPkr = plan.price_pkr;
+  const displayOriginalKobans = plan.price_kobans;
+  const effectivePkr = appliedCoupon
+    ? Math.max(0, Math.min(displayOriginalPkr, appliedCoupon.finalPkr))
+    : displayOriginalPkr;
+  const effectiveKobans = appliedCoupon
+    ? Math.max(0, Math.min(displayOriginalKobans, appliedCoupon.finalKobans))
+    : displayOriginalKobans;
+  const displayDiscountPkr = appliedCoupon
+    ? Math.max(0, displayOriginalPkr - effectivePkr)
+    : 0;
   const isFreeCouponActivation = Boolean(
     appliedCoupon &&
       (appliedCoupon.isFreeActivation || (effectivePkr === 0 && effectiveKobans === 0))
@@ -318,8 +338,13 @@ export function ProCheckoutSheet({
         (paymentOption === 'pkr' && (hasPendingProRequest || cleanTid.length < 5))));
 
   const handlePrimarySubmit = async () => {
+    // Synchronous guard prevents double taps before React commits submitting=true
+    if (submitLockRef.current || submitting) {
+      return;
+    }
+
     if (!uid) {
-      setErrorMsg(`Please sign in to activate ${isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro'}.`);
+      setErrorMsg('Please sign in again');
       return;
     }
 
@@ -338,8 +363,9 @@ export function ProCheckoutSheet({
 
     setErrorMsg(null);
 
-    // Case 1: 100%-Off / Free Coupon Activation
+    // Case 1: 100%-Off / Free Coupon Activation (server-side atomic endpoint ONLY)
     if (isFreeCouponActivation && appliedCoupon) {
+      submitLockRef.current = true;
       setSubmitting(true);
       try {
         const res = await redeemProCoupon({
@@ -348,21 +374,11 @@ export function ProCheckoutSheet({
           userName: userName || undefined,
           code: appliedCoupon.code,
           planId: plan.id,
+          billing: plan.slug,
+          idempotencyKey,
         });
 
-        setCompletedState({
-          mode: 'kobans',
-          planTier: selectedTier,
-          planName: res.planName || plan.name,
-          durationDays: res.durationDays || effectiveDurationDays,
-          extraCreditDays: eligibility.extraPlusDays,
-          newExpiryLabel: res.newExpiryLabel || expiryPreview.newExpiryLabel,
-          wasExtension: eligibility.isPlusRenewal,
-          previousExpiryLabel: expiryPreview.previousExpiryLabel,
-          kobansSpent: 0,
-          balanceAfter: safeBalance,
-          couponCode: appliedCoupon.code,
-        });
+        await refreshPlanStatusRef.current().catch(() => {});
 
         onSuccess?.({
           mode: 'kobans',
@@ -370,9 +386,12 @@ export function ProCheckoutSheet({
           newExpiryLabel: res.newExpiryLabel || expiryPreview.newExpiryLabel,
           newBalance: safeBalance,
         });
+
+        onCloseRef.current();
       } catch (err: any) {
-        setErrorMsg(err?.message || 'Could not redeem coupon. Please try again.');
+        setErrorMsg(mapPlanActivationError(err, "Couldn't activate. Try again"));
       } finally {
+        submitLockRef.current = false;
         setSubmitting(false);
       }
       return;
@@ -391,6 +410,7 @@ export function ProCheckoutSheet({
         return;
       }
 
+      submitLockRef.current = true;
       setSubmitting(true);
       try {
         const res = await purchaseProWithKobans({
@@ -424,10 +444,13 @@ export function ProCheckoutSheet({
         });
       } catch (err: any) {
         setErrorMsg(
-          err?.message ||
+          mapPlanActivationError(
+            err,
             `Could not complete ${isPlusCheckout ? 'Boardly Plus' : 'Boardly Pro'} activation. Please try again.`
+          )
         );
       } finally {
+        submitLockRef.current = false;
         setSubmitting(false);
       }
     } else {
@@ -436,6 +459,7 @@ export function ProCheckoutSheet({
         return;
       }
 
+      submitLockRef.current = true;
       setSubmitting(true);
       try {
         const res = await submitProPaymentRequest({
@@ -467,8 +491,11 @@ export function ProCheckoutSheet({
           planId: plan.id,
         });
       } catch (err: any) {
-        setErrorMsg(err?.message || 'Could not submit payment request. Please try again.');
+        setErrorMsg(
+          mapPlanActivationError(err, 'Could not submit payment request. Please try again.')
+        );
       } finally {
+        submitLockRef.current = false;
         setSubmitting(false);
       }
     }
@@ -709,21 +736,21 @@ export function ProCheckoutSheet({
                 className="text-right text-[14px] font-semibold tabular-nums"
                 style={{ color: 'var(--text)' }}
               >
-                {appliedCoupon && effectivePkr < plan.price_pkr && (
+                {appliedCoupon && effectivePkr < displayOriginalPkr && (
                   <span
-                    className="mr-1.5 text-[12px] font-normal line-through"
+                    className="mr-1.5 text-[12px] font-normal line-through tabular-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    PKR {plan.price_pkr.toLocaleString()}
+                    PKR {displayOriginalPkr.toLocaleString()}
                   </span>
                 )}
                 PKR {effectivePkr.toLocaleString()} ·{' '}
-                {appliedCoupon && effectiveKobans < plan.price_kobans && (
+                {appliedCoupon && effectiveKobans < displayOriginalKobans && (
                   <span
-                    className="mr-1 text-[12px] font-normal line-through"
+                    className="mr-1 text-[12px] font-normal line-through tabular-nums"
                     style={{ color: 'var(--text-muted)' }}
                   >
-                    {plan.price_kobans.toLocaleString()}
+                    {displayOriginalKobans.toLocaleString()}
                   </span>
                 )}
                 <span style={{ color: 'var(--koban)' }}>
@@ -768,9 +795,9 @@ export function ProCheckoutSheet({
                 <span className="text-[13px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {appliedCoupon.couponType === 'kob' && appliedCoupon.bonusKobans > 0
                     ? `+${appliedCoupon.bonusKobans.toLocaleString()} Kobans bonus`
-                    : appliedCoupon.couponType === 'flat' && appliedCoupon.discountPkr > 0
-                      ? `−PKR ${appliedCoupon.discountPkr.toLocaleString()}`
-                      : `−${appliedCoupon.percentOff}% (−PKR ${appliedCoupon.discountPkr.toLocaleString()})`}
+                    : appliedCoupon.couponType === 'flat' && displayDiscountPkr > 0
+                      ? `−PKR ${displayDiscountPkr.toLocaleString()}`
+                      : `−${appliedCoupon.percentOff}% (−PKR ${displayDiscountPkr.toLocaleString()})`}
                 </span>
               </div>
             )}

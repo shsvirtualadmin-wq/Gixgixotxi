@@ -6750,9 +6750,11 @@ ${urls
     if (
       cleanWorkerPath === '/api/coupons' ||
       cleanWorkerPath.startsWith('/api/coupons/') ||
+      cleanWorkerPath === '/api/plan/activate' ||
       cleanWorkerPath === '/api/pro/coupon/validate' ||
       cleanWorkerPath === '/api/pro/coupon/redeem' ||
       cleanWorkerPath === '/api/pro/purchase-kobans' ||
+      cleanWorkerPath === '/api/pro/submit-payment' ||
       cleanWorkerPath === '/api/store/purchase' ||
       cleanWorkerPath === '/api/store/unlock' ||
       cleanWorkerPath === '/api/store/buy' ||

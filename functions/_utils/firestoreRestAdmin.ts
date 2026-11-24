@@ -1635,9 +1635,24 @@ export class FirestoreRestAdapter implements FirestoreStoreAdapter {
         },
       };
 
-      const result = await fn(txCtx);
+      let result: T;
+      try {
+        result = await fn(txCtx);
+      } catch (txErr) {
+        await fetch(`${this.baseDocsUrl}:rollback`, {
+          method: 'POST',
+          headers: hdrs,
+          body: JSON.stringify({ transaction }),
+        }).catch(() => {});
+        throw txErr;
+      }
 
       if (writes.length === 0) {
+        await fetch(`${this.baseDocsUrl}:rollback`, {
+          method: 'POST',
+          headers: hdrs,
+          body: JSON.stringify({ transaction }),
+        }).catch(() => {});
         return result;
       }
 

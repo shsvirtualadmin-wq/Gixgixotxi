@@ -227,6 +227,7 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
     path.startsWith('/api/admin/coupons/') ||
     path === '/api/coupons' ||
     path.startsWith('/api/coupons/') ||
+    path === '/api/plan/activate' ||
     path === '/api/pro/coupon/validate' ||
     path === '/api/pro/coupon/redeem' ||
     path === '/api/pro/purchase-kobans' ||

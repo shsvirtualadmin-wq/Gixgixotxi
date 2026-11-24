@@ -11809,6 +11809,8 @@ ${postSitemaps}
   app.post('/api/pro/submit-payment', handleProPurchaseGuard);
   app.post('/api/pro/activate', handleProPurchaseGuard);
 
+  app.post('/api/plan/activate', delegateToEconomyWorker);
+  app.get('/api/plan/activate', delegateToEconomyWorker);
   app.post('/api/pro/purchase-kobans', delegateToEconomyWorker);
   app.get('/api/pro/purchase-kobans', delegateToEconomyWorker);
   app.post('/api/coupons/validate', delegateToEconomyWorker);
@@ -13361,6 +13363,7 @@ export function createCloudflarePostsAndAuthMiddleware(options?: {
         pathname.startsWith('/api/admin') ||
         pathname.startsWith('/api/r2') ||
         pathname.startsWith('/api/auth') ||
+        pathname.startsWith('/api/plan') ||
         pathname.startsWith('/api/pro') ||
         pathname.startsWith('/api/store') ||
         pathname.startsWith('/api/coupons') ||

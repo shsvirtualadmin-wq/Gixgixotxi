@@ -6,6 +6,8 @@ import {
   getServiceAccountAccessToken,
   DEFAULT_FIREBASE_PROJECT_ID,
   DEFAULT_FIRESTORE_DATABASE_ID,
+  type FirestoreStoreAdapter,
+  type FirestoreTransactionContext,
   type RewardsEnv,
   type VerifiedFirebaseToken,
 } from '../../_utils/firestoreRestAdmin';
@@ -24,8 +26,16 @@ import {
   computeProToPlusCreditDays,
   parsePlanExpiryMs,
   PLUS_ALREADY_INCLUDES_PRO_MSG,
+  type PaidPlanId,
   type PlansConfigDoc,
 } from '../../../src/lib/planTier';
+import {
+  normalizeCouponCode,
+  normalizeCouponDoc,
+  resolveCheckoutItemPricing,
+  evaluateCouponEligibility,
+  type CouponDoc,
+} from '../../../src/utils/couponEngine';
 import { loadAdsConfigServer } from '../ads/[[path]]';
 
 const ALL_KNOWN_COSMETICS = [...COSMETICS_CATALOG, ...LEGACY_COSMETICS_CATALOG];
@@ -366,6 +376,9 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
   const durationMonths = Math.max(1, Number(raw.duration_months ?? raw.durationMonths ?? 1));
   const durationDays = Number(raw.duration_days ?? raw.durationDays ?? (durationMonths >= 12 ? 365 : durationMonths * 30));
 
+  const rawStudioType = String(raw.type || '').trim().toLowerCase();
+  const rawStudioValue = Number(raw.value);
+
   let discountType: NormalizedCoupon['discountType'] = 'percent';
   let percentOff = Number(
     raw.percent_off ??
@@ -373,10 +386,26 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
       raw.discountPercent ??
       raw.discount_percent ??
       raw.percent ??
-      0
+      (rawStudioType === 'pct' && Number.isFinite(rawStudioValue) ? rawStudioValue : 0)
   );
-  const amountOffPkr = Math.max(0, Number(raw.amount_off_pkr ?? raw.amountOffPkr ?? raw.discountPkr ?? 0));
-  const amountOffKobans = Math.max(0, Number(raw.amount_off_kobans ?? raw.amountOffKobans ?? raw.discountKobans ?? 0));
+  const amountOffPkr = Math.max(
+    0,
+    Number(
+      raw.amount_off_pkr ??
+        raw.amountOffPkr ??
+        raw.discountPkr ??
+        (rawStudioType === 'flat' && Number.isFinite(rawStudioValue) ? rawStudioValue : 0)
+    )
+  );
+  const amountOffKobans = Math.max(
+    0,
+    Number(
+      raw.amount_off_kobans ??
+        raw.amountOffKobans ??
+        raw.discountKobans ??
+        (rawStudioType === 'kob' && Number.isFinite(rawStudioValue) ? rawStudioValue : 0)
+    )
+  );
 
   const isOneYearProCode =
     /^(BOARDLY[-_]?1Y|.*1[-_]?Y(EAR)?[-_]?FREE)/i.test(code) ||
@@ -389,9 +418,9 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
   ) {
     discountType = isOneYearProCode || durationMonths >= 12 ? '1_year_free_pro' : 'free_pro';
     percentOff = 100;
-  } else if (discountTypeRaw === 'fixed_pkr' || amountOffPkr > 0) {
+  } else if (discountTypeRaw === 'fixed_pkr' || discountTypeRaw === 'flat' || amountOffPkr > 0) {
     discountType = 'fixed_pkr';
-  } else if (discountTypeRaw === 'fixed_kobans' || amountOffKobans > 0) {
+  } else if (discountTypeRaw === 'fixed_kobans' || discountTypeRaw === 'kob' || amountOffKobans > 0) {
     discountType = 'fixed_kobans';
   } else {
     discountType = 'percent';
@@ -403,10 +432,13 @@ function normalizeCouponRecord(raw: Record<string, any>): NormalizedCoupon {
   }
 
   const normalizedPct = Math.min(100, Math.max(0, Math.round(percentOff)));
-  const maxRedemptions = Math.max(
-    1,
-    Number(raw.max_redemptions ?? raw.maxRedemptions ?? raw.maxUses ?? raw.max_uses ?? 100)
-  );
+  const maxRedemptions =
+    raw.maxRedemptions === null || raw.max_redemptions === null
+      ? 1_000_000_000
+      : Math.max(
+          1,
+          Number(raw.max_redemptions ?? raw.maxRedemptions ?? raw.maxUses ?? raw.max_uses ?? 100)
+        );
   const redemptionCount = Math.max(
     0,
     Number(
@@ -557,6 +589,17 @@ export function deleteEconomyFallbackDocForTest(docPath: string): void {
   localEconomyFirestoreFallback.delete(clean);
 }
 
+class PlanActivationHttpError extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = 'PlanActivationHttpError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 /**
  * Helper to call Firestore using Either Admin Service Account (FirestoreRestAdapter)
  * OR User Bearer token via Firestore REST API when running in local dev without service account secret.
@@ -567,10 +610,12 @@ class HybridFirestoreHelper {
   private projectId: string;
   private databaseId: string;
   private adminAdapter: FirestoreRestAdapter | null = null;
+  private storeOverride: FirestoreStoreAdapter | null = null;
 
-  constructor(env: EconomyEnv, bearerToken: string) {
+  constructor(env: EconomyEnv, bearerToken: string, storeOverride?: FirestoreStoreAdapter | null) {
     this.env = env;
     this.bearerToken = bearerToken.startsWith('Bearer ') ? bearerToken : `Bearer ${bearerToken}`;
+    this.storeOverride = storeOverride || null;
     this.projectId =
       env.FIREBASE_PROJECT_ID ||
       env.VITE_FIREBASE_PROJECT_ID ||
@@ -581,22 +626,39 @@ class HybridFirestoreHelper {
       env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
       DEFAULT_FIRESTORE_DATABASE_ID;
 
-    const sa = parseServiceAccountFromEnv(env);
-    if (sa) {
-      try {
-        this.adminAdapter = new FirestoreRestAdapter(sa, this.projectId, this.databaseId);
-      } catch {
-        this.adminAdapter = null;
+    if (!this.storeOverride) {
+      const sa = parseServiceAccountFromEnv(env);
+      if (sa) {
+        try {
+          this.adminAdapter = new FirestoreRestAdapter(sa, this.projectId, this.databaseId);
+        } catch {
+          this.adminAdapter = null;
+        }
       }
     }
   }
 
   get hasAdminCredentials(): boolean {
-    return this.adminAdapter !== null;
+    return this.storeOverride !== null || this.adminAdapter !== null;
   }
 
-  get adapter(): FirestoreRestAdapter | null {
-    return this.adminAdapter;
+  get adapter(): FirestoreStoreAdapter | null {
+    return this.storeOverride || this.adminAdapter;
+  }
+
+  async runAtomicTransaction<T>(fn: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
+    const store = this.storeOverride || this.adminAdapter;
+    if (!store) {
+      console.error(
+        '[PlanActivation] FIREBASE_SERVICE_ACCOUNT is not configured on the server; refusing non-atomic fallback.'
+      );
+      throw new PlanActivationHttpError(
+        503,
+        'SERVER_CONFIG_ERROR',
+        "Couldn't activate. Try again"
+      );
+    }
+    return store.runTransaction(fn);
   }
 
   getEnv(): EconomyEnv {
@@ -795,27 +857,8 @@ async function getAllCoupons(fsHelper: HybridFirestoreHelper): Promise<Normalize
     if (norm.code) byCode.set(norm.code, norm);
   }
 
-  // 2. Merge from Firestore `promoCodes` and `coupons` collections if present
-  const [fsPromoCodes, fsCoupons] = await Promise.all([
-    fsHelper.listCollection('promoCodes', 200).catch(() => []),
-    fsHelper.listCollection('coupons', 200).catch(() => []),
-  ]);
-
-  for (const docItem of [...fsPromoCodes, ...fsCoupons]) {
-    const norm = normalizeCouponRecord({ id: docItem.id, ...docItem.data });
-    if (norm.code) {
-      const existing = byCode.get(norm.code);
-      if (existing) {
-        // Take the higher redemption count so counts never regress
-        const mergedCount = Math.max(existing.redemptionCount, norm.redemptionCount);
-        norm.redemptionCount = mergedCount;
-        norm.redeemedCount = mergedCount;
-      }
-      byCode.set(norm.code, norm);
-    }
-  }
-
-  // 3. Merge live promo code configured in Admin -> Ads (/admin/ads -> Promo code tab)
+  // 2. Merge live promo code configured in Admin -> Ads (/admin/ads -> Promo code tab)
+  //    (placed BEFORE Firestore `coupons/{CODE}` so authoritative Coupon Studio docs always win!)
   try {
     const adsConfig = await loadAdsConfigServer(fsHelper.getEnv());
     if (adsConfig?.promoCode?.code) {
@@ -840,6 +883,25 @@ async function getAllCoupons(fsHelper: HybridFirestoreHelper): Promise<Normalize
     }
   } catch {
     // Keep defaults/Firestore coupons on error
+  }
+
+  // 3. Merge from Firestore `promoCodes` and `coupons` collections (highest precedence!)
+  const [fsPromoCodes, fsCoupons] = await Promise.all([
+    fsHelper.listCollection('promoCodes', 200).catch(() => []),
+    fsHelper.listCollection('coupons', 200).catch(() => []),
+  ]);
+
+  for (const docItem of [...fsPromoCodes, ...fsCoupons]) {
+    const norm = normalizeCouponRecord({ id: docItem.id, ...docItem.data });
+    if (norm.code) {
+      const existing = byCode.get(norm.code);
+      if (existing) {
+        const mergedCount = Math.max(existing.redemptionCount, norm.redemptionCount);
+        norm.redemptionCount = mergedCount;
+        norm.redeemedCount = mergedCount;
+      }
+      byCode.set(norm.code, norm);
+    }
   }
 
   return Array.from(byCode.values());
@@ -926,18 +988,23 @@ async function validateCouponForUser(
     };
   }
 
-  const redemptions = await getAllRedemptions(fsHelper);
-  const alreadyUsedByUser = redemptions.some((r) => {
-    const rCode = String(r.promo_code || r.couponCode || r.code || '').trim().toUpperCase();
-    const rUid = String(r.student_id || r.userId || r.uid || '').trim();
-    return rCode === cleanCode && rUid === uid;
-  });
+  const [redemptions, directSubdocRedemption] = await Promise.all([
+    getAllRedemptions(fsHelper),
+    fsHelper.getDoc(`coupons/${cleanCode}/redemptions/${uid}`).catch(() => null),
+  ]);
+  const alreadyUsedByUser =
+    Boolean(directSubdocRedemption) ||
+    redemptions.some((r) => {
+      const rCode = String(r.promo_code || r.couponCode || r.code || '').trim().toUpperCase();
+      const rUid = String(r.student_id || r.userId || r.uid || '').trim();
+      return rCode === cleanCode && rUid === uid;
+    });
 
   if (alreadyUsedByUser) {
     return {
       valid: false,
       code: 'ALREADY_REDEEMED',
-      error: 'You have already used this coupon',
+      error: 'Coupon already used',
     };
   }
 
@@ -1051,10 +1118,29 @@ async function recordCouponRedemptionAtomically(
   localRedemptions.unshift(redemptionPayload);
   saveLocalPromoRedemptions(localRedemptions);
 
-  // 2. Mirror to Firestore `promoCodes`, `coupons`, `promoRedemptions`, and `couponRedemptions`
+  // 2. Mirror to Firestore `promoCodes`, `coupons`, `coupons/{CODE}/redemptions/{uid}`, `promoRedemptions`, and `couponRedemptions`
   await Promise.all([
     fsHelper.setDoc(`promoCodes/${coupon.id}`, rawCouponPayload, true).catch(() => false),
-    fsHelper.setDoc(`coupons/${coupon.code}`, rawCouponPayload, true).catch(() => false),
+    fsHelper
+      .setDoc(
+        `coupons/${coupon.code}`,
+        { redeemedCount: nextCount, updatedAt: nowIso },
+        true
+      )
+      .catch(() => false),
+    fsHelper
+      .setDoc(
+        `coupons/${coupon.code}/redemptions/${user.uid}`,
+        {
+          uid: user.uid,
+          redeemedAt: nowIso,
+          usedOn: contextMeta?.planId || 'pro_annual',
+          paymentId: redemptionId,
+          discountApplied: contextMeta?.discountPkr ?? contextMeta?.discountKobans ?? 0,
+        },
+        true
+      )
+      .catch(() => false),
     fsHelper.setDoc(`promoRedemptions/${redemptionId}`, redemptionPayload, true).catch(() => false),
     fsHelper.setDoc(`couponRedemptions/${redemptionId}`, redemptionPayload, true).catch(() => false),
   ]);
@@ -1118,12 +1204,108 @@ function resolvePlanIdFromBody(
   return fallback;
 }
 
+function normalizeFirestoreCouponForActivation(
+  code: string,
+  raw: Record<string, any> | null | undefined
+): CouponDoc | null {
+  if (!raw || typeof raw !== 'object') return null;
+  // Prefer strict Coupon Studio schema (`type: 'pct' | 'flat' | 'kob'`, `value`, `active`, `redeemedCount`)
+  const direct = normalizeCouponDoc(code, raw);
+  if (direct) return direct;
+
+  // Fallback support for legacy Firestore coupon docs using `discount_type` / `percent_off` / `is_active`
+  const norm = normalizeCouponRecord({ id: code, code, ...raw });
+  if (!norm.code) return null;
+  let type: CouponDoc['type'] = 'pct';
+  let value = norm.percentOff;
+  if (norm.discountType === 'fixed_pkr' && norm.amountOffPkr > 0) {
+    type = 'flat';
+    value = norm.amountOffPkr;
+  } else if (norm.discountType === 'fixed_kobans' && norm.amountOffKobans > 0) {
+    type = 'kob';
+    value = norm.amountOffKobans;
+  } else if (norm.discountType === '1_year_free_pro' || norm.discountType === 'free_pro') {
+    type = 'pct';
+    value = 100;
+  }
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const appliesTo =
+    norm.appliesTo === 'all'
+      ? Array.isArray(norm.appliesToPlans) && norm.appliesToPlans.length === 1
+        ? norm.appliesToPlans[0]
+        : 'any'
+      : norm.appliesTo;
+
+  const expiresAtMs = norm.expiresAt ? Date.parse(String(norm.expiresAt)) : null;
+  return {
+    code: norm.code,
+    type,
+    value,
+    appliesTo,
+    maxRedemptions: norm.maxRedemptions >= 1_000_000_000 ? null : norm.maxRedemptions,
+    redeemedCount: norm.redeemedCount,
+    expiresAt: expiresAtMs !== null && !Number.isNaN(expiresAtMs) ? expiresAtMs : null,
+    active: norm.active,
+    createdAt: null,
+    createdBy: norm.createdBy,
+  };
+}
+
+function resolveCanonicalActivationPlanId(body: Record<string, any>): {
+  planId: PaidPlanId;
+  billing: 'monthly' | 'annual';
+} | null {
+  const rawPlanId = String(body.planId ?? body.plan ?? '').trim().toLowerCase();
+  const rawBilling = String(body.billing ?? body.billingCycle ?? body.cycle ?? '').trim().toLowerCase();
+
+  if (
+    rawPlanId === 'pro_monthly' ||
+    rawPlanId === 'pro_annual' ||
+    rawPlanId === 'plus_monthly' ||
+    rawPlanId === 'plus_annual'
+  ) {
+    const planBilling = rawPlanId.endsWith('_annual') ? 'annual' : 'monthly';
+    if (rawBilling && rawBilling !== 'monthly' && rawBilling !== 'annual' && rawBilling !== 'yearly') {
+      return null;
+    }
+    if (rawBilling) {
+      const requestedBilling: 'monthly' | 'annual' =
+        rawBilling === 'annual' || rawBilling === 'yearly' ? 'annual' : 'monthly';
+      if (requestedBilling !== planBilling) {
+        const tier = rawPlanId.startsWith('plus') ? 'plus' : 'pro';
+        return {
+          planId: `${tier}_${requestedBilling}` as PaidPlanId,
+          billing: requestedBilling,
+        };
+      }
+    }
+    return { planId: rawPlanId, billing: planBilling };
+  }
+
+  if (rawPlanId === 'pro' || rawPlanId === 'plus') {
+    if (rawBilling && rawBilling !== 'monthly' && rawBilling !== 'annual' && rawBilling !== 'yearly') {
+      return null;
+    }
+    const billing: 'monthly' | 'annual' =
+      rawBilling === 'annual' || rawBilling === 'yearly' ? 'annual' : 'monthly';
+    return {
+      planId: `${rawPlanId}_${billing}` as PaidPlanId,
+      billing,
+    };
+  }
+
+  return null;
+}
+
 export async function handleEconomyApiRequest(context: {
   request: Request;
   env: EconomyEnv;
   tokenVerifierOverride?: (authHeader: string | null | undefined) => Promise<VerifiedFirebaseToken | null>;
+  storeOverride?: FirestoreStoreAdapter | null;
+  nowMsOverride?: number;
 }): Promise<Response> {
-  const { request, env, tokenVerifierOverride } = context;
+  const { request, env, tokenVerifierOverride, storeOverride, nowMsOverride } = context;
 
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -1139,9 +1321,10 @@ export async function handleEconomyApiRequest(context: {
   const url = new URL(request.url);
   const pathClean = url.pathname.replace(/\/+$/, '') || '/';
 
-  // Enforce POST-only on store/Koban purchase endpoints before auth check so any accidental GET (e.g. from a redirect) returns 405
+  // Enforce POST-only on store/Koban/plan activation endpoints before auth check
   if (
-    (pathClean === '/api/store/purchase' ||
+    (pathClean === '/api/plan/activate' ||
+      pathClean === '/api/store/purchase' ||
       pathClean === '/api/store/unlock' ||
       pathClean === '/api/store/buy' ||
       pathClean === '/api/kobans/purchase' ||
@@ -1183,12 +1366,12 @@ export async function handleEconomyApiRequest(context: {
       tokenVerifierOverride ||
       ((hdr: string | null | undefined) => verifyFirebaseIdToken(hdr, projectId, env));
     verifiedUser = await verifyFn(authHeader);
-  } catch (err: any) {
+  } catch {
     return jsonResponse(
       {
         ok: false,
         code: 'UNAUTHENTICATED',
-        error: err?.message || 'Invalid or expired authentication token.',
+        error: 'Please sign in again',
       },
       401
     );
@@ -1199,7 +1382,7 @@ export async function handleEconomyApiRequest(context: {
       {
         ok: false,
         code: 'UNAUTHENTICATED',
-        error: 'Authentication required. Please sign in.',
+        error: 'Please sign in again',
       },
       401
     );
@@ -1216,8 +1399,330 @@ export async function handleEconomyApiRequest(context: {
     );
   }
 
-  const fsHelper = new HybridFirestoreHelper(env, authHeader);
+  const fsHelper = new HybridFirestoreHelper(env, authHeader, storeOverride);
   const isAdmin = isAdminTokenClaim(verifiedUser, env);
+
+  // ==========================================================================
+  // 0. ACTIVATE PLAN WITH COUPON (ATOMIC SERVER TRANSACTION): POST /api/plan/activate
+  // ==========================================================================
+  if (pathClean === '/api/plan/activate' && request.method === 'POST') {
+    const body = (await request.json().catch(() => ({}))) as Record<string, any>;
+    const resolvedPlan = resolveCanonicalActivationPlanId(body);
+    if (!resolvedPlan) {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'BAD_INPUT',
+          error: 'Invalid plan or billing cycle.',
+        },
+        400
+      );
+    }
+
+    const cleanCode = normalizeCouponCode(body.couponCode ?? body.code);
+    if (!cleanCode) {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'INVALID_COUPON',
+          error: 'Invalid coupon',
+        },
+        400
+      );
+    }
+
+    const rawIdem = String(
+      body.idempotencyKey ?? request.headers.get('X-Idempotency-Key') ?? ''
+    )
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .slice(0, 80);
+
+    const nowMs =
+      typeof nowMsOverride === 'number' && Number.isFinite(nowMsOverride)
+        ? nowMsOverride
+        : Date.now();
+    const safeIdempotencyKey =
+      rawIdem || `act_${nowMs}_${Math.random().toString(36).slice(2, 10)}`;
+    const uid = verifiedUser.uid;
+    const activationDocKey = `${uid}_${safeIdempotencyKey}`;
+    const inFlightKey = `plan_activate:${activationDocKey}`;
+
+    if (rawIdem && completedEconomyPurchases.has(inFlightKey)) {
+      return jsonResponse({
+        ...completedEconomyPurchases.get(inFlightKey)!,
+        idempotentReplay: true,
+      });
+    }
+
+    if (inFlightEconomyPurchases.has(inFlightKey)) {
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'ACTIVATION_IN_PROGRESS',
+          error: 'Activation is already in progress. Please wait a moment.',
+        },
+        409
+      );
+    }
+
+    inFlightEconomyPurchases.add(inFlightKey);
+    try {
+      const txResult = await fsHelper.runAtomicTransaction(async (tx) => {
+        // 1. Idempotency check inside the atomic transaction: same key returns stored activation without re-running
+        if (rawIdem) {
+          const existingActivation = await tx.getDoc(`planActivations/${activationDocKey}`);
+          if (existingActivation && existingActivation.uid === uid && existingActivation.responsePayload) {
+            return {
+              ...(existingActivation.responsePayload as Record<string, any>),
+              idempotentReplay: true,
+            };
+          }
+        }
+
+        // 2. Read authoritative plans config, coupon doc, per-user redemption doc, and user doc inside ONE transaction
+        const [plansDocRaw, couponDocRaw, userRedemptionDoc, userDoc] = await Promise.all([
+          tx.getDoc('config/plans'),
+          tx.getDoc(`coupons/${cleanCode}`),
+          tx.getDoc(`coupons/${cleanCode}/redemptions/${uid}`),
+          tx.getDoc(`users/${uid}`),
+        ]);
+
+        const plansConfig = normalizePlansConfig(plansDocRaw);
+        const plan = getPlanById(resolvedPlan.planId, plansConfig);
+        const itemPricing = resolveCheckoutItemPricing(plan.id, plansConfig);
+        const couponDoc = normalizeFirestoreCouponForActivation(cleanCode, couponDocRaw);
+
+        // 3. Re-validate coupon strictly on the server (exists, active, not expired, usage limit, not used by user, appliesTo)
+        //    and recalculate authoritative price & discount on the server (never trust client price/discount).
+        const evaluation = evaluateCouponEligibility({
+          coupon: couponDoc,
+          alreadyRedeemedByUser: Boolean(userRedemptionDoc),
+          itemKey: plan.id,
+          basePkr: itemPricing.basePkr,
+          baseKobans: itemPricing.baseKobans,
+          kobansPerPkr: itemPricing.kobansPerPkr,
+          nowMs,
+        });
+
+        if (!evaluation.valid) {
+          const errorMap: Record<
+            typeof evaluation.code,
+            { status: number; message: string }
+          > = {
+            ALREADY_USED: { status: 409, message: 'Coupon already used' },
+            EXPIRED: { status: 400, message: 'Coupon expired' },
+            FULLY_CLAIMED: { status: 409, message: 'This coupon is fully claimed' },
+            WRONG_ITEM: { status: 400, message: 'Not valid for this item' },
+            INVALID_COUPON: { status: 400, message: 'Invalid coupon' },
+          };
+          const mapped = errorMap[evaluation.code];
+          throw new PlanActivationHttpError(mapped.status, evaluation.code, mapped.message);
+        }
+
+        const { coupon, breakdown } = evaluation;
+        if (!breakdown.isFreeActivation || breakdown.finalPkr !== 0 || breakdown.finalKobans !== 0) {
+          throw new PlanActivationHttpError(
+            400,
+            'PAYMENT_REQUIRED',
+            'This coupon does not cover the full plan price. Choose a payment method to continue.'
+          );
+        }
+
+        // 4. Verify plan eligibility & compute authoritative start/expiry dates on the server
+        const currentTier = getPlan(userDoc, nowMs);
+        const targetTier = getPlanTierFromPlanId(plan.id);
+        if (currentTier === 'plus' && targetTier === 'pro') {
+          throw new PlanActivationHttpError(
+            409,
+            'PLUS_ALREADY_INCLUDES_PRO',
+            PLUS_ALREADY_INCLUDES_PRO_MSG
+          );
+        }
+
+        const currentExpiryRaw =
+          userDoc?.plusUntil ??
+          userDoc?.planExpiresAt ??
+          userDoc?.premiumExpiresAt ??
+          userDoc?.proUntil ??
+          null;
+        const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
+
+        let proCreditDays = 0;
+        let totalDurationDays = plan.duration_days;
+        let extension;
+        if (currentTier === 'pro' && targetTier === 'plus') {
+          const remainingProDays =
+            currentExpiryMs && currentExpiryMs > nowMs
+              ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
+              : 0;
+          proCreditDays = computeProToPlusCreditDays(
+            remainingProDays,
+            plansConfig.pro.pricePkrMonthly,
+            plansConfig.plus.pricePkrMonthly
+          );
+          totalDurationDays = plan.duration_days + proCreditDays;
+          extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
+        } else {
+          extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
+        }
+
+        const nowIso = new Date(nowMs).toISOString();
+        const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
+        const nextRedeemedCount = coupon.redeemedCount + 1;
+        const activationId = `act_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+
+        const responsePayload: Record<string, any> = {
+          ok: true,
+          activated: true,
+          activatedPro: true,
+          activatedPlus: targetTier === 'plus',
+          idempotentReplay: false,
+          activationId,
+          redemptionId: activationId,
+          planId: plan.id,
+          planTier: targetTier,
+          billing: resolvedPlan.billing,
+          planName: plan.name,
+          durationDays: totalDurationDays,
+          proCreditDays,
+          startedAtMs: nowMs,
+          startedAtIso: nowIso,
+          newExpiryMs: extension.newExpiryMs,
+          newExpiryIso,
+          newExpiryLabel: extension.newExpiryLabel,
+          originalPkr: breakdown.originalPkr,
+          discountPkr: breakdown.discountPkr,
+          finalPkr: 0,
+          originalKobans: breakdown.originalKobans,
+          discountKobans: breakdown.discountKobans,
+          finalKobans: 0,
+          coupon: {
+            id: coupon.code,
+            code: coupon.code,
+            type: coupon.type,
+            value: coupon.value,
+            appliesTo: coupon.appliesTo,
+            redeemedCount: nextRedeemedCount,
+            redemptionCount: nextRedeemedCount,
+            maxRedemptions: coupon.maxRedemptions,
+          },
+        };
+
+        // 5. Execute ALL writes in ONE atomic Firestore transaction:
+        //    (a) Activate subscription on users/{uid}
+        tx.setDoc(
+          `users/${uid}`,
+          {
+            uid,
+            plan: targetTier,
+            tier: targetTier,
+            planTier: targetTier,
+            isPremium: true,
+            isPro: targetTier === 'pro',
+            isPlus: targetTier === 'plus',
+            planId: plan.id,
+            proPlanId: targetTier === 'pro' ? plan.id : null,
+            plusPlanId: targetTier === 'plus' ? plan.id : null,
+            premiumSource: 'coupon',
+            appliedCouponCode: coupon.code,
+            AppliedCouponCode: coupon.code,
+            planStartedAt: nowIso,
+            planExpiresAt: newExpiryIso,
+            premiumExpiresAt: extension.newExpiryMs,
+            proUntil: targetTier === 'pro' ? newExpiryIso : null,
+            plusUntil: targetTier === 'plus' ? newExpiryIso : null,
+            updatedAt: nowIso,
+          },
+          true
+        );
+
+        //    (b) Record per-user coupon redemption with exists:false precondition (atomic once-per-account)
+        tx.createDoc(`coupons/${coupon.code}/redemptions/${uid}`, {
+          uid,
+          redeemedAt: nowIso,
+          usedOn: plan.id,
+          paymentId: activationId,
+          discountApplied: breakdown.discountApplied,
+          couponCode: coupon.code,
+          planId: plan.id,
+          planTier: targetTier,
+          billing: resolvedPlan.billing,
+          originalPkr: breakdown.originalPkr,
+          discountPkr: breakdown.discountPkr,
+          finalPkr: 0,
+        });
+
+        //    (c) Increment coupon redeemedCount atomically
+        tx.setDoc(
+          `coupons/${coupon.code}`,
+          {
+            redeemedCount: nextRedeemedCount,
+            updatedAt: nowIso,
+          },
+          true
+        );
+
+        //    (d) Record atomic idempotency + audit doc
+        tx.createDoc(`planActivations/${activationDocKey}`, {
+          id: activationId,
+          idempotencyKey: safeIdempotencyKey,
+          uid,
+          planId: plan.id,
+          planTier: targetTier,
+          billing: resolvedPlan.billing,
+          planName: plan.name,
+          couponCode: coupon.code,
+          originalPkr: breakdown.originalPkr,
+          discountPkr: breakdown.discountPkr,
+          finalPkr: 0,
+          durationDays: totalDurationDays,
+          proCreditDays,
+          startedAtIso: nowIso,
+          newExpiryMs: extension.newExpiryMs,
+          newExpiryIso,
+          newExpiryLabel: extension.newExpiryLabel,
+          responsePayload,
+          createdAt: nowIso,
+        });
+
+        return responsePayload;
+      });
+
+      if (rawIdem) {
+        completedEconomyPurchases.set(inFlightKey, txResult);
+      }
+      return jsonResponse(txResult, 200);
+    } catch (err: any) {
+      if (err instanceof PlanActivationHttpError) {
+        return jsonResponse(
+          {
+            ok: false,
+            code: err.code,
+            error: err.message,
+            message: err.message,
+          },
+          err.status
+        );
+      }
+      console.error('[PlanActivation] Atomic activation failed:', {
+        uid,
+        planId: resolvedPlan.planId,
+        couponCode: cleanCode,
+        error: err?.message || String(err),
+      });
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'ACTIVATION_FAILED',
+          error: "Couldn't activate. Try again",
+        },
+        500
+      );
+    } finally {
+      inFlightEconomyPurchases.delete(inFlightKey);
+    }
+  }
 
   // ==========================================================================
   // 1. VALIDATE COUPON: POST /api/coupons/validate (or /api/pro/coupon/validate)
