@@ -11811,6 +11811,9 @@ ${postSitemaps}
 
   app.post('/api/plan/activate', delegateToEconomyWorker);
   app.get('/api/plan/activate', delegateToEconomyWorker);
+  app.get('/api/admin/plan-audit', delegateToEconomyWorker);
+  app.post('/api/admin/plan-repair-pkig', delegateToEconomyWorker);
+  app.get('/api/admin/plan-repair-pkig', delegateToEconomyWorker);
   app.post('/api/pro/purchase-kobans', delegateToEconomyWorker);
   app.get('/api/pro/purchase-kobans', delegateToEconomyWorker);
   app.post('/api/coupons/validate', delegateToEconomyWorker);

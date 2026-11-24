@@ -37,12 +37,13 @@ import {
 } from '../utils/aiMentorsLogic';
 import {
   handleEconomyApiRequest,
-  seedEconomyFallbackDocForTest,
-  deleteEconomyFallbackDocForTest,
-  getEconomyFallbackDocForTest,
 } from '../../functions/api/economy/[[path]]';
 import { handlePlusBadgeRequest } from '../../functions/api/plus-badge';
-import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
+import {
+  getSharedLocalD1Database,
+  type FirestoreStoreAdapter,
+  type FirestoreTransactionContext,
+} from '../../functions/_utils/firestoreRestAdmin';
 import { DEFAULT_PLUS_BADGE_SETTINGS } from '../lib/plusBadgeDesigns';
 
 const NOW = Date.parse('2026-11-19T12:00:00.000Z');
@@ -252,9 +253,58 @@ test('6. AI Mentors credit limits & depth gating (Free 5/day Quick+Balanced, Pro
   assert.equal(isDepthAllowedForPlan(3, 'plus'), true);
 });
 
-test('7. Server /api/pro/purchase-kobans: blocks Plus->Pro with exact message, credits Pro->Plus, extends Plus renewal', async () => {
+test('7. Server /api/pro/purchase-kobans: blocks Plus->Pro with exact message, upgrades Pro->Plus without stacking leftover days, extends Plus renewal', async () => {
   const uidPlus = 'test_plus_guard_uid';
   const uidPro = 'test_pro_upgrade_uid';
+  const docs = new Map<string, Record<string, any>>();
+
+  const atomicStore: FirestoreStoreAdapter = {
+    async getDoc(p) {
+      const d = docs.get(p);
+      return d ? structuredClone(d) : null;
+    },
+    async setDoc(p, data, merge = true) {
+      docs.set(p, merge && docs.has(p) ? { ...docs.get(p)!, ...structuredClone(data) } : structuredClone(data));
+    },
+    async deleteDoc(p) {
+      docs.delete(p);
+    },
+    async listCollection(prefix) {
+      const out: Array<{ id: string; data: Record<string, any> }> = [];
+      for (const [k, v] of docs.entries()) {
+        if (k.startsWith(`${prefix}/`) && !k.slice(prefix.length + 1).includes('/')) {
+          out.push({ id: k.slice(prefix.length + 1), data: structuredClone(v) });
+        }
+      }
+      return out;
+    },
+    async runTransaction<T>(fn: (tx: FirestoreTransactionContext) => Promise<T>): Promise<T> {
+      const ops: Array<() => void> = [];
+      const tx: FirestoreTransactionContext = {
+        getDoc: async (p) => {
+          const d = docs.get(p);
+          return d ? structuredClone(d) : null;
+        },
+        setDoc: (p, data, merge = true) => {
+          ops.push(() =>
+            docs.set(p, merge && docs.has(p) ? { ...docs.get(p)!, ...structuredClone(data) } : structuredClone(data))
+          );
+        },
+        createDoc: (p, data) => {
+          ops.push(() => {
+            if (docs.has(p)) throw new Error(`ALREADY_EXISTS: ${p}`);
+            docs.set(p, structuredClone(data));
+          });
+        },
+        deleteDoc: (p) => {
+          ops.push(() => docs.delete(p));
+        },
+      };
+      const result = await fn(tx);
+      for (const op of ops) op();
+      return result;
+    },
+  };
 
   const makeVerifier = (uid: string) => async () => ({
     uid,
@@ -269,78 +319,73 @@ test('7. Server /api/pro/purchase-kobans: blocks Plus->Pro with exact message, c
     isAdminOrAbove: false,
   });
 
-  try {
-    // Case A: Plus user tries to buy Pro -> 409 with exact message
-    seedEconomyFallbackDocForTest(`users/${uidPlus}`, {
-      uid: uidPlus,
-      plan: 'plus',
-      planTier: 'plus',
-      isPlus: true,
-      isPremium: true,
-      plusUntil: new Date(Date.now() + 20 * DAY_MS).toISOString(),
-      planExpiresAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
-      kobans: 10000,
-    });
-    seedEconomyFallbackDocForTest(`wallets/${uidPlus}`, { balance: 10000 });
+  // Case A: Plus user tries to buy Pro -> 409 with exact message
+  docs.set(`users/${uidPlus}`, {
+    uid: uidPlus,
+    plan: 'plus',
+    planTier: 'plus',
+    isPlus: true,
+    isPremium: true,
+    plusUntil: new Date(Date.now() + 20 * DAY_MS).toISOString(),
+    planExpiresAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
+    kobans: 10000,
+  });
+  docs.set(`wallets/${uidPlus}`, { balance: 10000 });
 
-    const blockRes = await handleEconomyApiRequest({
-      request: new Request('http://localhost/api/pro/purchase-kobans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
-        body: JSON.stringify({ planId: 'pro_monthly', idempotencyKey: 't_block_1' }),
-      }),
-      env: {},
-      tokenVerifierOverride: makeVerifier(uidPlus),
-    });
-    assert.equal(blockRes.status, 409);
-    const blockJson = (await blockRes.json()) as any;
-    assert.equal(blockJson.code, 'PLUS_ALREADY_INCLUDES_PRO');
-    assert.equal(blockJson.error, PLUS_ALREADY_INCLUDES_PRO_MSG);
-    assert.equal(blockJson.error, 'You already have Plus, which includes Pro');
+  const blockRes = await handleEconomyApiRequest({
+    request: new Request('http://localhost/api/pro/purchase-kobans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
+      body: JSON.stringify({ planId: 'pro_monthly', idempotencyKey: 't_block_1' }),
+    }),
+    env: {},
+    storeOverride: atomicStore,
+    tokenVerifierOverride: makeVerifier(uidPlus),
+  });
+  assert.equal(blockRes.status, 409);
+  const blockJson = (await blockRes.json()) as any;
+  assert.equal(blockJson.code, 'PLUS_ALREADY_INCLUDES_PRO');
+  assert.equal(blockJson.error, PLUS_ALREADY_INCLUDES_PRO_MSG);
+  assert.equal(blockJson.error, 'You already have Plus, which includes Pro');
 
-    // Case B: Pro user with 15 days left upgrades to Plus Monthly -> 30 + 7 = 37 days, 3990 Kobans deducted
-    seedEconomyFallbackDocForTest(`users/${uidPro}`, {
-      uid: uidPro,
-      plan: 'pro',
-      planTier: 'pro',
-      isPro: true,
-      isPremium: true,
-      proUntil: new Date(Date.now() + 15 * DAY_MS).toISOString(),
-      planExpiresAt: new Date(Date.now() + 15 * DAY_MS).toISOString(),
-      kobans: 5000,
-    });
-    seedEconomyFallbackDocForTest(`wallets/${uidPro}`, { balance: 5000 });
+  // Case B: Pro user with 15 days left upgrades to Plus Monthly -> strictly 30 days (no Pro day stacking), 3990 Kobans deducted
+  docs.set(`users/${uidPro}`, {
+    uid: uidPro,
+    plan: 'pro',
+    planTier: 'pro',
+    isPro: true,
+    isPremium: true,
+    proUntil: new Date(Date.now() + 15 * DAY_MS).toISOString(),
+    planExpiresAt: new Date(Date.now() + 15 * DAY_MS).toISOString(),
+    kobans: 5000,
+  });
+  docs.set(`wallets/${uidPro}`, { balance: 5000 });
 
-    const upgRes = await handleEconomyApiRequest({
-      request: new Request('http://localhost/api/pro/purchase-kobans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
-        body: JSON.stringify({ planId: 'plus_monthly', idempotencyKey: 't_upg_1' }),
-      }),
-      env: {},
-      tokenVerifierOverride: makeVerifier(uidPro),
-    });
-    assert.equal(upgRes.status, 200);
-    const upgJson = (await upgRes.json()) as any;
-    assert.equal(upgJson.ok, true);
-    assert.equal(upgJson.planTier, 'plus');
-    assert.equal(upgJson.upgradedFromPro, true);
-    assert.equal(upgJson.proCreditDays, 7);
-    assert.equal(upgJson.durationDays, 37);
-    assert.equal(upgJson.kobansSpent, 3990);
-    assert.equal(upgJson.newBalance, 1010);
+  const upgRes = await handleEconomyApiRequest({
+    request: new Request('http://localhost/api/pro/purchase-kobans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
+      body: JSON.stringify({ planId: 'plus_monthly', idempotencyKey: 't_upg_1' }),
+    }),
+    env: {},
+    storeOverride: atomicStore,
+    tokenVerifierOverride: makeVerifier(uidPro),
+  });
+  assert.equal(upgRes.status, 200);
+  const upgJson = (await upgRes.json()) as any;
+  assert.equal(upgJson.ok, true);
+  assert.equal(upgJson.planTier, 'plus');
+  assert.equal(upgJson.upgradedFromPro, true);
+  assert.equal(upgJson.proCreditDays, 0);
+  assert.equal(upgJson.durationDays, 30);
+  assert.equal(upgJson.kobansSpent, 3990);
+  assert.equal(upgJson.newBalance, 1010);
 
-    const updatedUser = getEconomyFallbackDocForTest(`users/${uidPro}`);
-    assert.equal(updatedUser?.plan, 'plus');
-    assert.equal(updatedUser?.isPlus, true);
-    assert.equal(updatedUser?.isPro, false);
-    assert.equal(updatedUser?.plusPlanId, 'plus_monthly');
-  } finally {
-    deleteEconomyFallbackDocForTest(`users/${uidPlus}`);
-    deleteEconomyFallbackDocForTest(`wallets/${uidPlus}`);
-    deleteEconomyFallbackDocForTest(`users/${uidPro}`);
-    deleteEconomyFallbackDocForTest(`wallets/${uidPro}`);
-  }
+  const updatedUser = docs.get(`users/${uidPro}`);
+  assert.equal(updatedUser?.plan, 'plus');
+  assert.equal(updatedUser?.isPlus, true);
+  assert.equal(updatedUser?.isPro, false);
+  assert.equal(updatedUser?.plusPlanId, 'plus_monthly');
 });
 
 test('8. Firestore security rules: config/plans before wildcard & protected Plus/AI fields', () => {

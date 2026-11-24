@@ -23,7 +23,7 @@ import {
   REFUND_POLICY_TEXT,
   buildPlansCatalog,
   buildPlanComparisonRows,
-  computeExtendedProExpiry,
+  calculatePlanExpiryPkt,
   evaluatePlanPurchaseEligibility,
   type ProPlanId,
 } from '@/config/plans';
@@ -130,6 +130,7 @@ export function PlansBillingPage() {
     (profile as any)?.plusUntil ??
     profile?.planExpiresAt ??
     (profile as any)?.premiumExpiresAt ??
+    (profile as any)?.proUntil ??
     null;
 
   const isPendingVerification = planStatus.state === 'pending';
@@ -162,26 +163,32 @@ export function PlansBillingPage() {
     [planStatus, activePlusPlanId, plansConfig]
   );
 
+  const currentPersonalTier = planStatus.isPersonalPlus
+    ? 'plus'
+    : planStatus.isPersonalPro
+      ? 'pro'
+      : 'free';
+
   const activeProExpiryPreview = useMemo(
-    () => computeExtendedProExpiry(rawExpiresAt, activeProOption.duration_days),
-    [rawExpiresAt, activeProOption.duration_days]
+    () =>
+      calculatePlanExpiryPkt({
+        currentTier: currentPersonalTier,
+        targetTier: 'pro',
+        currentExpiryRaw: planStatus.expiryMs ?? rawExpiresAt,
+        purchasedDays: activeProOption.duration_days,
+      }),
+    [currentPersonalTier, planStatus.expiryMs, rawExpiresAt, activeProOption.duration_days]
   );
 
   const activePlusExpiryPreview = useMemo(
     () =>
-      computeExtendedProExpiry(
-        rawExpiresAt,
-        activePlusOption.duration_days,
-        Date.now(),
-        plusEligibility.extraPlusDays,
-        plusEligibility.isUpgradeFromProToPlus
-      ),
-    [
-      rawExpiresAt,
-      activePlusOption.duration_days,
-      plusEligibility.extraPlusDays,
-      plusEligibility.isUpgradeFromProToPlus,
-    ]
+      calculatePlanExpiryPkt({
+        currentTier: currentPersonalTier,
+        targetTier: 'plus',
+        currentExpiryRaw: planStatus.expiryMs ?? rawExpiresAt,
+        purchasedDays: activePlusOption.duration_days,
+      }),
+    [currentPersonalTier, planStatus.expiryMs, rawExpiresAt, activePlusOption.duration_days]
   );
 
   const handleBack = () => {
@@ -448,12 +455,7 @@ export function PlansBillingPage() {
                   <span>Upgrade to Plus</span>
                 </button>
                 <p className="text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                  Your unused Pro days are credited to Plus
-                  {plusEligibility.extraPlusDays > 0
-                    ? ` (+${plusEligibility.extraPlusDays} bonus Plus ${
-                        plusEligibility.extraPlusDays === 1 ? 'day' : 'days'
-                      })`
-                    : ''}
+                  Starts a fresh Boardly Plus pass from today (replaces your active Pro pass)
                 </p>
               </div>
             ) : (
@@ -892,8 +894,7 @@ export function PlansBillingPage() {
                   <span>{activePlusOption.price_kobans.toLocaleString()} Kobans</span>
                 </span>
                 <span style={{ color: 'var(--text-muted)' }}>
-                  {activePlusOption.duration_days}
-                  {plusEligibility.extraPlusDays > 0 ? `+${plusEligibility.extraPlusDays}` : ''} days · Active until{' '}
+                  {activePlusExpiryPreview.daysAdded} days · Active until{' '}
                   <strong style={{ color: 'var(--text)' }}>
                     {activePlusExpiryPreview.newExpiryLabel}
                   </strong>
@@ -971,12 +972,7 @@ export function PlansBillingPage() {
                     className="text-center text-[12px] font-medium"
                     style={{ color: 'var(--koban)' }}
                   >
-                    Your unused Pro days are credited to Plus
-                    {plusEligibility.extraPlusDays > 0
-                      ? ` (+${plusEligibility.extraPlusDays} extra ${
-                          plusEligibility.extraPlusDays === 1 ? 'day' : 'days'
-                        })`
-                      : ''}
+                    Replaces your active Pro pass ({activePlusExpiryPreview.daysAdded} days from today)
                   </p>
                 )}
               </div>

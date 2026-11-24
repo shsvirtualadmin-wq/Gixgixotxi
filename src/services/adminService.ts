@@ -53,12 +53,11 @@ import {
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 import { formatPaymentMethodLabel } from '@/constants/branding';
-import { computeExtendedProExpiry, getProPlanById, buildPlansCatalog } from '@/config/plans';
+import { calculatePlanExpiryPkt, getProPlanById, buildPlansCatalog } from '@/config/plans';
 import {
   getPlan,
   planRank,
   normalizePlanTier,
-  computeProToPlusCreditDays,
   getPlanTierFromPlanId,
   getBillingFromPlanId,
   getPlanDisplayName,
@@ -3950,34 +3949,22 @@ export async function approvePaymentRequest(
   const planName = req.planName || resolvedPlan.name;
   const pkrAmount = Number(req.amount_pkr ?? req.amount ?? resolvedPlan.price_pkr);
 
-  let proCreditDays = 0;
-  let extension: ReturnType<typeof computeExtendedProExpiry>;
+  const currentExpiryRaw =
+    targetTier === 'plus'
+      ? (userData?.plusUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null)
+      : (userData?.proUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null);
 
-  if (targetTier === 'plus' && existingTier === 'pro') {
-    // Pro -> Plus upgrade: credit unused Pro days proportionally
-    const proExpMs = parsePlanExpiryMs(
-      userData?.proUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt
-    );
-    const remainingProDays =
-      proExpMs && proExpMs > nowMs ? (proExpMs - nowMs) / (24 * 60 * 60 * 1000) : 0;
-    const proMonthlyPkr = plansConfig?.pro.pricePkrMonthly ?? 199;
-    const plusMonthlyPkr = plansConfig?.plus.pricePkrMonthly ?? 399;
-    proCreditDays = computeProToPlusCreditDays(remainingProDays, proMonthlyPkr, plusMonthlyPkr);
-    extension = computeExtendedProExpiry(null, baseDurationDays + proCreditDays, nowMs);
-  } else if (targetTier === 'plus' && existingTier === 'plus') {
-    // Plus renewal: extend from current Plus expiry
-    const currentPlusRaw =
-      userData?.plusUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
-    extension = computeExtendedProExpiry(currentPlusRaw, baseDurationDays, nowMs);
-  } else {
-    // Pro new purchase or Pro renewal
-    const currentProRaw =
-      userData?.proUntil ?? userData?.planExpiresAt ?? userData?.premiumExpiresAt ?? null;
-    extension = computeExtendedProExpiry(currentProRaw, baseDurationDays, nowMs);
-  }
+  const extension = calculatePlanExpiryPkt({
+    currentTier: existingTier,
+    targetTier,
+    currentExpiryRaw,
+    purchasedDays: baseDurationDays,
+    nowMs,
+  });
 
-  const totalDurationDays = baseDurationDays + proCreditDays;
-  const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
+  const proCreditDays = 0;
+  const totalDurationDays = extension.daysAdded;
+  const newExpiryIso = extension.newExpiryIso;
 
   // Record computed newExpiryDate & upgrade credit metadata on the paymentRequest doc
   await updateDoc(doc(db, 'paymentRequests', req.id), {

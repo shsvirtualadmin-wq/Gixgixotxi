@@ -1072,6 +1072,9 @@
       "last_active_at": 1795506667740
     },
     {
+      "status": "abandoned",
+      "abandoned_at": 1795506727546,
+      "purge_after": 1796111527546,
       "uid": "guest_1795506727511_ac62fd0c72",
       "username": "bilalkhan99",
       "username_lower": "bilalkhan99__abandoned_guest_1795506727511_ac62fd0c72",
@@ -1082,9 +1085,6 @@
       "email": "",
       "plan": "free",
       "role": "student",
-      "status": "abandoned",
-      "abandoned_at": 1795506727546,
-      "purge_after": 1796111527546,
       "upgraded_to_uid": null,
       "upgraded_at": null,
       "target_university": "NUST",
@@ -1882,6 +1882,30 @@
       "verified_auth_time": 0,
       "verified_at": 1795498830033,
       "updated_at": 1795498830033
+    },
+    {
+      "user_id": "test_superadmin_plus_1795518060219",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795518060223,
+      "updated_at": 1795518060223
+    },
+    {
+      "user_id": "test_free_plus_1795518060219",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795518061106,
+      "updated_at": 1795518061106
+    },
+    {
+      "user_id": "test_pro_plus_1795518060221",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795518061305,
+      "updated_at": 1795518061305
     }
   ],
   "user_koban_style": [],

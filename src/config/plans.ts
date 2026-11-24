@@ -13,22 +13,46 @@
 
 import {
   DEFAULT_PLANS_CONFIG,
+  PKT_OFFSET_MS,
   PLUS_ALREADY_INCLUDES_PRO_MSG,
+  calculatePlanExpiryPkt,
   computeAnnualPrice,
   computeProToPlusCreditDays,
+  formatPktDateLabel,
   getBillingFromPlanId,
+  getPktCalendarDaysLeft,
+  getPktDateParts,
   getPlan,
   getPlanTierFromPlanId,
   normalizePlansConfig,
   parsePlanExpiryMs,
+  pktEndOfDayMs,
   planRank,
+  type CalculatePlanExpiryInput,
+  type CalculatePlanExpiryResult,
   type PaidPlanId,
   type PlanTier,
   type PlansConfigDoc,
 } from '../lib/planTier';
 
-export { PLUS_ALREADY_INCLUDES_PRO_MSG, computeAnnualPrice, computeProToPlusCreditDays };
-export type { PaidPlanId, PlanTier, PlansConfigDoc };
+export {
+  PKT_OFFSET_MS,
+  PLUS_ALREADY_INCLUDES_PRO_MSG,
+  calculatePlanExpiryPkt,
+  computeAnnualPrice,
+  computeProToPlusCreditDays,
+  formatPktDateLabel,
+  getPktCalendarDaysLeft,
+  getPktDateParts,
+  pktEndOfDayMs,
+};
+export type {
+  CalculatePlanExpiryInput,
+  CalculatePlanExpiryResult,
+  PaidPlanId,
+  PlanTier,
+  PlansConfigDoc,
+};
 
 export const KOBANS_PER_PKR = DEFAULT_PLANS_CONFIG.kobansPerPkr;
 
@@ -346,7 +370,7 @@ export function buildPlanFaqItems(rawConfig?: Partial<PlansConfigDoc> | null): R
     {
       question: 'What happens if I upgrade from Pro to Plus?',
       answer:
-        'Boardly Plus activates as soon as your payment is approved (or instantly with Kobans). Any unused days left on your active Pro pass are automatically converted into extra Plus days based on the plan price ratio.',
+        'Boardly Plus activates as soon as your payment is approved (or instantly with Kobans). Your new Plus pass starts from today for the exact number of days purchased (30 monthly or 365 annual) and replaces your active Pro pass.',
     },
     {
       question: 'When does my plan activate & what is the refund policy?',
@@ -508,7 +532,7 @@ export interface UnifiedPlanStatusResult {
 export function evaluatePlanPurchaseEligibility(
   status: UnifiedPlanStatusResult,
   targetPlanId: PaidPlanId | string,
-  config?: Partial<PlansConfigDoc> | null
+  _config?: Partial<PlansConfigDoc> | null
 ): {
   allowed: boolean;
   reason: string | null;
@@ -517,7 +541,6 @@ export function evaluatePlanPurchaseEligibility(
   extraPlusDays: number;
 } {
   const targetTier = getPlanTierFromPlanId(targetPlanId);
-  const cfg = normalizePlansConfig(config as Record<string, any> | null);
 
   if (status.isSuperAdmin) {
     return {
@@ -561,17 +584,12 @@ export function evaluatePlanPurchaseEligibility(
 
   if (status.isPersonalPro) {
     if (targetTier === 'plus') {
-      const extraPlusDays = computeProToPlusCreditDays(
-        status.daysLeft,
-        cfg.pro.pricePkrMonthly,
-        cfg.plus.pricePkrMonthly
-      );
       return {
         allowed: true,
         reason: null,
         isUpgradeFromProToPlus: true,
         isPlusRenewal: false,
-        extraPlusDays,
+        extraPlusDays: 0,
       };
     }
     return {
@@ -754,7 +772,7 @@ export function resolveUnifiedPlanStatus(input: {
     const isPersonalPlus = personalPlanTier === 'plus';
     const daysLeft =
       hasFutureExpiry && expiryMs !== null
-        ? Math.max(1, Math.ceil((expiryMs - nowMs) / (24 * 60 * 60 * 1000)))
+        ? getPktCalendarDaysLeft(expiryMs, nowMs)
         : resolvedPlanConfig.duration_days;
     const expiryFormatted =
       hasFutureExpiry && expiryMs !== null
@@ -771,10 +789,7 @@ export function resolveUnifiedPlanStatus(input: {
           ? 'Active Plus membership'
           : 'Active Pro membership';
 
-    const proToPlusCreditDays =
-      !isPersonalPlus && hasFutureExpiry && expiryMs !== null
-        ? computeProToPlusCreditDays(daysLeft, cfg.pro.pricePkrMonthly, cfg.plus.pricePkrMonthly)
-        : 0;
+    const proToPlusCreditDays = 0;
 
     return {
       state: pendingInfo ? 'pending' : 'active',
@@ -807,7 +822,7 @@ export function resolveUnifiedPlanStatus(input: {
         ? 'Your payment is being verified. This usually takes up to 24 hours. You cannot start another purchase while your payment is awaiting verification.'
         : isPersonalPlus
           ? PLUS_ALREADY_INCLUDES_PRO_MSG
-          : `You already have Boardly Pro (${resolvedPlanConfig.name}) active until ${expiryFormatted}. You can upgrade to Boardly Plus anytime — your unused Pro days are credited to Plus.`,
+          : `You already have Boardly Pro (${resolvedPlanConfig.name}) active until ${expiryFormatted}. Upgrading to Boardly Plus starts a fresh Plus pass from today and replaces your Pro pass.`,
     };
   }
 
@@ -914,16 +929,17 @@ export function resolveUnifiedPlanStatus(input: {
 }
 
 /**
- * Computes the new expiry timestamp for a Pro or Plus activation/extension:
- * - For same-tier renewal when active (currentExpiryMs > nowMs): extends from currentExpiryMs + durationDays.
- * - For Pro -> Plus upgrade: starts from nowMs + durationDays + extraPlusDays (credited from unused Pro days).
- * - Otherwise: starts from nowMs + durationDays.
+ * Legacy wrapper around the ONE canonical `calculatePlanExpiryPkt` function (PKT).
+ * - When `startFromNowForUpgrade` is true (e.g., Pro -> Plus upgrade), starts fresh from `nowMs`
+ *   in PKT without stacking or converting leftover days from another plan.
+ * - Otherwise (same-tier extension or fresh purchase), computes `max(now, currentExpiry) + durationDays`
+ *   to the end of that PKT calendar day.
  */
 export function computeExtendedProExpiry(
   currentExpiryRaw: unknown,
   durationDays: number,
   nowMs: number = Date.now(),
-  extraCreditDays: number = 0,
+  _extraCreditDays: number = 0,
   startFromNowForUpgrade: boolean = false
 ): {
   currentExpiryMs: number | null;
@@ -939,33 +955,27 @@ export function computeExtendedProExpiry(
   newExpiryLabel: string;
   daysRemainingAfter: number;
 } {
-  const parsedCurrent = parseExpiryMillis(currentExpiryRaw);
-  const isCurrentlyActive = parsedCurrent !== null && parsedCurrent > nowMs;
-  const baseMs = !startFromNowForUpgrade && isCurrentlyActive ? parsedCurrent : nowMs;
-  const totalDays = Math.max(1, Math.floor(durationDays)) + Math.max(0, Math.floor(extraCreditDays));
-  const durationMs = totalDays * 24 * 60 * 60 * 1000;
-  const newExpiryMs = baseMs + durationMs;
-  const daysRemainingAfter = Math.max(
-    1,
-    Math.ceil((newExpiryMs - nowMs) / (24 * 60 * 60 * 1000))
-  );
-  const previousLabel =
-    isCurrentlyActive && parsedCurrent ? formatProExpiryDate(parsedCurrent) : null;
-  const newLabel = formatProExpiryDate(newExpiryMs);
+  const calc = calculatePlanExpiryPkt({
+    currentTier: startFromNowForUpgrade ? 'pro' : 'plus',
+    targetTier: 'plus',
+    currentExpiryRaw: startFromNowForUpgrade ? null : currentExpiryRaw,
+    purchasedDays: durationDays,
+    nowMs,
+  });
 
   return {
-    currentExpiryMs: isCurrentlyActive ? parsedCurrent : null,
-    previousExpiryMs: isCurrentlyActive ? parsedCurrent : null,
-    isCurrentlyActive,
-    wasAlreadyActive: isCurrentlyActive,
-    extraCreditDays: Math.max(0, Math.floor(extraCreditDays)),
-    newExpiryMs,
-    newExpiryDate: new Date(newExpiryMs),
-    currentExpiryFormatted: previousLabel,
-    previousExpiryLabel: previousLabel,
-    newExpiryFormatted: newLabel,
-    newExpiryLabel: newLabel,
-    daysRemainingAfter,
+    currentExpiryMs: calc.currentExpiryMs,
+    previousExpiryMs: calc.previousExpiryMs,
+    isCurrentlyActive: calc.isCurrentlyActive,
+    wasAlreadyActive: calc.wasAlreadyActive,
+    extraCreditDays: 0,
+    newExpiryMs: calc.newExpiryMs,
+    newExpiryDate: calc.newExpiryDate,
+    currentExpiryFormatted: calc.currentExpiryFormatted,
+    previousExpiryLabel: calc.previousExpiryLabel,
+    newExpiryFormatted: calc.newExpiryFormatted,
+    newExpiryLabel: calc.newExpiryLabel,
+    daysRemainingAfter: calc.daysRemainingAfter,
   };
 }
 

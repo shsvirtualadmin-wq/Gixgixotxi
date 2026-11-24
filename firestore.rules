@@ -504,6 +504,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /planAuditLogs/{auditId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /coupons/{couponCode} {
       // Single-code lookup for checkout Apply; full list restricted to admins
       allow get: if signedIn();

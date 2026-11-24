@@ -20,8 +20,7 @@ import {
 } from '@/utils/couponEngine';
 import {
   getProPlanById,
-  computeExtendedProExpiry,
-  computeProToPlusCreditDays,
+  calculatePlanExpiryPkt,
   evaluatePlanPurchaseEligibility,
   resolveUnifiedPlanStatus,
   type ProPlanId,
@@ -220,48 +219,31 @@ export function calculateProPurchaseOutcome(params: {
   const delta = -priceKobans;
   const balanceAfter = balanceBefore + delta;
 
-  // Compute Pro -> Plus unused day credit
-  let extraCreditDays = 0;
-  let wasUpgradeFromPro = false;
-  if (currentTier === 'pro' && targetTier === 'plus') {
-    const prevCheck = computeExtendedProExpiry(params.currentExpiryRaw, 0, nowMs);
-    if (prevCheck.isCurrentlyActive && prevCheck.currentExpiryMs) {
-      const remainingProDays = Math.max(
-        0,
-        Math.ceil((prevCheck.currentExpiryMs - nowMs) / (24 * 60 * 60 * 1000))
-      );
-      const proMonthly = getProPlanById('pro_monthly', params.plansConfig).price_pkr;
-      const plusMonthly = getProPlanById('plus_monthly', params.plansConfig).price_pkr;
-      extraCreditDays = computeProToPlusCreditDays(remainingProDays, proMonthly, plusMonthly);
-      wasUpgradeFromPro = true;
-    }
-  }
-
-  const extension = computeExtendedProExpiry(
-    params.currentExpiryRaw,
-    plan.duration_days,
+  const extension = calculatePlanExpiryPkt({
+    currentTier,
+    targetTier,
+    currentExpiryRaw: params.currentExpiryRaw,
+    purchasedDays: plan.duration_days,
     nowMs,
-    extraCreditDays,
-    wasUpgradeFromPro // Pro -> Plus starts now + plan duration + credited Pro days
-  );
+  });
 
   return {
     planId: plan.id,
     planTier: targetTier,
     planName: plan.name,
-    durationDays: plan.duration_days + extraCreditDays,
-    extraCreditDays,
+    durationDays: extension.daysAdded,
+    extraCreditDays: 0,
     pricePkr: plan.price_pkr,
     priceKobans,
     balanceBefore,
     delta,
     balanceAfter,
-    wasExtension: !wasUpgradeFromPro && extension.wasAlreadyActive,
-    wasUpgradeFromPro,
+    wasExtension: extension.isSameTierExtension,
+    wasUpgradeFromPro: extension.replacesActivePro,
     previousExpiryMs: extension.previousExpiryMs,
     previousExpiryLabel: extension.previousExpiryLabel,
     newExpiryMs: extension.newExpiryMs,
-    newExpiryIso: new Date(extension.newExpiryMs).toISOString(),
+    newExpiryIso: extension.newExpiryIso,
     newExpiryLabel: extension.newExpiryLabel,
   };
 }
@@ -559,7 +541,13 @@ export async function redeemProCoupon(params: {
     data.newExpiryIso || new Date(resolvedExpiryMs).toISOString()
   );
   const resolvedExpiryLabel = String(
-    data.newExpiryLabel || computeExtendedProExpiry(null, resolvedDurationDays).newExpiryLabel
+    data.newExpiryLabel ||
+      calculatePlanExpiryPkt({
+        currentTier: 'free',
+        targetTier: resolvedTier,
+        currentExpiryRaw: null,
+        purchasedDays: resolvedDurationDays,
+      }).newExpiryLabel
   );
   const startedAtIso = String(data.startedAtIso || new Date().toISOString());
 

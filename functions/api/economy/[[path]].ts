@@ -16,14 +16,17 @@ import {
   COSMETICS_CATALOG,
   LEGACY_COSMETICS_CATALOG,
 } from '../../../src/data/cosmeticsCatalog';
-import { getPlanById, getProPlanById, computeExtendedProExpiry } from '../../../src/config/plans';
+import { getPlanById, getProPlanById } from '../../../src/config/plans';
 import {
   DEFAULT_PLANS_CONFIG,
   normalizePlansConfig,
   getPlan,
   getPlanTierFromPlanId,
   getBillingFromPlanId,
-  computeProToPlusCreditDays,
+  calculatePlanExpiryPkt,
+  pktEndOfDayMs,
+  getPktCalendarDaysLeft,
+  formatPktDateLabel,
   parsePlanExpiryMs,
   PLUS_ALREADY_INCLUDES_PRO_MSG,
   type PaidPlanId,
@@ -102,6 +105,19 @@ function isAdminTokenClaim(
     env
   );
   return verifiedUser.superAdmin === true || verifiedUser.admin === true || isVerifiedOwner;
+}
+
+function isSuperAdminTokenClaim(
+  verifiedUser?: VerifiedFirebaseToken | null,
+  env?: EconomyEnv
+): boolean {
+  if (!verifiedUser) return false;
+  const isVerifiedOwner = isVerifiedOwnerEmailToken(
+    verifiedUser.email,
+    verifiedUser.emailVerified === true,
+    env
+  );
+  return verifiedUser.superAdmin === true || verifiedUser.isSuperAdmin === true || isVerifiedOwner;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -727,6 +743,9 @@ class HybridFirestoreHelper {
   }
 
   async getDoc(docPath: string): Promise<Record<string, any> | null> {
+    if (this.storeOverride) {
+      return this.storeOverride.getDoc(docPath);
+    }
     const clean = docPath.replace(/^\/+/, '');
     const fallbackDoc = localEconomyFirestoreFallback.get(clean) || null;
     if (this.adminAdapter) {
@@ -753,6 +772,10 @@ class HybridFirestoreHelper {
   }
 
   async setDoc(docPath: string, data: Record<string, any>, merge = true): Promise<boolean> {
+    if (this.storeOverride) {
+      await this.storeOverride.setDoc(docPath, data, merge);
+      return true;
+    }
     const clean = docPath.replace(/^\/+/, '');
     const prev = merge ? localEconomyFirestoreFallback.get(clean) || {} : {};
     localEconomyFirestoreFallback.set(clean, { ...prev, ...data });
@@ -792,6 +815,9 @@ class HybridFirestoreHelper {
     collectionPath: string,
     pageSize = 200
   ): Promise<Array<{ id: string; data: Record<string, any> }>> {
+    if (this.storeOverride) {
+      return this.storeOverride.listCollection(collectionPath, pageSize);
+    }
     const cleanPrefix = `${collectionPath.replace(/^\/+|\/+$/g, '')}/`;
     const fallbackItems = new Map<string, { id: string; data: Record<string, any> }>();
     for (const [k, v] of localEconomyFirestoreFallback.entries()) {
@@ -1324,6 +1350,7 @@ export async function handleEconomyApiRequest(context: {
   // Enforce POST-only on store/Koban/plan activation endpoints before auth check
   if (
     (pathClean === '/api/plan/activate' ||
+      pathClean === '/api/admin/plan-repair-pkig' ||
       pathClean === '/api/store/purchase' ||
       pathClean === '/api/store/unlock' ||
       pathClean === '/api/store/buy' ||
@@ -1529,7 +1556,8 @@ export async function handleEconomyApiRequest(context: {
           );
         }
 
-        // 4. Verify plan eligibility & compute authoritative start/expiry dates on the server
+        // 4. Verify plan eligibility & compute authoritative PKT expiry via THE ONE shared function
+        //    (no stacking or converting leftover days from another plan)
         const currentTier = getPlan(userDoc, nowMs);
         const targetTier = getPlanTierFromPlanId(plan.id);
         if (currentTier === 'plus' && targetTier === 'pro') {
@@ -1541,34 +1569,25 @@ export async function handleEconomyApiRequest(context: {
         }
 
         const currentExpiryRaw =
-          userDoc?.plusUntil ??
-          userDoc?.planExpiresAt ??
-          userDoc?.premiumExpiresAt ??
-          userDoc?.proUntil ??
-          null;
-        const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
+          targetTier === 'plus'
+            ? (userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null)
+            : (userDoc?.proUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? null);
 
-        let proCreditDays = 0;
-        let totalDurationDays = plan.duration_days;
-        let extension;
-        if (currentTier === 'pro' && targetTier === 'plus') {
-          const remainingProDays =
-            currentExpiryMs && currentExpiryMs > nowMs
-              ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
-              : 0;
-          proCreditDays = computeProToPlusCreditDays(
-            remainingProDays,
-            plansConfig.pro.pricePkrMonthly,
-            plansConfig.plus.pricePkrMonthly
-          );
-          totalDurationDays = plan.duration_days + proCreditDays;
-          extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
-        } else {
-          extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
-        }
+        const extension = calculatePlanExpiryPkt({
+          currentTier,
+          targetTier,
+          currentExpiryRaw,
+          purchasedDays: plan.duration_days,
+          nowMs,
+        });
 
+        const proCreditDays = 0;
+        const totalDurationDays = extension.daysAdded;
         const nowIso = new Date(nowMs).toISOString();
-        const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
+        const newExpiryIso = extension.newExpiryIso;
+        const previousExpiryIso = extension.previousExpiryMs
+          ? new Date(extension.previousExpiryMs).toISOString()
+          : null;
         const nextRedeemedCount = coupon.redeemedCount + 1;
         const activationId = `act_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1585,7 +1604,14 @@ export async function handleEconomyApiRequest(context: {
           billing: resolvedPlan.billing,
           planName: plan.name,
           durationDays: totalDurationDays,
+          daysAdded: totalDurationDays,
           proCreditDays,
+          wasExtension: extension.isSameTierExtension,
+          upgradedFromPro: extension.replacesActivePro,
+          replacedProDaysRemaining: extension.replacedProDaysRemaining,
+          previousTier: currentTier,
+          previousExpiryIso,
+          previousExpiryLabel: extension.previousExpiryLabel,
           startedAtMs: nowMs,
           startedAtIso: nowIso,
           newExpiryMs: extension.newExpiryMs,
@@ -1663,11 +1689,12 @@ export async function handleEconomyApiRequest(context: {
           true
         );
 
-        //    (d) Record atomic idempotency + audit doc
+        //    (d) Record atomic idempotency + subscription history entry
         tx.createDoc(`planActivations/${activationDocKey}`, {
           id: activationId,
           idempotencyKey: safeIdempotencyKey,
           uid,
+          source: 'coupon',
           planId: plan.id,
           planTier: targetTier,
           billing: resolvedPlan.billing,
@@ -1677,7 +1704,13 @@ export async function handleEconomyApiRequest(context: {
           discountPkr: breakdown.discountPkr,
           finalPkr: 0,
           durationDays: totalDurationDays,
-          proCreditDays,
+          daysAdded: totalDurationDays,
+          proCreditDays: 0,
+          previousTier: currentTier,
+          previousExpiryIso,
+          wasExtension: extension.isSameTierExtension,
+          upgradedFromPro: extension.replacesActivePro,
+          replacedProDaysRemaining: extension.replacedProDaysRemaining,
           startedAtIso: nowIso,
           newExpiryMs: extension.newExpiryMs,
           newExpiryIso,
@@ -1814,109 +1847,194 @@ export async function handleEconomyApiRequest(context: {
 
     const { coupon, pricing } = validation;
 
-    // If this is a 100%-off / Free grant coupon, activate Boardly Pro or Plus immediately on the server!
+    // If this is a 100%-off / Free grant coupon, activate atomically via the SAME single transaction + PKT calculator
     if (pricing.isFreeGrant) {
-      const nowMs = Date.now();
-      const plansConfig = await loadPlansConfigServer(fsHelper);
-      const userDoc = await fsHelper.getDoc(`users/${verifiedUser.uid}`);
-      const currentTier = getPlan(userDoc, nowMs);
-      const targetTier = getPlanTierFromPlanId(pricing.planId);
+      const nowMs =
+        typeof nowMsOverride === 'number' && Number.isFinite(nowMsOverride)
+          ? nowMsOverride
+          : Date.now();
+      const rawIdem = String(
+        body.idempotencyKey ?? request.headers.get('X-Idempotency-Key') ?? ''
+      )
+        .trim()
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .slice(0, 80);
+      const safeIdem = rawIdem || `redeem_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+      const uid = verifiedUser.uid;
+      const activationDocKey = `${uid}_${safeIdem}`;
 
-      if (currentTier === 'plus' && targetTier === 'pro') {
-        return jsonResponse(
-          {
-            ok: false,
-            code: 'PLUS_ALREADY_INCLUDES_PRO',
-            error: PLUS_ALREADY_INCLUDES_PRO_MSG,
-          },
-          409
-        );
-      }
+      try {
+        const txResult = await fsHelper.runAtomicTransaction(async (tx) => {
+          if (rawIdem) {
+            const existingActivation = await tx.getDoc(`planActivations/${activationDocKey}`);
+            if (existingActivation && existingActivation.uid === uid && existingActivation.responsePayload) {
+              return {
+                ...(existingActivation.responsePayload as Record<string, any>),
+                idempotentReplay: true,
+              };
+            }
+          }
 
-      const currentExpiryRaw =
-        userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null;
-      const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
-      let proCreditDays = 0;
-      let totalDurationDays = pricing.effectiveDurationDays;
-      let extension;
-      if (currentTier === 'pro' && targetTier === 'plus') {
-        const remainingProDays =
-          currentExpiryMs && currentExpiryMs > nowMs
-            ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
-            : 0;
-        proCreditDays = computeProToPlusCreditDays(
-          remainingProDays,
-          plansConfig.pro.pricePkrMonthly,
-          plansConfig.plus.pricePkrMonthly
-        );
-        totalDurationDays = pricing.effectiveDurationDays + proCreditDays;
-        extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
-      } else {
-        extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
-      }
+          const [couponDocRaw, userRedemptionDoc, userDoc] = await Promise.all([
+            tx.getDoc(`coupons/${coupon.code}`),
+            tx.getDoc(`coupons/${coupon.code}/redemptions/${uid}`),
+            tx.getDoc(`users/${uid}`),
+          ]);
 
-      const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
-      const nowIso = new Date(nowMs).toISOString();
+          if (userRedemptionDoc) {
+            throw new PlanActivationHttpError(409, 'ALREADY_USED', 'Coupon already used');
+          }
 
-      const { redemptionId, updatedCoupon } = await recordCouponRedemptionAtomically(
-        fsHelper,
-        coupon,
-        verifiedUser,
-        newExpiryIso,
-        {
-          planId: pricing.planId,
-          method: 'coupon_free_grant',
-          discountPkr: pricing.discountPkr,
-          discountKobans: pricing.discountKobans,
+          const currentTier = getPlan(userDoc, nowMs);
+          const targetTier = getPlanTierFromPlanId(pricing.planId);
+          if (currentTier === 'plus' && targetTier === 'pro') {
+            throw new PlanActivationHttpError(
+              409,
+              'PLUS_ALREADY_INCLUDES_PRO',
+              PLUS_ALREADY_INCLUDES_PRO_MSG
+            );
+          }
+
+          const currentExpiryRaw =
+            targetTier === 'plus'
+              ? (userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null)
+              : (userDoc?.proUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? null);
+
+          const extension = calculatePlanExpiryPkt({
+            currentTier,
+            targetTier,
+            currentExpiryRaw,
+            purchasedDays: pricing.effectiveDurationDays,
+            nowMs,
+          });
+
+          const nowIso = new Date(nowMs).toISOString();
+          const newExpiryIso = extension.newExpiryIso;
+          const previousExpiryIso = extension.previousExpiryMs
+            ? new Date(extension.previousExpiryMs).toISOString()
+            : null;
+          const currentRedeemedCount = Number(
+            couponDocRaw?.redeemedCount ?? couponDocRaw?.redemptionCount ?? coupon.redemptionCount ?? 0
+          );
+          const nextRedeemedCount = currentRedeemedCount + 1;
+          const redemptionId = `act_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+
+          const responsePayload: Record<string, any> = {
+            ok: true,
+            activatedPro: true,
+            activatedPlus: targetTier === 'plus',
+            planTier: targetTier,
+            proCreditDays: 0,
+            redemptionId,
+            planId: pricing.planId,
+            planName: pricing.planName,
+            durationDays: extension.daysAdded,
+            daysAdded: extension.daysAdded,
+            wasExtension: extension.isSameTierExtension,
+            upgradedFromPro: extension.replacesActivePro,
+            previousExpiryIso,
+            newExpiryMs: extension.newExpiryMs,
+            newExpiryIso,
+            newExpiryLabel: extension.newExpiryLabel,
+            coupon: {
+              code: coupon.code,
+              label: coupon.label,
+              redemptionCount: nextRedeemedCount,
+              maxRedemptions: coupon.maxRedemptions,
+            },
+          };
+
+          tx.setDoc(
+            `users/${uid}`,
+            {
+              uid,
+              plan: targetTier,
+              tier: targetTier,
+              planTier: targetTier,
+              isPremium: true,
+              isPro: targetTier === 'pro',
+              isPlus: targetTier === 'plus',
+              planId: pricing.planId,
+              proPlanId: targetTier === 'pro' ? pricing.planId : null,
+              plusPlanId: targetTier === 'plus' ? pricing.planId : null,
+              premiumSource: 'coupon',
+              appliedCouponCode: coupon.code,
+              AppliedCouponCode: coupon.code,
+              planStartedAt: nowIso,
+              planExpiresAt: newExpiryIso,
+              premiumExpiresAt: extension.newExpiryMs,
+              proUntil: targetTier === 'pro' ? newExpiryIso : null,
+              plusUntil: targetTier === 'plus' ? newExpiryIso : null,
+              updatedAt: nowIso,
+            },
+            true
+          );
+
+          tx.createDoc(`coupons/${coupon.code}/redemptions/${uid}`, {
+            uid,
+            redeemedAt: nowIso,
+            usedOn: pricing.planId,
+            paymentId: redemptionId,
+            discountApplied: pricing.discountPkr,
+            couponCode: coupon.code,
+            planId: pricing.planId,
+            planTier: targetTier,
+            billing: getBillingFromPlanId(pricing.planId),
+            originalPkr: pricing.originalPkr,
+            discountPkr: pricing.discountPkr,
+            finalPkr: 0,
+          });
+
+          tx.setDoc(
+            `coupons/${coupon.code}`,
+            {
+              redeemedCount: nextRedeemedCount,
+              updatedAt: nowIso,
+            },
+            true
+          );
+
+          tx.createDoc(`planActivations/${activationDocKey}`, {
+            id: redemptionId,
+            idempotencyKey: safeIdem,
+            uid,
+            source: 'coupon',
+            planId: pricing.planId,
+            planTier: targetTier,
+            billing: getBillingFromPlanId(pricing.planId),
+            planName: pricing.planName,
+            couponCode: coupon.code,
+            durationDays: extension.daysAdded,
+            daysAdded: extension.daysAdded,
+            proCreditDays: 0,
+            previousTier: currentTier,
+            previousExpiryIso,
+            wasExtension: extension.isSameTierExtension,
+            upgradedFromPro: extension.replacesActivePro,
+            startedAtIso: nowIso,
+            newExpiryMs: extension.newExpiryMs,
+            newExpiryIso,
+            newExpiryLabel: extension.newExpiryLabel,
+            responsePayload,
+            createdAt: nowIso,
+          });
+
+          return responsePayload;
+        });
+
+        return jsonResponse(txResult, 200);
+      } catch (err: any) {
+        if (err instanceof PlanActivationHttpError) {
+          return jsonResponse(
+            { ok: false, code: err.code, error: err.message, message: err.message },
+            err.status
+          );
         }
-      );
-
-      // Update user's Pro or Plus status server-side
-      await fsHelper.setDoc(
-        `users/${verifiedUser.uid}`,
-        {
-          uid: verifiedUser.uid,
-          plan: targetTier,
-          tier: targetTier,
-          planTier: targetTier,
-          isPremium: true,
-          isPro: targetTier === 'pro',
-          isPlus: targetTier === 'plus',
-          planId: pricing.planId,
-          proPlanId: targetTier === 'pro' ? pricing.planId : null,
-          plusPlanId: targetTier === 'plus' ? pricing.planId : null,
-          premiumSource: 'coupon',
-          AppliedCouponCode: coupon.code,
-          planStartedAt: nowIso,
-          planExpiresAt: newExpiryIso,
-          premiumExpiresAt: extension.newExpiryMs,
-          proUntil: targetTier === 'pro' ? newExpiryIso : null,
-          plusUntil: targetTier === 'plus' ? newExpiryIso : null,
-          updatedAt: nowIso,
-        },
-        true
-      );
-
-      return jsonResponse({
-        ok: true,
-        activatedPro: true,
-        activatedPlus: targetTier === 'plus',
-        planTier: targetTier,
-        proCreditDays,
-        redemptionId,
-        planId: pricing.planId,
-        planName: pricing.planName,
-        durationDays: totalDurationDays,
-        newExpiryMs: extension.newExpiryMs,
-        newExpiryIso,
-        newExpiryLabel: extension.newExpiryLabel,
-        coupon: {
-          code: updatedCoupon.code,
-          label: updatedCoupon.label,
-          redemptionCount: updatedCoupon.redemptionCount,
-          maxRedemptions: updatedCoupon.maxRedemptions,
-        },
-      });
+        return jsonResponse(
+          { ok: false, code: 'ACTIVATION_FAILED', error: "Couldn't activate. Try again" },
+          500
+        );
+      }
     }
 
     // For partial-discount coupons, return the validated discount breakdown ready for checkout
@@ -1982,20 +2100,8 @@ export async function handleEconomyApiRequest(context: {
       );
     }
 
-    let proCreditDaysPreview = 0;
+    const proCreditDaysPreview = 0;
     const upgradedFromPro = currentTierForGuard === 'pro' && targetTier === 'plus';
-    if (upgradedFromPro) {
-      const currentExpMs = parsePlanExpiryMs(
-        userDocForGuard?.proUntil ?? userDocForGuard?.planExpiresAt ?? userDocForGuard?.premiumExpiresAt
-      );
-      const remainingProDays =
-        currentExpMs && currentExpMs > nowMs ? Math.ceil((currentExpMs - nowMs) / DAY_MS) : 0;
-      proCreditDaysPreview = computeProToPlusCreditDays(
-        remainingProDays,
-        plansConfig.pro.pricePkrMonthly,
-        plansConfig.plus.pricePkrMonthly
-      );
-    }
 
     const couponCode = String(body.couponCode || '').trim().toUpperCase();
     let finalAmountPkr = plan.price_pkr;
@@ -2118,9 +2224,16 @@ export async function handleEconomyApiRequest(context: {
     );
 
     if (validatedCoupon) {
-      const approxExpiryIso = new Date(
-        nowMs + (plan.duration_days + proCreditDaysPreview) * DAY_MS
-      ).toISOString();
+      const approxExpiryIso = calculatePlanExpiryPkt({
+        currentTier: currentTierForGuard,
+        targetTier,
+        currentExpiryRaw:
+          targetTier === 'plus'
+            ? (userDocForGuard?.plusUntil ?? userDocForGuard?.planExpiresAt ?? null)
+            : (userDocForGuard?.proUntil ?? userDocForGuard?.planExpiresAt ?? null),
+        purchasedDays: plan.duration_days,
+        nowMs,
+      }).newExpiryIso;
       await recordCouponRedemptionAtomically(
         fsHelper,
         validatedCoupon,
@@ -2222,147 +2335,191 @@ export async function handleEconomyApiRequest(context: {
       inFlightEconomyPurchases.add(proCacheKey);
     }
 
-    try {
-      let finalKobansCost = plan.price_kobans;
-      let discountKobans = 0;
-      let validatedCoupon: NormalizedCoupon | null = null;
+    const uid = verifiedUser.uid;
+    const nowMs =
+      typeof nowMsOverride === 'number' && Number.isFinite(nowMsOverride)
+        ? nowMsOverride
+        : Date.now();
+    const safeIdempotency =
+      rawIdempotency || `koban_${nowMs}_${Math.random().toString(36).slice(2, 8)}`;
+    const ledgerId = `${targetTier}_koban_${safeIdempotency}`;
+    const activationDocKey = `${uid}_${ledgerId}`;
 
-      if (couponCode) {
-        const couponCheck = await validateCouponForUser(
-          fsHelper,
-          couponCode,
-          verifiedUser.uid,
-          plan.id
-        );
-        if (!couponCheck.valid) {
-          return jsonResponse(
-            {
-              ok: false,
-              code: couponCheck.code,
-              error: couponCheck.error,
-            },
-            400
+    try {
+      const txResult = await fsHelper.runAtomicTransaction(async (tx) => {
+        // 1. Idempotency check inside ONE atomic transaction
+        if (rawIdempotency) {
+          const [existingLedgerDoc, existingActivationDoc] = await Promise.all([
+            tx.getDoc(`wallets/${uid}/ledger/${ledgerId}`),
+            tx.getDoc(`planActivations/${activationDocKey}`),
+          ]);
+          if (existingActivationDoc?.responsePayload) {
+            return {
+              ...(existingActivationDoc.responsePayload as Record<string, any>),
+              alreadyProcessed: true,
+              idempotentReplay: true,
+            };
+          }
+          if (existingLedgerDoc) {
+            return {
+              ok: true,
+              alreadyProcessed: true,
+              idempotentReplay: true,
+              planId: existingLedgerDoc.planId || plan.id,
+              planTier: existingLedgerDoc.planTier || targetTier,
+              planName: existingLedgerDoc.planName || plan.name,
+              durationDays: Number(existingLedgerDoc.durationDays || plan.duration_days),
+              daysAdded: Number(existingLedgerDoc.durationDays || plan.duration_days),
+              proCreditDays: 0,
+              kobansSpent: Math.abs(Number(existingLedgerDoc.amount ?? plan.price_kobans)),
+              discountKobans: Number(existingLedgerDoc.discountKobans ?? 0),
+              balanceBefore: Number(existingLedgerDoc.balanceBefore ?? 0),
+              newBalance: Number(existingLedgerDoc.balanceAfter ?? 0),
+              wasExtension: Boolean(existingLedgerDoc.wasExtension),
+              upgradedFromPro: Boolean(existingLedgerDoc.upgradedFromPro),
+              previousExpiryLabel: existingLedgerDoc.previousExpiryLabel || null,
+              newExpiryMs: Number(existingLedgerDoc.newExpiryMs || nowMs),
+              newExpiryIso: String(existingLedgerDoc.newExpiryIso || new Date(nowMs).toISOString()),
+              newExpiryLabel: String(existingLedgerDoc.newExpiryLabel || 'Active'),
+              ledgerId,
+            };
+          }
+        }
+
+        // 2. Read authoritative plans config, wallet, user, and optional coupon inside ONE transaction
+        const cleanCouponCode = normalizeCouponCode(couponCode);
+        const [plansDocRaw, walletDoc, userDoc, couponDocRaw, userRedemptionDoc] = await Promise.all([
+          tx.getDoc('config/plans'),
+          tx.getDoc(`wallets/${uid}`),
+          tx.getDoc(`users/${uid}`),
+          cleanCouponCode ? tx.getDoc(`coupons/${cleanCouponCode}`) : Promise.resolve(null),
+          cleanCouponCode
+            ? tx.getDoc(`coupons/${cleanCouponCode}/redemptions/${uid}`)
+            : Promise.resolve(null),
+        ]);
+
+        const livePlansConfig = normalizePlansConfig(plansDocRaw);
+        const livePlan = getPlanById(plan.id, livePlansConfig);
+        const activeTier = getPlan(userDoc, nowMs);
+
+        // Block buying Pro while Plus is active
+        if (activeTier === 'plus' && targetTier === 'pro') {
+          throw new PlanActivationHttpError(
+            409,
+            'PLUS_ALREADY_INCLUDES_PRO',
+            PLUS_ALREADY_INCLUDES_PRO_MSG
           );
         }
-        validatedCoupon = couponCheck.coupon;
-        finalKobansCost = couponCheck.pricing.finalKobans;
-        discountKobans = couponCheck.pricing.discountKobans;
-      }
 
-      const ledgerId = rawIdempotency
-        ? `${targetTier}_koban_${rawIdempotency}`
-        : `${targetTier}_koban_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        let finalKobansCost = livePlan.price_kobans;
+        let discountKobans = 0;
+        let validatedCouponDoc: CouponDoc | null = null;
+        let couponDiscountApplied = 0;
 
-      const [walletDoc, userDoc, existingLedgerDoc] = await Promise.all([
-        fsHelper.getDoc(`wallets/${verifiedUser.uid}`),
-        fsHelper.getDoc(`users/${verifiedUser.uid}`),
-        rawIdempotency
-          ? fsHelper.getDoc(`wallets/${verifiedUser.uid}/ledger/${ledgerId}`)
-          : Promise.resolve(null),
-      ]);
+        if (cleanCouponCode) {
+          const itemPricing = resolveCheckoutItemPricing(livePlan.id, livePlansConfig);
+          const normalizedCoupon = normalizeFirestoreCouponForActivation(cleanCouponCode, couponDocRaw);
+          const evaluation = evaluateCouponEligibility({
+            coupon: normalizedCoupon,
+            alreadyRedeemedByUser: Boolean(userRedemptionDoc),
+            itemKey: livePlan.id,
+            basePkr: itemPricing.basePkr,
+            baseKobans: itemPricing.baseKobans,
+            kobansPerPkr: itemPricing.kobansPerPkr,
+            nowMs,
+          });
+          if (!evaluation.valid) {
+            const errStatus = evaluation.code === 'ALREADY_USED' || evaluation.code === 'FULLY_CLAIMED' ? 409 : 400;
+            const errMsg =
+              evaluation.code === 'ALREADY_USED'
+                ? 'Coupon already used'
+                : evaluation.code === 'EXPIRED'
+                  ? 'Coupon expired'
+                  : evaluation.error;
+            throw new PlanActivationHttpError(errStatus, evaluation.code, errMsg);
+          }
+          validatedCouponDoc = evaluation.coupon;
+          finalKobansCost = evaluation.breakdown.finalKobans;
+          discountKobans = evaluation.breakdown.discountKobans;
+          couponDiscountApplied = evaluation.breakdown.discountApplied;
+        }
 
-      const nowMs = Date.now();
-      const activeTier = getPlan(userDoc, nowMs);
+        const walletBal =
+          walletDoc && typeof walletDoc.balance === 'number' && Number.isFinite(walletDoc.balance)
+            ? Math.max(0, Math.floor(walletDoc.balance))
+            : 0;
+        const userKobans =
+          userDoc && typeof userDoc.kobans === 'number' && Number.isFinite(userDoc.kobans)
+            ? Math.max(0, Math.floor(userDoc.kobans))
+            : 0;
+        const userKobanBal =
+          userDoc && typeof userDoc.kobanBalance === 'number' && Number.isFinite(userDoc.kobanBalance)
+            ? Math.max(0, Math.floor(userDoc.kobanBalance))
+            : 0;
+        const currentBalance = Math.max(walletBal, userKobans, userKobanBal);
 
-      // Block buying Pro while Plus is active
-      if (activeTier === 'plus' && targetTier === 'pro') {
-        return jsonResponse(
-          {
-            ok: false,
-            code: 'PLUS_ALREADY_INCLUDES_PRO',
-            error: PLUS_ALREADY_INCLUDES_PRO_MSG,
-          },
-          409
-        );
-      }
+        if (!isAdmin && currentBalance < finalKobansCost) {
+          throw new PlanActivationHttpError(
+            402,
+            'INSUFFICIENT_KOBANS',
+            `Insufficient Kobans. You need ${finalKobansCost.toLocaleString()} Kobans (you have ${currentBalance.toLocaleString()}).`
+          );
+        }
 
-      const walletBal =
-        walletDoc && typeof walletDoc.balance === 'number' && Number.isFinite(walletDoc.balance)
-          ? Math.max(0, Math.floor(walletDoc.balance))
-          : 0;
-      const userKobans =
-        userDoc && typeof userDoc.kobans === 'number' && Number.isFinite(userDoc.kobans)
-          ? Math.max(0, Math.floor(userDoc.kobans))
-          : 0;
-      const userKobanBal =
-        userDoc && typeof userDoc.kobanBalance === 'number' && Number.isFinite(userDoc.kobanBalance)
-          ? Math.max(0, Math.floor(userDoc.kobanBalance))
-          : 0;
+        const newBalance =
+          isAdmin && currentBalance < finalKobansCost ? currentBalance : currentBalance - finalKobansCost;
+        const currentExpiryRaw =
+          targetTier === 'plus'
+            ? (userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null)
+            : (userDoc?.proUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? null);
 
-      const currentBalance = Math.max(walletBal, userKobans, userKobanBal);
+        // 3. Calculate expiry via THE ONE canonical PKT function (zero Pro->Plus day stacking)
+        const extension = calculatePlanExpiryPkt({
+          currentTier: activeTier,
+          targetTier,
+          currentExpiryRaw,
+          purchasedDays: livePlan.duration_days,
+          nowMs,
+        });
 
-      if (existingLedgerDoc) {
-        const idempotentPayload = {
+        const proCreditDays = 0;
+        const totalDurationDays = extension.daysAdded;
+        const nowIso = new Date(nowMs).toISOString();
+        const newExpiryIso = extension.newExpiryIso;
+        const previousExpiryIso = extension.previousExpiryMs
+          ? new Date(extension.previousExpiryMs).toISOString()
+          : null;
+
+        const responsePayload: Record<string, any> = {
           ok: true,
-          alreadyProcessed: true,
-          planId: existingLedgerDoc.planId || plan.id,
-          planTier: existingLedgerDoc.planTier || targetTier,
-          planName: existingLedgerDoc.planName || plan.name,
-          durationDays: Number(existingLedgerDoc.durationDays || plan.duration_days),
-          proCreditDays: Number(existingLedgerDoc.proCreditDays || 0),
-          kobansSpent: Math.abs(Number(existingLedgerDoc.amount ?? finalKobansCost)),
-          discountKobans: Number(existingLedgerDoc.discountKobans ?? discountKobans),
-          balanceBefore: Number(existingLedgerDoc.balanceBefore ?? currentBalance),
-          newBalance: Number(existingLedgerDoc.balanceAfter ?? currentBalance),
-          wasExtension: false,
-          previousExpiryLabel: null,
-          newExpiryMs: Number(userDoc?.premiumExpiresAt || nowMs + plan.duration_days * DAY_MS),
-          newExpiryIso: String(
-            userDoc?.planExpiresAt || new Date(nowMs + plan.duration_days * DAY_MS).toISOString()
-          ),
-          newExpiryLabel: 'Active',
+          alreadyProcessed: false,
+          idempotentReplay: false,
+          planId: livePlan.id,
+          planTier: targetTier,
+          billing: getBillingFromPlanId(livePlan.id),
+          planName: livePlan.name,
+          durationDays: totalDurationDays,
+          daysAdded: totalDurationDays,
+          proCreditDays,
+          kobansSpent: finalKobansCost,
+          discountKobans,
+          balanceBefore: currentBalance,
+          newBalance,
+          wasExtension: extension.isSameTierExtension,
+          upgradedFromPro: extension.replacesActivePro,
+          replacedProDaysRemaining: extension.replacedProDaysRemaining,
+          previousTier: activeTier,
+          previousExpiryIso,
+          previousExpiryLabel: extension.previousExpiryLabel,
+          newExpiryMs: extension.newExpiryMs,
+          newExpiryIso,
+          newExpiryLabel: extension.newExpiryLabel,
           ledgerId,
         };
-        if (proCacheKey) completedEconomyPurchases.set(proCacheKey, idempotentPayload);
-        return jsonResponse(idempotentPayload);
-      }
 
-      if (!isAdmin && currentBalance < finalKobansCost) {
-        return jsonResponse(
-          {
-            ok: false,
-            code: 'INSUFFICIENT_KOBANS',
-            error: `Insufficient Kobans. You need ${finalKobansCost.toLocaleString()} Kobans (you have ${currentBalance.toLocaleString()}).`,
-            currentBalance,
-            requiredKobans: finalKobansCost,
-          },
-          402
-        );
-      }
-
-      const newBalance =
-        isAdmin && currentBalance < finalKobansCost ? currentBalance : currentBalance - finalKobansCost;
-      const currentExpiryRaw =
-        userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null;
-      const currentExpiryMs = parsePlanExpiryMs(currentExpiryRaw);
-
-      let proCreditDays = 0;
-      let totalDurationDays = plan.duration_days;
-      let extension;
-
-      if (activeTier === 'pro' && targetTier === 'plus') {
-        const remainingProDays =
-          currentExpiryMs && currentExpiryMs > nowMs
-            ? Math.ceil((currentExpiryMs - nowMs) / DAY_MS)
-            : 0;
-        proCreditDays = computeProToPlusCreditDays(
-          remainingProDays,
-          plansConfig.pro.pricePkrMonthly,
-          plansConfig.plus.pricePkrMonthly
-        );
-        totalDurationDays = plan.duration_days + proCreditDays;
-        extension = computeExtendedProExpiry(null, totalDurationDays, nowMs);
-      } else {
-        extension = computeExtendedProExpiry(currentExpiryRaw, totalDurationDays, nowMs);
-      }
-
-      const newExpiryIso = new Date(extension.newExpiryMs).toISOString();
-      const nowIso = new Date(nowMs).toISOString();
-
-      // Write wallet, user plan upgrade, and ledger entry
-      await Promise.all([
-        fsHelper.setDoc(
-          `wallets/${verifiedUser.uid}`,
+        // 4. Write wallet, subscription, ledger, history, and optional coupon redemption in ONE atomic transaction
+        tx.setDoc(
+          `wallets/${uid}`,
           {
             balance: newBalance,
             owned: Array.isArray(walletDoc?.owned) ? walletDoc.owned : [],
@@ -2376,20 +2533,21 @@ export async function handleEconomyApiRequest(context: {
             updatedAt: nowIso,
           },
           true
-        ),
-        fsHelper.setDoc(
-          `users/${verifiedUser.uid}`,
+        );
+
+        tx.setDoc(
+          `users/${uid}`,
           {
-            uid: verifiedUser.uid,
+            uid,
             plan: targetTier,
             tier: targetTier,
             planTier: targetTier,
             isPremium: true,
             isPro: targetTier === 'pro',
             isPlus: targetTier === 'plus',
-            planId: plan.id,
-            proPlanId: targetTier === 'pro' ? plan.id : null,
-            plusPlanId: targetTier === 'plus' ? plan.id : null,
+            planId: livePlan.id,
+            proPlanId: targetTier === 'pro' ? livePlan.id : null,
+            plusPlanId: targetTier === 'plus' ? livePlan.id : null,
             premiumSource: 'kobans',
             planStartedAt: nowIso,
             planExpiresAt: newExpiryIso,
@@ -2398,71 +2556,463 @@ export async function handleEconomyApiRequest(context: {
             plusUntil: targetTier === 'plus' ? newExpiryIso : null,
             kobans: newBalance,
             kobanBalance: newBalance,
-            ...(validatedCoupon ? { AppliedCouponCode: validatedCoupon.code } : {}),
+            ...(validatedCouponDoc
+              ? {
+                  appliedCouponCode: validatedCouponDoc.code,
+                  AppliedCouponCode: validatedCouponDoc.code,
+                }
+              : {}),
             updatedAt: nowIso,
           },
           true
-        ),
-        fsHelper.setDoc(
-          `wallets/${verifiedUser.uid}/ledger/${ledgerId}`,
-          {
-            type: 'purchase',
-            purchaseSubtype: targetTier === 'plus' ? 'plus_purchase' : 'pro_purchase',
-            amount: -finalKobansCost,
-            balanceBefore: currentBalance,
-            balanceAfter: newBalance,
-            planId: plan.id,
-            planTier: targetTier,
-            planName: plan.name,
-            durationDays: totalDurationDays,
-            proCreditDays,
-            couponCode: validatedCoupon ? validatedCoupon.code : null,
-            discountKobans,
-            reason: `${extension.wasAlreadyActive ? 'Extended' : activeTier === 'pro' && targetTier === 'plus' ? 'Upgraded to' : 'Unlocked'} ${plan.name} (${totalDurationDays} days${proCreditDays > 0 ? ` incl. +${proCreditDays}d Pro credit` : ''}) with ${finalKobansCost.toLocaleString()} Kobans`,
-            actorUid: verifiedUser.uid,
-            createdAt: nowIso,
-          },
-          true
-        ),
-      ]);
+        );
 
-      if (validatedCoupon) {
-        await recordCouponRedemptionAtomically(
-          fsHelper,
-          validatedCoupon,
-          verifiedUser,
+        tx.createDoc(`wallets/${uid}/ledger/${ledgerId}`, {
+          type: 'purchase',
+          purchaseSubtype: targetTier === 'plus' ? 'plus_purchase' : 'pro_purchase',
+          amount: -finalKobansCost,
+          balanceBefore: currentBalance,
+          balanceAfter: newBalance,
+          planId: livePlan.id,
+          planTier: targetTier,
+          billing: getBillingFromPlanId(livePlan.id),
+          planName: livePlan.name,
+          durationDays: totalDurationDays,
+          daysAdded: totalDurationDays,
+          proCreditDays: 0,
+          wasExtension: extension.isSameTierExtension,
+          upgradedFromPro: extension.replacesActivePro,
+          previousExpiryIso,
+          previousExpiryLabel: extension.previousExpiryLabel,
+          newExpiryMs: extension.newExpiryMs,
           newExpiryIso,
-          {
-            planId: plan.id,
-            method: 'kobans',
+          newExpiryLabel: extension.newExpiryLabel,
+          couponCode: validatedCouponDoc ? validatedCouponDoc.code : null,
+          discountKobans,
+          reason: `${extension.isSameTierExtension ? 'Extended' : extension.replacesActivePro ? 'Upgraded to' : 'Unlocked'} ${livePlan.name} (${totalDurationDays} days) with ${finalKobansCost.toLocaleString()} Kobans`,
+          actorUid: uid,
+          createdAt: nowIso,
+        });
+
+        tx.createDoc(`planActivations/${activationDocKey}`, {
+          id: ledgerId,
+          idempotencyKey: safeIdempotency,
+          uid,
+          source: 'kobans',
+          planId: livePlan.id,
+          planTier: targetTier,
+          billing: getBillingFromPlanId(livePlan.id),
+          planName: livePlan.name,
+          couponCode: validatedCouponDoc ? validatedCouponDoc.code : null,
+          kobansSpent: finalKobansCost,
+          discountKobans,
+          durationDays: totalDurationDays,
+          daysAdded: totalDurationDays,
+          proCreditDays: 0,
+          previousTier: activeTier,
+          previousExpiryIso,
+          wasExtension: extension.isSameTierExtension,
+          upgradedFromPro: extension.replacesActivePro,
+          replacedProDaysRemaining: extension.replacedProDaysRemaining,
+          startedAtIso: nowIso,
+          newExpiryMs: extension.newExpiryMs,
+          newExpiryIso,
+          newExpiryLabel: extension.newExpiryLabel,
+          responsePayload,
+          createdAt: nowIso,
+        });
+
+        if (validatedCouponDoc) {
+          tx.createDoc(`coupons/${validatedCouponDoc.code}/redemptions/${uid}`, {
+            uid,
+            redeemedAt: nowIso,
+            usedOn: livePlan.id,
+            paymentId: ledgerId,
+            discountApplied: couponDiscountApplied,
+            couponCode: validatedCouponDoc.code,
+            planId: livePlan.id,
+            planTier: targetTier,
+            billing: getBillingFromPlanId(livePlan.id),
             discountKobans,
-          }
+            finalKobans: finalKobansCost,
+          });
+          tx.setDoc(
+            `coupons/${validatedCouponDoc.code}`,
+            {
+              redeemedCount: validatedCouponDoc.redeemedCount + 1,
+              updatedAt: nowIso,
+            },
+            true
+          );
+        }
+
+        return responsePayload;
+      });
+
+      if (proCacheKey) completedEconomyPurchases.set(proCacheKey, txResult);
+      return jsonResponse(txResult, 200);
+    } catch (err: any) {
+      if (err instanceof PlanActivationHttpError) {
+        return jsonResponse(
+          {
+            ok: false,
+            code: err.code,
+            error: err.message,
+            message: err.message,
+          },
+          err.status
         );
       }
-
-      const responsePayload = {
-        ok: true,
+      console.error('[PlanKobansPurchase] Atomic purchase failed:', {
+        uid,
         planId: plan.id,
-        planTier: targetTier,
-        planName: plan.name,
-        durationDays: totalDurationDays,
-        proCreditDays,
-        kobansSpent: finalKobansCost,
-        discountKobans,
-        balanceBefore: currentBalance,
-        newBalance,
-        wasExtension: extension.wasAlreadyActive,
-        upgradedFromPro: activeTier === 'pro' && targetTier === 'plus',
-        previousExpiryLabel: extension.previousExpiryLabel,
-        newExpiryMs: extension.newExpiryMs,
-        newExpiryIso,
-        newExpiryLabel: extension.newExpiryLabel,
-        ledgerId,
-      };
-      if (proCacheKey) completedEconomyPurchases.set(proCacheKey, responsePayload);
-      return jsonResponse(responsePayload);
+        error: err?.message || String(err),
+      });
+      return jsonResponse(
+        {
+          ok: false,
+          code: 'PRO_PURCHASE_FAILED',
+          error: "Couldn't activate. Try again",
+        },
+        500
+      );
     } finally {
       if (proCacheKey) inFlightEconomyPurchases.delete(proCacheKey);
+    }
+  }
+
+  // ==========================================================================
+  // 4B. SUPERADMIN PLAN EXPIRY AUDIT (READ-ONLY): GET /api/admin/plan-audit
+  //     Reports full activation history for a user (?uid= or ?username=pkig)
+  //     and flags any user whose expiry exceeds the sum of their purchased days
+  //     WITHOUT modifying any other user automatically.
+  // ==========================================================================
+  if (pathClean === '/api/admin/plan-audit' && request.method === 'GET') {
+    if (!isSuperAdminTokenClaim(verifiedUser, env)) {
+      return jsonResponse(
+        { ok: false, code: 'FORBIDDEN', error: 'Superadmin access required.' },
+        403
+      );
+    }
+
+    const nowMs =
+      typeof nowMsOverride === 'number' && Number.isFinite(nowMsOverride)
+        ? nowMsOverride
+        : Date.now();
+    const targetUsernameParam = (url.searchParams.get('username') || '').trim().toLowerCase();
+    const targetUidParam = (url.searchParams.get('uid') || '').trim();
+
+    const [allUsers, allActivations, allPaymentRequests] = await Promise.all([
+      fsHelper.listCollection('users', 1000).catch(() => []),
+      fsHelper.listCollection('planActivations', 1000).catch(() => []),
+      fsHelper.listCollection('paymentRequests', 1000).catch(() => []),
+    ]);
+
+    const resolveDaysForRecord = (rec: Record<string, any>): number => {
+      const explicit = Number(rec.daysAdded ?? rec.durationDays);
+      if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+      const pid = String(rec.planId || rec.plan || '').toLowerCase();
+      return pid.includes('annual') || pid.includes('year') ? 365 : 30;
+    };
+
+    const userHistoryMap = new Map<
+      string,
+      Array<{
+        id: string;
+        source: string;
+        dateIso: string | null;
+        planId: string;
+        billing: string;
+        daysAdded: number;
+        proCreditDays: number;
+        previousExpiryIso: string | null;
+        newExpiryIso: string | null;
+        couponCode: string | null;
+      }>
+    >();
+
+    const addHistory = (
+      uId: string,
+      entry: {
+        id: string;
+        source: string;
+        dateIso: string | null;
+        planId: string;
+        billing: string;
+        daysAdded: number;
+        proCreditDays: number;
+        previousExpiryIso: string | null;
+        newExpiryIso: string | null;
+        couponCode: string | null;
+      }
+    ) => {
+      if (!uId) return;
+      const list = userHistoryMap.get(uId) || [];
+      if (list.some((existing) => existing.id === entry.id)) return;
+      list.push(entry);
+      userHistoryMap.set(uId, list);
+    };
+
+    for (const act of allActivations) {
+      const d = act.data || {};
+      const uId = String(d.uid || d.userId || '');
+      const pid = String(d.planId || 'plus_annual');
+      addHistory(uId, {
+        id: String(d.id || act.id),
+        source: String(d.source || 'planActivation'),
+        dateIso: d.startedAtIso || d.createdAt || null,
+        planId: pid,
+        billing: String(d.billing || getBillingFromPlanId(pid)),
+        daysAdded: resolveDaysForRecord(d),
+        proCreditDays: Number(d.proCreditDays || 0),
+        previousExpiryIso: d.previousExpiryIso || null,
+        newExpiryIso: d.newExpiryIso || null,
+        couponCode: d.couponCode || null,
+      });
+    }
+
+    for (const pr of allPaymentRequests) {
+      const d = pr.data || {};
+      const st = String(d.status || '').toLowerCase();
+      if (st !== 'approved' && st !== 'verified' && st !== 'completed') continue;
+      if (d.crewId || String(d.plan || '').toLowerCase() === 'large_crew') continue;
+      const uId = String(d.userId || d.uid || '');
+      const pid = String(d.planId || d.plan || 'pro_monthly');
+      addHistory(uId, {
+        id: `payreq_${pr.id}`,
+        source: `payment_${String(d.method || 'manual')}`,
+        dateIso: d.approvedAt || d.updatedAt || d.createdAt || null,
+        planId: pid,
+        billing: getBillingFromPlanId(pid),
+        daysAdded: resolveDaysForRecord(d),
+        proCreditDays: Number(d.proCreditDays || 0),
+        previousExpiryIso: null,
+        newExpiryIso: d.newExpiryDate || null,
+        couponCode: d.couponCode || null,
+      });
+    }
+
+    const flaggedUsers: Array<{
+      uid: string;
+      username: string | null;
+      email: string | null;
+      planTier: string;
+      currentExpiryIso: string;
+      currentExpiryLabel: string;
+      daysRemaining: number;
+      totalPurchasedDays: number;
+      excessDays: number;
+      activationCount: number;
+    }> = [];
+
+    let inspectedUser: Record<string, any> | null = null;
+
+    for (const u of allUsers) {
+      const d = u.data || {};
+      const uId = String(d.uid || u.id);
+      const uName = String(d.username || d.username_lower || '').trim().toLowerCase() || null;
+
+      // Also check wallet ledger for plan purchases not already in planActivations
+      const ledgerDocs = await fsHelper.listCollection(`wallets/${uId}/ledger`, 200).catch(() => []);
+      for (const l of ledgerDocs) {
+        const ld = l.data || {};
+        const sub = String(ld.purchaseSubtype || '').toLowerCase();
+        if (sub !== 'pro_purchase' && sub !== 'plus_purchase') continue;
+        const pid = String(ld.planId || (sub === 'plus_purchase' ? 'plus_monthly' : 'pro_monthly'));
+        addHistory(uId, {
+          id: l.id,
+          source: 'kobans_ledger',
+          dateIso: ld.createdAt || null,
+          planId: pid,
+          billing: String(ld.billing || getBillingFromPlanId(pid)),
+          daysAdded: resolveDaysForRecord(ld),
+          proCreditDays: Number(ld.proCreditDays || 0),
+          previousExpiryIso: ld.previousExpiryIso || null,
+          newExpiryIso: ld.newExpiryIso || null,
+          couponCode: ld.couponCode || null,
+        });
+      }
+
+      const history = (userHistoryMap.get(uId) || []).sort((a, b) =>
+        String(a.dateIso || '').localeCompare(String(b.dateIso || ''))
+      );
+      const totalPurchasedDays = history.reduce(
+        (sum, item) => sum + Math.max(0, item.daysAdded - Math.max(0, item.proCreditDays)),
+        0
+      );
+
+      const expMs = parsePlanExpiryMs(
+        d.plusUntil ?? d.planExpiresAt ?? d.premiumExpiresAt ?? d.proUntil ?? null
+      );
+      const daysRemaining = expMs && expMs > nowMs ? getPktCalendarDaysLeft(expMs, nowMs) : 0;
+      const tier = getPlan({ ...d, isSuperAdmin: false, isSuperAdminClaim: false, role: 'student' }, nowMs);
+
+      if (
+        (targetUidParam && uId === targetUidParam) ||
+        (targetUsernameParam && uName === targetUsernameParam)
+      ) {
+        inspectedUser = {
+          uid: uId,
+          username: uName,
+          email: d.email || null,
+          planTier: tier,
+          currentExpiryIso: expMs ? new Date(expMs).toISOString() : null,
+          currentExpiryLabel: expMs ? formatPktDateLabel(expMs) : null,
+          daysRemaining,
+          totalPurchasedDays,
+          excessDays: Math.max(0, daysRemaining - totalPurchasedDays),
+          history,
+        };
+      }
+
+      if (expMs && expMs > nowMs && daysRemaining > totalPurchasedDays) {
+        flaggedUsers.push({
+          uid: uId,
+          username: uName,
+          email: d.email || null,
+          planTier: tier,
+          currentExpiryIso: new Date(expMs).toISOString(),
+          currentExpiryLabel: formatPktDateLabel(expMs),
+          daysRemaining,
+          totalPurchasedDays,
+          excessDays: daysRemaining - totalPurchasedDays,
+          activationCount: history.length,
+        });
+      }
+    }
+
+    return jsonResponse({
+      ok: true,
+      readOnly: true,
+      auditedAtIso: new Date(nowMs).toISOString(),
+      totalUsersScanned: allUsers.length,
+      inspectedUser,
+      flaggedUsersCount: flaggedUsers.length,
+      flaggedUsers,
+    });
+  }
+
+  // ==========================================================================
+  // 4C. SUPERADMIN DATA REPAIR FOR PKIG: POST /api/admin/plan-repair-pkig
+  //     Sets pkig's Plus expiry to 24 Nov 2027 23:59:59.999 PKT and records an
+  //     immutable audit entry "Corrected duplicate days from activation bug"
+  //     WITHOUT deleting any subscription history.
+  // ==========================================================================
+  if (pathClean === '/api/admin/plan-repair-pkig' && request.method === 'POST') {
+    if (!isSuperAdminTokenClaim(verifiedUser, env)) {
+      return jsonResponse(
+        { ok: false, code: 'FORBIDDEN', error: 'Superadmin access required.' },
+        403
+      );
+    }
+
+    const PKIG_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
+    const TARGET_EXPIRY_MS = pktEndOfDayMs(2027, 10, 24); // 24 Nov 2027 23:59:59.999 PKT
+    const TARGET_EXPIRY_ISO = new Date(TARGET_EXPIRY_MS).toISOString(); // 2027-11-24T18:59:59.999Z
+    const TARGET_EXPIRY_LABEL = formatPktDateLabel(TARGET_EXPIRY_MS); // 24 Nov 2027
+    const AUDIT_REASON = 'Corrected duplicate days from activation bug';
+    const AUDIT_DOC_ID = `repair_pkig_20271124`;
+    const nowMs =
+      typeof nowMsOverride === 'number' && Number.isFinite(nowMsOverride)
+        ? nowMsOverride
+        : Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+
+    try {
+      const repairResult = await fsHelper.runAtomicTransaction(async (tx) => {
+        const [userDoc, existingAudit] = await Promise.all([
+          tx.getDoc(`users/${PKIG_UID}`),
+          tx.getDoc(`planAuditLogs/${AUDIT_DOC_ID}`),
+        ]);
+
+        const prevExpMs = parsePlanExpiryMs(
+          userDoc?.plusUntil ?? userDoc?.planExpiresAt ?? userDoc?.premiumExpiresAt ?? userDoc?.proUntil ?? null
+        );
+        const prevExpIso = prevExpMs ? new Date(prevExpMs).toISOString() : null;
+
+        if (existingAudit && prevExpMs === TARGET_EXPIRY_MS) {
+          return {
+            ok: true,
+            alreadyCorrected: true,
+            uid: PKIG_UID,
+            username: 'pkig',
+            previousExpiryIso: existingAudit.previousExpiryIso || prevExpIso,
+            newExpiryMs: TARGET_EXPIRY_MS,
+            newExpiryIso: TARGET_EXPIRY_ISO,
+            newExpiryLabel: TARGET_EXPIRY_LABEL,
+            auditId: AUDIT_DOC_ID,
+            auditMessage: AUDIT_REASON,
+          };
+        }
+
+        // Update ONLY expiry/plan fields on users/pkig — NEVER delete any history collections
+        tx.setDoc(
+          `users/${PKIG_UID}`,
+          {
+            uid: PKIG_UID,
+            plan: 'plus',
+            tier: 'plus',
+            planTier: 'plus',
+            isPremium: true,
+            isPlus: true,
+            isPro: false,
+            planId: 'plus_annual',
+            plusPlanId: 'plus_annual',
+            proPlanId: null,
+            plusUntil: TARGET_EXPIRY_ISO,
+            planExpiresAt: TARGET_EXPIRY_ISO,
+            premiumExpiresAt: TARGET_EXPIRY_MS,
+            proUntil: null,
+            updatedAt: nowIso,
+          },
+          true
+        );
+
+        const auditPayload = {
+          id: AUDIT_DOC_ID,
+          action: 'plan_expiry_correction',
+          reason: AUDIT_REASON,
+          message: AUDIT_REASON,
+          targetUid: PKIG_UID,
+          targetUsername: 'pkig',
+          previousExpiryIso: prevExpIso,
+          previousExpiryLabel: prevExpMs ? formatPktDateLabel(prevExpMs) : null,
+          newExpiryMs: TARGET_EXPIRY_MS,
+          newExpiryIso: TARGET_EXPIRY_ISO,
+          newExpiryLabel: TARGET_EXPIRY_LABEL,
+          timezone: 'Asia/Karachi',
+          actorUid: verifiedUser.uid,
+          actorEmail: verifiedUser.email || null,
+          historyPreserved: true,
+          createdAt: nowIso,
+        };
+
+        tx.setDoc(`planAuditLogs/${AUDIT_DOC_ID}`, auditPayload, false);
+        tx.setDoc(`admin_audit_logs/${AUDIT_DOC_ID}`, auditPayload, false);
+
+        return {
+          ok: true,
+          alreadyCorrected: false,
+          uid: PKIG_UID,
+          username: 'pkig',
+          previousExpiryIso: prevExpIso,
+          newExpiryMs: TARGET_EXPIRY_MS,
+          newExpiryIso: TARGET_EXPIRY_ISO,
+          newExpiryLabel: TARGET_EXPIRY_LABEL,
+          auditId: AUDIT_DOC_ID,
+          auditMessage: AUDIT_REASON,
+        };
+      });
+
+      return jsonResponse(repairResult, 200);
+    } catch (err: any) {
+      if (err instanceof PlanActivationHttpError) {
+        return jsonResponse({ ok: false, code: err.code, error: err.message }, err.status);
+      }
+      return jsonResponse(
+        { ok: false, code: 'REPAIR_FAILED', error: err?.message || 'Failed to repair expiry' },
+        500
+      );
     }
   }
 

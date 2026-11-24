@@ -225,6 +225,8 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
   const isDedicatedEconomyOrProRoute =
     path === '/api/admin/coupons' ||
     path.startsWith('/api/admin/coupons/') ||
+    path === '/api/admin/plan-audit' ||
+    path === '/api/admin/plan-repair-pkig' ||
     path === '/api/coupons' ||
     path.startsWith('/api/coupons/') ||
     path === '/api/plan/activate' ||

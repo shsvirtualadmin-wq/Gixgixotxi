@@ -604,3 +604,161 @@ export function getPlanDisplayName(plan: PlanTier | string | null | undefined): 
   if (tier === 'pro') return 'Boardly Pro';
   return 'Free';
 }
+
+// ============================================================================
+// SINGLE CANONICAL PLAN EXPIRY CALCULATOR (PKT / Asia/Karachi, UTC+05:00)
+// Used identically by checkout previews, Plans page, server activation endpoints,
+// Kobans purchases, coupon redemptions, and admin payment approvals.
+// ============================================================================
+
+export const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
+const PLAN_DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Returns the end-of-day epoch ms (23:59:59.999 PKT, UTC+05:00) for a PKT calendar date.
+ * Month is 0-indexed (0 = Jan, 10 = Nov, 11 = Dec). Day overflow is normalized by Date.UTC.
+ */
+export function pktEndOfDayMs(year: number, monthIndex: number, day: number): number {
+  return Date.UTC(year, monthIndex, day, 23, 59, 59, 999) - PKT_OFFSET_MS;
+}
+
+/**
+ * Extracts PKT (Asia/Karachi, UTC+05:00) calendar date components and a monotonic day index.
+ */
+export function getPktDateParts(ms: number): {
+  year: number;
+  monthIndex: number;
+  day: number;
+  dayIndex: number;
+} {
+  const shifted = new Date(ms + PKT_OFFSET_MS);
+  const year = shifted.getUTCFullYear();
+  const monthIndex = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const dayIndex = Math.floor(Date.UTC(year, monthIndex, day) / PLAN_DAY_MS);
+  return { year, monthIndex, day, dayIndex };
+}
+
+/**
+ * Computes whole PKT calendar days remaining from nowMs until expiryMs.
+ * - On 24 Nov 2026 PKT with expiry 24 Nov 2027 23:59:59.999 PKT -> returns 365.
+ * - If expiry is later today in PKT (diffMs > 0, same PKT calendar day) -> returns 1.
+ * - If expired (expiryMs <= nowMs) -> returns 0.
+ */
+export function getPktCalendarDaysLeft(expiryMs: number, nowMs: number = Date.now()): number {
+  if (!Number.isFinite(expiryMs) || expiryMs <= nowMs) return 0;
+  const diffDays = getPktDateParts(expiryMs).dayIndex - getPktDateParts(nowMs).dayIndex;
+  return Math.max(1, diffDays);
+}
+
+/**
+ * Formats an epoch timestamp as a clean PKT calendar date label, e.g. "24 Nov 2027".
+ */
+export function formatPktDateLabel(msOrDate: number | Date): string {
+  const date = typeof msOrDate === 'number' ? new Date(msOrDate) : msOrDate;
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+}
+
+export interface CalculatePlanExpiryInput {
+  /** User's current active personal plan tier ('free' | 'pro' | 'plus'). */
+  currentTier: PlanTier;
+  /** Target plan tier being activated ('pro' | 'plus'). */
+  targetTier: 'pro' | 'plus';
+  /** Current expiry timestamp (ISO, ms, Date, or Firestore Timestamp) for the user's current plan. */
+  currentExpiryRaw?: unknown;
+  /** Purchased days: strictly 30 (monthly) or 365 (annual). */
+  purchasedDays: number;
+  /** Reference current time in epoch ms (defaults to Date.now()). */
+  nowMs?: number;
+}
+
+export interface CalculatePlanExpiryResult {
+  baseMs: number;
+  currentExpiryMs: number | null;
+  previousExpiryMs: number | null;
+  isCurrentlyActive: boolean;
+  wasAlreadyActive: boolean;
+  isSameTierExtension: boolean;
+  replacesActivePro: boolean;
+  replacedProDaysRemaining: number;
+  extraCreditDays: number;
+  daysAdded: number;
+  newExpiryMs: number;
+  newExpiryIso: string;
+  newExpiryDate: Date;
+  currentExpiryFormatted: string | null;
+  previousExpiryLabel: string | null;
+  newExpiryFormatted: string;
+  newExpiryLabel: string;
+  daysRemainingAfter: number;
+}
+
+/**
+ * THE ONE canonical plan expiry calculation function (PKT, Asia/Karachi).
+ *
+ * Rules:
+ * 1. One activation adds exactly `purchasedDays` (30 monthly, 365 annual), ONCE.
+ * 2. Same-tier active pass extension (e.g., active Plus -> Plus):
+ *      base = max(now, currentExpiry) in PKT, then add `purchasedDays` to end of that PKT day.
+ * 3. Fresh activation or cross-tier upgrade (e.g., Free -> Plus or active Pro -> Plus):
+ *      base = now in PKT, then add `purchasedDays` to end of that PKT day.
+ *      Leftover days from another plan are NOT stacked or converted (`extraCreditDays = 0`).
+ *      When upgrading from active Pro -> Plus, `replacesActivePro: true` and `replacedProDaysRemaining`
+ *      are returned so the UI clearly tells the user before they confirm.
+ */
+export function calculatePlanExpiryPkt(
+  input: CalculatePlanExpiryInput
+): CalculatePlanExpiryResult {
+  const nowMs =
+    typeof input.nowMs === 'number' && Number.isFinite(input.nowMs) ? input.nowMs : Date.now();
+  const daysAdded = Math.max(1, Math.floor(Number(input.purchasedDays) || 0));
+  const parsedCurrent = parsePlanExpiryMs(input.currentExpiryRaw);
+  const hasActiveCurrent = parsedCurrent !== null && parsedCurrent > nowMs;
+
+  const isSameTierExtension = hasActiveCurrent && input.currentTier === input.targetTier;
+  const replacesActivePro =
+    hasActiveCurrent && input.currentTier === 'pro' && input.targetTier === 'plus';
+  const replacedProDaysRemaining =
+    replacesActivePro && parsedCurrent !== null
+      ? getPktCalendarDaysLeft(parsedCurrent, nowMs)
+      : 0;
+
+  const baseMs =
+    isSameTierExtension && parsedCurrent !== null ? Math.max(nowMs, parsedCurrent) : nowMs;
+  const basePkt = getPktDateParts(baseMs);
+  const newExpiryMs = pktEndOfDayMs(basePkt.year, basePkt.monthIndex, basePkt.day + daysAdded);
+  const newExpiryIso = new Date(newExpiryMs).toISOString();
+  const daysRemainingAfter = getPktCalendarDaysLeft(newExpiryMs, nowMs);
+
+  const previousLabel =
+    hasActiveCurrent && parsedCurrent !== null ? formatPktDateLabel(parsedCurrent) : null;
+  const newLabel = formatPktDateLabel(newExpiryMs);
+
+  return {
+    baseMs,
+    currentExpiryMs: hasActiveCurrent ? parsedCurrent : null,
+    previousExpiryMs: hasActiveCurrent ? parsedCurrent : null,
+    isCurrentlyActive: isSameTierExtension,
+    wasAlreadyActive: isSameTierExtension,
+    isSameTierExtension,
+    replacesActivePro,
+    replacedProDaysRemaining,
+    extraCreditDays: 0,
+    daysAdded,
+    newExpiryMs,
+    newExpiryIso,
+    newExpiryDate: new Date(newExpiryMs),
+    currentExpiryFormatted: previousLabel,
+    previousExpiryLabel: previousLabel,
+    newExpiryFormatted: newLabel,
+    newExpiryLabel: newLabel,
+    daysRemainingAfter,
+  };
+}
+

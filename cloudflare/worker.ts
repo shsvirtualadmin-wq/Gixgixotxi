@@ -6760,7 +6760,9 @@ ${urls
       cleanWorkerPath === '/api/store/buy' ||
       cleanWorkerPath === '/api/kobans/purchase' ||
       cleanWorkerPath === '/api/admin/coupons' ||
-      cleanWorkerPath.startsWith('/api/admin/coupons/')
+      cleanWorkerPath.startsWith('/api/admin/coupons/') ||
+      cleanWorkerPath === '/api/admin/plan-audit' ||
+      cleanWorkerPath === '/api/admin/plan-repair-pkig'
     ) {
       return handleEconomyApiRequest({
         request: req,

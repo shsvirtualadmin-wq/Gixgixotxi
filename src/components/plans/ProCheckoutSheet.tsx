@@ -23,8 +23,8 @@ import { SettingsSheet } from '@/components/settings/SettingsSheet';
 import {
   REFUND_POLICY_TEXT,
   buildPlansCatalog,
+  calculatePlanExpiryPkt,
   getProPlanById,
-  computeExtendedProExpiry,
   evaluatePlanPurchaseEligibility,
   type ProPlanId,
 } from '@/config/plans';
@@ -286,20 +286,27 @@ export function ProCheckoutSheet({
       (appliedCoupon.isFreeActivation || (effectivePkr === 0 && effectiveKobans === 0))
   );
 
+  const currentPersonalTier = planStatus.isPersonalPlus
+    ? 'plus'
+    : planStatus.isPersonalPro
+      ? 'pro'
+      : 'free';
+
   const expiryPreview = useMemo(
     () =>
-      computeExtendedProExpiry(
-        currentProExpiresAt,
-        effectiveDurationDays,
-        Date.now(),
-        eligibility.extraPlusDays,
-        eligibility.isUpgradeFromProToPlus
-      ),
+      calculatePlanExpiryPkt({
+        currentTier: currentPersonalTier,
+        targetTier: selectedTier,
+        currentExpiryRaw: planStatus.expiryMs ?? currentProExpiresAt,
+        purchasedDays: effectiveDurationDays,
+        nowMs: Date.now(),
+      }),
     [
+      currentPersonalTier,
+      selectedTier,
+      planStatus.expiryMs,
       currentProExpiresAt,
       effectiveDurationDays,
-      eligibility.extraPlusDays,
-      eligibility.isUpgradeFromProToPlus,
     ]
   );
 
@@ -759,7 +766,7 @@ export function ProCheckoutSheet({
               </span>
             </div>
 
-            {eligibility.isUpgradeFromProToPlus && (
+            {(expiryPreview.replacesActivePro || eligibility.isUpgradeFromProToPlus) && (
               <div
                 className="flex items-center justify-between gap-3 px-4 py-3"
                 style={{
@@ -772,13 +779,17 @@ export function ProCheckoutSheet({
                   className="text-[13px] font-semibold"
                   style={{ color: 'var(--koban)' }}
                 >
-                  Unused Pro days credit ({planStatus.daysLeft} Pro days)
+                  Current Pro pass ({expiryPreview.replacedProDaysRemaining || planStatus.daysLeft}{' '}
+                  {(expiryPreview.replacedProDaysRemaining || planStatus.daysLeft) === 1
+                    ? 'day'
+                    : 'days'}{' '}
+                  left)
                 </span>
                 <span
-                  className="text-right text-[13px] font-bold tabular-nums"
+                  className="text-right text-[13px] font-bold"
                   style={{ color: 'var(--koban)' }}
                 >
-                  +{eligibility.extraPlusDays} Plus {eligibility.extraPlusDays === 1 ? 'day' : 'days'}
+                  Replaced by Plus (not stacked)
                 </span>
               </div>
             )}
@@ -807,7 +818,8 @@ export function ProCheckoutSheet({
                 New expiry date
               </span>
               <span className="text-right text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                {expiryPreview.newExpiryLabel} ({effectiveDurationDays + eligibility.extraPlusDays} days)
+                {expiryPreview.newExpiryLabel} ({expiryPreview.daysAdded} days
+                {expiryPreview.isSameTierExtension ? ' added' : ''})
               </span>
             </div>
           </div>
