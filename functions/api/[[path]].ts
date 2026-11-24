@@ -8,6 +8,7 @@ import {
 } from '../_utils/adminRoleGate';
 import { getSharedLocalD1Database } from '../_utils/firestoreRestAdmin';
 import { handleAiMentorsRequest } from './ai.js';
+import { handlePlusBadgeRequest } from './plus-badge';
 import { onRequest as handlePublicAdsRequest } from './ads/[[path]]';
 import { onRequest as handleAdminAdsRequest } from './admin/ads/[[path]]';
 
@@ -34,6 +35,14 @@ export async function onRequest(context: PagesApiContext): Promise<Response> {
 
   if (path === '/api/ai') {
     return handleAiMentorsRequest(request, env);
+  }
+
+  if (path === '/api/plus-badge' || path === '/api/user/plus-badge') {
+    return handlePlusBadgeRequest({
+      request,
+      env,
+      tokenVerifierOverride: context.tokenVerifierOverride,
+    });
   }
 
   if (

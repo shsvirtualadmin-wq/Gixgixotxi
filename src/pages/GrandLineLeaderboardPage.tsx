@@ -5,6 +5,7 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import {
   getGlobalGrandLineTopScorers,
   getAllPublicGrandLineTests,
@@ -267,6 +268,12 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                   liveProfile?.role === 'admin' ||
                   isAdminAccount(uid);
                 const proBadgeDesign = liveProfile?.proBadge || (entry as any).proBadge || null;
+                const plusBadgeId =
+                  typeof liveProfile?.plusBadge === 'number'
+                    ? liveProfile.plusBadge
+                    : typeof (entry as any).plusBadge === 'number'
+                    ? (entry as any).plusBadge
+                    : null;
 
                 return (
                   <div
@@ -302,11 +309,15 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                           <span className="text-[13px] sm:text-sm font-bold text-[var(--text)] truncate min-w-0">
                             {displayName}
                           </span>
-                          {proBadgeDesign && (
+                          {typeof plusBadgeId === 'number' ? (
+                            <span className="shrink-0 scale-90 sm:scale-100 origin-left inline-flex items-center">
+                              <PlusBadge id={plusBadgeId} size="sm" listMode />
+                            </span>
+                          ) : proBadgeDesign ? (
                             <span className="shrink-0 scale-90 sm:scale-100 origin-left inline-flex items-center">
                               <ProBadge design={proBadgeDesign} size="sm" listMode />
                             </span>
-                          )}
+                          ) : null}
                           {isCurrentUser && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#D71921] text-white shrink-0">
                               You

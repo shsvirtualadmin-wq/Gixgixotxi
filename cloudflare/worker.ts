@@ -62,6 +62,7 @@ import {
 } from '../functions/_utils/adminRoleGate';
 import { handleEconomyApiRequest } from '../functions/api/economy/[[path]]';
 import { handleKobanStyleRequest } from '../functions/api/koban-style';
+import { handlePlusBadgeRequest } from '../functions/api/plus-badge';
 import { handleFormulaVaultWorkerRequest } from './formulaVaultWorkerHandler';
 import jsWorker from './worker.js';
 
@@ -6371,6 +6372,30 @@ ${urls
 
     if (cleanWorkerPath === '/api/koban-style') {
       return handleKobanStyleRequest({
+        request: req,
+        env: (env || {}) as any,
+        tokenVerifierOverride: async () => {
+          const verified = await verifyFirebaseIdToken(req, env);
+          if (!verified?.uid) return null;
+          return {
+            uid: verified.uid,
+            email: verified.email || '',
+            name: verified.name || 'Student',
+            picture: verified.picture || null,
+            emailVerified: verified.emailVerified !== false,
+            role: verified.role,
+            captain: verified.captain === true,
+            admin: verified.admin === true,
+            superAdmin: verified.superAdmin === true,
+            isSuperAdmin: verified.superAdmin === true,
+            isAdminOrAbove: verified.admin === true || verified.superAdmin === true,
+          };
+        },
+      });
+    }
+
+    if (cleanWorkerPath === '/api/plus-badge' || cleanWorkerPath === '/api/user/plus-badge') {
+      return handlePlusBadgeRequest({
         request: req,
         env: (env || {}) as any,
         tokenVerifierOverride: async () => {

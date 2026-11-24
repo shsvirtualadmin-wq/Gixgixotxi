@@ -5,6 +5,7 @@ import { X, Shield, Users, Flame, Trophy, Lock, Unlock, Check, Share2, Sparkles,
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import type { PublicCrewSummary, CrewDoc } from '@/types/crew';
 import { fetchCrewDetails } from '@/services/crewService';
 
@@ -278,9 +279,11 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
                           ) : (
                             <>
                               <span>{sanitizeStudentDisplayName(m.displayName, m.uid)}</span>
-                              {(m as any).proBadge && (
+                              {typeof (m as any).plusBadge === 'number' ? (
+                                <PlusBadge id={(m as any).plusBadge} size="sm" listMode />
+                              ) : (m as any).proBadge ? (
                                 <ProBadge design={(m as any).proBadge} size="sm" listMode />
-                              )}
+                              ) : null}
                               {m.role === 'leader' && (
                                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#D71921] text-white font-bold">
                                   LEADER

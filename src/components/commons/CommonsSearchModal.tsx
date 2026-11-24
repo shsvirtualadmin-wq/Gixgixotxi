@@ -20,6 +20,7 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { Link } from 'react-router-dom';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import { useTheme } from '@/hooks/useTheme';
@@ -545,9 +546,11 @@ export function CommonsSearchModal({
                         <span className="text-sm font-bold text-primary group-hover:text-accent transition-colors truncate">
                           {u.displayName}
                         </span>
-                        {u.proBadge && (
+                        {typeof u.plusBadge === 'number' ? (
+                          <PlusBadge id={u.plusBadge} size="sm" listMode />
+                        ) : u.proBadge ? (
                           <ProBadge design={u.proBadge} size="sm" listMode />
-                        )}
+                        ) : null}
                         <RoleBadge
                           role={u.role || 'Student'}
                           customRole={u.customRole}

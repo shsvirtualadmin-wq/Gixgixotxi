@@ -5507,6 +5507,230 @@ export default {
         });
       }
 
+      // ─── PLUS BADGE CUSTOMIZER API (Independent from PRO badge) ─────────
+      if (path === '/api/plus-badge' || path === '/api/user/plus-badge') {
+        if (method !== 'GET' && method !== 'PUT') {
+          return errorResponse(request, env, 'Method not allowed', 'METHOD_NOT_ALLOWED', 405);
+        }
+
+        const authUser = await authenticateRequest(request, env, true);
+        if (!authUser || !authUser.uid || authUser.isGuest || String(authUser.uid).startsWith('guest_')) {
+          return errorResponse(request, env, 'Authentication required.', 'UNAUTHENTICATED', 401);
+        }
+
+        if (env.DB) {
+          try {
+            await env.DB.prepare(
+              `CREATE TABLE IF NOT EXISTS user_plus_badge (
+                user_id TEXT PRIMARY KEY,
+                plus_badge_design INTEGER CHECK (plus_badge_design IS NULL OR (plus_badge_design >= 1 AND plus_badge_design <= 50)),
+                plus_badge_visible INTEGER NOT NULL DEFAULT 1 CHECK (plus_badge_visible IN (0, 1)),
+                updated_at INTEGER NOT NULL
+              )`
+            ).run();
+          } catch {
+            // Table may already exist via migration 0013_user_plus_badge.sql
+          }
+        }
+
+        const parsePlusDesign = (raw) => {
+          if (raw === null) return { ok: true, value: null };
+          if (typeof raw === 'number') {
+            if (!Number.isInteger(raw) || raw < 1 || raw > 50) return { ok: false };
+            return { ok: true, value: raw };
+          }
+          if (typeof raw === 'string') {
+            const trimmed = raw.trim();
+            const m = trimmed.match(/^#?(\d{1,2})$/);
+            if (!m) return { ok: false };
+            const n = Number(m[1]);
+            if (!Number.isInteger(n) || n < 1 || n > 50) return { ok: false };
+            return { ok: true, value: n };
+          }
+          return { ok: false };
+        };
+
+        const checkActivePlus = async () => {
+          const authHdr = request.headers.get('Authorization') || '';
+          const projectId = String(env.FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316').trim();
+          const databaseId = String(
+            env.FIREBASE_DATABASE_ID || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712'
+          ).trim();
+          const dbIds = Array.from(new Set([databaseId, '(default)']));
+          const decodeVal = (v) => {
+            if (!v || typeof v !== 'object') return null;
+            if ('stringValue' in v) return v.stringValue;
+            if ('integerValue' in v) return Number(v.integerValue);
+            if ('doubleValue' in v) return Number(v.doubleValue);
+            if ('booleanValue' in v) return Boolean(v.booleanValue);
+            if ('nullValue' in v) return null;
+            if ('timestampValue' in v) return v.timestampValue;
+            return null;
+          };
+          const toMs = (raw) => {
+            if (!raw) return null;
+            if (typeof raw === 'number' && Number.isFinite(raw)) return raw > 1e12 ? raw : raw * 1000;
+            if (typeof raw === 'string') {
+              const t = Date.parse(raw);
+              return Number.isFinite(t) ? t : null;
+            }
+            return null;
+          };
+          for (const dbId of dbIds) {
+            try {
+              const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(dbId)}/documents/users/${encodeURIComponent(authUser.uid)}`;
+              const resp = await fetch(url, {
+                headers: { Authorization: authHdr, Accept: 'application/json' },
+              });
+              if (!resp.ok) continue;
+              const doc = await resp.json();
+              const fields = doc?.fields || {};
+              const plan = String(decodeVal(fields.plan) || '').trim().toLowerCase();
+              const planTier = String(decodeVal(fields.planTier) || '').trim().toLowerCase();
+              const isPlusFlag = decodeVal(fields.isPlus) === true;
+              const plusPlanId = String(decodeVal(fields.plusPlanId) || '').trim().toLowerCase();
+              const proPlanId = String(decodeVal(fields.proPlanId) || '').trim().toLowerCase();
+              const rawExp =
+                decodeVal(fields.plusUntil) ??
+                decodeVal(fields.planExpiresAt) ??
+                decodeVal(fields.proUntil) ??
+                decodeVal(fields.premiumExpiresAt);
+              const expMs = toMs(rawExp);
+              const isPlusTier =
+                plan === 'plus' ||
+                planTier === 'plus' ||
+                isPlusFlag ||
+                plusPlanId.includes('plus') ||
+                proPlanId.includes('plus');
+              if (isPlusTier && (!expMs || expMs > Date.now())) {
+                return true;
+              }
+              return false;
+            } catch {
+              // try next database id
+            }
+          }
+          return false;
+        };
+
+        const isPlus = await checkActivePlus();
+
+        if (method === 'GET') {
+          let row = null;
+          if (env.DB) {
+            try {
+              row = await env.DB.prepare(
+                'SELECT plus_badge_design, plus_badge_visible, updated_at FROM user_plus_badge WHERE user_id = ?1 LIMIT 1'
+              )
+                .bind(authUser.uid)
+                .first();
+            } catch {
+              row = null;
+            }
+          }
+          const rawDesign = row && row.plus_badge_design !== undefined ? row.plus_badge_design : null;
+          const parsedDesign = parsePlusDesign(rawDesign);
+          const plusBadgeDesign = parsedDesign.ok ? parsedDesign.value : null;
+          const plusBadgeVisible = row ? Number(row.plus_badge_visible) !== 0 : true;
+          const updatedAt = row && Number(row.updated_at) > 0 ? Number(row.updated_at) : 0;
+
+          return jsonResponse(request, env, {
+            ok: true,
+            isPlus,
+            plus_badge_design: plusBadgeDesign,
+            plus_badge_visible: plusBadgeVisible,
+            plusBadge: isPlus && plusBadgeVisible && plusBadgeDesign !== null ? plusBadgeDesign : null,
+            updatedAt,
+          });
+        }
+
+        // PUT /api/plus-badge
+        if (!isPlus) {
+          return errorResponse(
+            request,
+            env,
+            'Boardly PLUS is required to customize your PLUS badge.',
+            'PLUS_REQUIRED',
+            403
+          );
+        }
+
+        let body = null;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse(request, env, 'Invalid JSON body.', 'INVALID_JSON', 400);
+        }
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          return errorResponse(request, env, 'Request body must be a JSON object.', 'INVALID_BODY', 400);
+        }
+
+        const designRaw =
+          'plus_badge_design' in body
+            ? body.plus_badge_design
+            : 'design' in body
+            ? body.design
+            : undefined;
+        const visibleRaw =
+          'plus_badge_visible' in body
+            ? body.plus_badge_visible
+            : 'visible' in body
+            ? body.visible
+            : undefined;
+
+        if (designRaw === undefined) {
+          return errorResponse(
+            request,
+            env,
+            'plus_badge_design is required (integer 1–50 or null).',
+            'INVALID_DESIGN',
+            400
+          );
+        }
+        const parsedDesign = parsePlusDesign(designRaw);
+        if (!parsedDesign.ok) {
+          return errorResponse(
+            request,
+            env,
+            'Invalid PLUS badge design. Choose a design from #01 to #50 (or null to clear).',
+            'INVALID_DESIGN',
+            400
+          );
+        }
+        if (typeof visibleRaw !== 'boolean') {
+          return errorResponse(
+            request,
+            env,
+            'plus_badge_visible must be a boolean.',
+            'INVALID_VISIBLE',
+            400
+          );
+        }
+
+        const nowMs = Date.now();
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO user_plus_badge (user_id, plus_badge_design, plus_badge_visible, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(user_id) DO UPDATE SET
+               plus_badge_design = excluded.plus_badge_design,
+               plus_badge_visible = excluded.plus_badge_visible,
+               updated_at = excluded.updated_at`
+          )
+            .bind(authUser.uid, parsedDesign.value, visibleRaw ? 1 : 0, nowMs)
+            .run();
+        }
+
+        return jsonResponse(request, env, {
+          ok: true,
+          isPlus: true,
+          plus_badge_design: parsedDesign.value,
+          plus_badge_visible: visibleRaw,
+          plusBadge: visibleRaw && parsedDesign.value !== null ? parsedDesign.value : null,
+          updatedAt: nowMs,
+        });
+      }
+
       return errorResponse(request, env, `Route not found: ${method} ${path}`, 'NOT_FOUND', 404);
     } catch (err) {
       const status = err.status || 500;

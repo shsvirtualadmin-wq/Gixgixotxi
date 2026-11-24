@@ -42,6 +42,7 @@ import {
 import { getNavStoreSnapshot } from '@/lib/navStore';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { useTheme } from '@/hooks/useTheme';
 import {
   getCachedPublicProfile,
@@ -490,13 +491,23 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                       username: liveAuthor?.username || post.authorUsername,
                     })}
                   </span>
-                  {(liveAuthor?.proBadge ?? post.authorProBadge ?? post.proBadge) && (
-                    <ProBadge
-                      design={liveAuthor?.proBadge ?? post.authorProBadge ?? post.proBadge}
-                      size="sm"
-                      listMode
-                    />
-                  )}
+                  {(() => {
+                    const postPlusBadge =
+                      liveAuthor?.plusBadge !== undefined
+                        ? liveAuthor.plusBadge
+                        : post.authorPlusBadge ?? post.plusBadge ?? null;
+                    if (typeof postPlusBadge === 'number') {
+                      return <PlusBadge id={postPlusBadge} size="sm" listMode />;
+                    }
+                    const postProBadge =
+                      liveAuthor?.proBadge !== undefined
+                        ? liveAuthor.proBadge
+                        : post.authorProBadge ?? post.proBadge ?? null;
+                    if (postProBadge) {
+                      return <ProBadge design={postProBadge} size="sm" listMode />;
+                    }
+                    return null;
+                  })()}
                   <RoleBadge
                     role={
                       String(post.authorUid || '').startsWith('bot_')

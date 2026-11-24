@@ -13,6 +13,7 @@ import {
 } from '@/components/crew/CrewGlassPrimitives';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { CrewDashboardSkeleton } from '@/components/ui/Skeleton';
 import {
@@ -671,14 +672,19 @@ export function CrewDashboardPage() {
                     )}
 
                     {/* PRO / PLUS BADGE RULE */}
-                    {crewHasActivePro && (
-                      <ProBadge
-                        design={crew?.proBadge || 'ember'}
-                        tier={crewHasActivePlus ? 'plus' : 'pro'}
+                    {crewHasActivePlus && typeof (crew as any)?.plusBadge === 'number' ? (
+                      <PlusBadge
+                        id={(crew as any).plusBadge}
                         size="md"
                         animated
                       />
-                    )}
+                    ) : crewHasActivePro && !crewHasActivePlus ? (
+                      <ProBadge
+                        design={crew?.proBadge || 'ember'}
+                        size="md"
+                        animated
+                      />
+                    ) : null}
 
                     {crew.isLocked && (
                       <span className="cw-chip cw-chip-gold">
@@ -1060,15 +1066,22 @@ export function CrewDashboardPage() {
                               )}
 
                               {/* PRO / PLUS BADGE RULE */}
-                              {crewHasActivePro && (m.proBadge || (m as any).plus_badge_id || m.isPro || m.isPlus) && (
-                                <ProBadge
-                                  design={m.proBadge || (m.isPlus || m.plan === 'plus' ? null : 'ember')}
-                                  plusBadgeId={m.isPlus || m.plan === 'plus' ? (m as any).plus_badge_id : undefined}
-                                  tier={m.isPlus || m.plan === 'plus' ? 'plus' : 'pro'}
+                              {(m.isPlus || m.plan === 'plus') && typeof m.plusBadge === 'number' ? (
+                                <PlusBadge
+                                  id={m.plusBadge}
                                   size="sm"
                                   listMode
                                 />
-                              )}
+                              ) : crewHasActivePro &&
+                                !m.isPlus &&
+                                m.plan !== 'plus' &&
+                                (m.proBadge || m.isPro) ? (
+                                <ProBadge
+                                  design={m.proBadge || 'ember'}
+                                  size="sm"
+                                  listMode
+                                />
+                              ) : null}
 
                               {isCurrentUser && (
                                 <span className="cw-chip cw-chip-you">You</span>

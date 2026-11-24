@@ -3288,7 +3288,10 @@ export async function handleAuthApiRequest(
 
   // ─── G1c. GET /api/auth/resolve-profiles (Batched Live Author & 14-Day Hold Username Lookup) ───
   if (subPath === 'resolve-profiles' && request.method === 'GET') {
-    const { resolveProBadgesBatch } = await import('../pro-badge');
+    const [{ resolveProBadgesBatch }, { resolvePlusBadgesBatch }] = await Promise.all([
+      import('../pro-badge'),
+      import('../plus-badge'),
+    ]);
     const queryUsername = (url.searchParams.get('username') || '').trim().replace(/^@+/, '').toLowerCase();
     const rawUids = (url.searchParams.get('uids') || '').trim();
 
@@ -3302,7 +3305,10 @@ export async function handleAuthApiRequest(
         .first<any>();
 
       if (activeRow && activeRow.uid) {
-        const badgeMap = await resolveProBadgesBatch([activeRow.uid], db, env, nowMs);
+        const [badgeMap, plusBadgeMap] = await Promise.all([
+          resolveProBadgesBatch([activeRow.uid], db, env, nowMs),
+          resolvePlusBadgesBatch([activeRow.uid], db, env, nowMs),
+        ]);
         return jsonResponse({
           ok: true,
           found: true,
@@ -3322,6 +3328,7 @@ export async function handleAuthApiRequest(
             status: activeRow.status || '',
             accent: activeRow.accent || '',
             proBadge: badgeMap.get(String(activeRow.uid)) ?? null,
+            plusBadge: plusBadgeMap.get(String(activeRow.uid)) ?? null,
           },
         });
       }
@@ -3367,7 +3374,10 @@ export async function handleAuthApiRequest(
           .bind(historyRow.uid)
           .first<any>();
 
-        const badgeMap = await resolveProBadgesBatch([historyRow.uid], db, env, nowMs);
+        const [badgeMap, plusBadgeMap] = await Promise.all([
+          resolveProBadgesBatch([historyRow.uid], db, env, nowMs),
+          resolvePlusBadgesBatch([historyRow.uid], db, env, nowMs),
+        ]);
         const currentUsername = currentRow?.username_display || currentRow?.username_lower || historyRow.uid;
         return jsonResponse({
           ok: true,
@@ -3390,6 +3400,7 @@ export async function handleAuthApiRequest(
                 status: currentRow.status || '',
                 accent: currentRow.accent || '',
                 proBadge: badgeMap.get(String(historyRow.uid)) ?? null,
+                plusBadge: plusBadgeMap.get(String(historyRow.uid)) ?? null,
               }
             : null,
         });
@@ -3412,7 +3423,7 @@ export async function handleAuthApiRequest(
     }
 
     const placeholders = uids.map((_, i) => `?${i + 1}`).join(', ');
-    const [unameRes, guestRes, roleRes, proBadgesMap] = await Promise.all([
+    const [unameRes, guestRes, roleRes, proBadgesMap, plusBadgesMap] = await Promise.all([
       db
         .prepare(
           `SELECT username_lower, username_display, uid, display_name, avatar, frame, role, custom_role, bio, status, accent, updated_at
@@ -3438,6 +3449,7 @@ export async function handleAuthApiRequest(
         .all<any>()
         .catch(() => ({ results: [] })),
       resolveProBadgesBatch(uids, db, env, nowMs),
+      resolvePlusBadgesBatch(uids, db, env, nowMs),
     ]);
 
     const roleByUid = new Map<string, { role?: string; custom_role?: string | null }>();
@@ -3488,16 +3500,19 @@ export async function handleAuthApiRequest(
         status: u.status || '',
         accent: u.accent || '',
         proBadge: proBadgesMap.get(uidStr) ?? null,
+        plusBadge: plusBadgesMap.get(uidStr) ?? null,
       };
     }
 
     for (const uid of uids) {
       if (!profiles[uid]) {
         const badge = proBadgesMap.get(uid) ?? null;
-        if (badge) {
+        const pBadge = plusBadgesMap.get(uid) ?? null;
+        if (badge || pBadge !== null) {
           profiles[uid] = {
             uid,
             proBadge: badge,
+            plusBadge: pBadge,
           };
         }
       }
@@ -6549,12 +6564,37 @@ export async function handleAuthApiRequest(
         .catch(() => ({ results: [] })),
     ]);
 
+    const d1PlusBadgesRes = await db
+      .prepare('SELECT user_id, plus_badge_design, plus_badge_visible FROM user_plus_badge')
+      .all<{ user_id: string; plus_badge_design: number | null; plus_badge_visible: number }>()
+      .catch(() => ({ results: [] }));
+
     const proBadgesByUid: Record<string, { design: string; visible: boolean }> = {};
     for (const pb of d1ProBadgesRes.results || []) {
       if (pb.user_id) {
         proBadgesByUid[String(pb.user_id)] = {
           design: String(pb.design || 'ember'),
           visible: Number(pb.visible) !== 0,
+        };
+      }
+    }
+
+    const plusBadgesByUid: Record<
+      string,
+      { plus_badge_design: number | null; plus_badge_visible: boolean }
+    > = {};
+    for (const plb of d1PlusBadgesRes.results || []) {
+      if (plb.user_id) {
+        const rawDesign = plb.plus_badge_design;
+        const parsedDesign =
+          rawDesign === null || rawDesign === undefined
+            ? null
+            : Number.isInteger(Number(rawDesign)) && Number(rawDesign) >= 1 && Number(rawDesign) <= 50
+            ? Number(rawDesign)
+            : null;
+        plusBadgesByUid[String(plb.user_id)] = {
+          plus_badge_design: parsedDesign,
+          plus_badge_visible: Number(plb.plus_badge_visible ?? 1) !== 0,
         };
       }
     }
@@ -6612,6 +6652,8 @@ export async function handleAuthApiRequest(
       twoFactorStatus: UserTwoFactorStatusSummary;
       proBadgeDesign?: string;
       proBadgeVisible?: boolean;
+      plus_badge_design?: number | null;
+      plus_badge_visible?: boolean;
     }> = [];
 
     for (const u of d1UsernamesRes.results || []) {
@@ -6652,6 +6694,7 @@ export async function handleAuthApiRequest(
       const resolvedSuspended = Boolean(roleInfo?.suspended ?? (u as any).suspended);
 
       const pbEntry = proBadgesByUid[uid];
+      const plbEntry = plusBadgesByUid[uid];
       d1Users.push({
         uid,
         username: usernameDisplay,
@@ -6668,6 +6711,8 @@ export async function handleAuthApiRequest(
         twoFactorStatus: statusByUid[uid],
         proBadgeDesign: pbEntry ? pbEntry.design : 'ember',
         proBadgeVisible: pbEntry ? pbEntry.visible : true,
+        plus_badge_design: plbEntry ? plbEntry.plus_badge_design : null,
+        plus_badge_visible: plbEntry ? plbEntry.plus_badge_visible : true,
       });
     }
 
@@ -6751,6 +6796,7 @@ export async function handleAuthApiRequest(
       statusByUid,
       users2fa: statusByUid,
       proBadgesByUid,
+      plusBadgesByUid,
       d1Users,
       canManage2fa,
       callerHas2fa: callerStatus.twoFactorEnabled,

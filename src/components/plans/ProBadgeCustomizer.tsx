@@ -1,21 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, Crown, Eye, EyeOff, Lock, RotateCcw, Sparkles, Clock } from 'lucide-react';
-import { PlusBadge } from '@/components/ui/PlusBadge';
+import { ProBadge } from '@/components/ui/ProBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  DEFAULT_PLUS_BADGE_ID,
-  PLUS_BADGE_DESIGNS,
-  getPlusBadgeById,
-} from '@/lib/plusBadgeDesigns';
+  DEFAULT_PRO_BADGE_SETTINGS,
+  PRO_BADGE_DESIGNS,
+  type ProBadgeDesignId,
+  type ProBadgeSettings,
+} from '@/lib/proBadgeDesigns';
 
-const LOCKED_PREVIEW_IDS: readonly number[] = [1, 2, 3, 10, 19, 27];
-
-interface PlusDraft {
-  plusBadgeId: number | null;
-  visible: boolean;
-}
+const LOCKED_PREVIEW_DESIGNS: readonly ProBadgeDesignId[] = [
+  'ember',
+  'neon',
+  'holo',
+  'aurora',
+  'rainbow',
+  'cosmic',
+];
 
 export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
   userDisplayName,
@@ -23,85 +26,75 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
   const { user } = useAuth();
   const {
     settings,
-    plusBadgeId,
-    isActivePlus,
+    isActivePro,
     isPendingVerification,
     saving,
     saveProBadge,
   } = useProBadge();
 
-  const [draft, setDraft] = useState<PlusDraft>({
-    plusBadgeId,
-    visible: settings.visible,
-  });
+  const [draft, setDraft] = useState<ProBadgeSettings>(settings);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
 
   useEffect(() => {
-    setDraft({ plusBadgeId, visible: settings.visible });
-  }, [plusBadgeId, settings.visible]);
+    setDraft(settings);
+  }, [settings]);
 
   const realName = useMemo(() => {
     const candidate = (userDisplayName || user?.displayName || 'Student').trim();
     return candidate || 'Student';
   }, [userDisplayName, user?.displayName]);
 
-  const isDirty = draft.plusBadgeId !== plusBadgeId || draft.visible !== settings.visible;
+  const isDirty = draft.design !== settings.design || draft.visible !== settings.visible;
 
   const selectedMeta = useMemo(
-    () => getPlusBadgeById(draft.plusBadgeId),
-    [draft.plusBadgeId]
+    () => PRO_BADGE_DESIGNS.find((d) => d.id === draft.design) || PRO_BADGE_DESIGNS[0],
+    [draft.design]
   );
 
-  const handleSelectDesign = (id: number) => {
-    if (!isActivePlus) return;
-    setDraft((prev) => ({ ...prev, plusBadgeId: id }));
+  const handleSelectDesign = (design: ProBadgeDesignId) => {
+    if (!isActivePro) return;
+    setDraft((prev) => ({ ...prev, design }));
     setFeedback(null);
   };
 
   const handleToggleVisible = () => {
-    if (!isActivePlus) return;
+    if (!isActivePro) return;
     setDraft((prev) => ({ ...prev, visible: !prev.visible }));
     setFeedback(null);
   };
 
   const handleReset = () => {
-    if (!isActivePlus) return;
-    setDraft({ plusBadgeId: DEFAULT_PLUS_BADGE_ID, visible: true });
+    if (!isActivePro) return;
+    setDraft({ ...DEFAULT_PRO_BADGE_SETTINGS });
     setFeedback(null);
   };
 
   const handleSave = async () => {
-    if (!isActivePlus || saving) return;
+    if (!isActivePro || saving) return;
     setFeedback(null);
-    const res = await saveProBadge({
-      design: settings.design,
-      plusBadgeId: draft.plusBadgeId,
-      visible: draft.visible,
-    });
+    const res = await saveProBadge(draft);
     if (res.ok) {
       setFeedback({
         type: 'success',
-        text:
-          draft.visible && selectedMeta
-            ? `Saved! Your "${selectedMeta.name}" PLUS badge is now live everywhere.`
-            : 'Saved! Your PLUS badge is now hidden.',
+        text: draft.visible
+          ? `Saved! Your "${selectedMeta.name}" Pro badge is now live everywhere.`
+          : 'Saved! Your Pro badge is now hidden.',
       });
     } else {
       setFeedback({
         type: 'error',
-        text: res.error || 'Could not save your badge choice.',
+        text: res.error || 'Could not save your Pro badge choice.',
       });
     }
   };
 
-  // Keep existing locked view for users without an active PLUS plan
-  if (!isActivePlus) {
+  if (!isActivePro) {
     return (
       <div className="space-y-5">
         <div className="stg-group">
-          <div className="stg-group-label">Plus Membership Required</div>
+          <div className="stg-group-label">Pro Membership Required</div>
           <div className="stg-card">
             <div className="stg-row stg-row--static">
               <div className="stg-row-left">
@@ -110,15 +103,15 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 </span>
                 <div className="min-w-0">
                   <div className="stg-row-label font-semibold">
-                    PLUS Badge Collection (50 Designs)
+                    Pro Badge Collection (31 Designs)
                   </div>
                   <div className="text-xs text-[var(--menu-subtext)]">
-                    Active Boardly Plus members only
+                    Active Boardly Pro members only
                   </div>
                 </div>
               </div>
               <span className="px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30 shrink-0">
-                Plus
+                Pro
               </span>
             </div>
 
@@ -139,7 +132,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                     <Crown className="w-4 h-4 text-[#D71921]" />
                   </span>
                   <span className="stg-row-label font-semibold text-[#D71921]">
-                    Upgrade to Plus
+                    Upgrade to Pro
                   </span>
                 </div>
                 <span className="stg-row-value">View Plans</span>
@@ -147,23 +140,22 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
             )}
           </div>
           <p className="stg-footnote">
-            Active Boardly Plus members can choose from 50 unique animated PLUS badge designs and show them next to their name across Commons, leaderboards, chat, crews, and profiles.
+            Active Boardly Pro members can pick any of the 31 Pro badge designs and show them next to their name across Commons, leaderboards, chat, crews, and profiles.
           </p>
         </div>
 
-        {/* Preview of a few badges */}
         <div className="stg-group">
           <div className="stg-group-label">Sample Designs</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-            {LOCKED_PREVIEW_IDS.map((id) => {
-              const meta = getPlusBadgeById(id);
+            {LOCKED_PREVIEW_DESIGNS.map((designId) => {
+              const meta = PRO_BADGE_DESIGNS.find((d) => d.id === designId);
               if (!meta) return null;
               return (
                 <div
-                  key={id}
+                  key={designId}
                   className="stg-card flex flex-col items-center justify-center gap-2 p-4 text-center"
                 >
-                  <PlusBadge id={id} size="md" animated priority />
+                  <ProBadge design={designId} size="md" animated priority />
                   <div className="text-xs font-semibold text-[var(--menu-text)] truncate max-w-full">
                     {meta.name}
                   </div>
@@ -188,9 +180,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--menu-text)]">
               <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>
-                {selectedMeta
-                  ? `#${String(selectedMeta.number).padStart(2, '0')} ${selectedMeta.name}`
-                  : 'No badge selected'}
+                #{String(selectedMeta.number).padStart(2, '0')} {selectedMeta.name}
               </span>
             </span>
           </div>
@@ -201,17 +191,10 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
               <span className="text-sm font-bold text-[var(--menu-text)] truncate max-w-[140px]">
                 {realName}
               </span>
-              {draft.visible && draft.plusBadgeId !== null ? (
-                <PlusBadge
-                  id={draft.plusBadgeId}
-                  size="lg"
-                  animated
-                  priority
-                />
+              {draft.visible ? (
+                <ProBadge design={draft.design} size="lg" animated priority />
               ) : (
-                <span className="text-xs italic text-[var(--menu-subtext)]">
-                  {draft.visible ? '(None)' : '(Hidden)'}
-                </span>
+                <span className="text-xs italic text-[var(--menu-subtext)]">(Hidden)</span>
               )}
             </div>
 
@@ -220,22 +203,15 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
               <span className="text-xs font-semibold text-[var(--menu-text)] truncate max-w-[110px]">
                 {realName}
               </span>
-              {draft.visible && draft.plusBadgeId !== null && (
-                <PlusBadge
-                  id={draft.plusBadgeId}
-                  size="sm"
-                  animated
-                  priority
-                />
+              {draft.visible && (
+                <ProBadge design={draft.design} size="sm" animated priority />
               )}
               <span className="text-[11px] text-[var(--menu-subtext)]">· 2m</span>
             </div>
           </div>
 
           <p className="text-xs text-[var(--menu-subtext)] leading-snug m-0">
-            {selectedMeta
-              ? selectedMeta.tagline
-              : 'Pick any of the 50 PLUS badge designs below and tap Save.'}
+            {selectedMeta.tagline}
           </p>
         </div>
       </div>
@@ -283,16 +259,16 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
           </div>
         </div>
         <p className="stg-footnote">
-          Display your equipped PLUS badge next to your name across Commons, leaderboards, chat, crews, and profiles.
+          Display your Pro badge next to your name across Commons, leaderboards, chat, crews, and profiles.
         </p>
       </div>
 
-      {/* All 50 Designs List */}
+      {/* All 31 Designs List */}
       <div className="stg-group">
-        <div className="stg-group-label">50 Badge Designs</div>
+        <div className="stg-group-label">31 Badge Designs</div>
         <div className="stg-card">
-          {PLUS_BADGE_DESIGNS.map((item) => {
-            const isSelected = draft.plusBadgeId === item.id;
+          {PRO_BADGE_DESIGNS.map((item) => {
+            const isSelected = draft.design === item.id;
             return (
               <button
                 key={item.id}
@@ -322,12 +298,7 @@ export const ProBadgeCustomizer: React.FC<{ userDisplayName?: string }> = ({
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <PlusBadge
-                    id={item.id}
-                    size="md"
-                    animated
-                    listMode
-                  />
+                  <ProBadge design={item.id} size="md" animated listMode />
                   <span
                     className={`inline-flex h-5 w-5 items-center justify-center rounded-full border ${
                       isSelected

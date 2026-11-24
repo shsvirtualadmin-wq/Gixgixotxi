@@ -1,5 +1,3 @@
-import { isValidPlusBadgeId, resolvePlusBadgeId } from './plusBadgeDesigns';
-
 export const PRO_BADGE_IDS = [
   'ember',
   'neon',
@@ -40,14 +38,11 @@ export const DEFAULT_PRO_BADGE_DESIGN: ProBadgeDesignId = 'ember';
 
 export interface ProBadgeSettings {
   design: ProBadgeDesignId;
-  /** Canonical 1..50 PLUS badge ID, or null when unequipped */
-  plusBadgeId?: number | null;
   visible: boolean;
 }
 
 export const DEFAULT_PRO_BADGE_SETTINGS: ProBadgeSettings = {
   design: DEFAULT_PRO_BADGE_DESIGN,
-  plusBadgeId: 1,
   visible: true,
 };
 
@@ -124,7 +119,6 @@ export function normalizeProBadgeDesign(val: unknown): ProBadgeDesignId {
 export function validateProBadgePayload(raw: unknown): {
   valid: boolean;
   value?: ProBadgeSettings;
-  hasExplicitPlusBadgeId?: boolean;
   error?: string;
 } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -139,60 +133,18 @@ export function validateProBadgePayload(raw: unknown): {
     };
   }
 
-  const hasPlusField =
-    Object.prototype.hasOwnProperty.call(obj, 'plus_badge_id') ||
-    Object.prototype.hasOwnProperty.call(obj, 'plusBadgeId');
-
-  if (hasPlusField) {
-    const rawPlus =
-      obj.plus_badge_id !== undefined ? obj.plus_badge_id : obj.plusBadgeId;
-    if (rawPlus !== null && !isValidPlusBadgeId(rawPlus)) {
-      return {
-        valid: false,
-        error: `Invalid plus_badge_id "${String(rawPlus)}". Must be null or an integer from 1 to 50.`,
-      };
-    }
-    const design: ProBadgeDesignId = isValidProBadgeDesign(obj.design)
-      ? normalizeProBadgeDesign(obj.design)
-      : DEFAULT_PRO_BADGE_DESIGN;
-    return {
-      valid: true,
-      hasExplicitPlusBadgeId: true,
-      value: {
-        design,
-        plusBadgeId: rawPlus === null ? null : rawPlus,
-        visible: obj.visible,
-      },
-    };
-  }
-
   const rawDesign = typeof obj.design === 'string' ? obj.design.trim().toLowerCase() : '';
   if (!isValidProBadgeDesign(rawDesign)) {
-    // Also accept numeric/prefixed PLUS design strings (e.g. 'plus:12' or '12')
-    const resolvedPlus = resolvePlusBadgeId(rawDesign);
-    if (resolvedPlus !== null) {
-      return {
-        valid: true,
-        hasExplicitPlusBadgeId: true,
-        value: {
-          design: DEFAULT_PRO_BADGE_DESIGN,
-          plusBadgeId: resolvedPlus,
-          visible: obj.visible,
-        },
-      };
-    }
     return {
       valid: false,
-      error: `Invalid badge design "${String(obj.design ?? '')}".`,
+      error: `Invalid Pro badge design "${String(obj.design ?? '')}".`,
     };
   }
 
   return {
     valid: true,
-    hasExplicitPlusBadgeId: false,
     value: {
       design: rawDesign,
-      plusBadgeId: resolvePlusBadgeId(rawDesign),
       visible: obj.visible,
     },
   };

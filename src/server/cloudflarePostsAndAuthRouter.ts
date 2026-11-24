@@ -53,7 +53,6 @@ import {
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
 } from '../lib/proBadgeDesigns';
-import { resolvePlusBadgeId } from '../lib/plusBadgeDesigns';
 import { registerFormulaVaultRoutes } from './formulaVaultRouter';
 import { setCachedUserProStatusAndBadge } from '../../functions/api/pro-badge';
 import {
@@ -967,7 +966,9 @@ export interface LiveAuthorResolved {
   role: string | null;
   customRole: string | null;
   proBadge: string | null;
-  plus_badge_id?: number | null;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
   isDeleted?: boolean;
 }
 
@@ -1030,6 +1031,7 @@ export function resolveLiveAuthorsBatchSync(
         role: null,
         customRole: null,
         proBadge: null,
+        plusBadge: null,
         isDeleted: true,
       });
       continue;
@@ -1042,6 +1044,7 @@ export function resolveLiveAuthorsBatchSync(
       activeStore?.userRoles?.find((r) => r.uid === uid) ||
       null;
     const badgeRow = tables.user_pro_badge.get(uid);
+    const plusBadgeRow = tables.user_plus_badge.get(uid);
     const proLock = proLocksByUid.get(uid);
 
     const liveUsername = uRow?.username_display || uRow?.username_lower || gRow?.username || null;
@@ -1059,7 +1062,9 @@ export function resolveLiveAuthorsBatchSync(
 
     const isGuest = Boolean(gRow || uid.startsWith('guest_') || uRow?.account_type === 'guest');
     let liveProBadge: string | null = null;
-    let livePlusBadgeId: number | null = null;
+    let livePlusBadge: number | null = null;
+    const savedPlusDesign = plusBadgeRow ? plusBadgeRow.plus_badge_design : null;
+    const savedPlusVisible = plusBadgeRow ? Number(plusBadgeRow.plus_badge_visible ?? 1) !== 0 : true;
     if (!isGuest) {
       const hasActiveLock =
         proLock && proLock.state === 'active' && Number(proLock.expires_at || 0) > nowMs;
@@ -1075,18 +1080,20 @@ export function resolveLiveAuthorsBatchSync(
         planExpiresAt: hasActiveLock ? Number(proLock.expires_at) : (uRow as any)?.planExpiresAt ?? null,
         nowMs,
       });
-      const isActivePro = unified.state === 'active' || Boolean(unified.isPro) || Boolean(unified.isPlus);
-      const isPlus = Boolean(unified.isPlus);
-      const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
-      livePlusBadgeId = badgeRow ? resolvePlusBadgeId(badgeRow.design) : null;
-      if (isActivePro && isVisible) {
-        if (isPlus) {
-          liveProBadge = livePlusBadgeId !== null ? `plus:${livePlusBadgeId}` : null;
-        } else {
-          liveProBadge = badgeRow
-            ? normalizeProBadgeDesign(badgeRow.design)
-            : DEFAULT_PRO_BADGE_DESIGN;
-        }
+      const isActivePro = unified.state === 'active' || Boolean(unified.isPro);
+      const isActivePlus = unified.state === 'active' && Boolean(unified.isPlus);
+
+      // PRO badge reads strictly from user_pro_badge (independent of PLUS)
+      const isProVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
+      if (isActivePro && !isActivePlus && isProVisible) {
+        liveProBadge = badgeRow
+          ? normalizeProBadgeDesign(badgeRow.design)
+          : DEFAULT_PRO_BADGE_DESIGN;
+      }
+
+      // PLUS badge reads strictly from user_plus_badge (never from user_pro_badge)
+      if (isActivePlus && savedPlusVisible && savedPlusDesign !== null) {
+        livePlusBadge = savedPlusDesign;
       }
     }
 
@@ -1098,7 +1105,7 @@ export function resolveLiveAuthorsBatchSync(
       liveRole ||
       liveCustomRole ||
       liveProBadge ||
-      livePlusBadgeId !== null
+      livePlusBadge !== null
     ) {
       result.set(uid, {
         uid,
@@ -1109,7 +1116,9 @@ export function resolveLiveAuthorsBatchSync(
         role: liveRole,
         customRole: liveCustomRole,
         proBadge: liveProBadge,
-        plus_badge_id: livePlusBadgeId,
+        plusBadge: livePlusBadge,
+        plus_badge_design: savedPlusDesign,
+        plus_badge_visible: savedPlusVisible,
       });
     }
   }
@@ -1241,6 +1250,8 @@ export function rowToCommonsPost(
     authorCustomRole: resolvedAuthorCustomRole,
     authorProBadge: isAnon || !useLive ? null : liveAuthor?.proBadge ?? null,
     proBadge: isAnon || !useLive ? null : liveAuthor?.proBadge ?? null,
+    authorPlusBadge: isAnon || !useLive ? null : liveAuthor?.plusBadge ?? null,
+    plusBadge: isAnon || !useLive ? null : liveAuthor?.plusBadge ?? null,
     isOwner,
     status: row.status || 'published',
     visibility: row.visibility || 'public',
@@ -3208,6 +3219,8 @@ ${postSitemaps}
         authorCustomRole: resolvedCustomRole,
         authorProBadge: isAnon || isDeleted ? null : liveAuthor?.proBadge ?? null,
         proBadge: isAnon || isDeleted ? null : liveAuthor?.proBadge ?? null,
+        authorPlusBadge: isAnon || isDeleted ? null : liveAuthor?.plusBadge ?? null,
+        plusBadge: isAnon || isDeleted ? null : liveAuthor?.plusBadge ?? null,
         createdAt: new Date(c.created_at).toISOString(),
       };
     });
@@ -4266,16 +4279,20 @@ ${postSitemaps}
         return (b.item.kobans || 0) - (a.item.kobans || 0);
       });
 
-      const d1BadgeTable = getSharedLocalD1Database().tables.user_pro_badge;
+      const d1Tables = getSharedLocalD1Database().tables;
+      const d1BadgeTable = d1Tables.user_pro_badge;
+      const d1PlusBadgeTable = d1Tables.user_plus_badge;
       const nowSearchMs = Date.now();
       const matched = scored.map((s) => {
         const item = s.item;
         const badgeRow = d1BadgeTable.get(item.uid);
+        const plusBadgeRow = d1PlusBadgeTable.get(item.uid);
         const savedDesign = badgeRow
           ? normalizeProBadgeDesign(badgeRow.design)
           : DEFAULT_PRO_BADGE_DESIGN;
-        const savedPlusId = badgeRow ? resolvePlusBadgeId(badgeRow.design) : null;
         const isVisible = badgeRow ? Number(badgeRow.visible ?? 1) !== 0 : true;
+        const savedPlusDesign = plusBadgeRow ? plusBadgeRow.plus_badge_design : null;
+        const isPlusVisible = plusBadgeRow ? Number(plusBadgeRow.plus_badge_visible ?? 1) !== 0 : true;
         const unified = resolveUnifiedPlanStatus({
           uid: item.uid,
           email: item.email,
@@ -4286,22 +4303,18 @@ ${postSitemaps}
           isPlus: item.plan === 'plus',
           nowMs: nowSearchMs,
         });
-        const activePro = unified.state === 'active' || Boolean(unified.isPro) || Boolean(unified.isPlus);
-        const isPlus = Boolean(unified.isPlus);
-        const resolvedBadge =
-          activePro && isVisible
-            ? isPlus
-              ? savedPlusId !== null
-                ? `plus:${savedPlusId}`
-                : null
-              : savedDesign
-            : null;
+        const isPlus = unified.state === 'active' && Boolean(unified.isPlus);
+        const activePro = unified.state === 'active' && Boolean(unified.isPro) && !isPlus;
+        const resolvedProBadge = activePro && isVisible ? savedDesign : null;
+        const resolvedPlusBadge = isPlus && isPlusVisible ? savedPlusDesign : null;
         return {
           ...item,
-          proBadge: resolvedBadge,
+          proBadge: resolvedProBadge,
           proBadgeDesign: activePro ? savedDesign : badgeRow ? savedDesign : null,
-          plus_badge_id: savedPlusId,
           proBadgeVisible: isVisible,
+          plusBadge: resolvedPlusBadge,
+          plus_badge_design: savedPlusDesign,
+          plus_badge_visible: isPlusVisible,
         };
       });
       const paged = matched.slice(offsetCount, offsetCount + limitCount);
@@ -9040,6 +9053,7 @@ ${postSitemaps}
           (live && !live.isDeleted && live.avatar) ||
           sanitizeStoreAvatarId(a.userAvatar, a.user_avatar),
         proBadge: (live && !live.isDeleted && live.proBadge) || null,
+        plusBadge: (live && !live.isDeleted && live.plusBadge) ?? null,
         rank: idx + 1,
       };
     });
@@ -9078,6 +9092,7 @@ ${postSitemaps}
           name: resolvedName,
           userAvatar: avatar,
           proBadge: (live && !live.isDeleted && live.proBadge) || null,
+          plusBadge: (live && !live.isDeleted && live.plusBadge) ?? null,
           testsCompleted: 1,
           totalScore: Number(a.score || 0),
           totalQuestions: Number(a.totalQuestions || 0),
@@ -9139,6 +9154,7 @@ ${postSitemaps}
         captainUsername: (useLive && live?.username) || c.captainUsername || undefined,
         captainAvatar: (useLive && live?.avatar) || c.captainAvatar || null,
         proBadge: (useLive && live?.proBadge) || null,
+        plusBadge: (useLive && live?.plusBadge) ?? null,
       };
     });
     return res.status(200).json({ crews });
@@ -9172,6 +9188,7 @@ ${postSitemaps}
       captainUsername: (capLive && !capLive.isDeleted && capLive.username) || undefined,
       captainAvatar: (capLive && !capLive.isDeleted && capLive.avatar) || crew.captainAvatar || null,
       proBadge: (capLive && !capLive.isDeleted && capLive.proBadge) || null,
+      plusBadge: (capLive && !capLive.isDeleted && capLive.plusBadge) ?? null,
     };
     const members = rawMembers.map((m: any) => {
       const live = m.userUid ? liveMap.get(m.userUid) : undefined;
@@ -9185,6 +9202,7 @@ ${postSitemaps}
         username: (useLive && live?.username) || m.username || undefined,
         userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
         proBadge: (useLive && live?.proBadge) || null,
+        plusBadge: (useLive && live?.plusBadge) ?? null,
       };
     });
     return res.status(200).json({ crew: hydratedCrew, members });
@@ -9291,6 +9309,7 @@ ${postSitemaps}
         username: (useLive && live?.username) || m.username || undefined,
         userAvatar: (useLive && live?.avatar) || m.userAvatar || null,
         proBadge: (useLive && live?.proBadge) || null,
+        plusBadge: (useLive && live?.plusBadge) ?? null,
       };
     });
     return res.status(200).json({ members });

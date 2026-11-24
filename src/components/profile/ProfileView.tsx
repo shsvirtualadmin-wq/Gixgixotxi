@@ -50,7 +50,8 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { ProfileCardEffect, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
-import { useProBadge } from '@/contexts/ProBadgeContext';
+import { PlusBadge } from '@/components/ui/PlusBadge';
+import { usePlusBadge } from '@/contexts/PlusBadgeContext';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { getPlanDisplayLabel, getUserPlanTier } from '@/config/postLimits';
 import type { PlanTier } from '@/lib/planTier';
@@ -213,6 +214,9 @@ interface EnrichedProfile extends PublicProfile {
   isBanned?: boolean;
   proBadge?: string | null;
   rawProBadge?: string | null;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
   plus_badge_id?: number | null;
   plan?: string | null;
   planTier?: string | null;
@@ -439,7 +443,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const navigate = useNavigate();
   const wallet = useWallet();
   const liveEffectivePlan = useEffectivePlan();
-  const { effectivePlusBadgeId: myEffectivePlusBadgeId } = useProBadge();
+  const { effectivePlusBadgeId: myEffectivePlusBadgeId } = usePlusBadge();
 
   const uid = targetUid || propData?.uid || currentUser?.uid || '';
   const isOwnProfile =
@@ -907,29 +911,44 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             : null
           : d1Live?.proBadge || pubData?.proBadge || uData?.proBadge || null;
 
-        const resolvedProBadge: string | null = rawBadgeFromSources
-          ? String(rawBadgeFromSources).toLowerCase().startsWith('plus:')
-            ? (() => {
-                const pid = resolvePlusBadgeId(rawBadgeFromSources);
-                return pid !== null ? `plus:${pid}` : null;
-              })()
-            : normalizeProBadgeDesign(String(rawBadgeFromSources))
-          : null;
+        const resolvedProBadge: string | null =
+          rawBadgeFromSources && !String(rawBadgeFromSources).toLowerCase().startsWith('plus:')
+            ? normalizeProBadgeDesign(String(rawBadgeFromSources))
+            : null;
+
+        const rawPlusVisible =
+          typeof uData?.plus_badge_visible === 'boolean'
+            ? uData.plus_badge_visible
+            : typeof pubData?.plus_badge_visible === 'boolean'
+            ? pubData.plus_badge_visible
+            : typeof (d1Live as any)?.plus_badge_visible === 'boolean'
+            ? (d1Live as any).plus_badge_visible
+            : true;
+
+        const rawPlusDesignSource =
+          d1Live?.plusBadge !== undefined
+            ? d1Live.plusBadge
+            : Object.prototype.hasOwnProperty.call(uData || {}, 'plus_badge_design')
+            ? uData?.plus_badge_design
+            : Object.prototype.hasOwnProperty.call(pubData || {}, 'plus_badge_design')
+            ? pubData?.plus_badge_design
+            : Object.prototype.hasOwnProperty.call(uData || {}, 'plus_badge_id')
+            ? uData?.plus_badge_id
+            : Object.prototype.hasOwnProperty.call(pubData || {}, 'plus_badge_id')
+            ? pubData?.plus_badge_id
+            : Object.prototype.hasOwnProperty.call(pubData || {}, 'plusBadge')
+            ? (pubData as any)?.plusBadge
+            : undefined;
+
+        const resolvedPlusBadgeDesign: number | null =
+          rawPlusDesignSource === null
+            ? null
+            : rawPlusDesignSource !== undefined
+            ? resolvePlusBadgeId(rawPlusDesignSource)
+            : null;
 
         const resolvedPlusBadgeId: number | null =
-          Object.prototype.hasOwnProperty.call(uData || {}, 'plus_badge_id')
-            ? uData?.plus_badge_id === null
-              ? null
-              : resolvePlusBadgeId(uData?.plus_badge_id)
-            : Object.prototype.hasOwnProperty.call(pubData || {}, 'plus_badge_id')
-            ? pubData?.plus_badge_id === null
-              ? null
-              : resolvePlusBadgeId(pubData?.plus_badge_id)
-            : Object.prototype.hasOwnProperty.call(d1Live || {}, 'plus_badge_id')
-            ? d1Live?.plus_badge_id === null
-              ? null
-              : resolvePlusBadgeId(d1Live?.plus_badge_id)
-            : resolvePlusBadgeId(rawBadgeFromSources);
+          rawPlusVisible === false ? null : resolvedPlusBadgeDesign;
 
         const enriched: EnrichedProfile = {
           uid,
@@ -967,6 +986,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           isBanned: Boolean(uData?.isBanned),
           proBadge: resolvedProBadge,
           rawProBadge: typeof rawBadgeFromSources === 'string' ? rawBadgeFromSources : null,
+          plusBadge: resolvedPlusBadgeId,
+          plus_badge_design: resolvedPlusBadgeDesign,
+          plus_badge_visible: rawPlusVisible,
           plus_badge_id: resolvedPlusBadgeId,
           plan: uData?.plan ?? pubData?.plan ?? d1Live?.plan ?? null,
           planTier: uData?.planTier ?? pubData?.planTier ?? d1Live?.planTier ?? null,
@@ -1632,8 +1654,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       plusPlanId: profile.plusPlanId,
     });
     if (resolved !== 'free') return resolved;
-    const rawBadge = String(profile.rawProBadge || '').trim().toLowerCase();
-    if (rawBadge === 'plus' || rawBadge.startsWith('plus:')) return 'plus';
+    if (typeof profile.plusBadge === 'number' || typeof profile.plus_badge_design === 'number') {
+      return 'plus';
+    }
     if (profile.proBadge) return 'pro';
     return 'free';
   })();
@@ -1645,22 +1668,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const activePlusBadgeId: number | null = isTargetPlus
     ? isOwnProfile
       ? myEffectivePlusBadgeId
-      : profile.plus_badge_id !== undefined
-      ? resolvePlusBadgeId(profile.plus_badge_id)
-      : resolvePlusBadgeId(profile.rawProBadge || profile.proBadge)
+      : profile.plus_badge_visible === false
+      ? null
+      : resolvePlusBadgeId(profile.plusBadge ?? profile.plus_badge_design ?? profile.plus_badge_id)
     : null;
 
-  const activeProBadgeDesign: string | null = isTargetPlus
-    ? activePlusBadgeId !== null
-      ? `plus:${activePlusBadgeId}`
-      : null
-    : isTargetPro
-    ? isOwnProfile
-      ? myProBadgeVisible
-        ? myProBadgeDesign
+  const activeProBadgeDesign: string | null =
+    !isTargetPlus && isTargetPro
+      ? isOwnProfile
+        ? myProBadgeVisible
+          ? myProBadgeDesign
+          : null
+        : profile.proBadge
+        ? normalizeProBadgeDesign(profile.proBadge)
         : null
-      : normalizeProBadgeDesign(profile.proBadge || 'ember')
-    : null;
+      : null;
 
   const equippedBannerId =
     (isOwnProfile ? wallet.equipped?.banner : null) ||
@@ -1832,16 +1854,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     {targetPlanLabel}
                   </span>
                 )}
-                {activeProBadgeDesign && (
-                  <ProBadge
-                    design={activeProBadgeDesign}
-                    plusBadgeId={isTargetPlus ? activePlusBadgeId : undefined}
-                    tier={isTargetPlus ? 'plus' : 'pro'}
+                {isTargetPlus && activePlusBadgeId !== null ? (
+                  <PlusBadge
+                    id={activePlusBadgeId}
                     size="sm"
                     animated
                     priority
                   />
-                )}
+                ) : activeProBadgeDesign ? (
+                  <ProBadge
+                    design={activeProBadgeDesign}
+                    size="sm"
+                    animated
+                    priority
+                  />
+                ) : null}
               </div>
               {usernameHandle && (
                 <p className="text-[14px] font-medium text-[var(--text-muted)]">
@@ -2147,13 +2174,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 }
                 authorFrame={equippedFrameId}
                 authorRole={profile.role}
-                authorProBadge={
-                  activeProBadgeDesign
-                    ? isTargetPlus
-                      ? `plus:${activeProBadgeDesign}`
-                      : activeProBadgeDesign
-                    : null
-                }
+                authorProBadge={activeProBadgeDesign}
+                authorPlusBadge={activePlusBadgeId}
                 authorPlan={targetPlan}
                 isPro={isTargetPro}
                 onCountChange={setPostsCount}

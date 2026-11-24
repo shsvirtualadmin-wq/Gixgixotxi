@@ -319,6 +319,10 @@ export interface CachedAdminUsersDirectory {
   allDirectoryUsers: UserProfile[];
   user2faMap: Record<string, UserTwoFactorSummary>;
   proBadgesByUid?: Record<string, { design: string; visible: boolean }>;
+  plusBadgesByUid?: Record<
+    string,
+    { plus_badge_design: number | null; plus_badge_visible: boolean }
+  >;
   securityLogs: any[];
   totalCount: number;
   firestoreTotalCount?: number;
@@ -1272,10 +1276,14 @@ export async function fetchUsersPaginated(options?: {
     const fetchD1TwoFactorAndUsers = async (): Promise<{
       user2faMap: Record<string, UserTwoFactorSummary>;
       proBadgesByUid: Record<string, { design: string; visible: boolean }>;
+      plusBadgesByUid: Record<
+        string,
+        { plus_badge_design: number | null; plus_badge_visible: boolean }
+      >;
       d1Users: UserProfile[];
       securityLogs: any[];
     }> => {
-      // On Load More pages, reuse fresh cached 2FA/proBadge metadata to avoid redundant calls
+      // On Load More pages, reuse fresh cached 2FA/badge metadata to avoid redundant calls
       if (
         !isFirstPage &&
         !options?.force &&
@@ -1285,6 +1293,7 @@ export async function fetchUsersPaginated(options?: {
         return {
           user2faMap: { ...cachedAdminUsersDirectory.user2faMap },
           proBadgesByUid: { ...(cachedAdminUsersDirectory.proBadgesByUid || {}) },
+          plusBadgesByUid: { ...(cachedAdminUsersDirectory.plusBadgesByUid || {}) },
           d1Users: [],
           securityLogs: cachedAdminUsersDirectory.securityLogs || [],
         };
@@ -1296,6 +1305,10 @@ export async function fetchUsersPaginated(options?: {
         statusByUid?: Record<string, Partial<UserTwoFactorSummary>>;
         users2fa?: Record<string, Partial<UserTwoFactorSummary>>;
         proBadgesByUid?: Record<string, { design: string; visible: boolean }>;
+        plusBadgesByUid?: Record<
+          string,
+          { plus_badge_design: number | null; plus_badge_visible: boolean }
+        >;
         d1Users?: any[];
         logs?: any[];
         auditLogs?: any[];
@@ -1304,7 +1317,13 @@ export async function fetchUsersPaginated(options?: {
         if (res.errorMessage) {
           console.warn('[AdminService] /api/auth/admin/2fa-status warning:', res.errorMessage);
         }
-        return { user2faMap: {}, proBadgesByUid: {}, d1Users: [], securityLogs: [] };
+        return {
+          user2faMap: {},
+          proBadgesByUid: {},
+          plusBadgesByUid: {},
+          d1Users: [],
+          securityLogs: [],
+        };
       }
 
       const rawMap = res.data.statusByUid || res.data.users2fa || res.data.users;
@@ -1320,6 +1339,14 @@ export async function fetchUsersPaginated(options?: {
           ? res.data.proBadgesByUid
           : {};
 
+      const plusBadgesByUid: Record<
+        string,
+        { plus_badge_design: number | null; plus_badge_visible: boolean }
+      > =
+        res.data.plusBadgesByUid && typeof res.data.plusBadgesByUid === 'object'
+          ? res.data.plusBadgesByUid
+          : {};
+
       const d1UsersList: UserProfile[] = [];
       if (Array.isArray(res.data.d1Users)) {
         for (const row of res.data.d1Users) {
@@ -1329,9 +1356,28 @@ export async function fetchUsersPaginated(options?: {
             : map[row.uid] || { ...DEFAULT_OFF_2FA_SUMMARY };
           map[row.uid] = summary;
           const pbEntry = proBadgesByUid[row.uid];
+          const plbEntry = plusBadgesByUid[row.uid];
           const d1Plan = getPlan(row);
           const d1ExpMs = Number(row.planExpiresAt || row.plan_expires_at || 0);
           const d1ExpTimestamp = d1ExpMs > 0 ? Timestamp.fromMillis(d1ExpMs) : null;
+          const plusDesign =
+            plbEntry !== undefined
+              ? plbEntry.plus_badge_design
+              : row.plus_badge_design !== undefined
+              ? row.plus_badge_design === null
+                ? null
+                : resolvePlusBadgeId(row.plus_badge_design)
+              : row.plus_badge_id !== undefined
+              ? row.plus_badge_id === null
+                ? null
+                : resolvePlusBadgeId(row.plus_badge_id)
+              : null;
+          const plusVisible =
+            plbEntry !== undefined
+              ? plbEntry.plus_badge_visible
+              : typeof row.plus_badge_visible === 'boolean'
+              ? row.plus_badge_visible
+              : true;
           d1UsersList.push({
             uid: String(row.uid),
             email: String(row.email || ''),
@@ -1357,10 +1403,9 @@ export async function fetchUsersPaginated(options?: {
             twoFactorStatus: summary,
             proBadgeDesign: row.proBadgeDesign || pbEntry?.design || 'ember',
             proBadgeVisible: row.proBadgeVisible ?? pbEntry?.visible ?? true,
-            plus_badge_id:
-              row.plus_badge_id !== undefined
-                ? resolvePlusBadgeId(row.plus_badge_id)
-                : resolvePlusBadgeId(pbEntry?.design ?? row.proBadgeDesign),
+            plus_badge_design: plusDesign,
+            plus_badge_visible: plusVisible,
+            plus_badge_id: plusDesign,
           } as unknown as UserProfile);
         }
       }
@@ -1368,6 +1413,7 @@ export async function fetchUsersPaginated(options?: {
       return {
         user2faMap: map,
         proBadgesByUid,
+        plusBadgesByUid,
         d1Users: d1UsersList,
         securityLogs: Array.isArray(res.data.logs) ? res.data.logs : [],
       };
@@ -1410,7 +1456,7 @@ export async function fetchUsersPaginated(options?: {
         fetchD1TwoFactorAndUsers(),
       ]);
 
-      const { user2faMap, proBadgesByUid, d1Users, securityLogs } = d1Bundle;
+      const { user2faMap, proBadgesByUid, plusBadgesByUid, d1Users, securityLogs } = d1Bundle;
 
       if (!snapResult && d1Users.length === 0 && guestUsers.length === 0) {
         throw new Error('Failed to load users from Firestore and D1.');
@@ -1474,6 +1520,12 @@ export async function fetchUsersPaginated(options?: {
             createdAt: existingCreatedMs !== null ? existing.createdAt : d1u.createdAt ?? null,
             proBadgeDesign: (existing as any).proBadgeDesign || (d1u as any).proBadgeDesign,
             proBadgeVisible: (existing as any).proBadgeVisible ?? (d1u as any).proBadgeVisible,
+            plus_badge_design:
+              (existing as any).plus_badge_design !== undefined
+                ? (existing as any).plus_badge_design
+                : (d1u as any).plus_badge_design,
+            plus_badge_visible:
+              (existing as any).plus_badge_visible ?? (d1u as any).plus_badge_visible,
           });
         } else {
           const d1CreatedMs = resolveUserJoinedAtMs(d1u);
@@ -1504,30 +1556,45 @@ export async function fetchUsersPaginated(options?: {
         const resolved2fa = user2faMap[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY };
         user2faMap[u.uid] = resolved2fa;
         const pbEntry = proBadgesByUid[u.uid];
+        const plbEntry = plusBadgesByUid[u.uid];
         const tier = u.isGuest || u.accountType === 'guest' ? 'free' : getPlan(u);
-        const isPaidUser = tier === 'pro' || tier === 'plus';
+
+        // PRO badge fields (strictly from proBadgesByUid / pro fields)
         const pbDesign = pbEntry?.design || (u as any).proBadgeDesign || 'ember';
         const pbVisible = pbEntry ? pbEntry.visible : ((u as any).proBadgeVisible ?? true);
-        const plusId = Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')
-          ? u.plus_badge_id === null
-            ? null
-            : resolvePlusBadgeId(u.plus_badge_id)
-          : resolvePlusBadgeId(pbEntry?.design ?? (u as any).proBadgeDesign ?? (u as any).proBadge);
-        const resolvedBadge =
-          isPaidUser && pbVisible
-            ? tier === 'plus'
-              ? plusId !== null
-                ? `plus:${plusId}`
-                : null
-              : pbDesign
+        const resolvedProBadge = tier === 'pro' && pbVisible ? pbDesign : null;
+
+        // PLUS badge fields (strictly from plusBadgesByUid / plus fields, never from pro fields)
+        const plusDesign =
+          plbEntry !== undefined
+            ? plbEntry.plus_badge_design
+            : Object.prototype.hasOwnProperty.call(u, 'plus_badge_design')
+            ? (u as any).plus_badge_design === null
+              ? null
+              : resolvePlusBadgeId((u as any).plus_badge_design)
+            : Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')
+            ? u.plus_badge_id === null
+              ? null
+              : resolvePlusBadgeId(u.plus_badge_id)
             : null;
+        const plusVisible =
+          plbEntry !== undefined
+            ? plbEntry.plus_badge_visible
+            : typeof (u as any).plus_badge_visible === 'boolean'
+            ? (u as any).plus_badge_visible
+            : true;
+        const resolvedPlusBadge = tier === 'plus' && plusVisible ? plusDesign : null;
+
         return {
           ...u,
           twoFactorStatus: resolved2fa,
           proBadgeDesign: pbDesign,
           proBadgeVisible: pbVisible,
-          plus_badge_id: plusId,
-          proBadge: resolvedBadge,
+          proBadge: resolvedProBadge,
+          plus_badge_design: plusDesign,
+          plus_badge_visible: plusVisible,
+          plus_badge_id: plusDesign,
+          plusBadge: resolvedPlusBadge,
         };
       };
 
@@ -1638,6 +1705,7 @@ export async function fetchUsersPaginated(options?: {
           allDirectoryUsers: sortedUsers,
           user2faMap,
           proBadgesByUid,
+          plusBadgesByUid,
           securityLogs,
           ...breakdown,
           totalCount: estimatedTotal,

@@ -6,16 +6,11 @@ import {
   normalizeProBadgeDesign,
   type ProBadgeDesignId,
 } from '@/lib/proBadgeDesigns';
-import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
-import { PlusBadge } from '@/components/ui/PlusBadge';
 
 export type ProBadgeSize = 'lg' | 'md' | 'sm' | 'icon';
 
 export interface ProBadgeProps {
   design?: ProBadgeDesignId | string | null;
-  /** Optional explicit 1..50 PLUS badge ID (when set, renders PlusBadge directly). */
-  plusBadgeId?: number | null;
-  tier?: 'pro' | 'plus';
   size?: ProBadgeSize;
   /**
    * Whether animation is allowed on this badge.
@@ -131,7 +126,7 @@ function getSharedListBadgeObserver(): IntersectionObserver | null {
 }
 
 // ============================================================================
-// INLINE SVG ICONS (CROWN, PIXEL CROWN, SPARKLE, PLUS-STAR, FLAME, BOLT, GEM, STARS)
+// INLINE SVG ICONS (CROWN, PIXEL CROWN, SPARKLE, FLAME, BOLT, GEM, STARS)
 // ============================================================================
 function CrownSvg() {
   return (
@@ -251,8 +246,6 @@ function renderDesignIcon(design: ProBadgeDesignId): React.ReactNode {
 
 export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
   design = DEFAULT_PRO_BADGE_DESIGN,
-  plusBadgeId,
-  tier,
   size = 'sm',
   animated = true,
   listMode,
@@ -262,46 +255,23 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
   onClick,
 }) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const rawDesignStr = String(design ?? '').trim().toLowerCase();
-  const isPlusBadge =
-    tier === 'plus' ||
-    plusBadgeId !== undefined ||
-    rawDesignStr === 'plus' ||
-    rawDesignStr.startsWith('plus:') ||
-    /^\d+$/.test(rawDesignStr);
-
-  const resolvedPlusId = isPlusBadge
-    ? plusBadgeId !== undefined
-      ? resolvePlusBadgeId(plusBadgeId)
-      : resolvePlusBadgeId(rawDesignStr)
-    : null;
-
-  const innerDesignRaw = rawDesignStr.startsWith('plus:')
-    ? rawDesignStr.slice('plus:'.length)
-    : rawDesignStr === 'plus'
-    ? DEFAULT_PRO_BADGE_DESIGN
-    : rawDesignStr;
-
-  const safeDesign = normalizeProBadgeDesign(innerDesignRaw);
+  const safeDesign = normalizeProBadgeDesign(design);
   const isStaticDesign = STATIC_PRO_BADGE_IDS.has(safeDesign);
   const isPixelFont = PIXEL_FONT_PRO_BADGE_IDS.has(safeDesign);
 
   const shouldObserveInList =
-    !isPlusBadge &&
     !isStaticDesign &&
     animated &&
     !priority &&
     (listMode !== undefined ? listMode : size === 'sm' || size === 'icon');
 
   const animateDirectly =
-    !isPlusBadge &&
     !isStaticDesign &&
     animated &&
     !shouldObserveInList &&
     !isReducedMotionOrSmoothMode();
 
   useEffect(() => {
-    if (isPlusBadge) return;
     const el = ref.current;
     if (!el) return;
 
@@ -329,26 +299,7 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
         rebalanceAnimatedListBadges();
       }
     };
-  }, [isPlusBadge, shouldObserveInList, animateDirectly, safeDesign]);
-
-  // Delegate all PLUS badges to the exact 50-design PlusBadge component
-  if (isPlusBadge) {
-    if (resolvedPlusId === null) {
-      return null;
-    }
-    return (
-      <PlusBadge
-        id={resolvedPlusId}
-        size={size}
-        animated={animated}
-        listMode={listMode}
-        priority={priority}
-        className={className}
-        title={title}
-        onClick={onClick}
-      />
-    );
-  }
+  }, [shouldObserveInList, animateDirectly, safeDesign]);
 
   const fontClass = isPixelFont ? 'pb-badge--font-doto' : 'pb-badge--font-space';
   const sizeClass = `pb-badge--${size}`;
@@ -385,7 +336,7 @@ export const ProBadge: React.FC<ProBadgeProps> = React.memo(function ProBadge({
           </>
         )
       ) : size === 'icon' ? (
-        iconNode || <span className="pb-badge--text">{isPlusBadge ? '+' : 'P'}</span>
+        iconNode || <span className="pb-badge--text">P</span>
       ) : (
         <>
           {iconNode}

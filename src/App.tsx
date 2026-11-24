@@ -293,6 +293,7 @@ import { BoardlySuspenseBoundary } from './components/ui/BoardlyLoader';
 import { AuthGateProvider } from './contexts/AuthGateContext';
 import { KobanStyleProvider } from './contexts/KobanStyleContext';
 import { ProBadgeProvider } from './contexts/ProBadgeContext';
+import { PlusBadgeProvider } from './contexts/PlusBadgeContext';
 import { DeviceUnlockGate } from './components/security/DeviceUnlockGate';
 import { useBoardlyUIMode } from './utils/uiMode';
 import './styles/glass.css';
@@ -655,11 +656,13 @@ export function App() {
     <AuthProvider>
       <KobanStyleProvider>
         <ProBadgeProvider>
-          <ProfileModalProvider>
-            <AuthGateProvider>
-              <AppInner />
-            </AuthGateProvider>
-          </ProfileModalProvider>
+          <PlusBadgeProvider>
+            <ProfileModalProvider>
+              <AuthGateProvider>
+                <AppInner />
+              </AuthGateProvider>
+            </ProfileModalProvider>
+          </PlusBadgeProvider>
         </ProBadgeProvider>
       </KobanStyleProvider>
     </AuthProvider>

@@ -2160,6 +2160,15 @@ export interface InMemoryD1Tables {
         updated_at: number;
       }
     >;
+    user_plus_badge: Map<
+      string,
+      {
+        user_id: string;
+        plus_badge_design: number | null;
+        plus_badge_visible: number;
+        updated_at: number;
+      }
+    >;
     passkeys: Map<
       string,
       {
@@ -2248,6 +2257,7 @@ export class InMemoryD1Database implements RewardsD1Database {
     legal_consent_records: new Map(),
     user_koban_style: new Map(),
     user_pro_badge: new Map(),
+    user_plus_badge: new Map(),
     passkeys: new Map(),
     webauthn_challenges: new Map(),
     sessions: new Map(),
@@ -2342,6 +2352,25 @@ export class InMemoryD1Database implements RewardsD1Database {
               user_id: String(r.user_id),
               design: String(r.design || 'ember'),
               visible: Number(r.visible ?? 1),
+              updated_at: Number(r.updated_at || Date.now()),
+            });
+          }
+        }
+      }
+      if (Array.isArray(raw.user_plus_badge)) {
+        for (const r of raw.user_plus_badge) {
+          if (r && r.user_id) {
+            const rawDesign = r.plus_badge_design;
+            const parsedDesign =
+              rawDesign === null || rawDesign === undefined
+                ? null
+                : Number.isInteger(Number(rawDesign)) && Number(rawDesign) >= 1 && Number(rawDesign) <= 50
+                ? Number(rawDesign)
+                : null;
+            this.tables.user_plus_badge.set(String(r.user_id), {
+              user_id: String(r.user_id),
+              plus_badge_design: parsedDesign,
+              plus_badge_visible: Number(r.plus_badge_visible ?? 1) ? 1 : 0,
               updated_at: Number(r.updated_at || Date.now()),
             });
           }
@@ -2460,6 +2489,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         email_verification_sessions: Array.from(this.tables.email_verification_sessions.values()),
         user_koban_style: Array.from(this.tables.user_koban_style.values()),
         user_pro_badge: Array.from(this.tables.user_pro_badge.values()),
+        user_plus_badge: Array.from(this.tables.user_plus_badge.values()),
         user_2fa: Array.from(this.tables.user_2fa.values()),
         user_2fa_backup_codes: Array.from(this.tables.user_2fa_backup_codes.values()),
         trusted_devices: Array.from(this.tables.trusted_devices.values()),
@@ -3071,6 +3101,22 @@ export class InMemoryD1Database implements RewardsD1Database {
         return row ? [{ ...row }] : [];
       }
       return Array.from(this.tables.user_pro_badge.values()).map((r) => ({ ...r }));
+    }
+
+    // 24b. user_plus_badge (independent of user_pro_badge)
+    if (upper.includes('FROM USER_PLUS_BADGE')) {
+      if (upper.includes('WHERE USER_ID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '').trim()).filter(Boolean));
+        return Array.from(this.tables.user_plus_badge.values())
+          .filter((r) => uidSet.has(r.user_id))
+          .map((r) => ({ ...r }));
+      }
+      if (upper.includes('WHERE USER_ID =')) {
+        const uid = String(args[0] ?? '');
+        const row = this.tables.user_plus_badge.get(uid);
+        return row ? [{ ...row }] : [];
+      }
+      return Array.from(this.tables.user_plus_badge.values()).map((r) => ({ ...r }));
     }
 
     // 25. passkeys
@@ -4403,6 +4449,33 @@ export class InMemoryD1Database implements RewardsD1Database {
     if (upper.startsWith('DELETE FROM USER_PRO_BADGE')) {
       const user_id = String(args[0] ?? '');
       return this.tables.user_pro_badge.delete(user_id) ? 1 : 0;
+    }
+
+    // 18b. user_plus_badge (independent of user_pro_badge)
+    if (upper.includes('INTO USER_PLUS_BADGE')) {
+      const user_id = String(args[0] ?? '');
+      if (!user_id) return 0;
+      const rawDesign = args[1];
+      const plus_badge_design =
+        rawDesign === null || rawDesign === undefined
+          ? null
+          : Number.isInteger(Number(rawDesign)) && Number(rawDesign) >= 1 && Number(rawDesign) <= 50
+          ? Number(rawDesign)
+          : null;
+      const plus_badge_visible = Number(args[2] ?? 1) ? 1 : 0;
+      const updated_at = Number(args[3] ?? Date.now());
+      this.tables.user_plus_badge.set(user_id, {
+        user_id,
+        plus_badge_design,
+        plus_badge_visible,
+        updated_at,
+      });
+      return 1;
+    }
+
+    if (upper.startsWith('DELETE FROM USER_PLUS_BADGE')) {
+      const user_id = String(args[0] ?? '');
+      return this.tables.user_plus_badge.delete(user_id) ? 1 : 0;
     }
 
     // 19. passkeys

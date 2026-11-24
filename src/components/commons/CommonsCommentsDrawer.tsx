@@ -8,6 +8,7 @@ import { maskPublicUserText } from '@/utils/privacy';
 import { getDisplayName } from '@/utils/displayName';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { getPublicProfiles } from '@/services/publicProfileService';
@@ -82,6 +83,8 @@ export function CommonsCommentsDrawer({
                   authorFrame: p.equippedFrame || p.frame || (c as any).authorFrame,
                   authorRole: p.role || (c as any).authorRole,
                   authorCustomRole: p.customRole || (c as any).authorCustomRole,
+                  authorProBadge: p.proBadge !== undefined ? p.proBadge : c.authorProBadge,
+                  authorPlusBadge: p.plusBadge !== undefined ? p.plusBadge : c.authorPlusBadge,
                 } as CommonsComment;
               })
             );
@@ -266,13 +269,25 @@ export function CommonsCommentsDrawer({
                                 username: (comment as any).authorUsername,
                               })}
                             </button>
-                            {(comment.authorProBadge || comment.proBadge) && (
-                              <ProBadge
-                                design={comment.authorProBadge || comment.proBadge}
-                                size="sm"
-                                listMode
-                              />
-                            )}
+                            {(() => {
+                              const commentPlusBadge =
+                                comment.authorPlusBadge ?? comment.plusBadge ?? null;
+                              if (typeof commentPlusBadge === 'number') {
+                                return <PlusBadge id={commentPlusBadge} size="sm" listMode />;
+                              }
+                              const commentProBadge =
+                                comment.authorProBadge || comment.proBadge || null;
+                              if (commentProBadge) {
+                                return (
+                                  <ProBadge
+                                    design={commentProBadge}
+                                    size="sm"
+                                    listMode
+                                  />
+                                );
+                              }
+                              return null;
+                            })()}
                             <RoleBadge
                               role={(comment as any).authorRole || 'Student'}
                               customRole={(comment as any).authorCustomRole}

@@ -408,6 +408,14 @@ export function applyLiveAuthorToPost(
       prof.proBadge !== undefined ? prof.proBadge : post.authorProBadge ?? post.proBadge ?? null,
     proBadge:
       prof.proBadge !== undefined ? prof.proBadge : post.proBadge ?? post.authorProBadge ?? null,
+    authorPlusBadge:
+      prof.plusBadge !== undefined
+        ? prof.plusBadge
+        : post.authorPlusBadge ?? post.plusBadge ?? null,
+    plusBadge:
+      prof.plusBadge !== undefined
+        ? prof.plusBadge
+        : post.plusBadge ?? post.authorPlusBadge ?? null,
   };
 }
 
@@ -538,6 +546,8 @@ export function normalizeCloudflarePost(raw: Record<string, any>): CommonsPost {
     authorCustomRole: isAnon ? null : rawCustomRole || null,
     authorProBadge: isAnon ? null : raw.authorProBadge ?? raw.proBadge ?? null,
     proBadge: isAnon ? null : raw.proBadge ?? raw.authorProBadge ?? null,
+    authorPlusBadge: isAnon ? null : raw.authorPlusBadge ?? raw.plusBadge ?? null,
+    plusBadge: isAnon ? null : raw.plusBadge ?? raw.authorPlusBadge ?? null,
     upvotes: snapshot.count,
     downvotes: Number(raw.downvotes ?? 0),
     views: Number(raw.views ?? 0),
@@ -1432,6 +1442,14 @@ export async function fetchPostComments(postId: string): Promise<CommonsComment[
           live?.proBadge !== undefined ? live.proBadge : c.authorProBadge ?? c.proBadge ?? null,
         proBadge:
           live?.proBadge !== undefined ? live.proBadge : c.proBadge ?? c.authorProBadge ?? null,
+        authorPlusBadge:
+          live?.plusBadge !== undefined
+            ? live.plusBadge
+            : c.authorPlusBadge ?? c.plusBadge ?? null,
+        plusBadge:
+          live?.plusBadge !== undefined
+            ? live.plusBadge
+            : c.plusBadge ?? c.authorPlusBadge ?? null,
       };
     });
   } catch {
@@ -1500,6 +1518,7 @@ export async function searchPeople(searchTerm: string): Promise<CommonsUserPrevi
           role: data.role || 'student',
           customRole: data.customRole || null,
           proBadge: data.proBadge ?? null,
+          plusBadge: data.plusBadge ?? null,
         });
       }
     });

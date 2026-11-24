@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -384,9 +385,11 @@ export function CaptainDashboardPage() {
                     ) : (
                       <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>Signed Up</span>
                     )}
-                    {st.isPro && (
+                    {typeof (st as any).plusBadge === 'number' ? (
+                      <PlusBadge id={(st as any).plusBadge} size="sm" listMode />
+                    ) : st.isPro ? (
                       <ProBadge design={(st as any).proBadge || 'ember'} size="sm" listMode />
-                    )}
+                    ) : null}
                   </div>
                 </div>
               ))}

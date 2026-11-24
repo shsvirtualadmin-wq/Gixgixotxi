@@ -25,7 +25,9 @@ import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
+import { usePlusBadge } from '@/contexts/PlusBadgeContext';
 import { AdSlot } from '@/components/AdSlot';
 import { AD_SLOTS } from '@/config/ads';
 
@@ -52,6 +54,7 @@ export function DashboardSidebar() {
   const isPro = !isGuest && effectivePlan.isUnlimited;
   const isPlus = !isGuest && effectivePlan.isPlus;
   const { effectiveProBadge } = useProBadge();
+  const { effectivePlusBadgeId } = usePlusBadge();
   const displayName = getDisplayName(
     {
       display_name: profile?.display_name ?? profile?.displayName,
@@ -321,30 +324,42 @@ export function DashboardSidebar() {
                   shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
                   roleBadge={isCaptain ? 'CAPTAIN' : undefined}
                 />
-                {isPro && effectiveProBadge && (
-                  <ProBadge
-                    design={effectiveProBadge}
-                    tier={isPlus ? 'plus' : 'pro'}
+                {isPlus && effectivePlusBadgeId !== null ? (
+                  <PlusBadge
+                    id={effectivePlusBadgeId}
                     size="sm"
                     animated
                     priority
                   />
-                )}
+                ) : isPro && !isPlus && effectiveProBadge ? (
+                  <ProBadge
+                    design={effectiveProBadge}
+                    size="sm"
+                    animated
+                    priority
+                  />
+                ) : null}
               </div>
             ) : (
               <div className="flex items-center gap-1.5 min-w-0">
                 <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
                   {displayName}
                 </p>
-                {isPro && effectiveProBadge && (
-                  <ProBadge
-                    design={effectiveProBadge}
-                    tier={isPlus ? 'plus' : 'pro'}
+                {isPlus && effectivePlusBadgeId !== null ? (
+                  <PlusBadge
+                    id={effectivePlusBadgeId}
                     size="sm"
                     animated
                     priority
                   />
-                )}
+                ) : isPro && !isPlus && effectiveProBadge ? (
+                  <ProBadge
+                    design={effectiveProBadge}
+                    size="sm"
+                    animated
+                    priority
+                  />
+                ) : null}
               </div>
             )}
             <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">

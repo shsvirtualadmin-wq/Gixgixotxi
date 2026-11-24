@@ -195,21 +195,34 @@ service cloud.firestore {
         (!('equipped' in data) || !(data.equipped is map) || !('avatar' in data.equipped) || isAllowedUserAvatar(uid, data.equipped.avatar));
     }
 
-    // Validates plus_badge_id (nullable integer 1..50): only active PLUS members can equip a non-null PLUS badge.
+    // Validates PLUS badge fields (plus_badge_design / plus_badge_id / plus_badge_visible):
+    // Only active PLUS members can equip a non-null PLUS badge (#01..#50).
     // On create, new user docs cannot self-grant a non-null PLUS badge.
     function validPlusBadgeCreateForUser(data) {
-      return !('plus_badge_id' in data) || data.plus_badge_id == null;
+      return (!('plus_badge_id' in data) || data.plus_badge_id == null) &&
+        (!('plus_badge_design' in data) || data.plus_badge_design == null) &&
+        (!('plusBadge' in data) || data.plusBadge == null) &&
+        (!('plus_badge_visible' in data) || data.plus_badge_visible is bool);
+    }
+
+    function validPlusBadgeDesignValue(uid, val) {
+      return val == null || (val is int && val >= 1 && val <= 50 && isPlusPlan(uid));
     }
 
     function validPlusBadgeUpdateForUser(uid, newData, oldData) {
-      return !newData.diff(oldData).affectedKeys().hasAny(['plus_badge_id']) ||
-        newData.plus_badge_id == null ||
-        (
-          newData.plus_badge_id is int &&
-          newData.plus_badge_id >= 1 &&
-          newData.plus_badge_id <= 50 &&
-          isPlusPlan(uid)
-        );
+      return (
+        !newData.diff(oldData).affectedKeys().hasAny(['plus_badge_id']) ||
+        validPlusBadgeDesignValue(uid, newData.plus_badge_id)
+      ) && (
+        !newData.diff(oldData).affectedKeys().hasAny(['plus_badge_design']) ||
+        validPlusBadgeDesignValue(uid, newData.plus_badge_design)
+      ) && (
+        !newData.diff(oldData).affectedKeys().hasAny(['plusBadge']) ||
+        validPlusBadgeDesignValue(uid, newData.plusBadge)
+      ) && (
+        !newData.diff(oldData).affectedKeys().hasAny(['plus_badge_visible']) ||
+        newData.plus_badge_visible is bool
+      );
     }
 
     // =========================================================================

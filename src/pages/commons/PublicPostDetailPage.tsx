@@ -22,6 +22,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { MathText } from '@/components/ui/MathText';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
@@ -332,6 +333,10 @@ export const PublicPostDetailPage: React.FC = () => {
     livePostAuthor?.proBadge !== undefined
       ? livePostAuthor.proBadge
       : post.authorProBadge || post.proBadge;
+  const authorPlusBadge =
+    livePostAuthor?.plusBadge !== undefined
+      ? livePostAuthor.plusBadge
+      : post.authorPlusBadge ?? post.plusBadge ?? null;
   const authorProfileIdentifier =
     livePostAuthor?.username || post.authorUsername || post.authorUid;
 
@@ -615,13 +620,19 @@ export const PublicPostDetailPage: React.FC = () => {
                       {authorDisplay}
                     </Link>
                   )}
-                  {!post.isAnonymous && authorProBadge && (
+                  {!post.isAnonymous && typeof authorPlusBadge === 'number' ? (
+                    <PlusBadge
+                      id={authorPlusBadge}
+                      size="sm"
+                      animated
+                    />
+                  ) : !post.isAnonymous && authorProBadge ? (
                     <ProBadge
                       design={authorProBadge}
                       size="sm"
                       animated
                     />
-                  )}
+                  ) : null}
                   {!post.isAnonymous && (
                     <RoleBadge role={authorRole} size="sm" />
                   )}
@@ -906,6 +917,10 @@ export const PublicPostDetailPage: React.FC = () => {
                   liveCAuthor?.proBadge !== undefined
                     ? liveCAuthor.proBadge
                     : c.authorProBadge || c.proBadge;
+                const cPlusBadge =
+                  liveCAuthor?.plusBadge !== undefined
+                    ? liveCAuthor.plusBadge
+                    : c.authorPlusBadge ?? c.plusBadge ?? null;
                 const cProfileId = liveCAuthor?.username || c.authorUsername || c.authorUid;
                 const isHighlighted = highlightedCommentId === c.id;
                 const isCommentCopied = copiedCommentId === c.id;
@@ -941,13 +956,19 @@ export const PublicPostDetailPage: React.FC = () => {
                         ) : (
                           <span className="text-xs font-bold text-primary truncate">{cAuthor}</span>
                         )}
-                        {!c.isAnonymous && cProBadge && (
+                        {!c.isAnonymous && typeof cPlusBadge === 'number' ? (
+                          <PlusBadge
+                            id={cPlusBadge}
+                            size="sm"
+                            listMode
+                          />
+                        ) : !c.isAnonymous && cProBadge ? (
                           <ProBadge
                             design={cProBadge}
                             size="sm"
                             listMode
                           />
-                        )}
+                        ) : null}
                         <span className="text-muted">·</span>
                         <a
                           href={`${canonicalPath}#comment-${c.id}`}

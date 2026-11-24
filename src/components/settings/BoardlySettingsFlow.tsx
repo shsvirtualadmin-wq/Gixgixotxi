@@ -42,6 +42,7 @@ import { useSmoothMode } from '@/utils/smoothMode';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ProBadgeCustomizer } from '@/components/plans/ProBadgeCustomizer';
+import { PlusBadgeCustomizer } from '@/components/plans/PlusBadgeCustomizer';
 import { KobanStyleCustomizer } from '@/components/koban/KobanStyleCustomizer';
 import {
   readCachedNotificationPrefsForUid,
@@ -83,6 +84,7 @@ export type SettingsSectionId =
   | 'customize'
   | 'customize-koban'
   | 'customize-pro-badge'
+  | 'customize-plus-badge'
   | 'general'
   | 'usage'
   | 'notifications'
@@ -141,6 +143,8 @@ function mapRouteParamToSection(param?: string): SettingsSectionId {
       return 'customize-koban';
     case 'pro-badge':
       return 'customize-pro-badge';
+    case 'plus-badge':
+      return 'customize-plus-badge';
     case 'general':
       return 'general';
     case 'usage':
@@ -832,7 +836,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   if (section === 'customize-pro-badge') {
     return (
       <SettingsPage
-        title={isPlus ? 'PLUS badge' : 'Pro badge'}
+        title="Pro badge"
         onBack={() => setSection('customize')}
         scrollContainer={scrollContainer}
       >
@@ -845,6 +849,27 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           }}
         >
           <ProBadgeCustomizer userDisplayName={currentDisplayName} />
+        </div>
+      </SettingsPage>
+    );
+  }
+
+  if (section === 'customize-plus-badge') {
+    return (
+      <SettingsPage
+        title="PLUS badge"
+        onBack={() => setSection('customize')}
+        scrollContainer={scrollContainer}
+      >
+        <div
+          className="rounded-[32px] p-4 sm:p-5"
+          style={{
+            backgroundColor: 'var(--card)',
+            border: '1px solid var(--border)',
+            boxShadow: 'var(--settings-card-shadow)',
+          }}
+        >
+          <PlusBadgeCustomizer userDisplayName={currentDisplayName} />
         </div>
       </SettingsPage>
     );
@@ -865,15 +890,19 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             chevron="down"
             onClick={() => setAppearanceSheetOpen(true)}
           />
-          {isPaid && (
+          {isPlus && (
             <SettingsRow
               icon={<Crown />}
-              label={isPlus ? 'PLUS badge' : 'Pro badge'}
-              subtitle={
-                isPlus
-                  ? 'Choose from 50 animated PLUS badge designs'
-                  : 'Upgrade to Plus to unlock 50 animated badges'
-              }
+              label="PLUS badge"
+              subtitle="Choose from 50 animated PLUS badge designs"
+              onClick={() => setSection('customize-plus-badge')}
+            />
+          )}
+          {isPro && !isPlus && (
+            <SettingsRow
+              icon={<Crown />}
+              label="Pro badge"
+              subtitle="Customize your Pro badge design"
               onClick={() => setSection('customize-pro-badge')}
             />
           )}

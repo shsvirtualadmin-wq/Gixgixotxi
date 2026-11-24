@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
@@ -1084,6 +1085,10 @@ export function NotificationsPage() {
                       ? actorProfilesByUid.get(directActorUid) || getCachedPublicProfile(directActorUid)
                       : null;
                     const actorProBadge = directActorProfile?.proBadge || null;
+                    const actorPlusBadge =
+                      typeof directActorProfile?.plusBadge === 'number'
+                        ? directActorProfile.plusBadge
+                        : null;
 
                     const renderLeftAvatarOrIcon = () => {
                       if (category === 'announcement') {
@@ -1295,9 +1300,11 @@ export function NotificationsPage() {
 
                             <h3 className="notif-card-title flex items-center gap-1.5 flex-wrap">
                               <span>{heading}</span>
-                              {actorProBadge && (
+                              {typeof actorPlusBadge === 'number' ? (
+                                <PlusBadge id={actorPlusBadge} size="sm" listMode />
+                              ) : actorProBadge ? (
                                 <ProBadge design={actorProBadge} size="sm" listMode />
-                              )}
+                              ) : null}
                             </h3>
 
                             {(isExpanded ? expandedBody : preview) && (

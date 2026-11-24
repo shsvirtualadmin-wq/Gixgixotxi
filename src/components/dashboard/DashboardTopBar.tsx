@@ -21,7 +21,9 @@ const LazyHamburgerMenuSheet = lazy(() =>
 );
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { useProBadge } from '@/contexts/ProBadgeContext';
+import { usePlusBadge } from '@/contexts/PlusBadgeContext';
 import { clearOptimisticUserSnapshot } from '@/lib/swrCache';
 import { useSmartBack } from '@/utils/homeUrl';
 
@@ -129,6 +131,7 @@ export function DashboardTopBar({
 
   const { theme, toggle: toggleTheme } = useTheme();
   const { effectiveProBadge } = useProBadge();
+  const { effectivePlusBadgeId } = usePlusBadge();
 
   // Track viewport size so phones (<640px) use the bottom sheet and desktop uses the avatar dropdown
   useEffect(() => {
@@ -271,18 +274,27 @@ export function DashboardTopBar({
                   </Link>
                 )}
 
-                {isPro && effectiveProBadge && (
+                {!isGuest && effectivePlan.isPlus && effectivePlusBadgeId !== null ? (
                   <span className="shrink-0 inline-flex items-center">
-                    <ProBadge
-                      design={effectiveProBadge}
-                      tier={effectivePlan.isPlus ? 'plus' : 'pro'}
+                    <PlusBadge
+                      id={effectivePlusBadgeId}
                       size="sm"
                       animated
                       priority
                       className="ml-0.5 shrink-0"
                     />
                   </span>
-                )}
+                ) : isPro && !effectivePlan.isPlus && effectiveProBadge ? (
+                  <span className="shrink-0 inline-flex items-center">
+                    <ProBadge
+                      design={effectiveProBadge}
+                      size="sm"
+                      animated
+                      priority
+                      className="ml-0.5 shrink-0"
+                    />
+                  </span>
+                ) : null}
               </div>
 
               {isAdmin && !autoSubPageTitle && (

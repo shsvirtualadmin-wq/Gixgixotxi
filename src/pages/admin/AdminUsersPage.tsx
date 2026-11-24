@@ -59,6 +59,7 @@ import type { UserProfile, UserTwoFactorBadgeLabel, UserTwoFactorSummary } from 
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
 
 const PAGE_SIZE = 50;
@@ -428,15 +429,17 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
   );
   const resolvedTier = isGuestUser ? 'free' : getPlan(u);
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
-  const rawBadgeDesign = (u as any).proBadgeDesign || (u as any).proBadge || 'ember';
-  const badgeDesign =
-    resolvedTier === 'plus'
-      ? (u as any).plus_badge_id != null
-        ? `plus:${(u as any).plus_badge_id}`
-        : (u as any).proBadge && String((u as any).proBadge).startsWith('plus:')
-        ? (u as any).proBadge
-        : null
-      : rawBadgeDesign;
+  const plusBadgeHidden = (u as any).plus_badge_visible === false;
+  const rawPlusDesign =
+    (u as any).plus_badge_design ?? (u as any).plusBadge ?? (u as any).plus_badge_id ?? null;
+  const plusBadgeDesign =
+    resolvedTier === 'plus' && !plusBadgeHidden && typeof rawPlusDesign === 'number'
+      ? rawPlusDesign
+      : null;
+  const proBadgeDesign =
+    resolvedTier === 'pro'
+      ? (u as any).proBadgeDesign || (u as any).proBadge || 'ember'
+      : null;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
@@ -476,11 +479,15 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
               >
                 {name}
               </p>
-              {isPaidUser && badgeDesign && (
+              {resolvedTier === 'plus' && plusBadgeDesign !== null ? (
                 <span className="inline-flex items-center shrink-0">
-                  <ProBadge design={badgeDesign} size="sm" listMode />
+                  <PlusBadge id={plusBadgeDesign} size="sm" listMode />
                 </span>
-              )}
+              ) : resolvedTier === 'pro' && proBadgeDesign ? (
+                <span className="inline-flex items-center shrink-0">
+                  <ProBadge design={proBadgeDesign} size="sm" listMode />
+                </span>
+              ) : null}
               {isGuestUser && (
                 <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
                   Guest
@@ -490,7 +497,13 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
             {isPaidUser && (
               <p className="text-[10px] font-mono text-[var(--muted)] leading-tight mt-0.5">
                 {resolvedTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'}
-                {(u as any).proBadgeVisible === false ? ' (badge hidden)' : ''}
+                {resolvedTier === 'plus'
+                  ? plusBadgeHidden
+                    ? ' (badge hidden)'
+                    : ''
+                  : (u as any).proBadgeVisible === false
+                  ? ' (badge hidden)'
+                  : ''}
               </p>
             )}
             <div className="flex items-center gap-2 mt-0.5 min-w-0">
@@ -624,16 +637,17 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
   );
   const resolvedTier = isGuestUser ? 'free' : getPlan(u);
   const isPaidUser = resolvedTier === 'pro' || resolvedTier === 'plus';
-  const rawBadgeId =
-    (u as any).proBadgeDesign || (u as any).proBadge || (isPaidUser ? 'ember' : null);
-  const badgeId =
-    resolvedTier === 'plus'
-      ? (u as any).plus_badge_id != null
-        ? `plus:${(u as any).plus_badge_id}`
-        : (u as any).proBadge && String((u as any).proBadge).startsWith('plus:')
-        ? (u as any).proBadge
-        : null
-      : rawBadgeId;
+  const plusBadgeHidden = (u as any).plus_badge_visible === false;
+  const rawPlusDesign =
+    (u as any).plus_badge_design ?? (u as any).plusBadge ?? (u as any).plus_badge_id ?? null;
+  const plusBadgeDesign =
+    resolvedTier === 'plus' && !plusBadgeHidden && typeof rawPlusDesign === 'number'
+      ? rawPlusDesign
+      : null;
+  const proBadgeId =
+    resolvedTier === 'pro'
+      ? (u as any).proBadgeDesign || (u as any).proBadge || 'ember'
+      : null;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
   const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
@@ -681,11 +695,15 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
               >
                 {name}
               </span>
-              {isPaidUser && badgeId && (
+              {resolvedTier === 'plus' && plusBadgeDesign !== null ? (
                 <span className="inline-flex items-center shrink-0">
-                  <ProBadge design={badgeId} size="sm" listMode />
+                  <PlusBadge id={plusBadgeDesign} size="sm" listMode />
                 </span>
-              )}
+              ) : resolvedTier === 'pro' && proBadgeId ? (
+                <span className="inline-flex items-center shrink-0">
+                  <ProBadge design={proBadgeId} size="sm" listMode />
+                </span>
+              ) : null}
               {isGuestUser && (
                 <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
                   Guest
@@ -695,7 +713,13 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
             {isPaidUser && (
               <span className="text-[10px] font-mono text-[var(--muted)] block leading-tight mt-0.5 truncate">
                 {resolvedTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'}
-                {(u as any).proBadgeVisible === false ? ' (badge hidden)' : ''}
+                {resolvedTier === 'plus'
+                  ? plusBadgeHidden
+                    ? ' (badge hidden)'
+                    : ''
+                  : (u as any).proBadgeVisible === false
+                  ? ' (badge hidden)'
+                  : ''}
               </span>
             )}
           </div>

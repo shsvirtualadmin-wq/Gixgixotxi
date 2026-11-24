@@ -41,6 +41,9 @@ export interface PublicProfile extends BasePublicProfile {
   equippedEffect?: string | null;
   equippedStreakBadges?: string[];
   proBadge?: string | null;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
   plus_badge_id?: number | null;
 }
 
@@ -185,16 +188,26 @@ export function broadcastPublicProfileUpdate(
   if (partial.bio !== undefined) merged.bio = String(partial.bio ?? '');
   if (partial.status !== undefined) merged.status = String(partial.status ?? '');
   if (partial.accent !== undefined) merged.accent = String(partial.accent || '#D71921');
+  if ('plus_badge_design' in partial) {
+    merged.plus_badge_design =
+      partial.plus_badge_design === null ? null : resolvePlusBadgeId(partial.plus_badge_design);
+  }
+  if ('plus_badge_visible' in partial && typeof partial.plus_badge_visible === 'boolean') {
+    merged.plus_badge_visible = partial.plus_badge_visible;
+  }
   if ('plus_badge_id' in partial) {
     merged.plus_badge_id =
       partial.plus_badge_id === null ? null : resolvePlusBadgeId(partial.plus_badge_id);
   }
+  if ('plusBadge' in partial) {
+    merged.plusBadge =
+      partial.plusBadge === null || partial.plusBadge === undefined
+        ? null
+        : resolvePlusBadgeId(partial.plusBadge);
+  }
   if ('proBadge' in partial) {
     if (!partial.proBadge) {
       merged.proBadge = null;
-    } else if (typeof partial.proBadge === 'string' && partial.proBadge.toLowerCase().startsWith('plus:')) {
-      const pid = resolvePlusBadgeId(partial.proBadge);
-      merged.proBadge = pid !== null ? `plus:${pid}` : null;
     } else if (isValidProBadgeDesign(partial.proBadge)) {
       merged.proBadge = normalizeProBadgeDesign(partial.proBadge);
     } else {
@@ -576,16 +589,99 @@ export function normalizePublicProfileDoc(
       });
       return unified.planTier;
     })(),
-    plus_badge_id: (() => {
+    plus_badge_design: (() => {
       if (uid.startsWith('guest_') || botMatch) return null;
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_design')) {
+        return u.plus_badge_design === null ? null : resolvePlusBadgeId(u.plus_badge_design);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_design')) {
+        return p.plus_badge_design === null ? null : resolvePlusBadgeId(p.plus_badge_design);
+      }
       if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')) {
         return u.plus_badge_id === null ? null : resolvePlusBadgeId(u.plus_badge_id);
       }
       if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')) {
         return p.plus_badge_id === null ? null : resolvePlusBadgeId(p.plus_badge_id);
       }
-      const rawCandidate = p.proBadge ?? u.proBadgeDesign ?? p.proBadgeDesign ?? u.proBadge;
-      return resolvePlusBadgeId(rawCandidate);
+      if (Object.prototype.hasOwnProperty.call(p, 'plusBadge') && p.plusBadge != null) {
+        return resolvePlusBadgeId(p.plusBadge);
+      }
+      return null;
+    })(),
+    plus_badge_visible: (() => {
+      if (typeof u.plus_badge_visible === 'boolean') return u.plus_badge_visible;
+      if (typeof p.plus_badge_visible === 'boolean') return p.plus_badge_visible;
+      return true;
+    })(),
+    plus_badge_id: (() => {
+      if (uid.startsWith('guest_') || botMatch) return null;
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_design')) {
+        return u.plus_badge_design === null ? null : resolvePlusBadgeId(u.plus_badge_design);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_design')) {
+        return p.plus_badge_design === null ? null : resolvePlusBadgeId(p.plus_badge_design);
+      }
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')) {
+        return u.plus_badge_id === null ? null : resolvePlusBadgeId(u.plus_badge_id);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')) {
+        return p.plus_badge_id === null ? null : resolvePlusBadgeId(p.plus_badge_id);
+      }
+      return null;
+    })(),
+    plusBadge: (() => {
+      if (uid.startsWith('guest_') || botMatch) return null;
+      const unified = resolveUnifiedPlanStatus({
+        uid,
+        email: u.email || p.email || null,
+        role: resolvedRole,
+        isGuest: Boolean(u.isGuest || uid.startsWith('guest_')),
+        plan: u.plan ?? p.plan ?? null,
+        planTier: u.planTier ?? p.planTier ?? null,
+        isPremium: u.isPremium ?? p.isPremium ?? null,
+        isPro: u.isPro ?? p.isPro ?? null,
+        isPlus: u.isPlus ?? p.isPlus ?? null,
+        proPlanId: u.proPlanId ?? p.proPlanId ?? null,
+        plusPlanId: u.plusPlanId ?? p.plusPlanId ?? null,
+        planStartedAt: u.planStartedAt ?? p.planStartedAt,
+        updatedAt: u.updatedAt ?? p.updatedAt,
+        planExpiresAt: u.planExpiresAt ?? p.planExpiresAt ?? p.verifiedBadges?.proUntil,
+        premiumExpiresAt: u.premiumExpiresAt ?? p.premiumExpiresAt,
+        proUntil: u.proUntil ?? p.proUntil ?? p.verifiedBadges?.proUntil,
+        plusUntil: u.plusUntil ?? p.plusUntil ?? p.verifiedBadges?.plusUntil,
+        isSuperAdmin,
+      });
+      const isActivePlus = unified.state === 'active' && Boolean(unified.isPlus);
+      if (!isActivePlus) return null;
+
+      // Read strictly from PLUS fields (never from PRO fields)
+      const isPlusVisible =
+        typeof u.plus_badge_visible === 'boolean'
+          ? u.plus_badge_visible
+          : typeof p.plus_badge_visible === 'boolean'
+          ? p.plus_badge_visible
+          : true;
+      if (!isPlusVisible) return null;
+
+      if (Object.prototype.hasOwnProperty.call(p, 'd1PlusBadge')) {
+        return p.d1PlusBadge === null ? null : resolvePlusBadgeId(p.d1PlusBadge);
+      }
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_design')) {
+        return u.plus_badge_design === null ? null : resolvePlusBadgeId(u.plus_badge_design);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_design')) {
+        return p.plus_badge_design === null ? null : resolvePlusBadgeId(p.plus_badge_design);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plusBadge')) {
+        return p.plusBadge === null ? null : resolvePlusBadgeId(p.plusBadge);
+      }
+      if (Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')) {
+        return u.plus_badge_id === null ? null : resolvePlusBadgeId(u.plus_badge_id);
+      }
+      if (Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')) {
+        return p.plus_badge_id === null ? null : resolvePlusBadgeId(p.plus_badge_id);
+      }
+      return 1;
     })(),
     proBadge: (() => {
       if (uid.startsWith('guest_') || botMatch) return null;
@@ -610,9 +706,8 @@ export function normalizePublicProfileDoc(
         isSuperAdmin,
       });
       const isPlusMember = unified.planTier === 'plus' || Boolean(unified.isPlus);
-      const isActivePaid = unified.state === 'active' || Boolean(unified.isPro) || isPlusMember;
-      // If plan expired or free, never show any badge (saved plus_badge_id remains preserved on doc)
-      if (!isActivePaid) return null;
+      const isActivePro = (unified.state === 'active' || Boolean(unified.isPro)) && !isPlusMember;
+      if (!isActivePro) return null;
 
       const isVisible =
         u.proBadgeVisible !== undefined
@@ -622,20 +717,6 @@ export function normalizePublicProfileDoc(
           : true;
       if (!isVisible) return null;
 
-      if (isPlusMember) {
-        const explicitPlusId = Object.prototype.hasOwnProperty.call(u, 'plus_badge_id')
-          ? u.plus_badge_id === null
-            ? null
-            : resolvePlusBadgeId(u.plus_badge_id)
-          : Object.prototype.hasOwnProperty.call(p, 'plus_badge_id')
-          ? p.plus_badge_id === null
-            ? null
-            : resolvePlusBadgeId(p.plus_badge_id)
-          : resolvePlusBadgeId(p.proBadge ?? u.proBadgeDesign ?? p.proBadgeDesign ?? u.proBadge);
-        return explicitPlusId !== null ? `plus:${explicitPlusId}` : null;
-      }
-
-      // Standard Boardly Pro member
       const candidateDesign = p.proBadge || u.proBadgeDesign || p.proBadgeDesign || u.proBadge;
       const baseDesign = isValidProBadgeDesign(candidateDesign)
         ? normalizeProBadgeDesign(candidateDesign)
@@ -714,7 +795,15 @@ async function fetchPublicProfileFromNetwork(uid: string): Promise<PublicProfile
             ...(d1Data.status !== null && d1Data.status !== undefined ? { status: d1Data.status } : {}),
             ...(d1Data.accent ? { accent: d1Data.accent } : {}),
             ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
-            ...(d1Data.plus_badge_id !== undefined ? { plus_badge_id: d1Data.plus_badge_id } : {}),
+            ...(d1Data.plusBadge !== undefined
+              ? { plusBadge: d1Data.plusBadge, d1PlusBadge: d1Data.plusBadge }
+              : {}),
+            ...(d1Data.plus_badge_design !== undefined
+              ? { plus_badge_design: d1Data.plus_badge_design }
+              : {}),
+            ...(typeof d1Data.plus_badge_visible === 'boolean'
+              ? { plus_badge_visible: d1Data.plus_badge_visible }
+              : {}),
           }
         : {}),
     };
@@ -901,6 +990,15 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
                   ...(d1Data.role ? { role: d1Data.role, d1Role: d1Data.role } : {}),
                   ...(d1Data.customRole ? { customRole: d1Data.customRole, d1CustomRole: d1Data.customRole } : {}),
                   ...(d1Data.proBadge !== undefined ? { proBadge: d1Data.proBadge } : {}),
+                  ...(d1Data.plusBadge !== undefined
+                    ? { plusBadge: d1Data.plusBadge, d1PlusBadge: d1Data.plusBadge }
+                    : {}),
+                  ...(d1Data.plus_badge_design !== undefined
+                    ? { plus_badge_design: d1Data.plus_badge_design }
+                    : {}),
+                  ...(typeof d1Data.plus_badge_visible === 'boolean'
+                    ? { plus_badge_visible: d1Data.plus_badge_visible }
+                    : {}),
                 }
               : {}),
           };

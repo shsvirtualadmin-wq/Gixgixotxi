@@ -568,3 +568,103 @@ export function resolvePlusBadgeId(raw: unknown): number | null {
 
   return null;
 }
+
+export interface PlusBadgeSettings {
+  /** Selected PLUS badge design ID (integer 1..50, or null when unequipped) */
+  plus_badge_design: number | null;
+  /** Whether to show the PLUS badge next to the member's name */
+  plus_badge_visible: boolean;
+}
+
+export const DEFAULT_PLUS_BADGE_SETTINGS: PlusBadgeSettings = {
+  plus_badge_design: DEFAULT_PLUS_BADGE_ID,
+  plus_badge_visible: true,
+};
+
+/**
+ * Strictly validates a PUT /api/plus-badge payload.
+ * Requires:
+ * - `plus_badge_design` (or `design`): integer 1..50 (or `#01`..`#50` / numeric string `"1"`..`"50"`), or `null` to unequip
+ * - `plus_badge_visible` (or `visible`): strictly boolean (`true` or `false`)
+ */
+export function validatePlusBadgePayload(raw: unknown): {
+  valid: boolean;
+  value?: PlusBadgeSettings;
+  error?: string;
+} {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { valid: false, error: 'Payload must be a JSON object.' };
+  }
+  const obj = raw as Record<string, unknown>;
+
+  const hasVisibleKey = Object.prototype.hasOwnProperty.call(obj, 'plus_badge_visible');
+  const hasAliasVisibleKey = Object.prototype.hasOwnProperty.call(obj, 'visible');
+  const rawVisible = hasVisibleKey ? obj.plus_badge_visible : hasAliasVisibleKey ? obj.visible : undefined;
+
+  if (typeof rawVisible !== 'boolean') {
+    return {
+      valid: false,
+      error: 'Field "plus_badge_visible" must be a boolean (true or false).',
+    };
+  }
+
+  const hasDesignKey = Object.prototype.hasOwnProperty.call(obj, 'plus_badge_design');
+  const hasAliasDesignKey = Object.prototype.hasOwnProperty.call(obj, 'design');
+  const hasLegacyIdKey = Object.prototype.hasOwnProperty.call(obj, 'plus_badge_id');
+  if (!hasDesignKey && !hasAliasDesignKey && !hasLegacyIdKey) {
+    return {
+      valid: false,
+      error: 'Field "plus_badge_design" is required (integer 1 to 50, or null).',
+    };
+  }
+
+  const rawDesign = hasDesignKey
+    ? obj.plus_badge_design
+    : hasAliasDesignKey
+    ? obj.design
+    : obj.plus_badge_id;
+
+  let parsedDesign: number | null = null;
+  if (rawDesign === null) {
+    parsedDesign = null;
+  } else if (typeof rawDesign === 'number') {
+    if (!isValidPlusBadgeId(rawDesign)) {
+      return {
+        valid: false,
+        error: `Invalid PLUS badge design "${String(rawDesign)}". Must be an integer from 1 to 50 (#01 to #50) or null.`,
+      };
+    }
+    parsedDesign = rawDesign;
+  } else if (typeof rawDesign === 'string') {
+    const trimmed = rawDesign.trim();
+    const numericCandidate = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+    if (!/^\d{1,2}$/.test(numericCandidate)) {
+      return {
+        valid: false,
+        error: `Invalid PLUS badge design "${trimmed}". Must be one of the 50 PLUS designs (#01 to #50).`,
+      };
+    }
+    const parsed = Number.parseInt(numericCandidate, 10);
+    if (!isValidPlusBadgeId(parsed)) {
+      return {
+        valid: false,
+        error: `Invalid PLUS badge design "${trimmed}". Must be between 1 and 50 (#01 to #50).`,
+      };
+    }
+    parsedDesign = parsed;
+  } else {
+    return {
+      valid: false,
+      error: 'Field "plus_badge_design" must be an integer from 1 to 50 (or null).',
+    };
+  }
+
+  return {
+    valid: true,
+    value: {
+      plus_badge_design: parsedDesign,
+      plus_badge_visible: rawVisible,
+    },
+  };
+}
+

@@ -29,6 +29,7 @@ export interface CrewMember {
   plan?: 'free' | 'pro' | 'plus';
   planTier?: 'free' | 'pro' | 'plus';
   proBadge?: string | null;
+  plusBadge?: number | null;
   avatarKey?: string;
   avatarVariant?: string;
   equipped?: {
@@ -46,6 +47,7 @@ export interface CrewDoc {
   leaderId: string;
   leaderName: string;
   proBadge?: string | null;
+  plusBadge?: number | null;
   goalQuestions: number;
   currentQuestions: number;
   members: CrewMember[];
@@ -78,11 +80,12 @@ export function generateCrewCode(): string {
 function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
   const mappedMembers: CrewMember[] = members.map((m) => {
     const rawBadge = (m as any).proBadge || null;
+    const rawPlusBadge = typeof (m as any).plusBadge === 'number' ? (m as any).plusBadge : null;
     const isPlusMember =
       (m as any).plan === 'plus' ||
       (m as any).planTier === 'plus' ||
       Boolean((m as any).isPlus) ||
-      (typeof rawBadge === 'string' && rawBadge.startsWith('plus:'));
+      rawPlusBadge !== null;
     const isProMember =
       isPlusMember ||
       (m as any).plan === 'pro' ||
@@ -109,14 +112,16 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       plan: memberTier,
       planTier: memberTier,
       proBadge: rawBadge,
+      plusBadge: rawPlusBadge,
     };
   });
 
   if (mappedMembers.length === 0) {
     const rawCrewBadge = (crew as any).proBadge || null;
+    const rawCrewPlusBadge =
+      typeof (crew as any).plusBadge === 'number' ? (crew as any).plusBadge : null;
     const crewIsPlus =
-      (crew as any).effectivePlan === 'plus' ||
-      (typeof rawCrewBadge === 'string' && rawCrewBadge.startsWith('plus:'));
+      (crew as any).effectivePlan === 'plus' || rawCrewPlusBadge !== null;
     const crewIsPro =
       crewIsPlus ||
       (crew as any).effectivePlan === 'pro' ||
@@ -142,6 +147,7 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
       plan: captainTier,
       planTier: captainTier,
       proBadge: rawCrewBadge,
+      plusBadge: rawCrewPlusBadge,
     });
   }
 
@@ -169,6 +175,7 @@ function mapD1ToCrewDoc(crew: D1Crew, members: D1CrewMember[]): CrewDoc {
     leaderId: crew.captainUid,
     leaderName: crew.captainName,
     proBadge: (crew as any).proBadge || null,
+    plusBadge: typeof (crew as any).plusBadge === 'number' ? (crew as any).plusBadge : null,
     goalQuestions: 500,
     currentQuestions: 0,
     members: mappedMembers,

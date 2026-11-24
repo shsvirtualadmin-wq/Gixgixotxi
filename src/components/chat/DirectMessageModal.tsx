@@ -25,6 +25,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { BoardlyAvatar, resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { useChatUserProfiles, type ChatUserSeed } from '@/hooks/useChatUserProfiles';
 import { useUnreadMessagesState } from '@/hooks/useUnreadMessagesCount';
 import {
@@ -1685,9 +1686,11 @@ export const MessagesDashboardContent: React.FC<MessagesDashboardContentProps> =
                           <span className="text-[15px] font-bold text-white truncate">
                             {displayName}
                           </span>
-                          {resolved?.proBadge && (
+                          {typeof resolved?.plusBadge === 'number' ? (
+                            <PlusBadge id={resolved.plusBadge} size="sm" listMode />
+                          ) : resolved?.proBadge ? (
                             <ProBadge design={resolved.proBadge} size="sm" listMode />
-                          )}
+                          ) : null}
                         </div>
                         <span className="text-[11px] font-medium text-white/60 font-inter-num shrink-0">
                           {formatRelativeTime(conv.lastMessageAtMs, conv.updatedAt)}

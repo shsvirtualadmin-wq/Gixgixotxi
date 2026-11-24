@@ -15,6 +15,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
+import { PlusBadge } from '@/components/ui/PlusBadge';
 import { normalizeProBadgeDesign } from '@/lib/proBadgeDesigns';
 import { auth } from '@/lib/firebase';
 import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
@@ -200,6 +201,7 @@ export interface ProfilePostItem {
   authorAvatar?: string | null;
   authorFrame?: string | null;
   authorProBadge?: string | null;
+  authorPlusBadge?: number | null;
   title?: string;
   description: string;
   type?: string;
@@ -229,6 +231,7 @@ export interface ProfilePostsSectionProps {
   authorFrame?: string | null;
   authorRole?: string | null;
   authorProBadge?: string | null;
+  authorPlusBadge?: number | null;
   authorPlan?: PlanTier;
   isPro?: boolean;
   accentColor?: string;
@@ -266,6 +269,14 @@ function normalizeServerPost(raw: any): ProfilePostItem {
     authorAvatar: raw.authorAvatar || raw.author_avatar || null,
     authorFrame: raw.authorFrame || raw.author_frame || null,
     authorProBadge: raw.authorProBadge || raw.author_pro_badge || null,
+    authorPlusBadge:
+      typeof raw.authorPlusBadge === 'number'
+        ? raw.authorPlusBadge
+        : typeof raw.author_plus_badge === 'number'
+        ? raw.author_plus_badge
+        : typeof raw.plusBadge === 'number'
+        ? raw.plusBadge
+        : null,
     title: typeof raw.title === 'string' ? raw.title : '',
     description: String(raw.description || ''),
     type: String(raw.type || 'post'),
@@ -290,6 +301,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   authorAvatar,
   authorFrame,
   authorProBadge,
+  authorPlusBadge,
   authorPlan,
   isPro = false,
   onCountChange,
@@ -509,6 +521,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             authorAvatar,
             authorFrame,
             authorProBadge,
+            authorPlusBadge,
             title: postTitle,
             description: trimmed,
             type: 'discussion',
@@ -953,20 +966,29 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                         <span className="text-[15px] font-semibold text-[var(--text)] truncate">
                           {resolvedPostAuthor}
                         </span>
-                        {(post.authorProBadge || (isPro && authorProBadge)) && (() => {
-                          const rawBadge = String(post.authorProBadge || authorProBadge || '').trim();
-                          const badgeTier: 'pro' | 'plus' =
-                            authorPlan === 'plus' || rawBadge.toLowerCase().startsWith('plus')
-                              ? 'plus'
-                              : 'pro';
-                          return (
-                            <ProBadge
-                              design={badgeTier === 'plus' ? rawBadge : normalizeProBadgeDesign(rawBadge)}
-                              tier={badgeTier}
-                              size="sm"
-                              listMode
-                            />
-                          );
+                        {(() => {
+                          const resolvedPlusBadge =
+                            typeof post.authorPlusBadge === 'number'
+                              ? post.authorPlusBadge
+                              : authorPlan === 'plus' && typeof authorPlusBadge === 'number'
+                              ? authorPlusBadge
+                              : null;
+                          if (resolvedPlusBadge !== null) {
+                            return <PlusBadge id={resolvedPlusBadge} size="sm" listMode />;
+                          }
+                          const rawBadge =
+                            post.authorProBadge ||
+                            (authorPlan !== 'plus' && isPro ? authorProBadge : null);
+                          if (rawBadge && !String(rawBadge).toLowerCase().startsWith('plus:')) {
+                            return (
+                              <ProBadge
+                                design={normalizeProBadgeDesign(String(rawBadge))}
+                                size="sm"
+                                listMode
+                              />
+                            );
+                          }
+                          return null;
                         })()}
                       </div>
                       <div className="flex items-center gap-1.5 text-[12px] text-[var(--text-muted)]">

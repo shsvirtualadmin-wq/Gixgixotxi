@@ -83,6 +83,9 @@ export interface UserProfile {
   proBadge?: string | null;
   proBadgeDesign?: string | null;
   proBadgeVisible?: boolean;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
   plus_badge_id?: number | null;
   adFreeEnabled?: boolean;
   notificationPrefs?: {
@@ -188,6 +191,9 @@ export interface PublicProfile {
   customAvatarUrl?: string | null;
   equippedFrameId?: string | null;
   proBadge?: string | null;
+  plusBadge?: number | null;
+  plus_badge_design?: number | null;
+  plus_badge_visible?: boolean;
   plus_badge_id?: number | null;
   plan?: UserPlan;
   planTier?: UserPlan;

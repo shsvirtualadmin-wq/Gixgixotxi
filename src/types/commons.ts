@@ -130,6 +130,8 @@ export interface CommonsPost {
   authorCustomRole?: string | null;
   authorProBadge?: string | null;
   proBadge?: string | null;
+  authorPlusBadge?: number | null;
+  plusBadge?: number | null;
   upvotes: number;
   commentCount: number;
   saveCount: number;
@@ -167,6 +169,8 @@ export interface CommonsComment {
   authorCustomRole?: string | null;
   authorProBadge?: string | null;
   proBadge?: string | null;
+  authorPlusBadge?: number | null;
+  plusBadge?: number | null;
   isAnonymous: boolean;
   text: string;
   createdAt: any;
@@ -202,4 +206,5 @@ export interface CommonsUserPreview {
   followersCount?: number;
   followingCount?: number;
   proBadge?: string | null;
+  plusBadge?: number | null;
 }

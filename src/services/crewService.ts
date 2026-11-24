@@ -244,6 +244,7 @@ export async function fetchCrewDetails(crewId: string): Promise<any> {
     streak: 1,
     questionsSolved: 0,
     proBadge: (m as any).proBadge || null,
+    plusBadge: typeof (m as any).plusBadge === 'number' ? (m as any).plusBadge : null,
   }));
   return {
     id: c.id,
@@ -255,6 +256,7 @@ export async function fetchCrewDetails(crewId: string): Promise<any> {
     leaderId: c.captainUid,
     leaderName: c.captainName,
     proBadge: (c as any).proBadge || null,
+    plusBadge: typeof (c as any).plusBadge === 'number' ? (c as any).plusBadge : null,
     tier: 'paid',
     joinMode: 'direct',
     minStreak: 0,
@@ -304,6 +306,7 @@ export async function fetchCrewLeaderboard(params?: {
     tier: 'paid',
     isPaidActive: true,
     proBadge: (c as any).proBadge || 'ember',
+    plusBadge: typeof (c as any).plusBadge === 'number' ? (c as any).plusBadge : null,
     paid_until: null,
     joinMode: 'direct',
     minStreak: 0,

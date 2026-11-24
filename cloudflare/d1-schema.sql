@@ -641,3 +641,16 @@ CREATE INDEX IF NOT EXISTS idx_import_logs_category_id ON import_logs(category_i
 CREATE INDEX IF NOT EXISTS idx_import_logs_chapter_id ON import_logs(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_import_logs_status ON import_logs(status);
 
+-- =============================================================================
+-- PLUS BADGE PREFERENCES (Migration 0013 — fully independent of user_pro_badge)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS user_plus_badge (
+  user_id TEXT PRIMARY KEY,
+  plus_badge_design INTEGER CHECK (plus_badge_design IS NULL OR (plus_badge_design >= 1 AND plus_badge_design <= 50)),
+  plus_badge_visible INTEGER NOT NULL DEFAULT 1 CHECK (plus_badge_visible IN (0, 1)),
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_plus_badge_updated_at ON user_plus_badge(updated_at DESC);
+
+
