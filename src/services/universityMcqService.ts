@@ -62,6 +62,11 @@ export interface ResumableImportState {
   errors: ImportRowError[];
 }
 
+export interface LiveSubjectCountEntry {
+  subject: string;
+  count: number;
+}
+
 export interface BankHealthData {
   ok: boolean;
   totalUniversities: number;
@@ -70,6 +75,8 @@ export interface BankHealthData {
   totalMcqs: number;
   missingExplanations: number;
   openReports: number;
+  lastImportAt?: string | null;
+  databaseName?: string;
   byUniversity: Array<{
     id: string;
     name: string;
@@ -277,6 +284,7 @@ export function invalidateUniversitiesCache(): void {
   universitiesInFlightPromise = null;
   universitiesCacheBustVersion = Date.now();
   universityTopicsCache.clear();
+  invalidateLiveQuestionBankStatsCache();
   clearFailedUniversityLogoCache();
   if (typeof window !== 'undefined') {
     delete (window as any).__BOARDLY_EARLY_UNIVERSITIES__;
@@ -954,6 +962,7 @@ export async function updateMcq(
     difficulty: 'easy' | 'medium' | 'hard';
   }>
 ): Promise<D1McqRow> {
+  invalidateLiveQuestionBankStatsCache();
   try {
     const res = await apiRequest<{ ok?: boolean; mcq?: D1McqRow }>(
       `/api/mcqs/${encodeURIComponent(id)}`,
@@ -975,6 +984,7 @@ export async function updateMcq(
 }
 
 export async function deleteMcq(id: string): Promise<void> {
+  invalidateLiveQuestionBankStatsCache();
   try {
     await apiRequest<{ ok?: boolean }>(`/api/mcqs/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -988,6 +998,7 @@ export async function deleteMcq(id: string): Promise<void> {
 }
 
 export async function bulkDeleteMcqs(ids: string[], universityId?: string): Promise<number> {
+  invalidateLiveQuestionBankStatsCache();
   try {
     const res = await apiRequest<{ ok?: boolean; deleted?: number; deletedCount?: number }>(
       '/api/mcqs/bulk-delete',
@@ -1057,12 +1068,209 @@ export async function verifyMcqAnswers(
 }
 
 // ============================================================================
-// Health & Student Reports (D1)
+// Health & Student Reports (D1) — Single Shared Live Question Bank Source
 // ============================================================================
 
-export async function fetchBankHealth(): Promise<BankHealthData> {
-  try {
-    const raw = await apiRequest<any>('/api/mcqs/health');
+const LIVE_BANK_STATS_TTL_MS = 30_000;
+let liveBankStatsMemoryCache: { data: BankHealthData; expiresAt: number } | null = null;
+let liveBankStatsInFlight: Promise<BankHealthData> | null = null;
+
+const CANONICAL_SUBJECT_LABELS: Record<string, string> = {
+  mathematics: 'Mathematics',
+  math: 'Mathematics',
+  physics: 'Physics',
+  chemistry: 'Chemistry',
+  'computer science': 'Computer Science',
+  english: 'English',
+  biology: 'Biology',
+  'analytical reasoning': 'Analytical Reasoning',
+  'quantitative reasoning': 'Quantitative Reasoning',
+  'quantitative methods': 'Quantitative Methods',
+  'verbal reasoning': 'Verbal Reasoning',
+  'logical reasoning': 'Logical Reasoning',
+  'financial accounting': 'Financial Accounting',
+  'general knowledge': 'General Knowledge',
+  iq: 'IQ',
+  intelligence: 'Intelligence',
+  general: 'General',
+};
+
+/**
+ * Safely extracts a scalar timestamp string from heterogeneous API payloads
+ * (string, number, Date, array of timestamps/import rows, or object like { overall, legacy, ... }).
+ */
+function extractLastImportTimestamp(raw: unknown): string | null {
+  const candidates: string[] = [];
+
+  const collect = (val: unknown, depth = 0): void => {
+    if (val === null || val === undefined || depth > 3) return;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed && trimmed.toLowerCase() !== 'null' && trimmed.toLowerCase() !== 'n/a') {
+        candidates.push(trimmed);
+      }
+      return;
+    }
+    if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+      const ms = val < 1e12 ? val * 1000 : val;
+      const d = new Date(ms);
+      if (!Number.isNaN(d.getTime())) {
+        candidates.push(d.toISOString());
+      }
+      return;
+    }
+    if (val instanceof Date && !Number.isNaN(val.getTime())) {
+      candidates.push(val.toISOString());
+      return;
+    }
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        collect(item, depth + 1);
+      }
+      return;
+    }
+    if (typeof val === 'object') {
+      const obj = val as Record<string, unknown>;
+      const priorityKeys = ['overall', 'lastImportAt', 'created_at', 'imported_at', 'updated_at', 'timestamp'];
+      for (const k of priorityKeys) {
+        if (k in obj && obj[k] !== null && obj[k] !== undefined) {
+          collect(obj[k], depth + 1);
+        }
+      }
+      if (candidates.length === 0) {
+        for (const v of Object.values(obj)) {
+          collect(v, depth + 1);
+        }
+      }
+    }
+  };
+
+  collect(raw);
+  if (candidates.length === 0) return null;
+
+  let bestStr: string | null = null;
+  let bestMs = -Infinity;
+  for (const ts of candidates) {
+    const isoCandidate = ts.includes('T')
+      ? ts
+      : /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(ts)
+      ? ts.replace(' ', 'T') + (ts.endsWith('Z') ? '' : 'Z')
+      : ts;
+    const ms = Date.parse(isoCandidate);
+    if (!Number.isNaN(ms)) {
+      if (ms > bestMs) {
+        bestMs = ms;
+        bestStr = new Date(ms).toISOString();
+      }
+    } else if (!bestStr) {
+      bestStr = ts;
+    }
+  }
+  return bestStr;
+}
+
+/**
+ * Formats any last-import value (string, ISO date, object, array, null/empty) safely
+ * for UI display with no truncation or "[object Object]" artifacts.
+ */
+export function formatSafeLastImport(raw: unknown): string {
+  const extracted = extractLastImportTimestamp(raw);
+  if (!extracted) return 'None yet';
+  const parsedMs = Date.parse(extracted);
+  if (!Number.isNaN(parsedMs)) {
+    const iso = new Date(parsedMs).toISOString();
+    return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+  }
+  return extracted;
+}
+
+/**
+ * Normalizes raw `bySubject` counts from `/api/mcqs/health` without dropping any subject.
+ * Trims whitespace, merges case-insensitive duplicates, and guarantees `sum` matches
+ * the exact sum of all live bank subject counts.
+ */
+export function normalizeLiveSubjectCounts(
+  rawBySubject: Record<string, number> | null | undefined
+): {
+  subjectCounts: Record<string, number>;
+  entries: LiveSubjectCountEntry[];
+  sum: number;
+} {
+  const merged = new Map<string, { label: string; count: number }>();
+
+  if (rawBySubject && typeof rawBySubject === 'object') {
+    for (const [rawKey, rawVal] of Object.entries(rawBySubject)) {
+      const count = Number(rawVal || 0);
+      if (!Number.isFinite(count) || count <= 0) continue;
+      const rawStr = String(rawKey ?? '').trim();
+      const trimmed =
+        !rawStr || rawStr.toLowerCase() === 'null' || rawStr.toLowerCase() === 'undefined'
+          ? 'General'
+          : rawStr;
+      const lower = trimmed.toLowerCase();
+      const canonical = CANONICAL_SUBJECT_LABELS[lower] || trimmed;
+      const key = canonical.toLowerCase();
+      const existing = merged.get(key);
+      if (existing) {
+        existing.count += count;
+      } else {
+        merged.set(key, { label: canonical, count });
+      }
+    }
+  }
+
+  const entries: LiveSubjectCountEntry[] = Array.from(merged.values())
+    .map((item) => ({ subject: item.label, count: item.count }))
+    .sort((a, b) => b.count - a.count || a.subject.localeCompare(b.subject));
+
+  const subjectCounts: Record<string, number> = {};
+  let sum = 0;
+  for (const entry of entries) {
+    subjectCounts[entry.subject] = entry.count;
+    sum += entry.count;
+  }
+
+  return { subjectCounts, entries, sum };
+}
+
+export function getCachedLiveQuestionBankStats(): BankHealthData | null {
+  return liveBankStatsMemoryCache?.data ?? null;
+}
+
+export function invalidateLiveQuestionBankStatsCache(): void {
+  liveBankStatsMemoryCache = null;
+  liveBankStatsInFlight = null;
+}
+
+/**
+ * Single shared source of truth for live question bank counts across:
+ * - /admin Overview ('Questions in pool' & 'Questions by subject')
+ * - /admin/questions header & health summary
+ * - /admin/health D1 verification check
+ *
+ * Always queries GET /api/mcqs/health (Cloudflare D1 `mcqs` + `universities` tables).
+ */
+export async function fetchLiveQuestionBankStats(options?: {
+  force?: boolean;
+  strict?: boolean;
+}): Promise<BankHealthData> {
+  const force = Boolean(options?.force);
+  const strict = Boolean(options?.strict);
+
+  if (!force && liveBankStatsMemoryCache && Date.now() < liveBankStatsMemoryCache.expiresAt) {
+    return liveBankStatsMemoryCache.data;
+  }
+  if (!force && liveBankStatsInFlight) {
+    return liveBankStatsInFlight;
+  }
+
+  const run = (async (): Promise<BankHealthData> => {
+    const endpoint = force ? `/api/mcqs/health?_t=${Date.now()}` : '/api/mcqs/health';
+    const raw = await apiRequest<any>(endpoint);
+    if (!raw || raw.ok === false || raw.success === false) {
+      throw new Error(raw?.error || raw?.message || 'GET /api/mcqs/health returned an error');
+    }
+
     const uniList = Array.isArray(raw.byUniversity)
       ? raw.byUniversity
       : Array.isArray(raw.universities)
@@ -1075,14 +1283,35 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
     const comingSoonUniversities = Number(
       raw.comingSoonUniversities ?? Math.max(0, totalUniversities - liveUniversities)
     );
-    return {
+
+    const normalizedSubjects = normalizeLiveSubjectCounts(
+      raw.bySubject && typeof raw.bySubject === 'object' ? raw.bySubject : {}
+    );
+    const uniSum = uniList.reduce((acc: number, u: any) => acc + Number(u?.mcq_count || 0), 0);
+    const totalMcqs =
+      raw.totalMcqs !== undefined && raw.totalMcqs !== null && Number.isFinite(Number(raw.totalMcqs))
+        ? Number(raw.totalMcqs)
+        : normalizedSubjects.sum > 0
+        ? normalizedSubjects.sum
+        : uniSum;
+
+    const lastImportAt =
+      extractLastImportTimestamp(raw.lastImportAt) ??
+      extractLastImportTimestamp(raw.imports) ??
+      null;
+
+    const result: BankHealthData = {
       ok: true,
       totalUniversities,
       liveUniversities,
       comingSoonUniversities,
-      totalMcqs: Number(raw.totalMcqs ?? 0),
+      totalMcqs,
       missingExplanations: Number(raw.missingExplanations ?? raw.missingExplanationCount ?? 0),
       openReports: Number(raw.openReports ?? raw.openReportsCount ?? 0),
+      lastImportAt,
+      databaseName: typeof raw.databaseName === 'string' && raw.databaseName.trim()
+        ? raw.databaseName.trim()
+        : 'boardly-posts-db',
       byUniversity: uniList.map((u: any) => ({
         id: String(u?.id || ''),
         name: String(u?.name || ''),
@@ -1090,7 +1319,7 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
         mcq_count: Number(u?.mcq_count || 0),
         is_live: Number(u?.mcq_count || 0) > 0 ? 1 : 0,
       })),
-      bySubject: raw.bySubject && typeof raw.bySubject === 'object' ? raw.bySubject : {},
+      bySubject: normalizedSubjects.subjectCounts,
       byDifficulty: {
         easy: Number(raw.byDifficulty?.easy ?? 0),
         medium: Number(raw.byDifficulty?.medium ?? 0),
@@ -1104,10 +1333,33 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
         countMismatchUniversities: [],
       },
     };
-  } catch {
+
+    liveBankStatsMemoryCache = {
+      data: result,
+      expiresAt: Date.now() + LIVE_BANK_STATS_TTL_MS,
+    };
+    return result;
+  })();
+
+  if (!force) {
+    liveBankStatsInFlight = run;
+  }
+
+  try {
+    return await run;
+  } catch (err) {
+    if (strict) {
+      throw err;
+    }
     const mirror = loadLocalD1Mirror();
     const uniList = mirror.universities;
     const liveCount = uniList.filter((u) => u.mcq_count > 0).length;
+    const rawBySub: Record<string, number> = {};
+    for (const m of mirror.mcqs) {
+      const s = m.subject || 'General';
+      rawBySub[s] = (rawBySub[s] || 0) + 1;
+    }
+    const normalizedFallback = normalizeLiveSubjectCounts(rawBySub);
     return {
       ok: true,
       totalUniversities: uniList.length,
@@ -1116,6 +1368,8 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
       totalMcqs: mirror.mcqs.length,
       missingExplanations: mirror.mcqs.filter((m) => !m.explanation?.trim()).length,
       openReports: mirror.reports.filter((r) => r.status === 'open').length,
+      lastImportAt: null,
+      databaseName: 'boardly-posts-db',
       byUniversity: uniList.map((u) => ({
         id: u.id,
         name: u.name,
@@ -1123,7 +1377,7 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
         mcq_count: u.mcq_count,
         is_live: u.mcq_count > 0 ? 1 : 0,
       })),
-      bySubject: {},
+      bySubject: normalizedFallback.subjectCounts,
       byDifficulty: { easy: 0, medium: 0, hard: 0 },
       integrity: {
         isHealthy: true,
@@ -1133,13 +1387,22 @@ export async function fetchBankHealth(): Promise<BankHealthData> {
         countMismatchUniversities: [],
       },
     };
+  } finally {
+    if (liveBankStatsInFlight === run) {
+      liveBankStatsInFlight = null;
+    }
   }
+}
+
+export async function fetchBankHealth(options?: { force?: boolean }): Promise<BankHealthData> {
+  return fetchLiveQuestionBankStats({ force: Boolean(options?.force), strict: false });
 }
 
 export async function fixBankHealthIntegrity(
   issueType: 'all' | 'slug_mismatch' | 'count_drift' | 'orphan_mcqs' = 'all',
   targetUniversityId?: string
 ): Promise<{ fixedCount: number; integrity?: D1BankHealthIntegrityReport }> {
+  invalidateLiveQuestionBankStatsCache();
   try {
     const res = await apiRequest<{
       success?: boolean;
@@ -1165,6 +1428,7 @@ export async function moveMcqsToUniversity(
   toUniversityId: string,
   fromUniversityId?: string
 ): Promise<{ movedCount: number }> {
+  invalidateLiveQuestionBankStatsCache();
   try {
     const res = await apiRequest<{
       success?: boolean;

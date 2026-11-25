@@ -5410,20 +5410,24 @@ ${urls
         // GET /api/mcqs/health
         if (mcqSub === '/health' && req.method === 'GET') {
           await recalculateAllD1UniCounts();
-          const [uniRes, subRes, diffRes, missRes, repRes] = await Promise.all([
+          const [uniRes, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
             env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
             env.DB.prepare('SELECT subject, COUNT(*) as cnt FROM mcqs GROUP BY subject').all<{ subject: string; cnt: number }>(),
             env.DB.prepare('SELECT difficulty, COUNT(*) as cnt FROM mcqs GROUP BY difficulty').all<{ difficulty: string; cnt: number }>(),
             env.DB.prepare("SELECT COUNT(*) as cnt FROM mcqs WHERE TRIM(COALESCE(explanation, '')) = ''").first<{ cnt: number }>(),
             env.DB.prepare("SELECT COUNT(*) as cnt FROM mcq_reports WHERE status = 'open'").first<{ cnt: number }>(),
+            env.DB.prepare('SELECT MAX(created_at) as last_at FROM mcqs').first<{ last_at: string | null }>().catch(() => null),
+            env.DB.prepare('SELECT MAX(created_at) as last_at FROM imports').first<{ last_at: string | null }>().catch(() => null),
           ]);
 
           const universities = uniRes.results || [];
           const bySubject: Record<string, number> = {};
           let totalMcqs = 0;
           for (const r of subRes.results || []) {
-            bySubject[r.subject] = Number(r.cnt || 0);
-            totalMcqs += Number(r.cnt || 0);
+            const subjKey = String(r.subject ?? '').trim() || 'General';
+            const cnt = Number(r.cnt || 0);
+            bySubject[subjKey] = (bySubject[subjKey] || 0) + cnt;
+            totalMcqs += cnt;
           }
           const byDifficulty: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
           for (const r of diffRes.results || []) {
@@ -5433,11 +5437,29 @@ ${urls
           const missingCount = Number(missRes?.cnt || 0);
           const openRepCount = Number(repRes?.cnt || 0);
 
+          const candidateTimestamps = [lastImportRes?.last_at, lastMcqRes?.last_at]
+            .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+            .map((v) => v.trim());
+          let lastImportAt: string | null = null;
+          let latestMs = -Infinity;
+          for (const ts of candidateTimestamps) {
+            const parsedMs = Date.parse(ts.includes('T') ? ts : ts.replace(' ', 'T') + (ts.endsWith('Z') ? '' : 'Z'));
+            if (!Number.isNaN(parsedMs)) {
+              if (parsedMs > latestMs) {
+                latestMs = parsedMs;
+                lastImportAt = ts;
+              }
+            } else if (!lastImportAt) {
+              lastImportAt = ts;
+            }
+          }
+
           return jsonResponse(
             {
               ok: true,
               success: true,
               source: 'cloudflare-d1',
+              databaseName: 'boardly-posts-db',
               totalUniversities: universities.length,
               liveUniversities: universities.filter((u) => Number(u.mcq_count) > 0).length,
               comingSoonUniversities: universities.filter((u) => Number(u.mcq_count) === 0).length,
@@ -5446,6 +5468,7 @@ ${urls
               missingExplanationCount: missingCount,
               openReports: openRepCount,
               openReportsCount: openRepCount,
+              lastImportAt,
               bySubject,
               byDifficulty,
               byUniversity: universities,

@@ -103,6 +103,11 @@ export {
   type FixMisfiledResult,
 };
 import { getDefaultWriteSource } from '@/config/questionBankSources';
+import {
+  fetchLiveQuestionBankStats,
+  normalizeLiveSubjectCounts,
+  type LiveSubjectCountEntry,
+} from './universityMcqService';
 
 // ─── DIAGNOSTIC FIRESTORE & ENDPOINT ERRORS ──────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -182,6 +187,8 @@ export interface AdminStats {
   adminCount?: number;
   twoFactorEnabledCount?: number;
   totalQuestions: number;
+  totalUniversities?: number;
+  liveUniversities?: number;
   totalAttempts: number;
   totalQuestionsSolved?: number;
   totalActiveCrews?: number;
@@ -191,6 +198,7 @@ export interface AdminStats {
   pendingPayments: number;
   pendingReviews: number;
   subjectCounts: Record<string, number>;
+  subjectBreakdown?: LiveSubjectCountEntry[];
 }
 
 export interface AdminAmbassadorItem {
@@ -344,7 +352,7 @@ export interface CachedAdminUsersDirectory {
 
 const ADMIN_SWR_FRESH_MS = 45_000;
 const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
-const ADMIN_STATS_SESSION_KEY = 'boardly_admin_stats_swr_v1';
+const ADMIN_STATS_SESSION_KEY = 'boardly_admin_stats_swr_v2';
 const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v1';
 const ADMIN_PLAN_ANALYTICS_SESSION_KEY = 'boardly_admin_plan_analytics_swr_v1';
 
@@ -949,7 +957,11 @@ let cachedOverviewUsersCard: {
     previewUsers: UserProfile[];
   };
 } | null = null;
-let inFlightOverviewQuestionsCard: Promise<{ totalQuestions: number }> | null = null;
+let inFlightOverviewQuestionsCard: Promise<{
+  totalQuestions: number;
+  totalUniversities: number;
+  liveUniversities: number;
+}> | null = null;
 let inFlightOverviewAttemptsCard: Promise<{ totalAttempts: number }> | null = null;
 let inFlightOverviewApplicationsCard: Promise<{
   pendingCaptains: number;
@@ -958,7 +970,11 @@ let inFlightOverviewApplicationsCard: Promise<{
 }> | null = null;
 let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
 let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
-let inFlightOverviewSubjectsCard: Promise<{ subjectCounts: Record<string, number> }> | null = null;
+let inFlightOverviewSubjectsCard: Promise<{
+  subjectCounts: Record<string, number>;
+  subjects: LiveSubjectCountEntry[];
+  totalQuestions: number;
+}> | null = null;
 
 async function safeCountQuery(
   targetQuery: Parameters<typeof getCountFromServer>[0],
@@ -1110,35 +1126,31 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
 
 export async function fetchOverviewQuestionsCard(options?: { force?: boolean }): Promise<{
   totalQuestions: number;
+  totalUniversities: number;
+  liveUniversities: number;
 }> {
   if (!options?.force && inFlightOverviewQuestionsCard) {
     return inFlightOverviewQuestionsCard;
   }
   const run = async () => {
-    const [qCountRes, msRes, srvRes] = await Promise.allSettled([
-      strictCountOrThrow(collection(db, 'questions'), 'firestore:questions', 'totalQuestions', Boolean(options?.force)),
-      getMultiSourceQuestionCounts(),
-      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-    ]);
-
-    const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
-    const msTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
-    const qCount = qCountRes.status === 'fulfilled' ? qCountRes.value : null;
-    const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
-
-    if (qCount === null && msTotal === 0 && (!srv || !srv.ok || !srv.stats)) {
-      const errReason = qCountRes.status === 'rejected' ? qCountRes.reason : null;
-      if (errReason instanceof AdminStatCardError) throw errReason;
+    try {
+      const bank = await fetchLiveQuestionBankStats({
+        force: Boolean(options?.force),
+        strict: true,
+      });
+      return {
+        totalQuestions: bank.totalMcqs,
+        totalUniversities: bank.totalUniversities,
+        liveUniversities: bank.liveUniversities,
+      };
+    } catch (err: any) {
+      if (err instanceof AdminStatCardError) throw err;
       throw new AdminStatCardError(
-        'firestore:questions | GET /api/admin/stats',
-        srv?.status || errReason?.code || 500,
-        srv?.errorMessage || errReason?.message || 'Failed to load question pool count'
+        'GET /api/mcqs/health',
+        err?.status || err?.code || 500,
+        err?.message || 'Failed to load live question bank count'
       );
     }
-
-    return {
-      totalQuestions: Math.max(qCount ?? 0, msTotal, Number(srv?.stats?.totalQuestions ?? 0)),
-    };
   };
   inFlightOverviewQuestionsCard = run().finally(() => {
     inFlightOverviewQuestionsCard = null;
@@ -1246,39 +1258,32 @@ export async function fetchOverviewReviewsCard(options?: { force?: boolean }): P
 
 export async function fetchOverviewSubjectsCard(options?: { force?: boolean }): Promise<{
   subjectCounts: Record<string, number>;
+  subjects: LiveSubjectCountEntry[];
+  totalQuestions: number;
 }> {
   if (!options?.force && inFlightOverviewSubjectsCard) {
     return inFlightOverviewSubjectsCard;
   }
   const run = async () => {
-    const [msRes, srvRes] = await Promise.allSettled([
-      getMultiSourceQuestionCounts(),
-      fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-    ]);
-
-    const msSubjects = msRes.status === 'fulfilled' ? msRes.value?.subjectCounts || {} : {};
-    const srv = srvRes.status === 'fulfilled' ? srvRes.value : null;
-    const srvSubjects = (srv?.ok && srv?.stats?.subjectCounts) ? srv.stats.subjectCounts : null;
-
-    if (msRes.status === 'rejected' && !srvSubjects) {
+    try {
+      const bank = await fetchLiveQuestionBankStats({
+        force: Boolean(options?.force),
+        strict: true,
+      });
+      const normalized = normalizeLiveSubjectCounts(bank.bySubject);
+      return {
+        subjectCounts: normalized.subjectCounts,
+        subjects: normalized.entries,
+        totalQuestions: bank.totalMcqs,
+      };
+    } catch (err: any) {
+      if (err instanceof AdminStatCardError) throw err;
       throw new AdminStatCardError(
-        'firestore:questions (subjectCounts) | GET /api/admin/stats',
-        srv?.status || 500,
-        srv?.errorMessage || (msRes.reason as Error)?.message || 'Failed to load subject question counts'
+        'GET /api/mcqs/health',
+        err?.status || err?.code || 500,
+        err?.message || 'Failed to load live subject question counts'
       );
     }
-
-    const subjectCounts: Record<string, number> = {};
-    for (const subj of CORE_SUBJECTS) {
-      const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
-      const fromMs = Number(msSubjects[slug] || 0) + Number(msSubjects[subj] || 0);
-      const fromSrv = srvSubjects ? Number(srvSubjects[subj] ?? srvSubjects[slug] ?? 0) : 0;
-      const resolved = Math.max(fromMs, fromSrv);
-      subjectCounts[subj] = resolved;
-      subjectCounts[slug] = resolved;
-    }
-
-    return { subjectCounts };
   };
   inFlightOverviewSubjectsCard = run().finally(() => {
     inFlightOverviewSubjectsCard = null;
@@ -1312,6 +1317,8 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
       adminCount: getCachedAdminUsersState()?.adminCount,
       twoFactorEnabledCount: getCachedAdminUsersState()?.twoFactorEnabledCount,
       totalQuestions: questionsCard.totalQuestions,
+      totalUniversities: questionsCard.totalUniversities,
+      liveUniversities: questionsCard.liveUniversities,
       totalAttempts: attemptsCard.totalAttempts,
       totalQuestionsSolved: undefined,
       totalActiveCrews: undefined,
@@ -1321,6 +1328,7 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
       pendingPayments: paymentsCard.pendingPayments,
       pendingReviews: reviewsCard.pendingReviews,
       subjectCounts: subjectsCard.subjectCounts,
+      subjectBreakdown: subjectsCard.subjects,
     };
 
     cachedAdminStats = result;

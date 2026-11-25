@@ -520,7 +520,9 @@ export async function fetchAdminQuestionsInitSWR(options?: {
   const runFetch = async (): Promise<AdminQuestionsInitCacheData> => {
     const [universities, healthData, reports] = await Promise.all([
       fetchUniversities(Boolean(options?.force)),
-      fetchBankHealth().catch(() => questionsInitCache?.healthData || null),
+      fetchBankHealth({ force: Boolean(options?.force) }).catch(
+        () => questionsInitCache?.healthData || null
+      ),
       fetchMcqReports().catch(() => questionsInitCache?.reports || []),
     ]);
 

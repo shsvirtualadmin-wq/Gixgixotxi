@@ -43,6 +43,11 @@ import {
 import { perfMarkEnd } from '@/lib/perfMetrics';
 import { getCachedAdminOverview } from '@/services/adminTabCache';
 import {
+  getCachedLiveQuestionBankStats,
+  normalizeLiveSubjectCounts,
+  type LiveSubjectCountEntry,
+} from '@/services/universityMcqService';
+import {
   fetchAdminWingmatesRadar,
   fetchRewardsHealth,
   fetchRewardsState,
@@ -145,9 +150,29 @@ export function AdminOverviewPage() {
     getCachedPlanAnalyticsStats()
   );
 
-  const [questionsCard, setQuestionsCard] = useState<CardState<{ totalQuestions: number }>>(() => ({
-    loading: !initialStats,
-    data: initialStats ? { totalQuestions: initialStats.totalQuestions } : null,
+  const initialLiveBank = getCachedLiveQuestionBankStats();
+
+  const [questionsCard, setQuestionsCard] = useState<
+    CardState<{
+      totalQuestions: number;
+      totalUniversities?: number;
+      liveUniversities?: number;
+    }>
+  >(() => ({
+    loading: !initialLiveBank && !initialStats,
+    data: initialLiveBank
+      ? {
+          totalQuestions: initialLiveBank.totalMcqs,
+          totalUniversities: initialLiveBank.totalUniversities,
+          liveUniversities: initialLiveBank.liveUniversities,
+        }
+      : initialStats
+      ? {
+          totalQuestions: initialStats.totalQuestions,
+          totalUniversities: initialStats.totalUniversities,
+          liveUniversities: initialStats.liveUniversities,
+        }
+      : null,
     error: null,
   }));
 
@@ -184,12 +209,43 @@ export function AdminOverviewPage() {
   }));
 
   const [subjectsCard, setSubjectsCard] = useState<
-    CardState<{ subjectCounts: Record<string, number> }>
-  >(() => ({
-    loading: !initialStats,
-    data: initialStats ? { subjectCounts: initialStats.subjectCounts || {} } : null,
-    error: null,
-  }));
+    CardState<{
+      subjectCounts: Record<string, number>;
+      subjects: LiveSubjectCountEntry[];
+      totalQuestions?: number;
+    }>
+  >(() => {
+    if (initialLiveBank) {
+      const normalized = normalizeLiveSubjectCounts(initialLiveBank.bySubject);
+      return {
+        loading: false,
+        data: {
+          subjectCounts: normalized.subjectCounts,
+          subjects: normalized.entries,
+          totalQuestions: initialLiveBank.totalMcqs,
+        },
+        error: null,
+      };
+    }
+    if (initialStats) {
+      const normalized = initialStats.subjectBreakdown
+        ? {
+            subjectCounts: initialStats.subjectCounts || {},
+            entries: initialStats.subjectBreakdown,
+          }
+        : normalizeLiveSubjectCounts(initialStats.subjectCounts);
+      return {
+        loading: false,
+        data: {
+          subjectCounts: normalized.subjectCounts,
+          subjects: normalized.entries,
+          totalQuestions: initialStats.totalQuestions,
+        },
+        error: null,
+      };
+    }
+    return { loading: true, data: null, error: null };
+  });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [bannerError, setBannerError] = useState<AdminDiagnosticError | null>(null);
@@ -288,7 +344,7 @@ export function AdminOverviewPage() {
         setQuestionsCard({ loading: false, data, error: null });
       } catch (err) {
         if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'firestore:questions | GET /api/admin/stats');
+        const parsed = reportCardFailure(err, 'GET /api/mcqs/health');
         setQuestionsCard({ loading: false, data: null, error: parsed });
       }
     },
@@ -371,10 +427,7 @@ export function AdminOverviewPage() {
         setSubjectsCard({ loading: false, data, error: null });
       } catch (err) {
         if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(
-          err,
-          'firestore:questions (subjectCounts) | GET /api/admin/stats'
-        );
+        const parsed = reportCardFailure(err, 'GET /api/mcqs/health');
         setSubjectsCard({ loading: false, data: null, error: parsed });
       }
     },
@@ -759,6 +812,14 @@ export function AdminOverviewPage() {
             () => void loadQuestionsCard(true),
             'admin-overview-total-questions'
           )}
+          {questionsCard.data &&
+          !questionsCard.error &&
+          typeof questionsCard.data.totalUniversities === 'number' ? (
+            <div className="text-[11px] font-mono text-[var(--muted)] mb-2">
+              {questionsCard.data.liveUniversities ?? 0} of {questionsCard.data.totalUniversities}{' '}
+              universities live
+            </div>
+          ) : null}
           <Link
             to="/admin/questions"
             className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
@@ -1378,7 +1439,9 @@ export function AdminOverviewPage() {
           </h2>
           <div className="flex items-center gap-2">
             <span className="font-heading text-[12px] text-[var(--muted)]">
-              Live counts
+              {subjectsCard.data && typeof subjectsCard.data.totalQuestions === 'number'
+                ? `Live counts · ${subjectsCard.data.totalQuestions.toLocaleString()} MCQs`
+                : 'Live counts'}
             </span>
             <button
               type="button"
@@ -1387,7 +1450,7 @@ export function AdminOverviewPage() {
               className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
             >
-              <RefreshCw size={13} />
+              <RefreshCw size={13} className={subjectsCard.loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
@@ -1406,28 +1469,43 @@ export function AdminOverviewPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
-            {CORE_SUBJECTS.map((subj) => {
-              const counts = subjectsCard.data?.subjectCounts;
-              const rawCount = counts ? counts[subj] ?? counts[subj.toLowerCase()] : undefined;
-              return (
-                <div
-                  key={subj}
-                  className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-                >
-                  <span className="font-heading text-[12px] text-[var(--muted)] truncate">
-                    {subj}
-                  </span>
-                  <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                    {subjectsCard.loading && !subjectsCard.data
-                      ? '—'
-                      : typeof rawCount === 'number'
-                      ? rawCount.toLocaleString()
-                      : '—'}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
+            {subjectsCard.loading && !subjectsCard.data
+              ? CORE_SUBJECTS.map((subj) => (
+                  <div
+                    key={subj}
+                    className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+                  >
+                    <span className="font-heading text-[12px] text-[var(--muted)] truncate">
+                      {subj}
+                    </span>
+                    <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
+                      —
+                    </span>
+                  </div>
+                ))
+              : (subjectsCard.data?.subjects && subjectsCard.data.subjects.length > 0
+                  ? subjectsCard.data.subjects
+                  : CORE_SUBJECTS.map((subj) => ({
+                      subject: subj,
+                      count: subjectsCard.data?.subjectCounts?.[subj] ?? 0,
+                    }))
+                ).map((entry) => (
+                  <div
+                    key={entry.subject}
+                    className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+                  >
+                    <span
+                      title={entry.subject}
+                      className="font-heading text-[12px] text-[var(--muted)] truncate"
+                    >
+                      {entry.subject}
+                    </span>
+                    <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
+                      {entry.count.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
           </div>
         )}
       </div>

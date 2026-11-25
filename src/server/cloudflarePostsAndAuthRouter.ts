@@ -6880,9 +6880,35 @@ ${postSitemaps}
 
     const openReportsCount = reports.filter((r) => r.status === 'open').length;
 
+    const candidateTimestamps: string[] = [];
+    for (const imp of store.imports || []) {
+      const ts = (imp as any)?.created_at || (imp as any)?.imported_at;
+      if (typeof ts === 'string' && ts.trim()) candidateTimestamps.push(ts.trim());
+    }
+    for (const m of mcqs) {
+      if (typeof m.created_at === 'string' && m.created_at.trim()) {
+        candidateTimestamps.push(m.created_at.trim());
+      }
+    }
+    let lastImportAt: string | null = null;
+    let latestMs = -Infinity;
+    for (const ts of candidateTimestamps) {
+      const parsedMs = Date.parse(ts.includes('T') ? ts : ts.replace(' ', 'T') + (ts.endsWith('Z') ? '' : 'Z'));
+      if (!Number.isNaN(parsedMs)) {
+        if (parsedMs > latestMs) {
+          latestMs = parsedMs;
+          lastImportAt = ts;
+        }
+      } else if (!lastImportAt) {
+        lastImportAt = ts;
+      }
+    }
+
     return res.status(200).json({
+      ok: true,
       success: true,
       source: 'cloudflare-d1',
+      databaseName: 'boardly-posts-db',
       totalUniversities: universities.length,
       liveUniversities: universities.filter((u) => u.mcq_count > 0).length,
       comingSoonUniversities: universities.filter((u) => u.mcq_count === 0).length,
@@ -6891,6 +6917,7 @@ ${postSitemaps}
       missingExplanationCount,
       openReports: openReportsCount,
       openReportsCount,
+      lastImportAt,
       bySubject,
       byDifficulty,
       byUniversity: universities,

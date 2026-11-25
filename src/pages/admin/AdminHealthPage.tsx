@@ -28,6 +28,10 @@ import {
 import { db, auth } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
+import {
+  fetchLiveQuestionBankStats,
+  formatSafeLastImport,
+} from '@/services/universityMcqService';
 
 export type HealthStatus = 'PASS' | 'WARN' | 'FAIL';
 
@@ -496,37 +500,32 @@ export function AdminHealthPage() {
     }
 
     // ───────────────────────────────────────────────────────────────────────────
-    // SECTION D: Cloudflare D1 Question Banks (legacy, bank1, bank2)
+    // SECTION D: Cloudflare D1 Live Question Bank (GET /api/mcqs/health)
     // ───────────────────────────────────────────────────────────────────────────
     const tD1Start = performance.now();
     try {
-      const resp = await fetch('/api/questions/health');
-      const data = resp.ok ? await resp.json() : null;
+      const bank = await fetchLiveQuestionBankStats({ force: true, strict: true });
       const elapsedD1 = Math.round(performance.now() - tD1Start);
-      const totalQ = Number(data?.totalQuestions ?? 0);
-      const legCnt = Number(data?.banks?.legacy?.total ?? 0);
-      const b1Cnt = Number(data?.banks?.bank1?.total ?? 0);
-      const b2Cnt = Number(data?.banks?.bank2?.total ?? 0);
-      const lastImport = data?.lastImportAt || 'N/A';
+      const dbName = bank.databaseName || 'boardly-posts-db';
+      const subjectCount = Object.keys(bank.bySubject || {}).length;
+      const lastImportLabel = formatSafeLastImport(bank.lastImportAt);
 
       checks.push({
         id: 'd1_question_banks_health',
         category: 'test_limits',
-        title: 'Cloudflare D1 Question Banks (Core, Alpha, Beta)',
-        status: resp.ok && totalQ > 0 ? 'PASS' : 'FAIL',
+        title: 'Cloudflare D1 Live Question Bank',
+        status: bank.totalMcqs > 0 ? 'PASS' : 'FAIL',
         timeMs: elapsedD1,
-        message: resp.ok
-          ? `Cloudflare D1 (boardly-posts-db) online: ${totalQ} total MCQs (Core: ${legCnt}, Alpha: ${b1Cnt}, Beta: ${b2Cnt}) · Last import: ${lastImport}.`
-          : 'Failed to reach /api/questions/health endpoint.',
+        message: `Cloudflare D1 (${dbName}) online: ${bank.totalMcqs.toLocaleString()} total MCQs (${bank.liveUniversities} of ${bank.totalUniversities} universities live · ${subjectCount} subjects) · Last import: ${lastImportLabel}.`,
       });
     } catch (err: unknown) {
       checks.push({
         id: 'd1_question_banks_health',
         category: 'test_limits',
-        title: 'Cloudflare D1 Question Banks (Core, Alpha, Beta)',
+        title: 'Cloudflare D1 Live Question Bank',
         status: 'FAIL',
         timeMs: Math.round(performance.now() - tD1Start),
-        message: (err as Error)?.message || 'Failed to verify D1 question banks.',
+        message: (err as Error)?.message || 'Failed to verify D1 live question bank (/api/mcqs/health).',
       });
     }
 
@@ -747,7 +746,7 @@ export function AdminHealthPage() {
                         {item.title}
                       </span>
                     </div>
-                    <p className="text-[12px] text-[#AAAAAA] leading-relaxed pl-0 sm:pl-1">
+                    <p className="text-[12px] text-[#AAAAAA] leading-relaxed pl-0 sm:pl-1 break-words whitespace-normal">
                       {item.message}
                     </p>
                   </div>
