@@ -787,7 +787,7 @@ export async function getTestLeaderboard(testId: string): Promise<AmbassadorTest
   return cachedFetch(cacheKey, async () => {
     const data = await api.get<{ results: any[] }>(
       `/api/tests/${encodeURIComponent(testId)}/leaderboard`,
-      { silentErrorToast: true }
+      { silentErrorToast: true, skipAuth: true }
     );
     return (data.results || []).map(normalizeAttemptRow);
   });
@@ -799,7 +799,7 @@ export async function getGrandLineLeaderboard(maxCount = 50): Promise<GrandLineL
     try {
       const data = await api.get<{ leaderboard?: any[]; results?: any[] }>(
         `/api/leaderboard/grand-line?limit=${maxCount}`,
-        { silentErrorToast: true }
+        { silentErrorToast: true, skipAuth: true, timeoutMs: 20000 }
       );
       const list = data.leaderboard || data.results || [];
       return list.map((d: any, idx: number) => {

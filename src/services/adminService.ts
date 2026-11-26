@@ -66,6 +66,14 @@ import {
   type PaidPlanId,
 } from '@/lib/planTier';
 import { fetchPlansConfigOnce } from '@/hooks/usePlansConfig';
+import { computePlanAnalyticsSnapshot } from '@/lib/planAnalytics';
+import {
+  normalizeCaptainApplicationDoc,
+  normalizeCrewApplicationDoc,
+  filterApplicationsByStatus,
+  countPendingApplications,
+  extractTimestampMs,
+} from '@/lib/applicationStatus';
 import {
   notifyApplicationDecision,
   notifyKobanPurchaseApproved,
@@ -354,7 +362,7 @@ const ADMIN_SWR_FRESH_MS = 45_000;
 const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
 const ADMIN_STATS_SESSION_KEY = 'boardly_admin_stats_swr_v2';
 const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v1';
-const ADMIN_PLAN_ANALYTICS_SESSION_KEY = 'boardly_admin_plan_analytics_swr_v1';
+const ADMIN_PLAN_ANALYTICS_SESSION_KEY = 'boardly_admin_plan_analytics_swr_v2';
 
 function readAdminSessionCache<T>(key: string): { at: number; data: T } | null {
   if (typeof window === 'undefined') return null;
@@ -1179,6 +1187,20 @@ export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): 
   return inFlightOverviewAttemptsCard;
 }
 
+function invalidateApplicationsOverviewCache(): void {
+  inFlightOverviewApplicationsCard = null;
+  if (cachedAdminStats) {
+    cachedAdminStats = null;
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(ADMIN_STATS_SESSION_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function fetchOverviewApplicationsCard(options?: { force?: boolean }): Promise<{
   pendingCaptains: number;
   pendingCrew: number;
@@ -1188,25 +1210,34 @@ export async function fetchOverviewApplicationsCard(options?: { force?: boolean 
     return inFlightOverviewApplicationsCard;
   }
   const run = async () => {
-    const [captains, crew] = await Promise.all([
-      strictCountOrThrow(
-        query(collection(db, 'captainApplications'), where('status', '==', 'pending')),
-        'firestore:captainApplications',
-        'pendingCaptains',
-        Boolean(options?.force)
-      ),
-      strictCountOrThrow(
-        query(collection(db, 'crewApplications'), where('status', '==', 'pending')),
-        'firestore:crewApplications',
-        'pendingCrew',
-        Boolean(options?.force)
-      ),
+    const [captainSnap, crewSnap] = await Promise.all([
+      getDocs(query(collection(db, 'captainApplications'), limit(200))),
+      getDocs(query(collection(db, 'crewApplications'), limit(200))),
     ]);
-    return {
+
+    const captains = countPendingApplications(
+      captainSnap.docs.map((d) => ({ status: d.data()?.status }))
+    );
+    const crew = countPendingApplications(
+      crewSnap.docs.map((d) => ({ status: d.data()?.status }))
+    );
+
+    const data = {
       pendingCaptains: captains,
       pendingCrew: crew,
       totalPending: captains + crew,
     };
+
+    if (cachedAdminStats) {
+      cachedAdminStats = {
+        ...cachedAdminStats,
+        pendingCaptains: captains,
+        pendingCrew: crew,
+      };
+      writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
+    }
+
+    return data;
   };
   inFlightOverviewApplicationsCard = run().finally(() => {
     inFlightOverviewApplicationsCard = null;
@@ -2927,15 +2958,45 @@ export async function fetchPlanAnalyticsStats(options?: {
     const dir = getCachedAdminUsersState();
     const cachedStats = getCachedAdminStats();
 
-    // Run server stats lookup + approved payment requests in parallel; never download full user docs
-    const [srvRes, paymentsSnap] = await Promise.all([
+    // Run live config/plans + server stats + paymentRequests + planActivations + paid users in parallel (read-only)
+    const [
+      srvRes,
+      plansConfig,
+      paymentsSnap,
+      activationsSnap,
+      paidUsersByPlanSnap,
+      plusUsersByFlagSnap,
+    ] = await Promise.all([
       fetchServerAdminStatsSnapshot(Boolean(options?.force)).catch(() => null),
-      getDocs(
-        query(collection(db, 'paymentRequests'), where('status', '==', 'approved'), limit(500))
-      ).catch((err) => {
+      fetchPlansConfigOnce().catch(() => null),
+      getDocs(query(collection(db, 'paymentRequests'), limit(500))).catch((err) => {
         console.warn('[AdminService] fetchPlanAnalyticsStats paymentRequests notice:', err);
         return null;
       }),
+      getDocs(query(collection(db, 'planActivations'), limit(500))).catch((err) => {
+        console.warn('[AdminService] fetchPlanAnalyticsStats planActivations notice:', err);
+        return null;
+      }),
+      getDocs(
+        query(
+          collection(db, 'users'),
+          where('plan', 'in', [
+            'pro',
+            'pro_monthly',
+            'pro_annual',
+            'plus',
+            'plus_monthly',
+            'plus_annual',
+          ]),
+          limit(500)
+        )
+      ).catch((err) => {
+        console.warn('[AdminService] fetchPlanAnalyticsStats paidUsers notice:', err);
+        return null;
+      }),
+      getDocs(query(collection(db, 'users'), where('isPlus', '==', true), limit(200))).catch(
+        () => null
+      ),
     ]);
 
     const srvStats = srvRes?.ok ? srvRes.stats : null;
@@ -2946,50 +3007,57 @@ export async function fetchPlanAnalyticsStats(options?: {
     const proCount =
       typeof srvStats?.proCount === 'number'
         ? srvStats.proCount
-        : cachedStats?.proCount ?? dir?.proCount ?? 0;
+        : cachedStats?.proCount ?? dir?.proCount ?? null;
     const plusCount =
       typeof srvStats?.plusCount === 'number'
         ? srvStats.plusCount
-        : cachedStats?.plusCount ?? dir?.plusCount ?? 0;
+        : cachedStats?.plusCount ?? dir?.plusCount ?? null;
     const expiringSoonCount =
       typeof srvStats?.expiringSoonCount === 'number'
         ? srvStats.expiringSoonCount
-        : cachedStats?.expiringSoonCount ?? dir?.expiringSoonCount ?? 0;
+        : cachedStats?.expiringSoonCount ?? dir?.expiringSoonCount ?? null;
 
-    let proRevenuePkr = 0;
-    let plusRevenuePkr = 0;
-    let proToPlusConversions = 0;
+    const paymentRequests = paymentsSnap
+      ? paymentsSnap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() as Record<string, any>,
+        }))
+      : [];
 
-    if (paymentsSnap) {
-      for (const d of paymentsSnap.docs) {
-        const data = d.data() as Record<string, any>;
-        if (data.plan === 'large_crew' || data.crewId) continue;
-        const tier = getPlanTierFromPlanId(data.planId || data.plan || data.planTier);
-        const amt = Math.max(0, Number(data.amount_pkr ?? data.amount ?? 0) || 0);
-        if (tier === 'plus') {
-          plusRevenuePkr += amt;
-          if (
-            data.upgradedFromPro === true ||
-            Number(data.proCreditDays ?? 0) > 0 ||
-            data.previousPlan === 'pro'
-          ) {
-            proToPlusConversions += 1;
-          }
-        } else {
-          proRevenuePkr += amt;
+    const planActivations = activationsSnap
+      ? activationsSnap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() as Record<string, any>,
+        }))
+      : [];
+
+    const paidUsersMap = new Map<string, { id: string; data: Record<string, any> }>();
+    if (paidUsersByPlanSnap) {
+      for (const d of paidUsersByPlanSnap.docs) {
+        paidUsersMap.set(d.id, { id: d.id, data: d.data() as Record<string, any> });
+      }
+    }
+    if (plusUsersByFlagSnap) {
+      for (const d of plusUsersByFlagSnap.docs) {
+        if (!paidUsersMap.has(d.id)) {
+          paidUsersMap.set(d.id, { id: d.id, data: d.data() as Record<string, any> });
         }
       }
     }
 
-    const result: PlanAnalyticsStats = {
-      freeCount,
-      proCount,
-      plusCount,
-      expiringSoonCount,
-      proRevenuePkr,
-      plusRevenuePkr,
-      proToPlusConversions,
-    };
+    const result: PlanAnalyticsStats = computePlanAnalyticsSnapshot({
+      plansConfig,
+      paymentRequests,
+      planActivations,
+      paidUsers: Array.from(paidUsersMap.values()),
+      baseCounts: {
+        freeCount,
+        proCount,
+        plusCount,
+        expiringSoonCount,
+      },
+    });
+
     cachedPlanAnalytics = { at: Date.now(), data: result };
     writeAdminSessionCache(ADMIN_PLAN_ANALYTICS_SESSION_KEY, result);
     return result;
@@ -3880,30 +3948,44 @@ export async function updateQuestionReportStatus(
 
 // ─── APPLICATION REVIEWS (CAPTAINS & CREW) ───────────────────────────────────
 export async function fetchCaptainApplications(statusFilter = 'all'): Promise<CaptainApplication[]> {
-  try {
-    const ref = collection(db, 'captainApplications');
-    const q = statusFilter !== 'all'
-      ? query(ref, where('status', '==', statusFilter), limit(50))
-      : query(ref, limit(50));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CaptainApplication));
-  } catch (err) {
-    console.error('[AdminService] fetchCaptainApplications error:', err);
-    return [];
-  }
+  const ref = collection(db, 'captainApplications');
+  const snap = await getDocs(query(ref, limit(200)));
+  const normalized = snap.docs
+    .map((d) => normalizeCaptainApplicationDoc(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt));
+  return filterApplicationsByStatus(normalized, statusFilter);
 }
 
 export async function fetchCrewApplications(statusFilter = 'all'): Promise<CrewApplication[]> {
+  const ref = collection(db, 'crewApplications');
+  const snap = await getDocs(query(ref, limit(200)));
+  const normalized = snap.docs
+    .map((d) => normalizeCrewApplicationDoc(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt));
+  return filterApplicationsByStatus(normalized, statusFilter);
+}
+
+async function syncCaptainRoleServerSide(targetUid: string, targetEmail: string): Promise<void> {
+  if (!targetUid && !targetEmail) return;
   try {
-    const ref = collection(db, 'crewApplications');
-    const q = statusFilter !== 'all'
-      ? query(ref, where('status', '==', statusFilter), limit(50))
-      : query(ref, limit(50));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as CrewApplication));
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    const token = await currentUser.getIdToken();
+    if (!token) return;
+    await fetch('/api/admin/roles', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        uid: targetUid || undefined,
+        email: targetEmail || undefined,
+        role: 'captain',
+      }),
+    });
   } catch (err) {
-    console.error('[AdminService] fetchCrewApplications error:', err);
-    return [];
+    console.warn('[AdminService] Best-effort captain role claim sync skipped:', err);
   }
 }
 
@@ -3911,29 +3993,27 @@ export async function approveCaptainApplication(
   adminEmail: string,
   app: CaptainApplication
 ): Promise<void> {
-  const captainCode = `CAP-${app.university.slice(0, 4).toUpperCase()}-${app.userId.slice(0, 4).toUpperCase()}`;
-
-  // 1. Update application doc
-  await updateDoc(doc(db, 'captainApplications', app.id), {
-    status: 'approved',
-    approvedAt: serverTimestamp(),
-    approvedBy: adminEmail,
-  });
-
-  // 2. Update user profile
-  await setDoc(
-    doc(db, 'users', app.userId),
-    {
-      role: 'captain',
-      plan: 'pro',
-      isPremium: true,
-      premiumSource: 'captain_grant',
-    },
-    { merge: true }
-  );
+  const targetUid = String(app.userId || (app as unknown as { uid?: string }).uid || app.id || '').trim();
+  const safeEmail = String(app.email || '').trim();
+  const rawUni = String(
+    app.university || (app as unknown as { institution?: string }).institution || ''
+  ).trim();
+  const safeUni =
+    rawUni && rawUni.toLowerCase() !== 'undefined' && rawUni.toLowerCase() !== 'null'
+      ? rawUni
+      : 'your institution';
+  const uniPrefix = (safeUni.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4) || 'CAMP').toUpperCase();
+  const uidSuffix = (targetUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4) || '0000').toUpperCase();
+  const captainCode = `CAP-${uniPrefix}-${uidSuffix}`;
 
   const rawCaptainName = String(
-    app.name || (app as any).fullName || (app as any).displayName || (app as any).userName || ''
+    app.name ||
+      (app as unknown as { studentName?: string; fullName?: string; displayName?: string; userName?: string })
+        .studentName ||
+      (app as unknown as { fullName?: string }).fullName ||
+      (app as unknown as { displayName?: string }).displayName ||
+      (app as unknown as { userName?: string }).userName ||
+      ''
   ).trim();
   const safeCaptainName =
     rawCaptainName &&
@@ -3944,66 +4024,142 @@ export async function approveCaptainApplication(
   const captainGreeting = safeCaptainName
     ? `Congratulations ${safeCaptainName}!`
     : 'Congratulations!';
-  const safeUni =
-    app.university && String(app.university).trim().toLowerCase() !== 'undefined'
-      ? String(app.university).trim()
-      : 'your institution';
 
-  // 3. Create or update captain hub record
-  await setDoc(
-    doc(db, 'captains', app.userId),
-    {
-      userId: app.userId,
-      name: safeCaptainName || app.email?.split('@')[0] || 'Nakama Captain',
-      email: app.email,
-      university: safeUni,
-      city: app.city,
-      referralCode: captainCode,
-      captainCode,
-      points: 100,
-      activatedReferrals: 0,
-      tier: 'Bronze',
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  // 4. Send notification to user (deterministic ID prevents duplicates)
-  await setDoc(
-    doc(db, 'notifications', `captain_approve_${app.userId}`),
-    {
-      userId: app.userId,
-      type: 'crew',
-      title: 'Campus Captain Approved!',
-      message: `${captainGreeting} Your application to represent ${safeUni} has been approved. Your code is ${captainCode}.`,
-      link: '/dashboard/captain',
-      read: false,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  await logAdminAction(adminEmail, 'approve_captain_application', { appId: app.id, captainCode }, app.userId, app.email);
-
-  notifyApplicationDecision({
-    applicationId: app.id,
-    studentUid: app.userId,
-    applicantName: safeCaptainName || app.email?.split('@')[0] || 'Nakama Captain',
-    studentEmail: app.email,
-    programName: 'Nakama Campus Captain',
-    decision: 'approved',
-    codeOrBadge: captainCode,
-    ctaPath: '/dashboard/captain',
+  // 1. Update application doc (authoritative status change)
+  await updateDoc(doc(db, 'captainApplications', app.id), {
+    status: 'approved',
+    captainCode,
+    approvedAt: serverTimestamp(),
+    approvedBy: adminEmail,
+    reviewedAt: serverTimestamp(),
+    reviewedBy: adminEmail,
   });
+
+  // 2. Update user profile (superAdmin can set role directly; regular admin updates plan & syncs role via API)
+  if (targetUid) {
+    try {
+      await setDoc(
+        doc(db, 'users', targetUid),
+        {
+          role: 'captain',
+          plan: 'pro',
+          isPremium: true,
+          premiumSource: 'captain_grant',
+          captainCode,
+        },
+        { merge: true }
+      );
+    } catch (userErr) {
+      console.warn('[AdminService] Direct user role write failed, retrying non-role fields:', userErr);
+      try {
+        await setDoc(
+          doc(db, 'users', targetUid),
+          {
+            plan: 'pro',
+            isPremium: true,
+            premiumSource: 'captain_grant',
+            captainCode,
+          },
+          { merge: true }
+        );
+      } catch (fallbackErr) {
+        console.warn('[AdminService] User profile update fallback warning:', fallbackErr);
+      }
+    }
+
+    // Best-effort custom claim + server role table sync
+    await syncCaptainRoleServerSide(targetUid, safeEmail);
+
+    // 3. Create or update captain hub record (non-fatal if captains collection rule is locked)
+    try {
+      await setDoc(
+        doc(db, 'captains', targetUid),
+        {
+          userId: targetUid,
+          name: safeCaptainName || safeEmail.split('@')[0] || 'Nakama Captain',
+          email: safeEmail,
+          university: safeUni,
+          city: app.city || '',
+          referralCode: captainCode,
+          captainCode,
+          points: 100,
+          activatedReferrals: 0,
+          tier: 'Bronze',
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (captainHubErr) {
+      console.warn('[AdminService] Optional captains hub record write skipped:', captainHubErr);
+    }
+
+    // 4. Send notification to user (deterministic ID prevents duplicates)
+    try {
+      await setDoc(
+        doc(db, 'notifications', `captain_approve_${targetUid}`),
+        {
+          userId: targetUid,
+          type: 'crew',
+          title: 'Campus Captain Approved!',
+          message: `${captainGreeting} Your application to represent ${safeUni} has been approved. Your code is ${captainCode}.`,
+          link: '/dashboard/captain',
+          read: false,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (notifErr) {
+      console.warn('[AdminService] Captain approval notification warning:', notifErr);
+    }
+  }
+
+  try {
+    await logAdminAction(
+      adminEmail,
+      'approve_captain_application',
+      { appId: app.id, captainCode },
+      targetUid,
+      safeEmail
+    );
+  } catch (auditErr) {
+    console.warn('[AdminService] Captain approval audit log warning:', auditErr);
+  }
+
+  try {
+    notifyApplicationDecision({
+      applicationId: app.id,
+      studentUid: targetUid,
+      applicantName: safeCaptainName || safeEmail.split('@')[0] || 'Nakama Captain',
+      studentEmail: safeEmail,
+      programName: 'Nakama Campus Captain',
+      decision: 'approved',
+      codeOrBadge: captainCode,
+      ctaPath: '/dashboard/captain',
+    });
+  } catch (emailErr) {
+    console.warn('[AdminService] Captain approval email dispatch warning:', emailErr);
+  }
+
+  invalidateApplicationsOverviewCache();
 }
 
 export async function approveCrewApplication(
   adminEmail: string,
   app: CrewApplication
 ): Promise<void> {
-  const crewCode = `CREW-${app.userId.slice(0, 6).toUpperCase()}`;
+  const targetUid = String(app.userId || (app as unknown as { uid?: string }).uid || app.id || '').trim();
+  const safeEmail = String(app.email || '').trim();
+  const uidSuffix = (targetUid.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) || '000000').toUpperCase();
+  const crewCode = `CREW-${uidSuffix}`;
+
   const rawCrewName = String(
-    app.name || (app as any).fullName || (app as any).displayName || (app as any).userName || ''
+    app.name ||
+      (app as unknown as { fullName?: string; studentName?: string; displayName?: string; userName?: string })
+        .fullName ||
+      (app as unknown as { studentName?: string }).studentName ||
+      (app as unknown as { displayName?: string }).displayName ||
+      (app as unknown as { userName?: string }).userName ||
+      ''
   ).trim();
   const safeCrewName =
     rawCrewName &&
@@ -4013,56 +4169,102 @@ export async function approveCrewApplication(
       : '';
   const crewGreeting = safeCrewName ? `Congratulations ${safeCrewName}!` : 'Congratulations!';
 
-  // 1. Update application doc
+  // 1. Update application doc (authoritative status change)
   await updateDoc(doc(db, 'crewApplications', app.id), {
     status: 'approved',
+    crewCode,
     approvedAt: serverTimestamp(),
     approvedBy: adminEmail,
+    reviewedAt: serverTimestamp(),
+    reviewedBy: adminEmail,
   });
 
   // 2. Update user profile
-  await setDoc(
-    doc(db, 'users', app.userId),
-    {
-      role: 'crew',
-      plan: 'pro',
-      isPremium: true,
-      premiumSource: 'crew_grant',
-      isCrewMember: true,
-      crewStatus: 'active',
-      crewReferralCode: crewCode,
-      crewStartDate: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  if (targetUid) {
+    try {
+      await setDoc(
+        doc(db, 'users', targetUid),
+        {
+          role: 'crew',
+          plan: 'pro',
+          isPremium: true,
+          premiumSource: 'crew_grant',
+          isCrewMember: true,
+          crewStatus: 'active',
+          crewReferralCode: crewCode,
+          crewStartDate: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (userErr) {
+      console.warn('[AdminService] Direct crew role write failed, retrying non-role fields:', userErr);
+      try {
+        await setDoc(
+          doc(db, 'users', targetUid),
+          {
+            plan: 'pro',
+            isPremium: true,
+            premiumSource: 'crew_grant',
+            isCrewMember: true,
+            crewStatus: 'active',
+            crewReferralCode: crewCode,
+            crewStartDate: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (fallbackErr) {
+        console.warn('[AdminService] Crew user profile update fallback warning:', fallbackErr);
+      }
+    }
 
-  // 3. Send notification to user (deterministic ID prevents duplicates)
-  await setDoc(
-    doc(db, 'notifications', `crew_approve_${app.userId}`),
-    {
-      userId: app.userId,
-      type: 'crew',
-      title: 'Welcome to Boardly Crew!',
-      message: `${crewGreeting} You are now an official Boardly Crew Ambassador. Your referral code is ${crewCode}.`,
-      link: '/dashboard/crew',
-      read: false,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+    // 3. Send notification to user (deterministic ID prevents duplicates)
+    try {
+      await setDoc(
+        doc(db, 'notifications', `crew_approve_${targetUid}`),
+        {
+          userId: targetUid,
+          type: 'crew',
+          title: 'Welcome to Boardly Crew!',
+          message: `${crewGreeting} You are now an official Boardly Crew Ambassador. Your referral code is ${crewCode}.`,
+          link: '/dashboard/crew',
+          read: false,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (notifErr) {
+      console.warn('[AdminService] Crew approval notification warning:', notifErr);
+    }
+  }
 
-  await logAdminAction(adminEmail, 'approve_crew_application', { appId: app.id, crewCode }, app.userId, app.email);
+  try {
+    await logAdminAction(
+      adminEmail,
+      'approve_crew_application',
+      { appId: app.id, crewCode },
+      targetUid,
+      safeEmail
+    );
+  } catch (auditErr) {
+    console.warn('[AdminService] Crew approval audit log warning:', auditErr);
+  }
 
-  notifyApplicationDecision({
-    applicationId: app.id,
-    studentUid: app.userId,
-    applicantName: safeCrewName || app.email?.split('@')[0] || 'Crew Member',
-    studentEmail: app.email,
-    programName: 'Boardly Study Crew Ambassador',
-    decision: 'approved',
-    codeOrBadge: crewCode,
-    ctaPath: '/dashboard/crew',
-  });
+  try {
+    notifyApplicationDecision({
+      applicationId: app.id,
+      studentUid: targetUid,
+      applicantName: safeCrewName || safeEmail.split('@')[0] || 'Crew Member',
+      studentEmail: safeEmail,
+      programName: 'Boardly Study Crew Ambassador',
+      decision: 'approved',
+      codeOrBadge: crewCode,
+      ctaPath: '/dashboard/crew',
+    });
+  } catch (emailErr) {
+    console.warn('[AdminService] Crew approval email dispatch warning:', emailErr);
+  }
+
+  invalidateApplicationsOverviewCache();
 }
 
 export async function rejectApplication(
@@ -4074,31 +4276,43 @@ export async function rejectApplication(
   reason?: string
 ): Promise<void> {
   const collectionName = type === 'captain' ? 'captainApplications' : 'crewApplications';
+  const safeReason = (reason || '').trim() || 'Application criteria not met at this time.';
+
   await updateDoc(doc(db, collectionName, appId), {
     status: 'rejected',
-    rejectionReason: reason || 'Application criteria not met at this time.',
+    rejectionReason: safeReason,
     reviewedAt: serverTimestamp(),
     reviewedBy: adminEmail,
   });
 
-  await logAdminAction(
-    adminEmail,
-    `reject_${type}_application`,
-    { appId, reason },
-    targetUid,
-    targetEmail
-  );
+  try {
+    await logAdminAction(
+      adminEmail,
+      `reject_${type}_application`,
+      { appId, reason: safeReason },
+      targetUid,
+      targetEmail
+    );
+  } catch (auditErr) {
+    console.warn('[AdminService] Reject application audit log warning:', auditErr);
+  }
 
-  notifyApplicationDecision({
-    applicationId: appId,
-    studentUid: targetUid,
-    applicantName: targetEmail ? targetEmail.split('@')[0] : 'Applicant',
-    studentEmail: targetEmail,
-    programName: type === 'captain' ? 'Nakama Campus Captain' : 'Boardly Study Crew Ambassador',
-    decision: 'rejected',
-    reason: reason || 'Application criteria not met at this time.',
-    ctaPath: '/dashboard',
-  });
+  try {
+    notifyApplicationDecision({
+      applicationId: appId,
+      studentUid: targetUid,
+      applicantName: targetEmail ? targetEmail.split('@')[0] : 'Applicant',
+      studentEmail: targetEmail,
+      programName: type === 'captain' ? 'Nakama Campus Captain' : 'Boardly Study Crew Ambassador',
+      decision: 'rejected',
+      reason: safeReason,
+      ctaPath: '/dashboard',
+    });
+  } catch (emailErr) {
+    console.warn('[AdminService] Reject application email dispatch warning:', emailErr);
+  }
+
+  invalidateApplicationsOverviewCache();
 }
 
 // ─── PAYMENT UPGRADE REQUESTS ────────────────────────────────────────────────

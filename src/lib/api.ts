@@ -190,6 +190,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
   silentErrorToast?: boolean;
   requireAuth?: boolean;
+  skipAuth?: boolean;
   timeoutMs?: number;
 }
 
@@ -197,7 +198,7 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
  * Shared REST API helper using relative `/api/...` paths on the same site.
  * Always sends `credentials: 'include'` (so the HttpOnly `boardly_guest_session` cookie is sent),
  * plus `Authorization: Bearer <token>` and `X-Guest-Session` when available,
- * logs failed status codes and response bodies to console.error, and shows actionable error messages.
+ * logs failed status codes and response bodies, and shows actionable error messages.
  */
 export async function apiRequest<T = any>(
   path: string,
@@ -208,14 +209,15 @@ export async function apiRequest<T = any>(
     headers: customHeaders,
     silentErrorToast = false,
     requireAuth: _requireAuth = false,
+    skipAuth = false,
     timeoutMs = 15000,
     signal: externalSignal,
     ...rest
   } = options;
 
-  const token = await getBearerToken(false);
-  const guestSessionToken = getStoredGuestSessionToken();
-  const trustedDeviceToken = getStoredTrustedDeviceToken();
+  const token = skipAuth ? null : await getBearerToken(false);
+  const guestSessionToken = skipAuth ? null : getStoredGuestSessionToken();
+  const trustedDeviceToken = skipAuth ? null : getStoredTrustedDeviceToken();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -248,61 +250,81 @@ export async function apiRequest<T = any>(
 
   const url = resolveApiPath(path);
   const method = String(rest.method || 'GET').toUpperCase();
-  const controller = new AbortController();
-  const timeoutId =
-    timeoutMs > 0
-      ? setTimeout(() => {
-          controller.abort(new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s (${url})`));
-        }, timeoutMs)
-      : null;
+  const maxAttempts = method === 'GET' ? 2 : 1;
 
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort(externalSignal.reason);
-    } else {
-      externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), {
-        once: true,
-      });
+  let response!: Response;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timeoutId =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            controller.abort(
+              new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s (${url})`)
+            );
+          }, timeoutMs)
+        : null;
+
+    const onExternalAbort = () => controller.abort(externalSignal?.reason);
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort(externalSignal.reason);
+      } else {
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      }
     }
-  }
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...rest,
-      credentials: 'include',
-      headers,
-      body: serializedBody,
-      signal: controller.signal,
-    });
-  } catch (networkErr: any) {
-    const isAbort =
-      networkErr?.name === 'AbortError' ||
-      controller.signal.aborted ||
-      String(networkErr?.message || '').toLowerCase().includes('abort') ||
-      String(networkErr?.message || '').toLowerCase().includes('timed out');
-    const rawMsg = isAbort
-      ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}).`
-      : networkErr?.message || 'Network error while contacting server.';
-    console.error(`[API Network Error] apiRequest ${method} ${url}:`, {
-      fn: 'apiRequest',
-      method,
-      url,
-      status: 0,
-      code: isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR',
-      message: rawMsg,
-      silentErrorToast,
-      error: networkErr,
-    });
-    const safeMsg = FRIENDLY_ERROR_MESSAGE;
-    const wrappedErr: ApiError = new Error(safeMsg);
-    wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
-    wrappedErr.rawMessage = rawMsg;
-    (wrappedErr as ApiError & { url?: string }).url = url;
-    if (!silentErrorToast) showApiToast(safeMsg, 'error');
-    throw wrappedErr;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    try {
+      response = await fetch(url, {
+        ...rest,
+        credentials: 'include',
+        headers,
+        body: serializedBody,
+        signal: controller.signal,
+      });
+      break;
+    } catch (networkErr: any) {
+      const isExternalAbort = Boolean(externalSignal?.aborted);
+      if (attempt < maxAttempts && !isExternalAbort) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        continue;
+      }
+
+      const isAbort =
+        networkErr?.name === 'AbortError' ||
+        controller.signal.aborted ||
+        String(networkErr?.message || '').toLowerCase().includes('abort') ||
+        String(networkErr?.message || '').toLowerCase().includes('timed out');
+      const rawMsg = isAbort
+        ? `Request timed out after ${Math.round(timeoutMs / 1000)}s (${url}).`
+        : networkErr?.message || 'Network error while contacting server.';
+      const logPayload = {
+        fn: 'apiRequest',
+        method,
+        url,
+        status: 0,
+        code: isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR',
+        message: rawMsg,
+        silentErrorToast,
+        error: networkErr,
+      };
+      if (silentErrorToast) {
+        console.warn(`[API Network Warning] apiRequest ${method} ${url}:`, logPayload);
+      } else {
+        console.error(`[API Network Error] apiRequest ${method} ${url}:`, logPayload);
+      }
+      const safeMsg = FRIENDLY_ERROR_MESSAGE;
+      const wrappedErr: ApiError = new Error(safeMsg);
+      wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
+      wrappedErr.rawMessage = rawMsg;
+      (wrappedErr as ApiError & { url?: string }).url = url;
+      if (!silentErrorToast) showApiToast(safeMsg, 'error');
+      throw wrappedErr;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
+    }
   }
 
   const rawText = await response.text().catch(() => '');

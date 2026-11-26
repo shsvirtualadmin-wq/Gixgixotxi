@@ -215,7 +215,7 @@ export function AiTutorPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {isPremium ? (
             <span style={{ fontSize: 12, color: 'var(--success)', background: 'rgba(52, 211, 153, 0.1)', padding: '4px 10px', borderRadius: 'var(--r-pill)', fontWeight: 600 }}>
-              ✦ Pro Unlimited Access
+              ✦ {effectivePlan.planLabel} Access
             </span>
           ) : (
             <span className="glass-pill" style={{ fontSize: 12, color: isOverLimit ? 'var(--danger)' : 'var(--text-muted)', padding: '4px 12px', borderRadius: 999 }}>

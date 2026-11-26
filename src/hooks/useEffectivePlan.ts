@@ -29,6 +29,8 @@ export interface EffectivePlanResult {
   source: 'superadmin' | 'personal' | 'crew' | 'none';
   plan: PlanTier;
   planTier: PlanTier;
+  /** Canonical human-readable plan label aligned with Settings/Plans ('Plus Unlimited' | 'Boardly Pro' | 'Free') */
+  planLabel: string;
   crewPlanTier: PlanTier;
   crewName?: string;
   loading: boolean;
@@ -120,6 +122,12 @@ export function isCrewPaidActive(paidUntil?: string | null, nowMs: number = Date
 
 const noopRefresh = async () => {};
 
+export function formatEffectivePlanLabel(tier: PlanTier, isSuperAdmin: boolean): string {
+  if (isSuperAdmin || tier === 'plus') return 'Plus Unlimited';
+  if (tier === 'pro') return 'Boardly Pro';
+  return 'Free';
+}
+
 function makeResult(
   tier: PlanTier,
   source: EffectivePlanResult['source'],
@@ -139,6 +147,7 @@ function makeResult(
     source,
     plan: tier,
     planTier: tier,
+    planLabel: formatEffectivePlanLabel(tier, isSuperAdmin),
     crewPlanTier,
     crewName,
     loading: false,
@@ -612,6 +621,7 @@ export function useEffectivePlan(): EffectivePlanResult {
       source: 'none',
       plan: 'free',
       planTier: 'free',
+      planLabel: 'Free',
       crewPlanTier: 'free',
       loading: true,
       status: 'loading',

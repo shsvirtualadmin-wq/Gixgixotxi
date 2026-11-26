@@ -69,10 +69,21 @@ export function AdminHealthPage() {
       {
         id: 'plan_superadmin',
         title: 'Superadmin Email/Role',
-        input: { email: 'shsvirtualadmin@gmail.com', role: 'superadmin' },
+        input: {
+          email: 'shsvirtualadmin@gmail.com',
+          role: 'superadmin',
+          isSuperAdminClaim: true,
+        },
         expected: (r) => ({
-          ok: r.isSuperAdmin && r.isPro && r.isUnlimited && r.plan === 'pro' && r.source === 'superadmin',
-          message: 'Superadmin email/role resolved immediately to Pro Unlimited with source superadmin.',
+          ok:
+            r.isSuperAdmin &&
+            r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'plus' &&
+            r.planLabel === 'Plus Unlimited' &&
+            r.source === 'superadmin',
+          message:
+            'Superadmin email/role resolved immediately to Plus Unlimited with source superadmin.',
         }),
       },
       {
@@ -80,7 +91,7 @@ export function AdminHealthPage() {
         title: 'Free Student',
         input: { email: 'student@boardly.cfd', role: 'student', plan: 'free' },
         expected: (r) => ({
-          ok: !r.isPro && !r.isUnlimited && r.plan === 'free' && r.source === 'none',
+          ok: !r.isPro && !r.isPlus && !r.isUnlimited && r.plan === 'free' && r.source === 'none',
           message: 'Free student account correctly defaults to Free tier with 10 daily tests.',
         }),
       },
@@ -95,8 +106,34 @@ export function AdminHealthPage() {
           planExpiresAt: Date.now() + 86400000,
         },
         expected: (r) => ({
-          ok: r.isPro && r.isUnlimited && r.plan === 'pro' && r.source === 'personal',
-          message: 'Active personal Pro subscription resolved to Pro Unlimited access.',
+          ok:
+            r.isPro &&
+            !r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'pro' &&
+            r.planLabel === 'Boardly Pro' &&
+            r.source === 'personal',
+          message: 'Active personal Pro subscription resolved to Boardly Pro access.',
+        }),
+      },
+      {
+        id: 'plan_plus_active',
+        title: 'Active Personal Plus',
+        input: {
+          email: 'plusmember@boardly.cfd',
+          role: 'student',
+          plan: 'plus',
+          isPlus: true,
+          plusUntil: Date.now() + 86400000,
+        },
+        expected: (r) => ({
+          ok:
+            r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'plus' &&
+            r.planLabel === 'Plus Unlimited' &&
+            r.source === 'personal',
+          message: 'Active personal Plus subscription resolved to Plus Unlimited access.',
         }),
       },
       {
@@ -110,7 +147,7 @@ export function AdminHealthPage() {
           planExpiresAt: Date.now() - 86400000,
         },
         expected: (r) => ({
-          ok: !r.isPro && !r.isUnlimited && r.plan === 'free',
+          ok: !r.isPro && !r.isPlus && !r.isUnlimited && r.plan === 'free',
           message: 'Expired Pro account correctly downgraded to Free starter tier.',
         }),
       },
@@ -128,8 +165,39 @@ export function AdminHealthPage() {
           },
         },
         expected: (r) => ({
-          ok: r.isPro && r.isUnlimited && r.source === 'crew' && r.crewName === 'Alpha Squad',
-          message: 'Crew member receives Pro Unlimited access shared from Pro squad mate.',
+          ok:
+            r.isPro &&
+            !r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'pro' &&
+            r.planLabel === 'Boardly Pro' &&
+            r.source === 'crew' &&
+            r.crewName === 'Alpha Squad',
+          message: 'Crew member receives Boardly Pro access shared from Pro squad mate.',
+        }),
+      },
+      {
+        id: 'plan_crew_shared_plus',
+        title: 'Free in Crew with Sharing Plus Member',
+        input: {
+          email: 'member@boardly.cfd',
+          inCrew: true,
+          crew: {
+            name: 'Alpha Squad',
+            isProShared: true,
+            hasPlusMember: true,
+            members: [{ uid: 'plus_leader', isPlus: true, plan: 'plus' }],
+          },
+        },
+        expected: (r) => ({
+          ok:
+            r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'plus' &&
+            r.planLabel === 'Plus Unlimited' &&
+            r.source === 'crew' &&
+            r.crewName === 'Alpha Squad',
+          message: 'Crew member receives Plus Unlimited access shared from Plus squad mate.',
         }),
       },
       {
@@ -146,7 +214,7 @@ export function AdminHealthPage() {
           },
         },
         expected: (r) => ({
-          ok: !r.isPro && !r.isUnlimited && r.plan === 'free',
+          ok: !r.isPro && !r.isPlus && !r.isUnlimited && r.plan === 'free',
           message: 'Crew sharing disabled flag is respected and leaves member on Free tier.',
         }),
       },
@@ -160,13 +228,13 @@ export function AdminHealthPage() {
           plan: 'free',
         },
         expected: (r) => ({
-          ok: !r.isPro && !r.isUnlimited && r.plan === 'free',
+          ok: !r.isPro && !r.isPlus && !r.isUnlimited && r.plan === 'free',
           message: 'Member who departed crew falls back cleanly to Free starter limits.',
         }),
       },
       {
         id: 'plan_unlimited_sharer',
-        title: 'Unlimited Personal Sharer inside Crew',
+        title: 'Personal Pro Sharer inside Crew',
         input: {
           uid: 'leader1',
           email: 'proleader@boardly.cfd',
@@ -181,8 +249,8 @@ export function AdminHealthPage() {
           },
         },
         expected: (r) => ({
-          ok: r.isPro && r.source === 'personal',
-          message: 'Pro subscriber keeps personal Pro source status while sharing to crew.',
+          ok: r.isPro && !r.isPlus && r.plan === 'pro' && r.planLabel === 'Boardly Pro' && r.source === 'personal',
+          message: 'Pro subscriber keeps personal Boardly Pro source status while sharing to crew.',
         }),
       },
       {
@@ -191,6 +259,7 @@ export function AdminHealthPage() {
         input: {
           email: 'shsvirtualadmin@gmail.com',
           role: 'superadmin',
+          isSuperAdminClaim: true,
           inCrew: true,
           crew: {
             name: 'Alpha Squad',
@@ -199,8 +268,14 @@ export function AdminHealthPage() {
           },
         },
         expected: (r) => ({
-          ok: r.isSuperAdmin && r.isPro && r.source === 'superadmin',
-          message: 'Superadmin retains priority Superadmin Unlimited status regardless of crew state.',
+          ok:
+            r.isSuperAdmin &&
+            r.isPlus &&
+            r.isUnlimited &&
+            r.plan === 'plus' &&
+            r.planLabel === 'Plus Unlimited' &&
+            r.source === 'superadmin',
+          message: 'Superadmin retains priority Plus Unlimited status regardless of crew state.',
         }),
       },
     ];
@@ -296,7 +371,7 @@ export function AdminHealthPage() {
           attemptPayload: {
             userId: dummyUid,
             mode: 'full',
-            title: 'Healthcheck Unlimited Pass (Superadmin/Pro)',
+            title: 'Healthcheck Unlimited Pass (Superadmin/Plus)',
             healthcheck: true,
           },
         });

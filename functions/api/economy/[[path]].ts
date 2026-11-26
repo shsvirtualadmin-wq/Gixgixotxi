@@ -2019,6 +2019,9 @@ export async function handleEconomyApiRequest(context: {
             billing: getBillingFromPlanId(pricing.planId),
             planName: pricing.planName,
             couponCode: coupon.code,
+            originalPkr: pricing.originalPkr,
+            discountPkr: pricing.discountPkr,
+            finalPkr: 0,
             durationDays: extension.daysAdded,
             daysAdded: extension.daysAdded,
             proCreditDays: 0,
@@ -2609,6 +2612,11 @@ export async function handleEconomyApiRequest(context: {
           createdAt: nowIso,
         });
 
+        const pkrEquivalent =
+          finalKobansCost > 0
+            ? Math.max(1, Math.round(finalKobansCost / Math.max(1, livePlansConfig.kobansPerPkr)))
+            : livePlan.price_pkr;
+
         tx.createDoc(`planActivations/${activationDocKey}`, {
           id: ledgerId,
           idempotencyKey: safeIdempotency,
@@ -2621,6 +2629,8 @@ export async function handleEconomyApiRequest(context: {
           couponCode: validatedCouponDoc ? validatedCouponDoc.code : null,
           kobansSpent: finalKobansCost,
           discountKobans,
+          originalPkr: livePlan.price_pkr,
+          amount_pkr: pkrEquivalent,
           durationDays: totalDurationDays,
           daysAdded: totalDurationDays,
           proCreditDays: 0,

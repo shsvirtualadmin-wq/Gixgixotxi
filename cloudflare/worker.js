@@ -4966,7 +4966,7 @@ export default {
                 ok: false,
                 blocked: true,
                 code: 'DAILY_TESTS_LIMIT_EXCEEDED',
-                error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade or join a Study Crew to practice unlimited.`,
+                error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`,
                 uid: effectiveUid,
                 dateKey,
                 timezone: 'Asia/Karachi',
@@ -4978,18 +4978,52 @@ export default {
           }
 
           const now = Date.now();
-          const nextTestsStarted = currentTestsStarted + 1;
           await db
             .prepare(
-              `INSERT INTO daily_starter_usage (uid, pkt_date, tests_started, practice_attempts, questions_solved, ai_tutor_tokens, updated_at)
-               VALUES (?1, ?2, 1, 1, 0, 0, ?3)
-               ON CONFLICT(uid, pkt_date) DO UPDATE SET
-                 tests_started = daily_starter_usage.tests_started + 1,
-                 practice_attempts = MAX(daily_starter_usage.practice_attempts + 1, daily_starter_usage.tests_started + 1),
-                 updated_at = excluded.updated_at`
+              `INSERT OR IGNORE INTO daily_starter_usage (uid, pkt_date, tests_started, practice_attempts, questions_solved, ai_tutor_tokens, updated_at)
+               VALUES (?1, ?2, 0, 0, 0, 0, ?3)`
             )
             .bind(effectiveUid, dateKey, now)
             .run();
+
+          const updateRes = await db
+            .prepare(
+              `UPDATE daily_starter_usage
+               SET tests_started = tests_started + 1,
+                   practice_attempts = MAX(practice_attempts + 1, tests_started + 1),
+                   updated_at = ?4
+               WHERE uid = ?1 AND pkt_date = ?2 AND tests_started < ?3`
+            )
+            .bind(effectiveUid, dateKey, FREE_DAILY_STARTER_LIMIT, now)
+            .run();
+
+          const updatedRow = await db
+            .prepare('SELECT * FROM daily_starter_usage WHERE uid = ?1 AND pkt_date = ?2')
+            .bind(effectiveUid, dateKey)
+            .first();
+          const nextTestsStarted = Number(updatedRow?.tests_started ?? currentTestsStarted + 1);
+          const changedRows =
+            typeof updateRes?.meta?.changes === 'number' ? updateRes.meta.changes : -1;
+
+          if (changedRows === 0) {
+            const usedCount = Math.max(nextTestsStarted, FREE_DAILY_STARTER_LIMIT);
+            return jsonResponse(
+              request,
+              env,
+              {
+                ok: false,
+                blocked: true,
+                code: 'DAILY_TESTS_LIMIT_EXCEEDED',
+                error: `Daily test limit reached (${usedCount}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`,
+                uid: effectiveUid,
+                dateKey,
+                timezone: 'Asia/Karachi',
+                testsStarted: usedCount,
+                limit: FREE_DAILY_STARTER_LIMIT,
+              },
+              429
+            );
+          }
 
           return jsonResponse(request, env, {
             ok: true,

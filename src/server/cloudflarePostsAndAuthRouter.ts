@@ -37,12 +37,13 @@ import {
 } from './certificateServerEngine';
 import { buildCertificateIssuedStudentEmail } from '../lib/emailTemplates';
 import { getSharedLocalD1Database } from '../../functions/_utils/firestoreRestAdmin';
-import { resolveUnifiedPlanStatus } from '../config/plans';
+import { getProPlanById, resolveUnifiedPlanStatus } from '../config/plans';
 import {
   buildDailyPostQuotaStatus,
   formatPostLimitReachedMessage,
   getDailyPostWindow,
 } from '../config/postLimits';
+import { FREE_DAILY_TESTS } from '../constants/limits';
 import {
   getEffectiveUserPlan,
   normalizePlanTier,
@@ -9243,7 +9244,8 @@ ${postSitemaps}
   app.get('/api/tests/:id/results', handleTestResultsOrLeaderboard);
   app.get('/api/tests/:id/leaderboard', handleTestResultsOrLeaderboard);
 
-  app.get('/api/leaderboard/grand-line', (_req: Request, res: Response) => {
+  app.get('/api/leaderboard/grand-line', (req: Request, res: Response) => {
+    const limitParam = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
     const store = loadD1Store() as any;
     const attempts = store.testAttempts || [];
     const liveAuthorsMap = resolveLiveAuthorsBatchSync(
@@ -9307,10 +9309,12 @@ ${postSitemaps}
           b.totalScore - a.totalScore ||
           a.timeTakenSeconds - b.timeTakenSeconds
       )
+      .slice(0, limitParam)
       .map((entry, idx) => ({
         ...entry,
         rank: idx + 1,
       }));
+    res.setHeader('Cache-Control', 'public, max-age=15, stale-while-revalidate=60');
     return res.status(200).json({ leaderboard });
   });
 
@@ -11116,7 +11120,19 @@ ${postSitemaps}
   // ===========================================================================
   // DAILY STARTER LIMIT SERVER-SIDE ENGINE (PKT Asia/Karachi UTC+5 Day Boundary)
   // ===========================================================================
-  const FREE_DAILY_STARTER_LIMIT = 10;
+  const FREE_DAILY_STARTER_LIMIT = FREE_DAILY_TESTS;
+  const healthcheckDailyUsageMap = new Map<
+    string,
+    {
+      uid: string;
+      pkt_date: string;
+      tests_started: number;
+      practice_attempts: number;
+      questions_solved: number;
+      ai_tutor_tokens: number;
+      updated_at: number;
+    }
+  >();
 
   function computeServerPKTDateKey(nowMs: number = Date.now()): string {
     const pktMs = Number(nowMs) + 5 * 3600 * 1000;
@@ -11133,7 +11149,24 @@ ${postSitemaps}
     }
   }
 
-  function getOrCreateDailyUsageRow(store: any, uid: string, pktDate: string) {
+  function getOrCreateDailyUsageRow(store: any, uid: string, pktDate: string, ephemeral = false) {
+    if (ephemeral || uid.startsWith('hc_dummy_')) {
+      const key = `${uid}::${pktDate}`;
+      let row = healthcheckDailyUsageMap.get(key);
+      if (!row) {
+        row = {
+          uid,
+          pkt_date: pktDate,
+          tests_started: 0,
+          practice_attempts: 0,
+          questions_solved: 0,
+          ai_tutor_tokens: 0,
+          updated_at: Date.now(),
+        };
+        healthcheckDailyUsageMap.set(key, row);
+      }
+      return row;
+    }
     ensureDailyUsageStoreArray(store);
     let row = store.daily_starter_usage.find(
       (r: any) => r.uid === uid && r.pkt_date === pktDate
@@ -11172,9 +11205,11 @@ ${postSitemaps}
     const dateKey = computeServerPKTDateKey();
     const store = loadD1Store() as any;
     ensureDailyUsageStoreArray(store);
-    const row = store.daily_starter_usage.find(
-      (r: any) => r.uid === uid && r.pkt_date === dateKey
-    );
+    const row = uid.startsWith('hc_dummy_')
+      ? healthcheckDailyUsageMap.get(`${uid}::${dateKey}`)
+      : store.daily_starter_usage.find(
+          (r: any) => r.uid === uid && r.pkt_date === dateKey
+        );
 
     const testsStarted = Number(row?.tests_started ?? 0);
     const practiceAttempts = Number(row?.practice_attempts ?? testsStarted);
@@ -11233,7 +11268,12 @@ ${postSitemaps}
         ? body.customAttemptId.trim()
         : `att_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const row = getOrCreateDailyUsageRow(store, effectiveUid, dateKey);
+    const row = getOrCreateDailyUsageRow(
+      store,
+      effectiveUid,
+      dateKey,
+      isHealthcheck || effectiveUid.startsWith('hc_dummy_')
+    );
     const currentTestsStarted = Number(row.tests_started || 0);
 
     if (isUnlimited) {
@@ -11254,7 +11294,7 @@ ${postSitemaps}
         ok: false,
         blocked: true,
         code: 'DAILY_TESTS_LIMIT_EXCEEDED',
-        error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade or join a Study Crew to practice unlimited.`,
+        error: `Daily test limit reached (${currentTestsStarted}/${FREE_DAILY_STARTER_LIMIT} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`,
         uid: effectiveUid,
         dateKey,
         timezone: 'Asia/Karachi',
@@ -11266,7 +11306,7 @@ ${postSitemaps}
     row.tests_started = currentTestsStarted + 1;
     row.practice_attempts = Math.max(Number(row.practice_attempts || 0) + 1, row.tests_started);
     row.updated_at = Date.now();
-    if (!isHealthcheck) {
+    if (!isHealthcheck && !effectiveUid.startsWith('hc_dummy_')) {
       saveD1Store(store);
     }
 
@@ -11328,11 +11368,18 @@ ${postSitemaps}
     if (!targetUid || !targetUid.startsWith('hc_dummy_')) {
       return res.status(400).json({ error: 'Only hc_dummy_* test UIDs can be cleaned up.', code: 'INVALID_UID' });
     }
+    let removed = 0;
+    for (const key of Array.from(healthcheckDailyUsageMap.keys())) {
+      if (key.startsWith(`${targetUid}::`)) {
+        healthcheckDailyUsageMap.delete(key);
+        removed += 1;
+      }
+    }
     const store = loadD1Store() as any;
     ensureDailyUsageStoreArray(store);
     const before = store.daily_starter_usage.length;
     store.daily_starter_usage = store.daily_starter_usage.filter((r: any) => r.uid !== targetUid);
-    const removed = before - store.daily_starter_usage.length;
+    removed += before - store.daily_starter_usage.length;
     return res.status(200).json({
       ok: true,
       uid: targetUid,
@@ -11809,12 +11856,18 @@ ${postSitemaps}
         if (verified?.uid && payload.newExpiryMs) {
           const store = loadD1Store() as any;
           const locks = ensureProPurchaseLocksArray(store);
+          const lockPlanId = String(payload.planId || 'pro_annual');
+          const resolvedLockPlan = getProPlanById(lockPlanId);
+          const lockAmountPkr =
+            Number(payload.amountPkr ?? payload.originalPkr ?? 0) > 0
+              ? Math.round(Number(payload.amountPkr ?? payload.originalPkr))
+              : resolvedLockPlan.price_pkr;
           const lockRecord = {
             uid: verified.uid,
             state: 'active',
-            plan_id: String(payload.planId || 'pro_annual'),
-            plan_name: String(payload.planName || 'Boardly Pro, Annual Pass'),
-            amount_pkr: 0,
+            plan_id: resolvedLockPlan.id,
+            plan_name: String(payload.planName || resolvedLockPlan.name),
+            amount_pkr: lockAmountPkr,
             method: payload.activatedPro ? 'coupon' : 'kobans',
             tid: '',
             started_at: Date.now(),

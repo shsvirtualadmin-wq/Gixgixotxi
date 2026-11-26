@@ -33,7 +33,9 @@ export class DailyTestLimitError extends Error {
   limit: number;
 
   constructor(testsUsed: number, limit: number = FREE_DAILY_TESTS) {
-    super(`Daily test limit reached (${testsUsed}/${limit} tests). Upgrade or join a Study Crew to practice unlimited.`);
+    super(
+      `Daily test limit reached (${testsUsed}/${limit} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`
+    );
     this.name = 'DailyTestLimitError';
     this.testsUsed = testsUsed;
     this.limit = limit;
@@ -122,8 +124,17 @@ export async function startTestSessionWithLimit(params: {
   isUnlimited: boolean;
   attemptPayload: Record<string, unknown>;
   customAttemptId?: string;
+  skipAttemptDocWrite?: boolean;
 }): Promise<StartTestSessionResult> {
-  const { uid, userEmail, userRole, isUnlimited, attemptPayload, customAttemptId } = params;
+  const {
+    uid,
+    userEmail,
+    userRole,
+    isUnlimited,
+    attemptPayload,
+    customAttemptId,
+    skipAttemptDocWrite,
+  } = params;
   const dateKey = getPKTDateKey();
   const isHealthcheck = Boolean(attemptPayload?.healthcheck);
 
@@ -178,7 +189,13 @@ export async function startTestSessionWithLimit(params: {
   // Create the student's attempt document:
   // - Registered Firebase users: in Firestore `attempts/{attemptId}`
   // - Guest users: on the server in D1 `guest_accounts.attempts_json` via `/api/auth/guest/attempts`
-  if (!isHealthcheck && auth.currentUser && auth.currentUser.uid === uid && !uid.startsWith('guest_')) {
+  if (
+    !isHealthcheck &&
+    !skipAttemptDocWrite &&
+    auth.currentUser &&
+    auth.currentUser.uid === uid &&
+    !uid.startsWith('guest_')
+  ) {
     const finalAttemptPayload = {
       ...attemptPayload,
       id: resolvedAttemptId,
@@ -187,7 +204,7 @@ export async function startTestSessionWithLimit(params: {
       createdAt: serverTimestamp(),
     };
     await setDoc(attemptRef, finalAttemptPayload);
-  } else if (!isHealthcheck && (uid.startsWith('guest_') || !auth.currentUser)) {
+  } else if (!isHealthcheck && !skipAttemptDocWrite && (uid.startsWith('guest_') || !auth.currentUser)) {
     const guestAttemptPayload = {
       ...attemptPayload,
       id: resolvedAttemptId,

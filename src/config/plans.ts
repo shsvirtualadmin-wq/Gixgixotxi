@@ -841,7 +841,7 @@ export function resolveUnifiedPlanStatus(input: {
       isCrewPlus: false,
       crewPlanTier: 'free',
       planId: 'plus_annual',
-      planName: 'Boardly Plus (Administrator Access)',
+      planName: 'Boardly Plus · Unlimited',
       startMs: null,
       startFormatted: null,
       expiryMs: null,

@@ -27,6 +27,11 @@ import {
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { formatPlanLabel } from '@/lib/planTier';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
+import {
+  startTestSessionWithLimit,
+  fetchDailyUsageFromServer,
+  DailyTestLimitError,
+} from '@/services/testLimits';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import {
   fetchUniversities,
@@ -355,9 +360,31 @@ export function OverviewPage() {
     [user?.uid, universities, statsVersion]
   );
 
+  const [serverTestsStarted, setServerTestsStarted] = useState(0);
+
+  useEffect(() => {
+    if (isPro || !user?.uid) {
+      setServerTestsStarted(0);
+      return;
+    }
+    let cancelled = false;
+    fetchDailyUsageFromServer(user.uid)
+      .then((usage) => {
+        if (!cancelled && usage && typeof usage.testsStarted === 'number') {
+          setServerTestsStarted(usage.testsStarted);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isPro, user?.uid, statsVersion]);
+
+  const effectiveTodayTests = Math.max(d1Stats.todayTestsCount, serverTestsStarted);
+
   const testsRemaining = isPro
     ? 'Unlimited'
-    : Math.max(0, FREE_DAILY_TESTS - d1Stats.todayTestsCount);
+    : Math.max(0, FREE_DAILY_TESTS - effectiveTodayTests);
 
   const rawDisplayName = (
     profile?.display_name ||
@@ -521,8 +548,11 @@ export function OverviewPage() {
   const startUniversityD1Test = useCallback(
     async (uni: D1UniversityRow, subjectFilter: string, topicFilter: string) => {
       if (!uni || (Number(uni.mcq_count || 0) <= 0 && Number(uni.is_live || 0) <= 0)) return;
-      if (!isPro && d1Stats.todayTestsCount >= FREE_DAILY_TESTS) {
-        setTestError('Daily test limit reached on Free plan. Upgrade to Pro for unlimited tests.');
+      const isUnlimitedUser = Boolean(isPro || effectivePlan.isSuperAdmin);
+      if (!isUnlimitedUser && effectiveTodayTests >= FREE_DAILY_TESTS) {
+        setTestError(
+          `Daily test limit reached (${FREE_DAILY_TESTS}/${FREE_DAILY_TESTS} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`
+        );
         return;
       }
 
@@ -533,6 +563,25 @@ export function OverviewPage() {
       setElapsedSeconds(0);
       setTestStage('loading');
       try {
+        // Enforce daily starter limit atomically on the server (/api/usage/daily/start-test)
+        if (user?.uid) {
+          const limitRes = await startTestSessionWithLimit({
+            uid: user.uid,
+            userEmail: user.email,
+            isUnlimited: isUnlimitedUser,
+            skipAttemptDocWrite: true,
+            attemptPayload: {
+              mode: 'university_d1',
+              universityId: uni.id,
+              subject: subjectFilter,
+              topic: topicFilter,
+            },
+          });
+          if (typeof limitRes.testsStarted === 'number') {
+            setServerTestsStarted(limitRes.testsStarted);
+          }
+        }
+
         const res = await fetchMcqs({
           university_id: uni.id,
           subject: subjectFilter !== 'all' ? subjectFilter : undefined,
@@ -556,6 +605,18 @@ export function OverviewPage() {
         setElapsedSeconds(0);
         setTestStage('running');
       } catch (err: any) {
+        if (
+          err instanceof DailyTestLimitError ||
+          err?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
+        ) {
+          setServerTestsStarted(FREE_DAILY_TESTS);
+          setTestError(
+            err?.message ||
+              `Daily test limit reached (${FREE_DAILY_TESTS}/${FREE_DAILY_TESTS} tests). Upgrade to Boardly Pro or Plus, or join a Study Crew to practice unlimited.`
+          );
+          setTestStage('overview');
+          return;
+        }
         const rawMsg = String(err?.message || '');
         const cleanMsg = /d1|cloudflare|worker|firestore|firebase|database/i.test(rawMsg)
           ? 'Failed to load test questions. Please try again.'
@@ -566,7 +627,7 @@ export function OverviewPage() {
         setLoadingMcqs(false);
       }
     },
-    [d1Stats.todayTestsCount, isPro]
+    [effectiveTodayTests, effectivePlan.isSuperAdmin, isPro, user?.email, user?.uid]
   );
 
   const submitUniversityD1Test = useCallback(async () => {

@@ -7,7 +7,11 @@ import {
   MapPin,
   X,
   CheckCircle2,
+  XCircle,
   Sparkles,
+  Clock,
+  GraduationCap,
+  Eye,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -26,16 +30,36 @@ import {
   getCurrentPktMonth,
 } from '@/services/kobanService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import {
+  normalizeApplicationStatus,
+  extractTimestampMs,
+  countPendingApplications,
+  filterApplicationsByStatus,
+} from '@/lib/applicationStatus';
 import type { CaptainApplication, CrewApplication } from '@/types';
+
+function formatAppliedDate(ts: unknown): string | null {
+  const ms = extractTimestampMs(ts);
+  if (!ms) return null;
+  try {
+    return new Date(ms).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return null;
+  }
+}
 
 export function AdminApplicationsPage() {
   const { user, isAdmin, profileLoading } = useAuth();
-  const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
+  const reviewerEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
   const [activeTab, setActiveTab] = useState<'captain' | 'crew'>('captain');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [captains, setCaptains] = useState<CaptainApplication[]>([]);
-  const [crew, setCrew] = useState<CrewApplication[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [allCaptains, setAllCaptains] = useState<CaptainApplication[]>([]);
+  const [allCrew, setAllCrew] = useState<CrewApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -49,6 +73,12 @@ export function AdminApplicationsPage() {
   const [grantingAll, setGrantingAll] = useState(false);
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
 
+  // Detail modal state (opens when clicking an application row)
+  const [selectedDetail, setSelectedDetail] = useState<{
+    type: 'captain' | 'crew';
+    app: CaptainApplication | CrewApplication;
+  } | null>(null);
+
   // Reject modal dialog state
   const [rejectTarget, setRejectTarget] = useState<{
     type: 'captain' | 'crew';
@@ -61,29 +91,41 @@ export function AdminApplicationsPage() {
 
   const { label: currentMonthLabel } = getCurrentPktMonth();
 
+  const showNotice = useCallback((message: string) => {
+    setBannerNotice(message);
+    window.setTimeout(() => {
+      setBannerNotice((prev) => (prev === message ? null : prev));
+    }, 4500);
+  }, []);
+
   const loadData = useCallback(async () => {
     if (!user || !isAdmin) return;
     setLoading(true);
     setError(null);
     try {
-      if (activeTab === 'captain') {
-        const data = await fetchCaptainApplications(statusFilter);
-        setCaptains(data);
+      const [captainData, crewData] = await Promise.all([
+        fetchCaptainApplications('all'),
+        fetchCrewApplications('all'),
+      ]);
+      setAllCaptains(captainData);
+      setAllCrew(crewData);
 
-        // Fetch allotment status for approved captains
-        const approvedCaps = data.filter((c) => c.status === 'approved');
-        const statusMap: Record<string, { granted: boolean; date: Date | null; monthLabel: string }> = {};
-        await Promise.all(
-          approvedCaps.map(async (c) => {
+      // Fetch allotment status for approved captains
+      const approvedCaps = captainData.filter(
+        (c) => normalizeApplicationStatus(c.status) === 'approved' && Boolean(c.userId)
+      );
+      const statusMap: Record<string, { granted: boolean; date: Date | null; monthLabel: string }> = {};
+      await Promise.all(
+        approvedCaps.map(async (c) => {
+          try {
             const st = await getCaptainAllotmentStatus(c.userId);
             statusMap[c.userId] = st;
-          })
-        );
-        setAllotmentStatuses(statusMap);
-      } else {
-        const data = await fetchCrewApplications(statusFilter);
-        setCrew(data);
-      }
+          } catch {
+            // ignore individual allotment lookup errors
+          }
+        })
+      );
+      setAllotmentStatuses(statusMap);
     } catch (err: unknown) {
       console.error('[AdminApplicationsPage] Failed to load applications:', err);
       const e = err as Partial<AdminDiagnosticError>;
@@ -96,7 +138,7 @@ export function AdminApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin, activeTab, statusFilter]);
+  }, [user, isAdmin, activeTab]);
 
   useEffect(() => {
     if (!profileLoading && user && isAdmin) {
@@ -105,26 +147,50 @@ export function AdminApplicationsPage() {
   }, [profileLoading, user, isAdmin, loadData]);
 
   const handleApproveCaptain = async (app: CaptainApplication) => {
-    if (!user?.email) return;
     setActionInProgress(app.id);
+    setError(null);
     try {
-      await approveCaptainApplication(user.email, app);
+      await approveCaptainApplication(reviewerEmail, app);
+      setAllCaptains((prev) =>
+        prev.map((item) => (item.id === app.id ? { ...item, status: 'approved', approvedBy: reviewerEmail } : item))
+      );
+      setSelectedDetail((prev) => (prev?.app.id === app.id ? null : prev));
+      showNotice(`Approved ${app.name || app.email} as Campus Captain.`);
       await loadData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Approve captain error:', err);
+      const e = err as { code?: string; message?: string };
+      setError({
+        code: e?.code || 'APPROVE_CAPTAIN_FAILED',
+        message: e?.message || 'Could not approve this captain application. Please retry.',
+        collection: 'captainApplications',
+        operation: 'approveCaptainApplication',
+      });
     } finally {
       setActionInProgress(null);
     }
   };
 
   const handleApproveCrew = async (app: CrewApplication) => {
-    if (!user?.email) return;
     setActionInProgress(app.id);
+    setError(null);
     try {
-      await approveCrewApplication(user.email, app);
+      await approveCrewApplication(reviewerEmail, app);
+      setAllCrew((prev) =>
+        prev.map((item) => (item.id === app.id ? { ...item, status: 'approved', approvedBy: reviewerEmail } : item))
+      );
+      setSelectedDetail((prev) => (prev?.app.id === app.id ? null : prev));
+      showNotice(`Approved ${app.name || app.email} for Study Crew.`);
       await loadData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Approve crew error:', err);
+      const e = err as { code?: string; message?: string };
+      setError({
+        code: e?.code || 'APPROVE_CREW_FAILED',
+        message: e?.message || 'Could not approve this crew application. Please retry.',
+        collection: 'crewApplications',
+        operation: 'approveCrewApplication',
+      });
     } finally {
       setActionInProgress(null);
     }
@@ -142,21 +208,50 @@ export function AdminApplicationsPage() {
   };
 
   const handleConfirmReject = async () => {
-    if (!rejectTarget || !user?.email) return;
+    if (!rejectTarget) return;
     setActionInProgress(rejectTarget.appId);
+    setError(null);
     try {
+      const trimmedReason = rejectReason.trim() || 'Criteria not met at this time.';
       await rejectApplication(
-        user.email,
+        reviewerEmail,
         rejectTarget.type,
         rejectTarget.appId,
         rejectTarget.uid,
         rejectTarget.email,
-        rejectReason
+        trimmedReason
       );
+      if (rejectTarget.type === 'captain') {
+        setAllCaptains((prev) =>
+          prev.map((item) =>
+            item.id === rejectTarget.appId
+              ? { ...item, status: 'rejected', rejectionReason: trimmedReason }
+              : item
+          )
+        );
+      } else {
+        setAllCrew((prev) =>
+          prev.map((item) =>
+            item.id === rejectTarget.appId
+              ? { ...item, status: 'rejected', rejectionReason: trimmedReason }
+              : item
+          )
+        );
+      }
+      setSelectedDetail((prev) => (prev?.app.id === rejectTarget.appId ? null : prev));
+      const rejectedName = rejectTarget.name || rejectTarget.email;
       setRejectTarget(null);
+      showNotice(`Rejected application for ${rejectedName}.`);
       await loadData();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Reject application error:', err);
+      const e = err as { code?: string; message?: string };
+      setError({
+        code: e?.code || 'REJECT_APPLICATION_FAILED',
+        message: e?.message || 'Could not reject this application. Please retry.',
+        collection: rejectTarget.type === 'captain' ? 'captainApplications' : 'crewApplications',
+        operation: 'rejectApplication',
+      });
     } finally {
       setActionInProgress(null);
     }
@@ -164,44 +259,63 @@ export function AdminApplicationsPage() {
 
   const handleGrantCaptainAllotment = async (captainUid: string, captainName: string, captainEmail?: string) => {
     setGrantingCaptainId(captainUid);
+    setError(null);
     try {
-      await grantCaptainMonthlyAllotment(superadminEmail, captainUid, captainName, captainEmail);
+      await grantCaptainMonthlyAllotment(reviewerEmail, captainUid, captainName, captainEmail);
       const updatedStatus = await getCaptainAllotmentStatus(captainUid);
       setAllotmentStatuses((prev) => ({ ...prev, [captainUid]: updatedStatus }));
-      setBannerNotice(`Granted 5,000 Kobans to ${captainName} for ${currentMonthLabel}.`);
-      setTimeout(() => setBannerNotice(null), 3500);
+      showNotice(`Granted 5,000 Kobans to ${captainName} for ${currentMonthLabel}.`);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to grant allotment');
+      const e = err as { code?: string; message?: string };
+      setError({
+        code: e?.code || 'GRANT_ALLOTMENT_FAILED',
+        message: e?.message || 'Failed to grant allotment.',
+        collection: 'captainApplications',
+        operation: 'grantCaptainMonthlyAllotment',
+      });
     } finally {
       setGrantingCaptainId(null);
     }
   };
 
   const handleGrantAllApprovedCaptains = async () => {
-    const approved = captains.filter((c) => c.status === 'approved');
+    const approved = allCaptains.filter((c) => normalizeApplicationStatus(c.status) === 'approved');
     setGrantingAll(true);
+    setError(null);
     try {
       const candidates = approved.map((c) => ({
         captainUid: c.userId,
         captainName: c.name,
         captainEmail: c.email,
       }));
-      const res = await grantAllCaptainsMonthlyAllotment(superadminEmail, candidates);
+      const res = await grantAllCaptainsMonthlyAllotment(reviewerEmail, candidates);
       setGrantAllModalOpen(false);
-      setBannerNotice(
+      showNotice(
         `Monthly allotment credited to ${res.grantedCount} Captains (${res.skippedCount} already granted/skipped).`
       );
-      setTimeout(() => setBannerNotice(null), 4000);
       await loadData();
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to grant all allotments');
+      const e = err as { code?: string; message?: string };
+      setError({
+        code: e?.code || 'GRANT_ALL_ALLOTMENTS_FAILED',
+        message: e?.message || 'Failed to grant all allotments.',
+        collection: 'captainApplications',
+        operation: 'grantAllCaptainsMonthlyAllotment',
+      });
     } finally {
       setGrantingAll(false);
     }
   };
 
-  const currentList = activeTab === 'captain' ? captains : crew;
-  const approvedCaptainsList = captains.filter((c) => c.status === 'approved');
+  const captainPendingCount = countPendingApplications(allCaptains);
+  const crewPendingCount = countPendingApplications(allCrew);
+  const activeAllList = activeTab === 'captain' ? allCaptains : allCrew;
+  const currentList = filterApplicationsByStatus(activeAllList, statusFilter);
+  const activePendingCount = activeTab === 'captain' ? captainPendingCount : crewPendingCount;
+
+  const approvedCaptainsList = allCaptains.filter(
+    (c) => normalizeApplicationStatus(c.status) === 'approved'
+  );
   const pendingCaptainsForMonth = approvedCaptainsList.filter(
     (c) => !allotmentStatuses[c.userId]?.granted
   );
@@ -251,24 +365,34 @@ export function AdminApplicationsPage() {
           <button
             type="button"
             onClick={() => setActiveTab('captain')}
-            className={`px-4 py-1.5 rounded-[12px] text-xs sm:text-[13px] font-heading font-medium transition-colors cursor-pointer ${
+            className={`px-4 py-1.5 rounded-[12px] text-xs sm:text-[13px] font-heading font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'captain'
                 ? 'bg-[var(--text)] text-[var(--bg)] font-semibold shadow-sm'
                 : 'text-[var(--muted)] hover:text-[var(--text)]'
             }`}
           >
-            Campus Captains
+            <span>Campus Captains</span>
+            {captainPendingCount > 0 && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                {captainPendingCount}
+              </span>
+            )}
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('crew')}
-            className={`px-4 py-1.5 rounded-[12px] text-xs sm:text-[13px] font-heading font-medium transition-colors cursor-pointer ${
+            className={`px-4 py-1.5 rounded-[12px] text-xs sm:text-[13px] font-heading font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'crew'
                 ? 'bg-[var(--text)] text-[var(--bg)] font-semibold shadow-sm'
                 : 'text-[var(--muted)] hover:text-[var(--text)]'
             }`}
           >
-            Study Crew
+            <span>Study Crew</span>
+            {crewPendingCount > 0 && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                {crewPendingCount}
+              </span>
+            )}
           </button>
         </div>
 
@@ -287,12 +411,14 @@ export function AdminApplicationsPage() {
 
           {/* Status Filter Chips */}
           <div className="flex items-center gap-1.5">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'pending', label: 'Pending' },
-              { id: 'approved', label: 'Approved' },
-              { id: 'rejected', label: 'Rejected' },
-            ].map(({ id, label }) => (
+            {(
+              [
+                { id: 'all', label: `All (${activeAllList.length})` },
+                { id: 'pending', label: `Pending (${activePendingCount})` },
+                { id: 'approved', label: 'Approved' },
+                { id: 'rejected', label: 'Rejected' },
+              ] as const
+            ).map(({ id, label }) => (
               <button
                 key={id}
                 type="button"
@@ -325,37 +451,63 @@ export function AdminApplicationsPage() {
             const isCaptain = activeTab === 'captain';
             const capApp = app as CaptainApplication;
             const crewApp = app as CrewApplication;
-            const isPending = app.status === 'pending';
-            const isApproved = app.status === 'approved';
-            const isRejected = app.status === 'rejected';
+            const normalizedStatus = normalizeApplicationStatus(app.status);
+            const isPending = normalizedStatus === 'pending';
+            const isApproved = normalizedStatus === 'approved';
+            const isRejected = normalizedStatus === 'rejected';
 
+            const institutionLabel = isCaptain ? capApp.university : crewApp.college;
+            const statementText = isCaptain ? capApp.motivation : crewApp.whyCrew;
+            const appliedDate = formatAppliedDate(app.createdAt);
             const capAllotment = isCaptain && isApproved ? allotmentStatuses[app.userId] : null;
+            const isBusy = actionInProgress === app.id;
 
             return (
               <div
                 key={app.id}
-                className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedDetail({ type: activeTab, app })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedDetail({ type: activeTab, app });
+                  }
+                }}
+                data-application-row={app.id}
+                data-application-status={normalizedStatus}
+                className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)]/30 transition-colors flex flex-col gap-4 cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <h2 className="font-heading font-bold text-sm sm:text-base text-[var(--text)]">
-                      {app.name}
-                    </h2>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-heading font-bold text-sm sm:text-base text-[var(--text)]">
+                        {app.name || app.email || 'Applicant'}
+                      </h2>
+                      {appliedDate && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--muted)]">
+                          <Clock size={11} />
+                          <span>{appliedDate}</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 text-xs font-heading text-[var(--muted)] mt-1 flex-wrap">
-                      <span className="flex items-center gap-1 font-mono">
-                        <Mail size={12} />
-                        <span>{app.email}</span>
-                      </span>
+                      {app.email && (
+                        <span className="flex items-center gap-1 font-mono">
+                          <Mail size={12} />
+                          <span>{app.email}</span>
+                        </span>
+                      )}
                       {app.phone && (
                         <span className="flex items-center gap-1 font-mono">
                           <Phone size={12} />
                           <span>{app.phone}</span>
                         </span>
                       )}
-                      {isCaptain && capApp.university && (
+                      {institutionLabel && (
                         <span className="flex items-center gap-1">
                           <Building size={12} />
-                          <span>{capApp.university}</span>
+                          <span>{institutionLabel}</span>
                         </span>
                       )}
                       {app.city && (
@@ -367,31 +519,44 @@ export function AdminApplicationsPage() {
                     </div>
                   </div>
 
-                  {/* Status Pill */}
-                  <span
-                    className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border shrink-0 font-bold ${
-                      isApproved
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                        : isRejected
-                        ? 'border-red-500 bg-red-500/10 text-red-400'
-                        : 'border-amber-500 bg-amber-500/10 text-amber-400'
-                    }`}
-                  >
-                    {app.status}
-                  </span>
+                  {/* Status Badge */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border shrink-0 font-bold ${
+                        isApproved
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : isRejected
+                          ? 'border-red-500 bg-red-500/10 text-red-400'
+                          : 'border-amber-500 bg-amber-500/10 text-amber-400'
+                      }`}
+                    >
+                      {normalizedStatus}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Statement / Pitch */}
-                {(isCaptain ? capApp.motivation : crewApp.whyCrew) && (
+                {statementText && (
                   <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-heading text-[var(--muted)] leading-relaxed">
                     <p className="text-[var(--text)] mb-0.5 font-semibold">Candidate statement:</p>
-                    <p>{isCaptain ? capApp.motivation : crewApp.whyCrew}</p>
+                    <p className="line-clamp-3">{statementText}</p>
+                  </div>
+                )}
+
+                {/* Rejection reason if rejected */}
+                {isRejected && app.rejectionReason && (
+                  <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 text-xs font-heading text-red-300">
+                    <span className="font-semibold">Rejection note: </span>
+                    <span>{app.rejectionReason}</span>
                   </div>
                 )}
 
                 {/* ─── NAKAMA CAPTAIN MONTHLY ALLOTMENT ROW ──────────────────── */}
                 {isCaptain && isApproved && (
-                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-[rgba(232,163,23,0.08)] to-transparent border border-[rgba(232,163,23,0.3)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-3.5 rounded-xl bg-gradient-to-r from-[rgba(232,163,23,0.08)] to-transparent border border-[rgba(232,163,23,0.3)] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-1.5 text-xs font-heading font-bold text-[var(--text)]">
                         <KobanIcon size={16} />
@@ -418,7 +583,10 @@ export function AdminApplicationsPage() {
                       <button
                         type="button"
                         disabled={grantingCaptainId === app.userId}
-                        onClick={() => handleGrantCaptainAllotment(app.userId, app.name, app.email)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleGrantCaptainAllotment(app.userId, app.name, app.email);
+                        }}
                         className="relative overflow-hidden btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 shrink-0 min-w-[150px]"
                       >
                         <Sparkles size={13} />
@@ -429,37 +597,224 @@ export function AdminApplicationsPage() {
                   </div>
                 )}
 
-                {/* Action Buttons if Pending */}
-                {isPending && (
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
-                    <button
-                      type="button"
-                      disabled={actionInProgress === app.id}
-                      onClick={() =>
-                        handleOpenReject(activeTab, app.id, app.userId, app.email, app.name)
-                      }
-                      className="px-3.5 py-2 rounded-xl border border-[var(--red)]/40 text-[var(--red)] hover:bg-[var(--card-2)] text-xs font-heading font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                {/* Footer Row: View Details + Approve / Reject Actions */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border)] flex-wrap">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDetail({ type: activeTab, app });
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-heading text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+                  >
+                    <Eye size={13} />
+                    <span>View details</span>
+                  </button>
+
+                  {isPending && (
+                    <div
+                      className="flex items-center justify-end gap-2"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionInProgress === app.id}
-                      onClick={() =>
-                        isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp)
-                      }
-                      className="relative overflow-hidden px-4 py-2 rounded-xl border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-xs font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shadow-sm flex items-center justify-center min-w-[150px]"
-                    >
-                      <span>{actionInProgress === app.id ? 'Approving...' : 'Approve & grant role'}</span>
-                      {actionInProgress === app.id && <ButtonLineLoader />}
-                    </button>
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        data-action="reject-application"
+                        disabled={isBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenReject(activeTab, app.id, app.userId, app.email, app.name);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <XCircle size={14} />
+                        <span>Reject</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-action="approve-application"
+                        disabled={isBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void (isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp));
+                        }}
+                        className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-500/60 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-sm min-w-[130px]"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>{isBusy ? 'Approving...' : 'Approve'}</span>
+                        {isBusy && <ButtonLineLoader />}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* ─── MODAL: APPLICATION DETAILS ────────────────────────────────────── */}
+      {selectedDetail && (() => {
+        const isCaptain = selectedDetail.type === 'captain';
+        const app = selectedDetail.app;
+        const capApp = app as CaptainApplication;
+        const crewApp = app as CrewApplication;
+        const normalizedStatus = normalizeApplicationStatus(app.status);
+        const isPending = normalizedStatus === 'pending';
+        const isApproved = normalizedStatus === 'approved';
+        const isRejected = normalizedStatus === 'rejected';
+        const institutionLabel = isCaptain ? capApp.university : crewApp.college;
+        const statementText = isCaptain ? capApp.motivation : crewApp.whyCrew;
+        const appliedDate = formatAppliedDate(app.createdAt);
+        const isBusy = actionInProgress === app.id;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setSelectedDetail(null)}
+          >
+            <div
+              className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-heading font-bold text-lg text-[var(--text)]">
+                      {app.name || app.email || 'Applicant'}
+                    </h3>
+                    <span
+                      className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border font-bold ${
+                        isApproved
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                          : isRejected
+                          ? 'border-red-500 bg-red-500/10 text-red-400'
+                          : 'border-amber-500 bg-amber-500/10 text-amber-400'
+                      }`}
+                    >
+                      {normalizedStatus}
+                    </span>
+                  </div>
+                  <p className="text-xs font-heading text-[var(--muted)] mt-0.5">
+                    {isCaptain ? 'Nakama Campus Captain Application' : 'Study Crew Application'}
+                    {appliedDate ? ` • Submitted ${appliedDate}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetail(null)}
+                  className="p-1.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] cursor-pointer"
+                  aria-label="Close application details"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-heading">
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                    Email
+                  </span>
+                  <span className="font-mono text-[var(--text)] break-all">{app.email || '—'}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                    Phone / WhatsApp
+                  </span>
+                  <span className="font-mono text-[var(--text)]">{app.phone || '—'}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                    {isCaptain ? 'University / College' : 'College / Institution'}
+                  </span>
+                  <span className="text-[var(--text)]">{institutionLabel || '—'}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                    City
+                  </span>
+                  <span className="text-[var(--text)]">{app.city || '—'}</span>
+                </div>
+                {isCaptain && capApp.semester && (
+                  <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] sm:col-span-2">
+                    <span className="text-[10px] uppercase font-mono text-[var(--muted)] flex items-center gap-1 mb-1">
+                      <GraduationCap size={12} />
+                      <span>Class / Year</span>
+                    </span>
+                    <span className="text-[var(--text)]">{capApp.semester}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-heading space-y-1">
+                <span className="text-[10px] uppercase font-mono text-[var(--muted)] block">
+                  Candidate statement
+                </span>
+                <p className="text-[var(--text)] leading-relaxed whitespace-pre-wrap">
+                  {statementText || 'No statement provided.'}
+                </p>
+              </div>
+
+              {isRejected && app.rejectionReason && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs font-heading text-red-300">
+                  <span className="font-semibold">Rejection reason: </span>
+                  <span>{app.rejectionReason}</span>
+                </div>
+              )}
+
+              {isApproved && app.approvedBy && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-heading text-emerald-300">
+                  Approved by <span className="font-mono">{app.approvedBy}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetail(null)}
+                  className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Close
+                </button>
+                {isPending && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        handleOpenReject(
+                          selectedDetail.type,
+                          app.id,
+                          app.userId,
+                          app.email,
+                          app.name
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <XCircle size={14} />
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() =>
+                        void (isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp))
+                      }
+                      className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-500/60 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-sm min-w-[140px]"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>{isBusy ? 'Approving...' : 'Approve & grant role'}</span>
+                      {isBusy && <ButtonLineLoader />}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ─── MODAL: GRANT TO ALL APPROVED CAPTAINS ─────────────────────────── */}
       {grantAllModalOpen && (
@@ -528,8 +883,16 @@ export function AdminApplicationsPage() {
 
       {/* ─── MODAL: REJECT APPLICATION ─────────────────────────────────────── */}
       {rejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
-          <div className="relative w-full max-w-[420px] rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setRejectTarget(null)}
+        >
+          <div
+            className="relative w-full max-w-[420px] rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
               <h3 className="font-heading font-bold text-base text-[var(--text)]">
                 Reject application
@@ -537,14 +900,14 @@ export function AdminApplicationsPage() {
               <button
                 type="button"
                 onClick={() => setRejectTarget(null)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
             <p className="font-heading text-xs text-[var(--muted)] leading-relaxed">
-              Rejecting application for <strong className="text-[var(--text)]">{rejectTarget.name}</strong>. Provide an optional message to include in their notification.
+              Rejecting application for <strong className="text-[var(--text)]">{rejectTarget.name || rejectTarget.email}</strong>. Provide an optional message to include in their notification.
             </p>
 
             <div>
@@ -560,7 +923,7 @@ export function AdminApplicationsPage() {
               <button
                 type="button"
                 onClick={() => setRejectTarget(null)}
-                className="btn-outline flex-1 py-2 rounded-xl text-xs font-heading font-semibold"
+                className="btn-outline flex-1 py-2 rounded-xl text-xs font-heading font-semibold cursor-pointer"
               >
                 Cancel
               </button>
@@ -568,9 +931,9 @@ export function AdminApplicationsPage() {
                 type="button"
                 disabled={actionInProgress !== null}
                 onClick={handleConfirmReject}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-heading font-semibold"
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-heading font-semibold cursor-pointer disabled:opacity-50"
               >
-                Confirm rejection
+                {actionInProgress !== null ? 'Rejecting...' : 'Confirm rejection'}
               </button>
             </div>
           </div>
