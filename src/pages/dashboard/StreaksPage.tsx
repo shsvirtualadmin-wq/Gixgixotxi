@@ -1,12 +1,15 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { StreaksPageSkeleton } from '@/components/ui/Skeleton';
 import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 import {
   computeStreakData,
-  fetchUserCompletedSessionDates,
+  fetchUserStreakActivityMap,
+  getLocalStreakActivityMap,
+  mergeStreakActivityMaps,
+  type StreakActivityMap,
   type StreakComputationResult,
   type StreakCalendarDay,
 } from '@/services/streakEngine';
@@ -35,32 +38,121 @@ import { useNavigate } from 'react-router-dom';
 import { useSmartBack } from '@/utils/homeUrl';
 import { useLanguage } from '@/contexts/LanguageContext';
 
+interface CachedStreakPayload {
+  streakFreezes: number;
+  freezeActive: boolean;
+  redeemedBadges: string[];
+  equippedBadges: string[];
+  activityMap?: StreakActivityMap;
+  streakData?: StreakComputationResult;
+}
+
+function withTimeoutFallback<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
+}
+
 export function StreaksPage() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const handleBack = useSmartBack();
   const { t, formatNumber } = useLanguage();
 
+  const profileAny = profile as Record<string, unknown> | null;
   const streakCacheKey = user?.uid ? `streaks:user:${user.uid}` : '';
-  const initialCachedStreak = useMemo(() => {
-    if (!streakCacheKey) return null;
-    return readSwrCache<{
-      streakFreezes: number;
-      freezeActive: boolean;
-      redeemedBadges: string[];
-      equippedBadges: string[];
-      streakData: StreakComputationResult;
-    }>(streakCacheKey)?.data ?? null;
-  }, [streakCacheKey]);
 
-  // Streak & User State
-  const [loading, setLoading] = useState(() => !initialCachedStreak);
+  const initialHydration = useMemo(() => {
+    if (!user?.uid) return null;
+    const cached = streakCacheKey
+      ? readSwrCache<CachedStreakPayload>(streakCacheKey, 15 * 60_000)?.data ?? null
+      : null;
+    const localMap = getLocalStreakActivityMap(user.uid);
+    const cachedMap: StreakActivityMap =
+      cached?.activityMap ?? (cached?.streakData?.dayDetails as StreakActivityMap | undefined) ?? {};
+    const mergedMap = mergeStreakActivityMaps(cachedMap, localMap);
+
+    const freezeActiveInit = Boolean(
+      cached?.freezeActive ?? profileAny?.streakFreezeActive ?? false
+    );
+    const streakFreezesInit = Number(
+      cached?.streakFreezes ?? profileAny?.streakFreezes ?? 1
+    );
+    const redeemedInit = Array.isArray(cached?.redeemedBadges)
+      ? cached.redeemedBadges
+      : Array.isArray(profileAny?.redeemedBadges)
+      ? (profileAny.redeemedBadges as string[])
+      : [];
+    const equippedInit = Array.isArray(cached?.equippedBadges)
+      ? cached.equippedBadges
+      : Array.isArray(profileAny?.equippedBadges)
+      ? (profileAny.equippedBadges as string[])
+      : [];
+
+    const computed = computeStreakData(mergedMap, { freezeActive: freezeActiveInit });
+    return {
+      streakFreezes: streakFreezesInit,
+      freezeActive: freezeActiveInit,
+      redeemedBadges: redeemedInit,
+      equippedBadges: equippedInit,
+      activityMap: mergedMap,
+      streakData: computed,
+    };
+  }, [user?.uid, streakCacheKey, profileAny?.streakFreezeActive, profileAny?.streakFreezes, profileAny?.redeemedBadges, profileAny?.equippedBadges]);
+
+  // Streak & User State — hydrated synchronously on frame 1 so there is no 8-second skeleton wait
+  const [loading, setLoading] = useState(() => !initialHydration);
   const [hasError, setHasError] = useState(false);
-  const [streakFreezes, setStreakFreezes] = useState(() => initialCachedStreak?.streakFreezes ?? 1);
-  const [freezeActive, setFreezeActive] = useState(() => initialCachedStreak?.freezeActive ?? false);
-  const [redeemedBadges, setRedeemedBadges] = useState<string[]>(() => initialCachedStreak?.redeemedBadges ?? []);
-  const [equippedBadges, setEquippedBadges] = useState<string[]>(() => initialCachedStreak?.equippedBadges ?? []);
-  const [streakData, setStreakData] = useState<StreakComputationResult | null>(() => initialCachedStreak?.streakData ?? null);
+  const [streakFreezes, setStreakFreezes] = useState(() => initialHydration?.streakFreezes ?? 1);
+  const [freezeActive, setFreezeActive] = useState(() => initialHydration?.freezeActive ?? false);
+  const [redeemedBadges, setRedeemedBadges] = useState<string[]>(() => initialHydration?.redeemedBadges ?? []);
+  const [equippedBadges, setEquippedBadges] = useState<string[]>(() => initialHydration?.equippedBadges ?? []);
+  const [streakData, setStreakData] = useState<StreakComputationResult | null>(() => initialHydration?.streakData ?? null);
+  const activityMapRef = useRef<StreakActivityMap>(initialHydration?.activityMap ?? {});
+  const lastUidRef = useRef<string | null>(user?.uid ?? null);
+
+  // Keep state immediately hydrated whenever user/local data changes
+  useEffect(() => {
+    if (!initialHydration || !user?.uid) return;
+    if (lastUidRef.current !== user.uid) {
+      lastUidRef.current = user.uid;
+      activityMapRef.current = initialHydration.activityMap;
+    } else {
+      activityMapRef.current = mergeStreakActivityMaps(
+        activityMapRef.current,
+        initialHydration.activityMap
+      );
+    }
+    setStreakFreezes(initialHydration.streakFreezes);
+    setFreezeActive(initialHydration.freezeActive);
+    setRedeemedBadges(initialHydration.redeemedBadges);
+    setEquippedBadges(initialHydration.equippedBadges);
+    setStreakData(
+      computeStreakData(activityMapRef.current, { freezeActive: initialHydration.freezeActive })
+    );
+    setLoading(false);
+  }, [initialHydration, user?.uid]);
 
   // Modals & Bottom Sheets
   const [selectedDay, setSelectedDay] = useState<StreakCalendarDay | null>(null);
@@ -73,54 +165,79 @@ export function StreaksPage() {
   const [redeemingBadgeId, setRedeemingBadgeId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Authoritative data loading function
-  const loadStreakData = useCallback(async (background = false) => {
-    if (!user) return;
+  // Authoritative background/remote reconciliation function (parallel + tight timeouts)
+  const loadStreakData = useCallback(async (background = true) => {
+    if (!user?.uid) return;
     try {
       if (!background) {
         setLoading(true);
       }
       setHasError(false);
 
-      // 1. Fetch user profile for freeze, badges, and cached counters + session dates in parallel
+      const isFirebaseUser = Boolean(
+        auth.currentUser && auth.currentUser.uid === user.uid && !user.uid.startsWith('guest_')
+      );
       const userRef = doc(db, 'users', user.uid);
-      const [userSnap, sessionDates] = await Promise.all([
-        getDoc(userRef),
-        fetchUserCompletedSessionDates(user.uid),
-      ]);
-      const uData = userSnap.exists() ? userSnap.data() : {};
 
-      const isFreezeActive = Boolean(uData.streakFreezeActive);
-      const currentFreezes = Number(uData.streakFreezes ?? 1);
-      const nextRedeemed = Array.isArray(uData.redeemedBadges) ? uData.redeemedBadges : [];
-      const nextEquipped = Array.isArray(uData.equippedBadges) ? uData.equippedBadges : [];
+      // 1. Fetch user doc (with 2s timeout) & all activity sources in parallel
+      const [userSnap, remoteActivityMap] = await Promise.all([
+        isFirebaseUser ? withTimeoutFallback(getDoc(userRef), 2000, null) : Promise.resolve(null),
+        fetchUserStreakActivityMap(user.uid),
+      ]);
+
+      const uData: Record<string, unknown> = userSnap?.exists()
+        ? (userSnap.data() as Record<string, unknown>)
+        : profileAny || {};
+
+      const isFreezeActive = Boolean(uData.streakFreezeActive ?? freezeActive);
+      const currentFreezes = Number(uData.streakFreezes ?? streakFreezes ?? 1);
+      const nextRedeemed = Array.isArray(uData.redeemedBadges)
+        ? (uData.redeemedBadges as string[])
+        : redeemedBadges;
+      const nextEquipped = Array.isArray(uData.equippedBadges)
+        ? (uData.equippedBadges as string[])
+        : equippedBadges;
+
       setStreakFreezes(currentFreezes);
       setFreezeActive(isFreezeActive);
       setRedeemedBadges(nextRedeemed);
       setEquippedBadges(nextEquipped);
 
+      // 2. Merge remote activity with latest local activity so freshly submitted tests always show immediately
+      const latestLocalMap = getLocalStreakActivityMap(user.uid);
+      const mergedMap = mergeStreakActivityMaps(
+        activityMapRef.current,
+        remoteActivityMap,
+        latestLocalMap
+      );
+      activityMapRef.current = mergedMap;
+
       // 3. Compute authoritative streak data with ONE shared function
-      const computed = computeStreakData(sessionDates, {
+      const computed = computeStreakData(mergedMap, {
         freezeActive: isFreezeActive,
       });
       setStreakData(computed);
 
       if (streakCacheKey) {
-        writeSwrCache(
+        writeSwrCache<CachedStreakPayload>(
           streakCacheKey,
           {
             streakFreezes: currentFreezes,
             freezeActive: isFreezeActive,
             redeemedBadges: nextRedeemed,
             equippedBadges: nextEquipped,
-            streakData: computed,
+            activityMap: mergedMap,
           },
-          { freshTtlMs: 45_000, maxStaleMs: 15 * 60_000, persist: true }
+          true
         );
       }
 
-      // 4. Mirror accurate streak to user doc if it diverged
-      if (uData.streak !== computed.currentStreak || uData.longestStreak !== computed.longestStreak) {
+      // 4. Mirror accurate streak to user doc non-blockingly if it diverged
+      if (
+        isFirebaseUser &&
+        userSnap?.exists() &&
+        (uData.streak !== computed.currentStreak || uData.longestStreak !== computed.longestStreak)
+      ) {
         updateDoc(userRef, {
           streak: computed.currentStreak,
           longestStreak: computed.longestStreak,
@@ -131,17 +248,39 @@ export function StreaksPage() {
       }
     } catch (err) {
       console.error('[StreaksPage] Error loading streak data:', err);
-      if (!background) {
+      if (!background && !streakData) {
         setHasError(true);
       }
     } finally {
       setLoading(false);
     }
-  }, [user, streakCacheKey]);
+  }, [user?.uid, streakCacheKey, profileAny, freezeActive, streakFreezes, redeemedBadges, equippedBadges, streakData]);
 
   useEffect(() => {
-    void loadStreakData(Boolean(initialCachedStreak));
-  }, [loadStreakData, initialCachedStreak]);
+    if (!user?.uid) return;
+    void loadStreakData(true);
+    // Run once per authenticated user change (background refresh; instant local UI is already rendered)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  // Immediately update when a practice test is completed anywhere in the app
+  useEffect(() => {
+    if (!user?.uid) return;
+    const handleStreakUpdated = () => {
+      const latestLocalMap = getLocalStreakActivityMap(user.uid);
+      const mergedMap = mergeStreakActivityMaps(activityMapRef.current, latestLocalMap);
+      activityMapRef.current = mergedMap;
+      const computed = computeStreakData(mergedMap, { freezeActive });
+      setStreakData(computed);
+      void loadStreakData(true);
+    };
+    window.addEventListener('boardly-streak-updated', handleStreakUpdated);
+    window.addEventListener('boardly-d1-attempts-updated', handleStreakUpdated);
+    return () => {
+      window.removeEventListener('boardly-streak-updated', handleStreakUpdated);
+      window.removeEventListener('boardly-d1-attempts-updated', handleStreakUpdated);
+    };
+  }, [user?.uid, freezeActive, loadStreakData]);
 
   // Current streak values
   const currentStreak = streakData?.currentStreak ?? 0;
@@ -190,7 +329,7 @@ export function StreaksPage() {
 
       // Recompute streak with new freeze state
       if (streakData) {
-        const recomputed = computeStreakData(streakData.activePKTDays, {
+        const recomputed = computeStreakData(streakData.dayDetails, {
           freezeActive: nextActive,
         });
         setStreakData(recomputed);
@@ -208,7 +347,7 @@ export function StreaksPage() {
       setStreakFreezes(nextFreezes);
       setFreezeConfirmOpen(false);
       if (streakData) {
-        const recomputed = computeStreakData(streakData.activePKTDays, {
+        const recomputed = computeStreakData(streakData.dayDetails, {
           freezeActive: nextActive,
         });
         setStreakData(recomputed);
@@ -268,7 +407,7 @@ export function StreaksPage() {
 
   if (loading && !streakData) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-6 antialiased pb-36 rs-body text-[var(--rs-text)]">
+      <div className="w-full max-w-xl mx-auto px-4 py-6 antialiased pb-10 rs-body text-[var(--rs-text)]">
         <StreaksPageSkeleton />
       </div>
     );
@@ -277,7 +416,7 @@ export function StreaksPage() {
   // Error State with Retry
   if (hasError || !streakData) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center text-center gap-4 antialiased pb-36 rs-body text-[var(--rs-text)]">
+      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center text-center gap-4 antialiased pb-10 rs-body text-[var(--rs-text)]">
         <div className="w-14 h-14 rounded-full bg-[var(--rs-red)]/15 text-[var(--rs-red-text)] flex items-center justify-center">
           <AlertCircle size={28} />
         </div>
@@ -302,8 +441,7 @@ export function StreaksPage() {
 
   return (
     <div
-      className="w-full max-w-xl mx-auto px-4 py-6 flex flex-col gap-5 antialiased select-none rs-body text-[var(--rs-text)]"
-      style={{ paddingBottom: 'calc(136px + env(safe-area-inset-bottom, 0px))' }}
+      className="w-full max-w-xl mx-auto px-4 pt-6 pb-10 flex flex-col gap-5 antialiased select-none rs-body text-[var(--rs-text)]"
     >
       {/* ── 1. Top of Page ──────────────────────────────────────────────── */}
       <div className="flex items-start gap-3.5">
@@ -807,11 +945,11 @@ export function StreaksPage() {
       {/* ── Day Details Bottom Sheet ────────────────────────────────────── */}
       {selectedDay && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setSelectedDay(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] rs-card rs-card--28 p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] rs-card rs-card--28 p-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div
@@ -906,11 +1044,11 @@ export function StreaksPage() {
       {/* ── Badge Details Bottom Sheet ──────────────────────────────────── */}
       {selectedBadge && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[1100] flex items-end sm:items-center justify-center p-0 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setSelectedBadge(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] rs-card rs-card--28 p-6 flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] rs-card rs-card--28 p-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))] flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full flex justify-end">
@@ -1052,7 +1190,7 @@ export function StreaksPage() {
       {/* ── Share Modal ─────────────────────────────────────────────────── */}
       {shareModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+          className="fixed inset-0 z-[1100] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
           onClick={() => setShareModalOpen(false)}
         >
           <div

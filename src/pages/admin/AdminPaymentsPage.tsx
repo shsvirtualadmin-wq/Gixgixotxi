@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw,
   ExternalLink,
@@ -62,7 +62,10 @@ const TAB_ITEMS: Array<{
 ];
 
 export function AdminPaymentsPage() {
-  const { user, isAdmin, profileLoading } = useAuth();
+  const { user, isAdmin, isSuperAdmin, tokenClaims, profileLoading } = useAuth();
+  const hasAdminAccess = Boolean(
+    isAdmin || isSuperAdmin || tokenClaims?.admin === true || tokenClaims?.superAdmin === true
+  );
   const superadminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
   const [paymentType, setPaymentType] = useState<'plans' | 'kobans' | 'coupons'>(() => {
@@ -136,57 +139,104 @@ export function AdminPaymentsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const isMountedRef = useRef(true);
+  const loadRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const loadData = useCallback(async () => {
-    if (!user || !isAdmin) return;
+    if (!user || !hasAdminAccess) {
+      if (isMountedRef.current) setLoading(false);
+      return;
+    }
+    const requestId = ++loadRequestIdRef.current;
+    const activeTab = paymentType;
+    const activeStatus = statusFilter;
     setLoading(true);
     setError(null);
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      if (paymentType === 'plans') {
-        const data = await fetchPaymentRequests(statusFilter);
-        setPlanRequests(data);
-      } else if (paymentType === 'kobans') {
-        const data = await fetchKobanRequests(statusFilter);
-        setKobanRequestsList(data);
-      } else {
-        const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>(
-          '/api/admin/coupons'
-        );
-        if (!ok || !payload?.ok) {
-          const couponErr: any = new Error(errorMessage || 'Failed to load coupons from server.');
-          couponErr.code = payload?.reason || payload?.code || 'PAYMENTS_LOAD_FAILED';
-          throw couponErr;
-        }
-        const rawCoupons = Array.isArray(payload.coupons) ? payload.coupons : [];
-        const rawRedemptions = Array.isArray(payload.redemptions) ? payload.redemptions : [];
+      const runTabFetch = async () => {
+        if (activeTab === 'plans') {
+          const data = await fetchPaymentRequests(activeStatus);
+          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+            setPlanRequests(data);
+          }
+        } else if (activeTab === 'kobans') {
+          const data = await fetchKobanRequests(activeStatus);
+          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+            setKobanRequestsList(data);
+          }
+        } else {
+          const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>(
+            '/api/admin/coupons',
+            undefined,
+            10000
+          );
+          if (!ok || !payload?.ok) {
+            const couponErr: any = new Error(errorMessage || 'Failed to load coupons from server.');
+            couponErr.code = payload?.reason || payload?.code || 'PAYMENTS_LOAD_FAILED';
+            throw couponErr;
+          }
+          const rawCoupons = Array.isArray(payload.coupons) ? payload.coupons : [];
+          const rawRedemptions = Array.isArray(payload.redemptions) ? payload.redemptions : [];
 
-        setCouponsList(rawCoupons.map((item: any) => normalizeAdminCoupon(item)));
-        setCouponRedemptions(
-          rawRedemptions
-            .map((item: any) => normalizeAdminCouponRedemption(item))
-            .sort((a: NormalizedAdminCouponRedemption, b: NormalizedAdminCouponRedemption) => {
-              return (b.redeemedAtMs || 0) - (a.redeemedAtMs || 0);
-            })
-        );
-      }
+          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+            setCouponsList(rawCoupons.map((item: any) => normalizeAdminCoupon(item)));
+            setCouponRedemptions(
+              rawRedemptions
+                .map((item: any) => normalizeAdminCouponRedemption(item))
+                .sort((a: NormalizedAdminCouponRedemption, b: NormalizedAdminCouponRedemption) => {
+                  return (b.redeemedAtMs || 0) - (a.redeemedAtMs || 0);
+                })
+            );
+          }
+        }
+      };
+
+      await Promise.race([
+        runTabFetch(),
+        new Promise<never>((_, reject) => {
+          safetyTimer = setTimeout(() => {
+            const timeoutErr: any = new Error(
+              'Request timed out while refreshing payment records. Please try again.'
+            );
+            timeoutErr.code = 'DEADLINE_EXCEEDED';
+            reject(timeoutErr);
+          }, 15000);
+        }),
+      ]);
     } catch (err: unknown) {
+      if (!isMountedRef.current || loadRequestIdRef.current !== requestId) return;
       console.error('[AdminPaymentsPage] Failed to load payment requests:', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'PAYMENTS_LOAD_FAILED',
         message: e?.message || 'Failed to load payment records. Please retry.',
-        collection: paymentType === 'plans' ? 'paymentRequests' : paymentType,
+        collection: activeTab === 'plans' ? 'paymentRequests' : activeTab,
         operation: 'loadData',
       });
     } finally {
-      setLoading(false);
+      if (safetyTimer) clearTimeout(safetyTimer);
+      if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
-  }, [user, isAdmin, paymentType, statusFilter]);
+  }, [user, hasAdminAccess, paymentType, statusFilter]);
 
   useEffect(() => {
-    if (!profileLoading && user && isAdmin) {
-      void loadData();
+    if (profileLoading) return;
+    if (!user || !hasAdminAccess) {
+      setLoading(false);
+      return;
     }
-  }, [profileLoading, user, isAdmin, loadData]);
+    void loadData();
+  }, [profileLoading, user, hasAdminAccess, loadData]);
 
   const handleCreateCoupon = async () => {
     const cleanCode = newCouponCode
@@ -478,7 +528,7 @@ export function AdminPaymentsPage() {
 
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => void loadData()}
             disabled={loading}
             {...getBubbleTouchHandlers({ disabled: loading })}
             className="bubble-touch lg-nothing-pill min-h-[44px] px-4 py-2 text-xs sm:text-[13px] font-heading font-semibold text-[var(--text)] inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"

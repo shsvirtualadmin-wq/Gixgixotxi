@@ -511,7 +511,23 @@ export async function fetchKobanRequests(statusFilter = 'all'): Promise<KobanReq
         ? query(colRef, where('status', '==', statusFilter), limit(100))
         : query(colRef, limit(100));
 
-    const snap = await getDocs(q);
+    const snap = await new Promise<Awaited<ReturnType<typeof getDocs>>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const err: any = new Error('Timed out loading Koban requests after 10 seconds');
+        err.code = 'DEADLINE_EXCEEDED';
+        reject(err);
+      }, 10000);
+      getDocs(q).then(
+        (res) => {
+          clearTimeout(timer);
+          resolve(res);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+    });
     const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as KobanRequest));
     // Sort client-side by createdAt desc
     list.sort((a, b) => {

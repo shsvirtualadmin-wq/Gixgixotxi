@@ -8,6 +8,7 @@ import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import {
+  computeScorePercentage,
   getGlobalGrandLineTopScorers,
   getAllPublicGrandLineTests,
   type AmbassadorTestDoc,
@@ -24,7 +25,7 @@ import { buildEntitySlug } from '@/utils/privacy';
 import { getDisplayName } from '@/utils/displayName';
 import { readSwrCache, writeSwrCache } from '@/lib/swrCache';
 
-const LEADERBOARD_SWR_KEY = 'gl_leaderboard_enriched_v1';
+const LEADERBOARD_SWR_KEY = 'gl_leaderboard_enriched_v2';
 
 interface CachedLeaderboardSnapshot {
   scorers: GlobalTopScorerEntry[];
@@ -141,7 +142,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
   }, [loadLeaderboardData]);
 
   return (
-    <div data-student-page="arena" className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-[calc(96px+env(safe-area-inset-bottom,0px))] px-3 sm:px-6 overflow-x-clip">
+    <div data-student-page="arena" className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] pt-2 sm:pt-3 pb-12 px-3 sm:px-6 overflow-x-clip">
       <PageMeta
         title="Grand Line Leaderboard — Live Standings & Top Scorers | Boardly"
         description="View real-time student rankings and top scorers across public Grand Line mock tests authored by Nakama Captains on Boardly."
@@ -185,7 +186,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
             </h2>
             {!loading && !loadError && scorers.length > 0 && (
               <span className="text-xs font-mono text-[var(--muted)] tabular-nums">
-                {scorers.length} {scorers.length === 1 ? 'student' : 'students'}
+                {`${scorers.length} ${scorers.length === 1 ? 'student' : 'students'}`}
               </span>
             )}
           </div>
@@ -275,6 +276,11 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                     : typeof (entry as any).plusBadge === 'number'
                     ? (entry as any).plusBadge
                     : null;
+                const displayPercentage = computeScorePercentage(
+                  entry.score,
+                  entry.totalQuestions,
+                  entry.percentage
+                );
 
                 return (
                   <div
@@ -332,8 +338,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                           )}
                         </div>
                         <p className="text-[11px] text-[var(--muted)] font-mono tabular-nums truncate mt-0.5">
-                          {entry.testTitle ? `${entry.testTitle} · ` : ''}
-                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}%
+                          {`${entry.testTitle ? `${entry.testTitle} · ` : ''}${formatTimeTaken(entry.timeTakenSeconds)} · ${displayPercentage}%`}
                         </p>
                       </div>
                     </div>
@@ -344,7 +349,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                           : `${entry.score}`}
                       </span>
                       <span className="text-[11px] font-bold text-[#D71921] block whitespace-nowrap mt-0.5">
-                        {entry.percentage}%
+                        {`${displayPercentage}%`}
                       </span>
                     </div>
                   </div>
@@ -377,8 +382,7 @@ export const GrandLineLeaderboardPage: React.FC = () => {
                       </h3>
                     </div>
                     <p className="text-xs text-[var(--muted)] tabular-nums truncate pt-1">
-                      {qCount} {qCount === 1 ? 'question' : 'questions'} · By{' '}
-                      {getDisplayName({ displayName: t.creatorName }, 'Captain')}
+                      {`${qCount} ${qCount === 1 ? 'question' : 'questions'} · By ${getDisplayName({ displayName: t.creatorName }, 'Captain')}`}
                     </p>
                   </Link>
                 );

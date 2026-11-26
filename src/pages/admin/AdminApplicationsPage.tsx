@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   RefreshCw,
   Phone,
@@ -12,13 +13,13 @@ import {
   Clock,
   GraduationCap,
   Eye,
+  Link2,
 } from 'lucide-react';
 import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  fetchCaptainApplications,
-  fetchCrewApplications,
+  fetchAllApplications,
   approveCaptainApplication,
   approveCrewApplication,
   rejectApplication,
@@ -30,6 +31,7 @@ import {
   getCurrentPktMonth,
 } from '@/services/kobanService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
+import { useBodyScrollLock } from '@/utils/scrollLock';
 import {
   normalizeApplicationStatus,
   extractTimestampMs,
@@ -90,6 +92,27 @@ export function AdminApplicationsPage() {
   const [rejectReason, setRejectReason] = useState('Criteria not met at this time.');
 
   const { label: currentMonthLabel } = getCurrentPktMonth();
+  const hasAutoSelectedTabRef = useRef(false);
+
+  const hasOpenModal = Boolean(selectedDetail || grantAllModalOpen || rejectTarget);
+  useBodyScrollLock(hasOpenModal, 'admin-applications-modal');
+
+  useEffect(() => {
+    if (!hasOpenModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (rejectTarget) {
+          setRejectTarget(null);
+        } else if (grantAllModalOpen) {
+          setGrantAllModalOpen(false);
+        } else if (selectedDetail) {
+          setSelectedDetail(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hasOpenModal, rejectTarget, grantAllModalOpen, selectedDetail]);
 
   const showNotice = useCallback((message: string) => {
     setBannerNotice(message);
@@ -103,12 +126,18 @@ export function AdminApplicationsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [captainData, crewData] = await Promise.all([
-        fetchCaptainApplications('all'),
-        fetchCrewApplications('all'),
-      ]);
+      const snapshot = await fetchAllApplications();
+      const captainData = snapshot.captains;
+      const crewData = snapshot.crew;
       setAllCaptains(captainData);
       setAllCrew(crewData);
+
+      if (!hasAutoSelectedTabRef.current) {
+        hasAutoSelectedTabRef.current = true;
+        if (captainData.length === 0 && crewData.length > 0) {
+          setActiveTab('crew');
+        }
+      }
 
       // Fetch allotment status for approved captains
       const approvedCaps = captainData.filter(
@@ -132,13 +161,13 @@ export function AdminApplicationsPage() {
       setError({
         code: e?.code || 'APPLICATIONS_LOAD_FAILED',
         message: e?.message || 'Failed to load applications. Please retry.',
-        collection: activeTab === 'captain' ? 'captainApplications' : 'crewApplications',
+        collection: 'captainApplications, crewApplications',
         operation: 'loadData',
       });
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin, activeTab]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     if (!profileLoading && user && isAdmin) {
@@ -516,6 +545,18 @@ export function AdminApplicationsPage() {
                           <span>{app.city}</span>
                         </span>
                       )}
+                      {isCaptain && capApp.semester && (
+                        <span className="flex items-center gap-1">
+                          <GraduationCap size={12} />
+                          <span>{capApp.semester}</span>
+                        </span>
+                      )}
+                      {(isCaptain ? capApp.socialLink : crewApp.instagram) && (
+                        <span className="flex items-center gap-1 font-mono">
+                          <Link2 size={12} />
+                          <span>{isCaptain ? capApp.socialLink : crewApp.instagram}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -652,293 +693,333 @@ export function AdminApplicationsPage() {
         )}
       </div>
 
-      {/* ─── MODAL: APPLICATION DETAILS ────────────────────────────────────── */}
-      {selectedDetail && (() => {
-        const isCaptain = selectedDetail.type === 'captain';
-        const app = selectedDetail.app;
-        const capApp = app as CaptainApplication;
-        const crewApp = app as CrewApplication;
-        const normalizedStatus = normalizeApplicationStatus(app.status);
-        const isPending = normalizedStatus === 'pending';
-        const isApproved = normalizedStatus === 'approved';
-        const isRejected = normalizedStatus === 'rejected';
-        const institutionLabel = isCaptain ? capApp.university : crewApp.college;
-        const statementText = isCaptain ? capApp.motivation : crewApp.whyCrew;
-        const appliedDate = formatAppliedDate(app.createdAt);
-        const isBusy = actionInProgress === app.id;
+      {/* ─── MODAL: APPLICATION DETAILS (PORTALED ABOVE LAYOUT TRANSFORM) ──── */}
+      {typeof document !== 'undefined' &&
+        selectedDetail &&
+        createPortal(
+          (() => {
+            const isCaptain = selectedDetail.type === 'captain';
+            const app = selectedDetail.app;
+            const capApp = app as CaptainApplication;
+            const crewApp = app as CrewApplication;
+            const normalizedStatus = normalizeApplicationStatus(app.status);
+            const isPending = normalizedStatus === 'pending';
+            const isApproved = normalizedStatus === 'approved';
+            const isRejected = normalizedStatus === 'rejected';
+            const institutionLabel = isCaptain ? capApp.university : crewApp.college;
+            const statementText = isCaptain ? capApp.motivation : crewApp.whyCrew;
+            const socialLabel = isCaptain ? capApp.socialLink : crewApp.instagram;
+            const appliedDate = formatAppliedDate(app.createdAt);
+            const isBusy = actionInProgress === app.id;
 
-        return (
+            return (
+              <div
+                data-testid="application-detail-modal"
+                data-fullscreen-modal="true"
+                className="fixed inset-0 z-[120] flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+                role="dialog"
+                aria-modal="true"
+                onClick={() => setSelectedDetail(null)}
+              >
+                <div
+                  className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-heading font-bold text-lg text-[var(--text)]">
+                          {app.name || app.email || 'Applicant'}
+                        </h3>
+                        <span
+                          className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border font-bold ${
+                            isApproved
+                              ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                              : isRejected
+                              ? 'border-red-500 bg-red-500/10 text-red-400'
+                              : 'border-amber-500 bg-amber-500/10 text-amber-400'
+                          }`}
+                        >
+                          {normalizedStatus}
+                        </span>
+                      </div>
+                      <p className="text-xs font-heading text-[var(--muted)] mt-0.5">
+                        {isCaptain ? 'Nakama Campus Captain Application' : 'Study Crew Application'}
+                        {appliedDate ? ` • Submitted ${appliedDate}` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDetail(null)}
+                      className="p-1.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] cursor-pointer"
+                      aria-label="Close application details"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-heading">
+                    <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                        Email
+                      </span>
+                      <span className="font-mono text-[var(--text)] break-all">{app.email || '—'}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                        Phone / WhatsApp
+                      </span>
+                      <span className="font-mono text-[var(--text)]">{app.phone || '—'}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                        {isCaptain ? 'University / College' : 'College / Institution'}
+                      </span>
+                      <span className="text-[var(--text)]">{institutionLabel || '—'}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                      <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                        City
+                      </span>
+                      <span className="text-[var(--text)]">{app.city || '—'}</span>
+                    </div>
+                    {isCaptain && capApp.semester && (
+                      <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)] flex items-center gap-1 mb-1">
+                          <GraduationCap size={12} />
+                          <span>Class / Year</span>
+                        </span>
+                        <span className="text-[var(--text)]">{capApp.semester}</span>
+                      </div>
+                    )}
+                    {socialLabel && (
+                      <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)] flex items-center gap-1 mb-1">
+                          <Link2 size={12} />
+                          <span>Social / Instagram</span>
+                        </span>
+                        <span className="font-mono text-[var(--text)] break-all">{socialLabel}</span>
+                      </div>
+                    )}
+                    {isCaptain && capApp.expectedReach && (
+                      <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] sm:col-span-2">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                          Expected Reach
+                        </span>
+                        <span className="text-[var(--text)]">{capApp.expectedReach}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-heading space-y-1">
+                    <span className="text-[10px] uppercase font-mono text-[var(--muted)] block">
+                      Candidate statement
+                    </span>
+                    <p className="text-[var(--text)] leading-relaxed whitespace-pre-wrap">
+                      {statementText || 'No statement provided.'}
+                    </p>
+                  </div>
+
+                  {isRejected && app.rejectionReason && (
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs font-heading text-red-300">
+                      <span className="font-semibold">Rejection reason: </span>
+                      <span>{app.rejectionReason}</span>
+                    </div>
+                  )}
+
+                  {isApproved && app.approvedBy && (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-heading text-emerald-300">
+                      Approved by <span className="font-mono">{app.approvedBy}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDetail(null)}
+                      className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    {isPending && (
+                      <>
+                        <button
+                          type="button"
+                          data-action="modal-reject-application"
+                          disabled={isBusy}
+                          onClick={() =>
+                            handleOpenReject(
+                              selectedDetail.type,
+                              app.id,
+                              app.userId,
+                              app.email,
+                              app.name
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <XCircle size={14} />
+                          <span>Reject</span>
+                        </button>
+                        <button
+                          type="button"
+                          data-action="modal-approve-application"
+                          disabled={isBusy}
+                          onClick={() =>
+                            void (isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp))
+                          }
+                          className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-500/60 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-sm min-w-[140px]"
+                        >
+                          <CheckCircle2 size={14} />
+                          <span>{isBusy ? 'Approving...' : 'Approve & grant role'}</span>
+                          {isBusy && <ButtonLineLoader />}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )}
+
+      {/* ─── MODAL: GRANT TO ALL APPROVED CAPTAINS ─────────────────────────── */}
+      {typeof document !== 'undefined' &&
+        grantAllModalOpen &&
+        createPortal(
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+            data-fullscreen-modal="true"
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
             role="dialog"
             aria-modal="true"
-            onClick={() => setSelectedDetail(null)}
+            onClick={() => setGrantAllModalOpen(false)}
           >
             <div
-              className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="relative w-full max-w-md rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-heading font-bold text-lg text-[var(--text)]">
-                      {app.name || app.email || 'Applicant'}
-                    </h3>
-                    <span
-                      className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full border font-bold ${
-                        isApproved
-                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
-                          : isRejected
-                          ? 'border-red-500 bg-red-500/10 text-red-400'
-                          : 'border-amber-500 bg-amber-500/10 text-amber-400'
-                      }`}
-                    >
-                      {normalizedStatus}
-                    </span>
-                  </div>
-                  <p className="text-xs font-heading text-[var(--muted)] mt-0.5">
-                    {isCaptain ? 'Nakama Campus Captain Application' : 'Study Crew Application'}
-                    {appliedDate ? ` • Submitted ${appliedDate}` : ''}
-                  </p>
+              <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border)]">
+                <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center text-[#FFD66B]">
+                  <KobanIcon size={24} />
                 </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
+                    Grant to All Approved Captains
+                  </h3>
+                  <p className="text-xs text-[var(--muted)] font-mono">{currentMonthLabel} Allotment</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-[var(--muted)] leading-relaxed">
+                This will grant <strong className="text-[#FFD66B] font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
+              </p>
+
+              <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] max-h-48 overflow-y-auto divide-y divide-[var(--border)]">
+                <span className="text-[10px] uppercase font-mono text-[var(--muted)] block pb-1">
+                  Captains to Credit ({pendingCaptainsForMonth.length}):
+                </span>
+                {pendingCaptainsForMonth.length === 0 ? (
+                  <p className="text-xs text-emerald-400 py-2">
+                    All approved captains have already received their {currentMonthLabel} allotment!
+                  </p>
+                ) : (
+                  pendingCaptainsForMonth.map((c) => (
+                    <div key={c.id} className="py-2 flex items-center justify-between text-xs">
+                      <span className="font-heading font-semibold text-[var(--text)]">{c.name}</span>
+                      <span className="font-mono text-[#FFD66B] font-bold">+5,000</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedDetail(null)}
-                  className="p-1.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] cursor-pointer"
-                  aria-label="Close application details"
+                  onClick={() => setGrantAllModalOpen(false)}
+                  className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={grantingAll || pendingCaptainsForMonth.length === 0}
+                  onClick={handleGrantAllApprovedCaptains}
+                  className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  <Sparkles size={14} />
+                  <span>{grantingAll ? 'Crediting all captains...' : 'Confirm & Credit All'}</span>
+                  {grantingAll && <ButtonLineLoader />}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ─── MODAL: REJECT APPLICATION ─────────────────────────────────────── */}
+      {typeof document !== 'undefined' &&
+        rejectTarget &&
+        createPortal(
+          <div
+            data-testid="application-reject-modal"
+            data-fullscreen-modal="true"
+            className="fixed inset-0 z-[130] flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setRejectTarget(null)}
+          >
+            <div
+              className="relative w-full max-w-[420px] rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+                <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                  Reject application
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setRejectTarget(null)}
+                  className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-heading">
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
-                    Email
-                  </span>
-                  <span className="font-mono text-[var(--text)] break-all">{app.email || '—'}</span>
-                </div>
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
-                    Phone / WhatsApp
-                  </span>
-                  <span className="font-mono text-[var(--text)]">{app.phone || '—'}</span>
-                </div>
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
-                    {isCaptain ? 'University / College' : 'College / Institution'}
-                  </span>
-                  <span className="text-[var(--text)]">{institutionLabel || '—'}</span>
-                </div>
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
-                    City
-                  </span>
-                  <span className="text-[var(--text)]">{app.city || '—'}</span>
-                </div>
-                {isCaptain && capApp.semester && (
-                  <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] sm:col-span-2">
-                    <span className="text-[10px] uppercase font-mono text-[var(--muted)] flex items-center gap-1 mb-1">
-                      <GraduationCap size={12} />
-                      <span>Class / Year</span>
-                    </span>
-                    <span className="text-[var(--text)]">{capApp.semester}</span>
-                  </div>
-                )}
+              <p className="font-heading text-xs text-[var(--muted)] leading-relaxed">
+                Rejecting application for <strong className="text-[var(--text)]">{rejectTarget.name || rejectTarget.email}</strong>. Provide an optional message to include in their notification.
+              </p>
+
+              <div>
+                <textarea
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] focus:outline-none"
+                />
               </div>
 
-              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs font-heading space-y-1">
-                <span className="text-[10px] uppercase font-mono text-[var(--muted)] block">
-                  Candidate statement
-                </span>
-                <p className="text-[var(--text)] leading-relaxed whitespace-pre-wrap">
-                  {statementText || 'No statement provided.'}
-                </p>
-              </div>
-
-              {isRejected && app.rejectionReason && (
-                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs font-heading text-red-300">
-                  <span className="font-semibold">Rejection reason: </span>
-                  <span>{app.rejectionReason}</span>
-                </div>
-              )}
-
-              {isApproved && app.approvedBy && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-heading text-emerald-300">
-                  Approved by <span className="font-mono">{app.approvedBy}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+              <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedDetail(null)}
-                  className="px-4 py-2 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                  onClick={() => setRejectTarget(null)}
+                  className="btn-outline flex-1 py-2 rounded-xl text-xs font-heading font-semibold cursor-pointer"
                 >
-                  Close
+                  Cancel
                 </button>
-                {isPending && (
-                  <>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        handleOpenReject(
-                          selectedDetail.type,
-                          app.id,
-                          app.userId,
-                          app.email,
-                          app.name
-                        )
-                      }
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer"
-                    >
-                      <XCircle size={14} />
-                      <span>Reject</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() =>
-                        void (isCaptain ? handleApproveCaptain(capApp) : handleApproveCrew(crewApp))
-                      }
-                      className="relative overflow-hidden inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-500/60 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-heading font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-sm min-w-[140px]"
-                    >
-                      <CheckCircle2 size={14} />
-                      <span>{isBusy ? 'Approving...' : 'Approve & grant role'}</span>
-                      {isBusy && <ButtonLineLoader />}
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  disabled={actionInProgress !== null}
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-heading font-semibold cursor-pointer disabled:opacity-50"
+                >
+                  {actionInProgress !== null ? 'Rejecting...' : 'Confirm rejection'}
+                </button>
               </div>
             </div>
-          </div>
-        );
-      })()}
-
-      {/* ─── MODAL: GRANT TO ALL APPROVED CAPTAINS ─────────────────────────── */}
-      {grantAllModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="relative w-full max-w-md rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border)]">
-              <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center text-[#FFD66B]">
-                <KobanIcon size={24} />
-              </div>
-              <div>
-                <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
-                  Grant to All Approved Captains
-                </h3>
-                <p className="text-xs text-[var(--muted)] font-mono">{currentMonthLabel} Allotment</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              This will grant <strong className="text-[#FFD66B] font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
-            </p>
-
-            <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] max-h-48 overflow-y-auto divide-y divide-[var(--border)]">
-              <span className="text-[10px] uppercase font-mono text-[var(--muted)] block pb-1">
-                Captains to Credit ({pendingCaptainsForMonth.length}):
-              </span>
-              {pendingCaptainsForMonth.length === 0 ? (
-                <p className="text-xs text-emerald-400 py-2">
-                  All approved captains have already received their {currentMonthLabel} allotment!
-                </p>
-              ) : (
-                pendingCaptainsForMonth.map((c) => (
-                  <div key={c.id} className="py-2 flex items-center justify-between text-xs">
-                    <span className="font-heading font-semibold text-[var(--text)]">{c.name}</span>
-                    <span className="font-mono text-[#FFD66B] font-bold">+5,000</span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setGrantAllModalOpen(false)}
-                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={grantingAll || pendingCaptainsForMonth.length === 0}
-                onClick={handleGrantAllApprovedCaptains}
-                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
-              >
-                <Sparkles size={14} />
-                <span>{grantingAll ? 'Crediting all captains...' : 'Confirm & Credit All'}</span>
-                {grantingAll && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MODAL: REJECT APPLICATION ─────────────────────────────────────── */}
-      {rejectTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setRejectTarget(null)}
-        >
-          <div
-            className="relative w-full max-w-[420px] rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-              <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                Reject application
-              </h3>
-              <button
-                type="button"
-                onClick={() => setRejectTarget(null)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="font-heading text-xs text-[var(--muted)] leading-relaxed">
-              Rejecting application for <strong className="text-[var(--text)]">{rejectTarget.name || rejectTarget.email}</strong>. Provide an optional message to include in their notification.
-            </p>
-
-            <div>
-              <textarea
-                rows={3}
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setRejectTarget(null)}
-                className="btn-outline flex-1 py-2 rounded-xl text-xs font-heading font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={actionInProgress !== null}
-                onClick={handleConfirmReject}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white flex-1 text-xs font-heading font-semibold cursor-pointer disabled:opacity-50"
-              >
-                {actionInProgress !== null ? 'Rejecting...' : 'Confirm rejection'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

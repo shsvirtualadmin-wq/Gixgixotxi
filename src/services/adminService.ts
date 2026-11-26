@@ -20,6 +20,7 @@ import {
   arrayUnion,
   arrayRemove,
   increment,
+  documentId,
   type QueryConstraint,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -74,6 +75,13 @@ import {
   countPendingApplications,
   extractTimestampMs,
 } from '@/lib/applicationStatus';
+import {
+  mergeUserActivityMetrics,
+  extractAttemptSolvedCount,
+  toPktDateKey,
+  type D1UserActivitySummary,
+  type FirestoreAttemptActivityItem,
+} from '@/lib/adminUsersHelpers';
 import {
   notifyApplicationDecision,
   notifyKobanPurchaseApproved,
@@ -338,6 +346,7 @@ export interface CachedAdminUsersDirectory {
     string,
     { plus_badge_design: number | null; plus_badge_visible: boolean }
   >;
+  userActivityByUid?: Record<string, D1UserActivitySummary>;
   securityLogs: any[];
   totalCount: number;
   firestoreTotalCount?: number;
@@ -431,6 +440,136 @@ let inFlightAdminStatsPromise: Promise<AdminStats> | null = null;
 let cachedAdminUsersDirectory: CachedAdminUsersDirectory | null = null;
 let inFlightUsersFirstPagePromise: Promise<PaginatedUsersResult> | null = null;
 let cachedUsersCollectionCount: { count: number; fetchedAt: number } | null = null;
+
+interface CachedUserActivityRecord {
+  fetchedAt: number;
+  publicProfile: Record<string, unknown> | null;
+  firestoreAttempts: FirestoreAttemptActivityItem[];
+}
+const cachedUserFirestoreActivity = new Map<string, CachedUserActivityRecord>();
+const USER_ACTIVITY_CACHE_TTL_MS = 60_000;
+
+async function enrichUsersWithRealActivity(
+  users: UserProfile[],
+  d1ActivityByUid: Record<string, D1UserActivitySummary>,
+  force = false
+): Promise<UserProfile[]> {
+  if (users.length === 0) return users;
+  const nowMs = Date.now();
+  const uidsToFetch: string[] = [];
+
+  for (const u of users) {
+    if (!u.uid || u.isGuest || u.accountType === 'guest' || u.uid.startsWith('guest_')) continue;
+    const cached = cachedUserFirestoreActivity.get(u.uid);
+    if (!force && cached && nowMs - cached.fetchedAt < USER_ACTIVITY_CACHE_TTL_MS) {
+      continue;
+    }
+    uidsToFetch.push(u.uid);
+  }
+
+  if (uidsToFetch.length > 0) {
+    const CHUNK_SIZE = 30;
+    const chunks: string[][] = [];
+    for (let i = 0; i < uidsToFetch.length; i += CHUNK_SIZE) {
+      chunks.push(uidsToFetch.slice(i, i + CHUNK_SIZE));
+    }
+
+    const pubProfileByUid = new Map<string, Record<string, unknown>>();
+    const attemptsByUid = new Map<string, Map<string, FirestoreAttemptActivityItem>>();
+
+    const recordAttemptDoc = (docId: string, data: Record<string, unknown>) => {
+      const uid = String(data.userId || data.uid || '').trim();
+      if (!uid) return;
+      const solved = extractAttemptSolvedCount(data);
+      const status = String(data.status || '').toLowerCase();
+      const isCompleted =
+        status === 'completed' ||
+        status === 'submitted' ||
+        data.percentage !== undefined ||
+        data.score !== undefined ||
+        data.earnedMarks !== undefined ||
+        data.submittedAt !== undefined ||
+        data.completedAt !== undefined;
+      if (!isCompleted && solved <= 0) return;
+      const pktDate = toPktDateKey(
+        data.completedAt || data.submittedAt || data.endedAt || data.updatedAt || data.createdAt
+      );
+      let perUser = attemptsByUid.get(uid);
+      if (!perUser) {
+        perUser = new Map<string, FirestoreAttemptActivityItem>();
+        attemptsByUid.set(uid, perUser);
+      }
+      perUser.set(docId, { solved, pktDate });
+    };
+
+    await Promise.all(
+      chunks.map(async (chunk) => {
+        const queryWithTimeout = <T,>(p: Promise<T>, label: string): Promise<T | null> =>
+          withTimeout(p, 5000, label).catch(() => null);
+        const [pubSnap, attByUserIdSnap, attByUidSnap, testAttByUserIdSnap, testAttByUidSnap] =
+          await Promise.all([
+            queryWithTimeout(
+              getDocs(query(collection(db, 'publicProfiles'), where(documentId(), 'in', chunk))),
+              'publicProfiles-chunk'
+            ),
+            queryWithTimeout(
+              getDocs(query(collection(db, 'attempts'), where('userId', 'in', chunk))),
+              'attempts-userId-chunk'
+            ),
+            queryWithTimeout(
+              getDocs(query(collection(db, 'attempts'), where('uid', 'in', chunk))),
+              'attempts-uid-chunk'
+            ),
+            queryWithTimeout(
+              getDocs(query(collection(db, 'testAttempts'), where('userId', 'in', chunk))),
+              'testAttempts-userId-chunk'
+            ),
+            queryWithTimeout(
+              getDocs(query(collection(db, 'testAttempts'), where('uid', 'in', chunk))),
+              'testAttempts-uid-chunk'
+            ),
+          ]);
+
+        if (pubSnap) {
+          for (const d of pubSnap.docs) {
+            pubProfileByUid.set(d.id, d.data() as Record<string, unknown>);
+          }
+        }
+        for (const snap of [attByUserIdSnap, attByUidSnap, testAttByUserIdSnap, testAttByUidSnap]) {
+          if (!snap) continue;
+          for (const d of snap.docs) {
+            recordAttemptDoc(d.id, d.data() as Record<string, unknown>);
+          }
+        }
+      })
+    );
+
+    const fetchedAt = Date.now();
+    for (const uid of uidsToFetch) {
+      cachedUserFirestoreActivity.set(uid, {
+        fetchedAt,
+        publicProfile: pubProfileByUid.get(uid) ?? null,
+        firestoreAttempts: Array.from(attemptsByUid.get(uid)?.values() || []),
+      });
+    }
+  }
+
+  return users.map((u) => {
+    const cachedFs = cachedUserFirestoreActivity.get(u.uid);
+    const merged = mergeUserActivityMetrics({
+      user: u as unknown as Record<string, unknown>,
+      publicProfile: cachedFs?.publicProfile ?? null,
+      d1Activity: d1ActivityByUid[u.uid] ?? null,
+      firestoreAttempts: cachedFs?.firestoreAttempts ?? [],
+      nowMs,
+    });
+    return {
+      ...u,
+      totalQuestionsSolved: merged.totalQuestionsSolved,
+      streak: merged.streak,
+    };
+  });
+}
 
 export function getCachedAdminStats(): AdminStats | null {
   if (cachedAdminStats) return cachedAdminStats;
@@ -608,6 +747,26 @@ export function removeCachedAdminUser(uid: string) {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const err: any = new Error(`Timed out after ${timeoutMs}ms (${label})`);
+      err.code = 'DEADLINE_EXCEEDED';
+      reject(err);
+    }, timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 /**
  * Waits for Firebase Auth currentUser & ID token to be ready before firing admin requests.
  */
@@ -620,11 +779,11 @@ export async function ensureAdminAuthToken(forceRefresh = false, maxWaitMs = 300
     return '';
   }
   try {
-    return await auth.currentUser.getIdToken(forceRefresh);
-  } catch (err) {
+    return await withTimeout(auth.currentUser.getIdToken(forceRefresh), 4000, 'auth-getIdToken');
+  } catch {
     if (!forceRefresh) {
       try {
-        return await auth.currentUser.getIdToken(true);
+        return await withTimeout(auth.currentUser.getIdToken(true), 4000, 'auth-getIdToken-retry');
       } catch {
         return '';
       }
@@ -634,14 +793,15 @@ export async function ensureAdminAuthToken(forceRefresh = false, maxWaitMs = 300
 }
 
 /**
- * Executes an authenticated admin API fetch and retries once automatically
- * with a refreshed token if the first call fails because the token was not ready.
+ * Executes an authenticated admin API fetch with bounded AbortController timeouts
+ * and retries once automatically with a refreshed token if the first call fails.
  */
 export async function fetchAdminJsonWithRetry<T = any>(
   url: string,
-  init?: RequestInit
+  init?: RequestInit,
+  timeoutMs = 10000
 ): Promise<{ ok: boolean; status: number; data: T | null; errorMessage?: string }> {
-  const attemptFetch = async (forceRefresh: boolean) => {
+  const attemptFetch = async (forceRefresh: boolean, attemptTimeoutMs: number) => {
     const idToken = await ensureAdminAuthToken(forceRefresh);
     const headers: Record<string, string> = {
       ...(init?.headers as Record<string, string> | undefined),
@@ -649,16 +809,35 @@ export async function fetchAdminJsonWithRetry<T = any>(
     if (idToken) {
       headers.Authorization = `Bearer ${idToken}`;
     }
-    const res = await fetch(url, { ...init, headers });
-    const data = (await res.json().catch(() => null)) as T | null;
-    return { res, data };
+
+    const controller = new AbortController();
+    const externalSignal = init?.signal;
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
+    const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);
+    try {
+      const res = await fetch(url, { ...init, headers, signal: controller.signal });
+      const data = (await res.json().catch(() => null)) as T | null;
+      return { res, data };
+    } finally {
+      clearTimeout(timer);
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
+    }
   };
 
   try {
-    let { res, data } = await attemptFetch(false);
+    let { res, data } = await attemptFetch(false, timeoutMs);
     if (!res.ok && (res.status === 401 || res.status === 403 || res.status >= 500)) {
       await new Promise((resolve) => setTimeout(resolve, 120));
-      const retryResult = await attemptFetch(true);
+      const retryResult = await attemptFetch(true, Math.min(timeoutMs, 6000));
       res = retryResult.res;
       data = retryResult.data;
     }
@@ -678,9 +857,17 @@ export async function fetchAdminJsonWithRetry<T = any>(
     }
     return { ok: true, status: res.status, data };
   } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      return {
+        ok: false,
+        status: 408,
+        data: null,
+        errorMessage: `Request timed out calling ${url}`,
+      };
+    }
     try {
       await new Promise((resolve) => setTimeout(resolve, 150));
-      const { res, data } = await attemptFetch(true);
+      const { res, data } = await attemptFetch(true, Math.min(timeoutMs, 6000));
       if (res.ok) {
         return { ok: true, status: res.status, data };
       }
@@ -699,9 +886,12 @@ export async function fetchAdminJsonWithRetry<T = any>(
     } catch (retryErr: any) {
       return {
         ok: false,
-        status: 0,
+        status: retryErr?.name === 'AbortError' ? 408 : 0,
         data: null,
-        errorMessage: retryErr?.message || err?.message || `Network error calling ${url}`,
+        errorMessage:
+          retryErr?.name === 'AbortError'
+            ? `Request timed out calling ${url}`
+            : retryErr?.message || err?.message || `Network error calling ${url}`,
       };
     }
   }
@@ -971,11 +1161,28 @@ let inFlightOverviewQuestionsCard: Promise<{
   liveUniversities: number;
 }> | null = null;
 let inFlightOverviewAttemptsCard: Promise<{ totalAttempts: number }> | null = null;
+let cachedOverviewApplicationsCard: {
+  at: number;
+  data: { pendingCaptains: number; pendingCrew: number; totalPending: number };
+} | null = null;
+let applicationsCacheVersion = 0;
 let inFlightOverviewApplicationsCard: Promise<{
   pendingCaptains: number;
   pendingCrew: number;
   totalPending: number;
 }> | null = null;
+
+export function getApplicationsCacheVersion(): number {
+  return applicationsCacheVersion;
+}
+
+export function getCachedOverviewApplications(): {
+  pendingCaptains: number;
+  pendingCrew: number;
+  totalPending: number;
+} | null {
+  return cachedOverviewApplicationsCard?.data ?? null;
+}
 let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
 let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
 let inFlightOverviewSubjectsCard: Promise<{
@@ -1108,12 +1315,20 @@ export async function fetchOverviewUsersCard(options?: { force?: boolean }): Pro
         totalUsers: 0,
         totalQuestions: 0,
         totalAttempts: 0,
-        pendingCaptains: 0,
-        pendingCrew: 0,
+        pendingCaptains: cachedOverviewApplicationsCard?.data.pendingCaptains ?? 0,
+        pendingCrew: cachedOverviewApplicationsCard?.data.pendingCrew ?? 0,
         pendingPayments: 0,
         pendingReviews: 0,
         subjectCounts: {},
       }),
+      pendingCaptains:
+        cachedOverviewApplicationsCard?.data.pendingCaptains ??
+        cachedAdminStats?.pendingCaptains ??
+        0,
+      pendingCrew:
+        cachedOverviewApplicationsCard?.data.pendingCrew ??
+        cachedAdminStats?.pendingCrew ??
+        0,
       totalUsers: data.totalUsers,
       studentCount: data.studentCount ?? undefined,
       captainCount: data.captainCount ?? undefined,
@@ -1188,6 +1403,8 @@ export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): 
 }
 
 function invalidateApplicationsOverviewCache(): void {
+  applicationsCacheVersion += 1;
+  cachedOverviewApplicationsCard = null;
   inFlightOverviewApplicationsCard = null;
   if (cachedAdminStats) {
     cachedAdminStats = null;
@@ -1201,6 +1418,71 @@ function invalidateApplicationsOverviewCache(): void {
   }
 }
 
+export interface AdminApplicationsSnapshot {
+  captains: CaptainApplication[];
+  crew: CrewApplication[];
+  pendingCaptains: number;
+  pendingCrew: number;
+  totalPending: number;
+}
+
+/**
+ * Single shared source of truth for both /admin Overview ("Pending applications" card)
+ * and /admin/applications. Reads captainApplications and crewApplications independently
+ * so one failing collection never zeroes out the other, normalizes mixed status casing,
+ * and keeps the Overview cache synchronized.
+ */
+export async function fetchAllApplications(): Promise<AdminApplicationsSnapshot> {
+  await ensureAdminAuthToken(false);
+
+  const [captainRes, crewRes] = await Promise.allSettled([
+    getDocs(query(collection(db, 'captainApplications'), limit(200))),
+    getDocs(query(collection(db, 'crewApplications'), limit(200))),
+  ]);
+
+  if (captainRes.status === 'rejected' && crewRes.status === 'rejected') {
+    throw captainRes.reason || crewRes.reason;
+  }
+
+  const captains =
+    captainRes.status === 'fulfilled'
+      ? captainRes.value.docs
+          .map((d) => normalizeCaptainApplicationDoc(d.id, d.data() as Record<string, unknown>))
+          .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt))
+      : [];
+
+  const crew =
+    crewRes.status === 'fulfilled'
+      ? crewRes.value.docs
+          .map((d) => normalizeCrewApplicationDoc(d.id, d.data() as Record<string, unknown>))
+          .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt))
+      : [];
+
+  const pendingCaptains = countPendingApplications(captains);
+  const pendingCrew = countPendingApplications(crew);
+  const totalPending = pendingCaptains + pendingCrew;
+
+  const summary = { pendingCaptains, pendingCrew, totalPending };
+  cachedOverviewApplicationsCard = { at: Date.now(), data: summary };
+
+  if (cachedAdminStats) {
+    cachedAdminStats = {
+      ...cachedAdminStats,
+      pendingCaptains,
+      pendingCrew,
+    };
+    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
+  }
+
+  return {
+    captains,
+    crew,
+    pendingCaptains,
+    pendingCrew,
+    totalPending,
+  };
+}
+
 export async function fetchOverviewApplicationsCard(options?: { force?: boolean }): Promise<{
   pendingCaptains: number;
   pendingCrew: number;
@@ -1210,34 +1492,12 @@ export async function fetchOverviewApplicationsCard(options?: { force?: boolean 
     return inFlightOverviewApplicationsCard;
   }
   const run = async () => {
-    const [captainSnap, crewSnap] = await Promise.all([
-      getDocs(query(collection(db, 'captainApplications'), limit(200))),
-      getDocs(query(collection(db, 'crewApplications'), limit(200))),
-    ]);
-
-    const captains = countPendingApplications(
-      captainSnap.docs.map((d) => ({ status: d.data()?.status }))
-    );
-    const crew = countPendingApplications(
-      crewSnap.docs.map((d) => ({ status: d.data()?.status }))
-    );
-
-    const data = {
-      pendingCaptains: captains,
-      pendingCrew: crew,
-      totalPending: captains + crew,
+    const snapshot = await fetchAllApplications();
+    return {
+      pendingCaptains: snapshot.pendingCaptains,
+      pendingCrew: snapshot.pendingCrew,
+      totalPending: snapshot.totalPending,
     };
-
-    if (cachedAdminStats) {
-      cachedAdminStats = {
-        ...cachedAdminStats,
-        pendingCaptains: captains,
-        pendingCrew: crew,
-      };
-      writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
-    }
-
-    return data;
   };
   inFlightOverviewApplicationsCard = run().finally(() => {
     inFlightOverviewApplicationsCard = null;
@@ -1482,7 +1742,7 @@ export async function fetchUsersPaginated(options?: {
         return cachedUsersCollectionCount.count;
       }
       try {
-        const countSnap = await getCountFromServer(ref);
+        const countSnap = await withTimeout(getCountFromServer(ref), 4000, 'users-total-count');
         const total = Number(countSnap.data().count || 0);
         cachedUsersCollectionCount = { count: total, fetchedAt: Date.now() };
         return total;
@@ -1525,10 +1785,11 @@ export async function fetchUsersPaginated(options?: {
         string,
         { plus_badge_design: number | null; plus_badge_visible: boolean }
       >;
+      userActivityByUid: Record<string, D1UserActivitySummary>;
       d1Users: UserProfile[];
       securityLogs: any[];
     }> => {
-      // On Load More pages, reuse fresh cached 2FA/badge metadata to avoid redundant calls
+      // On subsequent pages, reuse fresh cached 2FA/badge/activity metadata to avoid redundant calls
       if (
         !isFirstPage &&
         !options?.force &&
@@ -1539,6 +1800,7 @@ export async function fetchUsersPaginated(options?: {
           user2faMap: { ...cachedAdminUsersDirectory.user2faMap },
           proBadgesByUid: { ...(cachedAdminUsersDirectory.proBadgesByUid || {}) },
           plusBadgesByUid: { ...(cachedAdminUsersDirectory.plusBadgesByUid || {}) },
+          userActivityByUid: { ...(cachedAdminUsersDirectory.userActivityByUid || {}) },
           d1Users: [],
           securityLogs: cachedAdminUsersDirectory.securityLogs || [],
         };
@@ -1554,6 +1816,7 @@ export async function fetchUsersPaginated(options?: {
           string,
           { plus_badge_design: number | null; plus_badge_visible: boolean }
         >;
+        userActivityByUid?: Record<string, D1UserActivitySummary>;
         d1Users?: any[];
         logs?: any[];
         auditLogs?: any[];
@@ -1566,6 +1829,7 @@ export async function fetchUsersPaginated(options?: {
           user2faMap: {},
           proBadgesByUid: {},
           plusBadgesByUid: {},
+          userActivityByUid: {},
           d1Users: [],
           securityLogs: [],
         };
@@ -1592,6 +1856,11 @@ export async function fetchUsersPaginated(options?: {
           ? res.data.plusBadgesByUid
           : {};
 
+      const userActivityByUid: Record<string, D1UserActivitySummary> =
+        res.data.userActivityByUid && typeof res.data.userActivityByUid === 'object'
+          ? res.data.userActivityByUid
+          : {};
+
       const d1UsersList: UserProfile[] = [];
       if (Array.isArray(res.data.d1Users)) {
         for (const row of res.data.d1Users) {
@@ -1602,6 +1871,7 @@ export async function fetchUsersPaginated(options?: {
           map[row.uid] = summary;
           const pbEntry = proBadgesByUid[row.uid];
           const plbEntry = plusBadgesByUid[row.uid];
+          const actEntry = userActivityByUid[row.uid];
           const d1Plan = getPlan(row);
           const d1ExpMs = Number(row.planExpiresAt || row.plan_expires_at || 0);
           const d1ExpTimestamp = d1ExpMs > 0 ? Timestamp.fromMillis(d1ExpMs) : null;
@@ -1643,6 +1913,8 @@ export async function fetchUsersPaginated(options?: {
             isGuest: Boolean(row.isGuest || row.accountType === 'guest'),
             accountType: row.accountType === 'guest' ? 'guest' : 'registered',
             onboardingCompleted: true,
+            totalQuestionsSolved: Number(row.totalQuestionsSolved ?? actEntry?.solved ?? 0),
+            streak: Number(row.streak ?? actEntry?.streak ?? 0),
             createdAt: row.createdAt ?? null,
             lastActiveAt: row.lastActiveAt ?? null,
             twoFactorStatus: summary,
@@ -1659,6 +1931,7 @@ export async function fetchUsersPaginated(options?: {
         user2faMap: map,
         proBadgesByUid,
         plusBadgesByUid,
+        userActivityByUid,
         d1Users: d1UsersList,
         securityLogs: Array.isArray(res.data.logs) ? res.data.logs : [],
       };
@@ -1667,23 +1940,14 @@ export async function fetchUsersPaginated(options?: {
     const fetchFirestoreUsersWithRetry = async () => {
       const q = query(ref, ...queryConstraints);
       try {
-        return await Promise.race([
-          getDocs(q),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
-          ),
-        ]);
-      } catch (_firstErr) {
+        return await withTimeout(getDocs(q), 6000, 'users-list-query');
+      } catch (firstErr: any) {
+        const code = String(firstErr?.code || '');
+        if (code === 'DEADLINE_EXCEEDED') {
+          throw firstErr;
+        }
         await ensureAdminAuthToken(true);
-        return await Promise.race([
-          getDocs(q),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () => reject(new Error('Users list query timed out after 8 seconds (retry)')),
-              8000
-            )
-          ),
-        ]);
+        return await withTimeout(getDocs(q), 6000, 'users-list-query-retry');
       }
     };
 
@@ -1701,7 +1965,14 @@ export async function fetchUsersPaginated(options?: {
         fetchD1TwoFactorAndUsers(),
       ]);
 
-      const { user2faMap, proBadgesByUid, plusBadgesByUid, d1Users, securityLogs } = d1Bundle;
+      const {
+        user2faMap,
+        proBadgesByUid,
+        plusBadgesByUid,
+        userActivityByUid,
+        d1Users,
+        securityLogs,
+      } = d1Bundle;
 
       if (!snapResult && d1Users.length === 0 && guestUsers.length === 0) {
         throw new Error('Failed to load users from Firestore and D1.');
@@ -1930,6 +2201,13 @@ export async function fetchUsersPaginated(options?: {
         allMatchingUsers = allMatchingUsers.filter((u) => getPlan(u) === options.plan);
       }
 
+      // Enrich every returned user with real solved MCQs & PKT streak across Firestore + D1
+      allMatchingUsers = await enrichUsersWithRealActivity(
+        allMatchingUsers,
+        userActivityByUid,
+        Boolean(options?.force)
+      );
+
       // Sort deterministically according to sortBy (unknown join dates ALWAYS at the very bottom)
       const sortedUsers = sortAdminUsers(allMatchingUsers, sortBy);
 
@@ -1951,6 +2229,7 @@ export async function fetchUsersPaginated(options?: {
           user2faMap,
           proBadgesByUid,
           plusBadgesByUid,
+          userActivityByUid,
           securityLogs,
           ...breakdown,
           totalCount: estimatedTotal,
@@ -1971,6 +2250,7 @@ export async function fetchUsersPaginated(options?: {
           user2faMap,
           proBadgesByUid,
           plusBadgesByUid,
+          userActivityByUid,
           securityLogs: [],
           ...breakdown,
           totalCount: estimatedTotal,
@@ -4318,11 +4598,12 @@ export async function rejectApplication(
 // ─── PAYMENT UPGRADE REQUESTS ────────────────────────────────────────────────
 export async function fetchPaymentRequests(statusFilter = 'all'): Promise<PaymentRequest[]> {
   try {
+    await ensureAdminAuthToken(false);
     const ref = collection(db, 'paymentRequests');
     const q = statusFilter !== 'all'
       ? query(ref, where('status', '==', statusFilter), limit(50))
       : query(ref, limit(50));
-    const snap = await getDocs(q);
+    const snap = await withTimeout(getDocs(q), 10000, 'paymentRequests');
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentRequest));
   } catch (err) {
     console.error('[AdminService] fetchPaymentRequests error:', err);

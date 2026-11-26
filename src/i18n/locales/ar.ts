@@ -1118,6 +1118,7 @@ export const ar: TranslationDictionary = {
   'profile.imageUnder5mbError': 'يرجى اختيار صورة أقل من 5 ميجابايت.',
   'profile.invalidImageError': 'صيغة غير مدعومة. استخدم PNG أو JPG أو WebP.',
   'profile.level': 'المستوى {{level}}',
+  'profile.levelLabel': 'المستوى',
   'profile.levelShort': 'مستوى {{level}}',
   'profile.limitReached': 'تم بلوغ الحد',
   'profile.loadFollowersError': 'تعذّر تحميل المتابعين.',

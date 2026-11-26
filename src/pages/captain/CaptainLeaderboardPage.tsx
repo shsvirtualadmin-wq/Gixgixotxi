@@ -166,7 +166,7 @@ export function CaptainLeaderboardPage() {
                     {cap.points?.toLocaleString() ?? 0} pts
                   </p>
                   <p className="text-[11px] text-[var(--muted)]">
-                    {cap.activeUsersCount ?? 0} active students
+                    {`${cap.activeUsersCount ?? 0} active students`}
                   </p>
                 </div>
               </div>

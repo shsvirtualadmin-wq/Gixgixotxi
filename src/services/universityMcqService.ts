@@ -7,6 +7,7 @@ import {
   normalizeCorrectLetter,
 } from '../constants/d1Universities';
 import { auth } from '../lib/firebase';
+import { recordCompletedPracticeForStreak } from './streakEngine';
 import {
   convertAsciiMathToLatex,
   repairD1McqRow,
@@ -2311,6 +2312,11 @@ export function saveD1UniversityAttempt(
       // Non-fatal
     }
   }
+  recordCompletedPracticeForStreak(uid, {
+    mcqsSolved: record.answeredCount || record.totalQuestions,
+    completedAt: record.createdAt,
+    source: 'd1',
+  });
   if (typeof window !== 'undefined' && (!auth.currentUser || (uid && uid.startsWith('guest_')))) {
     const savedGuestToken =
       window.localStorage?.getItem('boardly_guest_session_token') ||

@@ -901,7 +901,7 @@ export const FormulaVaultPage: React.FC = () => {
   }
 
   return (
-    <div className="formula-library-page min-h-screen text-[var(--text)] pb-36">
+    <div className="formula-library-page min-h-screen text-[var(--text)] pb-12">
       {/* Main Responsive Container: up to 880px on tablet, up to 1200px on laptop/PC */}
       <div className="mx-auto w-full max-w-[880px] lg:max-w-[1200px] px-4 pt-4 sm:px-6">
         {/* Top Header Card */}
@@ -1082,7 +1082,7 @@ export const FormulaVaultPage: React.FC = () => {
         {/* Two-Column Layout on Laptop/PC (280px sticky sidebar + main content) */}
         <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 items-start">
           {/* Sticky Left Sidebar on Laptop/PC (>= 1024px) */}
-          <aside className="hidden lg:flex lg:flex-col lg:gap-3.5 sticky top-6 rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4">
+          <aside className="hidden lg:flex lg:flex-col lg:gap-3.5 sticky top-6 max-h-[calc(100dvh-var(--sdn-page-pb)-24px)] overflow-y-auto rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4">
             {/* Desktop Search Pill */}
             <div className="formula-search-pill">
               <Search className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" />

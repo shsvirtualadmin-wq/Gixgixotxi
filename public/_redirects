@@ -54,6 +54,8 @@
 /messages /index.html 200
 /notifications /index.html 200
 /saved /index.html 200
+/bookmarks /index.html 200
+/bookmarks/* /index.html 200
 /settings /index.html 200
 /settings/* /index.html 200
 /profile /index.html 200
@@ -64,6 +66,8 @@
 /checkout /index.html 200
 /admin /index.html 200
 /admin/* /index.html 200
+/superadmin /index.html 200
+/superadmin/* /index.html 200
 /arena /index.html 200
 /arena/register /index.html 200
 /arena/leaderboard /index.html 200

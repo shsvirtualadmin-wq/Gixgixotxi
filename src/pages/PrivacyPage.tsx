@@ -31,7 +31,7 @@ export const PrivacyPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen pt-24 pb-24 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div className="min-h-screen pt-24 pb-16 px-4 sm:px-6 max-w-6xl mx-auto">
       <PageMeta
         title="Privacy Policy | Boardly"
         description="Learn what personal data Boardly collects, where it is stored, how guest accounts and 2FA work, and how to exercise your privacy rights."
@@ -74,7 +74,7 @@ export const PrivacyPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 sm:gap-12 items-start">
         {/* Sticky Sidebar TOC (Desktop) */}
-        <aside className="hidden lg:block glass-card p-6 sticky top-28">
+        <aside className="hidden lg:block glass-card p-6 sticky top-28 max-h-[calc(100dvh-var(--sdn-page-pb)-7.5rem)] overflow-y-auto">
           <h3 className="font-dot text-sm text-[var(--muted)] uppercase tracking-wider mb-4">
             Contents
           </h3>

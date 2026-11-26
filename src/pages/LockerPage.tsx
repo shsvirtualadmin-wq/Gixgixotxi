@@ -542,11 +542,11 @@ export const LockerPage: React.FC = () => {
 
       {/* Main container — extra bottom padding stacks above both mobile bottom nav AND sticky Equip bar */}
       <div
-        className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-3 lg:pb-12"
+        className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-3"
         style={{
           paddingBottom: selectedItem
-            ? 'calc(176px + env(safe-area-inset-bottom, 0px))'
-            : 'calc(112px + env(safe-area-inset-bottom, 0px))',
+            ? 'calc(96px + env(safe-area-inset-bottom, 0px))'
+            : '32px',
         }}
       >
         {/* Top Navigation Bar (normal UI font 17px/600) */}
@@ -1151,7 +1151,7 @@ export const LockerPage: React.FC = () => {
       {selectedItem && (
         <div
           className="lg:hidden fixed left-4 right-4 z-[45]"
-          style={{ bottom: 'calc(88px + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(118px + env(safe-area-inset-bottom, 0px))' }}
         >
           <div
             className="rounded-full px-4 py-2.5 flex items-center justify-between gap-3"

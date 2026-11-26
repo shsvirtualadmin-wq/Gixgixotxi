@@ -1118,6 +1118,7 @@ export const hi: TranslationDictionary = {
   'profile.imageUnder5mbError': 'कृपया 5 MB से छोटी छवि चुनें।',
   'profile.invalidImageError': 'असमर्थित फ़ॉर्मेट। PNG, JPG या WebP उपयोग करें।',
   'profile.level': 'स्तर {{level}}',
+  'profile.levelLabel': 'स्तर',
   'profile.levelShort': 'Lv. {{level}}',
   'profile.limitReached': 'सीमा पूरी हुई',
   'profile.loadFollowersError': 'फॉलोअर्स लोड नहीं हो सके।',

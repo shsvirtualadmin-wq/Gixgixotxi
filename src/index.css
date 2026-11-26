@@ -1890,7 +1890,11 @@ select:not(:-webkit-autofill):active {
   border-radius: 4px;
 }
 
-/* App-wide horizontal overflow prevention */
+/* App-wide horizontal overflow prevention & fixed bottom-nav scroll clearance */
+html {
+  scroll-padding-bottom: var(--sdn-page-pb);
+}
+
 html,
 body,
 #root {
@@ -2854,8 +2858,12 @@ html[data-tab-hidden="true"] *::after {
 
 .cockpit-root {
   color: var(--text);
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sdn-page-pb);
   transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dashboard-main-scroll .cockpit-root {
+  padding-bottom: 32px;
 }
 
 /* Clean Nothing OS glass container behind the university cards (equal padding, rounded corners, nothing cut off) */
@@ -3579,7 +3587,7 @@ html[data-tab-hidden="true"] *::after {
   margin-inline: auto;
   padding-inline: 16px;
   padding-top: 8px;
-  padding-bottom: calc(124px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sdn-page-pb);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -3593,7 +3601,7 @@ html[data-tab-hidden="true"] *::after {
   .notif-page {
     padding-inline: 24px;
     padding-top: 12px;
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--sdn-page-pb);
     gap: 22px;
   }
 }
@@ -6994,6 +7002,11 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 .ncd-root {
   color: var(--cw-text);
   font-family: var(--cw-font-body);
+  padding-bottom: var(--sdn-page-pb);
+}
+
+.dashboard-main-scroll .ncd-root {
+  padding-bottom: 32px;
 }
 
 .ncd-font-doto {
@@ -7330,20 +7343,20 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
    ========================================================================== */
 
 :root {
-  /* 64px nav + 12px bottom offset + 40px clearance = 116px */
-  --sdn-page-pb: calc(116px + env(safe-area-inset-bottom, 0px));
+  /* 64px nav + 12-16px bottom offset + 25px raised AI FAB + pulse ring + breathing room = 156px */
+  --sdn-page-pb: calc(156px + env(safe-area-inset-bottom, 0px));
 }
 
-@media (min-width: 900px) {
+@media (min-width: 1024px) {
   :root {
-    /* 64px nav + 16px bottom offset + 56px generous laptop/desktop clearance = 136px */
-    --sdn-page-pb: calc(136px + env(safe-area-inset-bottom, 0px));
+    /* 64px nav + 16px bottom offset + 64px generous desktop clearance (AI FAB hidden on lg+) = 144px */
+    --sdn-page-pb: calc(144px + env(safe-area-inset-bottom, 0px));
   }
 }
 
 /* Explicit scroll clearance helper so last cards & CTAs never sit under the floating dock */
 .dashboard-main-scroll {
-  padding-bottom: var(--sdn-page-pb);
+  padding-bottom: var(--sdn-page-pb) !important;
 }
 
 /* Dock wrapper: phone-first floating pill 12px from left/right, 12px above bottom + safe-area, 64px tall, fully rounded.
@@ -7703,7 +7716,7 @@ body.modal-open .boardly-post-card {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding-top: calc(14px + env(safe-area-inset-top, 0px));
-  padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sdn-page-pb);
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -8375,7 +8388,11 @@ button.rs-day-cell:active {
   background-color: var(--rs-bg);
   color: var(--rs-text);
   font-family: var(--rs-font-body);
-  padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sdn-page-pb);
+}
+
+.dashboard-main-scroll .notif-page {
+  padding-bottom: 32px;
 }
 
 .notif-header {
@@ -8977,7 +8994,11 @@ button.rs-day-cell:active {
   background-color: var(--rs-bg);
   color: var(--rs-text);
   font-family: var(--rs-font-body);
-  padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--sdn-page-pb);
+}
+
+.dashboard-main-scroll .msg-page {
+  padding-bottom: 32px;
 }
 
 .msg-title {
@@ -11854,7 +11875,11 @@ input[type="search"]:active,
 .boardly-page-safe-bottom {
   position: relative;
   z-index: 1;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: var(--sdn-page-pb) !important;
+}
+
+.dashboard-main-scroll .boardly-page-safe-bottom {
+  padding-bottom: 32px !important;
 }
 
 .boardly-modal-backdrop,

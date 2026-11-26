@@ -474,21 +474,22 @@ export const RoutePageSkeleton: React.FC<{ pathname?: string }> = React.memo(({ 
     pathname || (typeof window !== 'undefined' ? window.location.pathname : '')
   ).toLowerCase();
 
-  if (clean.startsWith('/admin')) {
-    if (clean.startsWith('/admin/questions')) {
+  if (clean.startsWith('/admin') || clean.startsWith('/superadmin')) {
+    if (clean.startsWith('/admin/questions') || clean.startsWith('/superadmin/questions')) {
       return <AdminQuestionsPageSkeleton />;
     }
-    if (clean.startsWith('/admin/crews')) {
+    if (clean.startsWith('/admin/crews') || clean.startsWith('/superadmin/crews')) {
       return <AdminCrewsSkeleton count={5} />;
     }
     if (
       clean.startsWith('/admin/certificates') ||
       clean.startsWith('/admin/signatures') ||
-      clean.startsWith('/admin/settings')
+      clean.startsWith('/admin/settings') ||
+      clean.startsWith('/superadmin/certificates')
     ) {
       return <AdminCertificatesSkeleton count={4} />;
     }
-    if (clean.startsWith('/admin/captains')) {
+    if (clean.startsWith('/admin/captains') || clean.startsWith('/superadmin/captains')) {
       return <AdminCaptainsSkeleton count={4} />;
     }
     if (clean === '/admin' || clean === '/admin/') {

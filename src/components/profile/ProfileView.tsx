@@ -591,11 +591,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Independent follows state (non-blocking)
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
-  const [followsSyncing, setFollowsSyncing] = useState(false);
   const [followsError, setFollowsError] = useState<string | null>(null);
   const [followersCount, setFollowersCount] = useState<number>(() => Number(profile?.followersCount ?? 0));
   const [followingCount, setFollowingCount] = useState<number>(() => Number(profile?.followingCount ?? 0));
   const [, setPostsCount] = useState(0);
+  const followsReqIdRef = useRef(0);
+  const tRef = useRef(t);
+  tRef.current = t;
 
   // Followers / Following Modal state
   const [followListModal, setFollowListModal] = useState<'followers' | 'following' | null>(null);
@@ -1291,10 +1293,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [uid, isOwnProfile, isGuest, previewMode, authProfileLoading, currentUser, reloadToken, hydrateEditFields]);
 
-  // 2. INDEPENDENT NON-BLOCKING FOLLOWS LOAD (8s timeout + inline retry)
+  // 2. INDEPENDENT NON-BLOCKING FOLLOWS LOAD (fast API first, Firestore reconcile in background)
+  const currentUserUid = currentUser?.uid ?? null;
   const loadFollows = useCallback(async () => {
     if (!uid || isGuest || previewMode) return;
-    setFollowsSyncing(true);
+    const reqId = ++followsReqIdRef.current;
     setFollowsError(null);
     try {
       const fetchApiCount = async (endpoint: '/api/followers' | '/api/following'): Promise<number | null> => {
@@ -1323,25 +1326,51 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const fQuery = query(collection(db, 'follows'), where('followingId', '==', uid), limit(500));
       const fgQuery = query(collection(db, 'follows'), where('followerId', '==', uid), limit(500));
 
-      const [apiFollowersRes, apiFollowingRes, fsFollowersRes, fsFollowingRes, myFollowRes] =
-        await Promise.allSettled([
-          fetchApiCount('/api/followers'),
-          fetchApiCount('/api/following'),
-          withTimeout(getDocs(fQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Followers'),
-          withTimeout(getDocs(fgQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Following'),
-          currentUser && !isOwnProfile
-            ? withTimeout(
-                getDoc(doc(db, 'follows', `${currentUser.uid}_${uid}`)),
-                PROFILE_REQUEST_TIMEOUT_MS,
-                'Follow status'
-              )
-            : Promise.resolve(null),
-        ]);
+      const apiFollowersPromise = fetchApiCount('/api/followers');
+      const apiFollowingPromise = fetchApiCount('/api/following');
+      const fsFollowersPromise = withTimeout(getDocs(fQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Followers');
+      const fsFollowingPromise = withTimeout(getDocs(fgQuery), PROFILE_REQUEST_TIMEOUT_MS, 'Following');
+      const myFollowPromise =
+        currentUserUid && !isOwnProfile
+          ? withTimeout(
+              getDoc(doc(db, 'follows', `${currentUserUid}_${uid}`)),
+              PROFILE_REQUEST_TIMEOUT_MS,
+              'Follow status'
+            )
+          : Promise.resolve(null);
+
+      // Apply fast API counts immediately without waiting for Firestore queries
+      const [apiFollowersRes, apiFollowingRes] = await Promise.allSettled([
+        apiFollowersPromise,
+        apiFollowingPromise,
+      ]);
+      if (followsReqIdRef.current !== reqId) return;
 
       const d1Followers =
         apiFollowersRes.status === 'fulfilled' ? apiFollowersRes.value : null;
       const d1Following =
         apiFollowingRes.status === 'fulfilled' ? apiFollowingRes.value : null;
+
+      if (d1Followers !== null || d1Following !== null) {
+        const fastFollowers = d1Followers ?? 0;
+        const fastFollowing = d1Following ?? 0;
+        setFollowersCount(fastFollowers);
+        setFollowingCount(fastFollowing);
+        setProfile((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, followersCount: fastFollowers, followingCount: fastFollowing };
+          writeCachedProfile(uid, next);
+          return next;
+        });
+      }
+
+      const [fsFollowersRes, fsFollowingRes, myFollowRes] = await Promise.allSettled([
+        fsFollowersPromise,
+        fsFollowingPromise,
+        myFollowPromise,
+      ]);
+      if (followsReqIdRef.current !== reqId) return;
+
       const fsFollowers =
         fsFollowersRes.status === 'fulfilled' ? fsFollowersRes.value.size : null;
       const fsFollowing =
@@ -1368,11 +1397,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         return next;
       });
     } catch {
-      setFollowsError(t('profile.followsRefreshError'));
-    } finally {
-      setFollowsSyncing(false);
+      if (followsReqIdRef.current === reqId) {
+        setFollowsError(tRef.current('profile.followsRefreshError'));
+      }
     }
-  }, [uid, isGuest, previewMode, currentUser, isOwnProfile, t]);
+  }, [uid, isGuest, previewMode, currentUserUid, isOwnProfile]);
 
   useEffect(() => {
     void loadFollows();
@@ -2295,7 +2324,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const activeTabIndex = Math.max(0, TABS.findIndex((tab) => tab.id === activeTab));
 
   return (
-    <div className="relative min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip pb-[calc(96px+env(safe-area-inset-bottom,0px))]">
+    <div className="relative min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] overflow-x-clip pb-12">
       {topBar}
 
       <div className="relative z-10 max-w-[640px] mx-auto px-4 pt-3 pb-8 space-y-5">
@@ -2459,7 +2488,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   {formatNumber(levelInfo.level)}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
-                  {t('profile.level')}
+                  {t('profile.levelLabel')}
                 </div>
               </div>
 
@@ -2481,11 +2510,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
                 <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
-                  {followsSyncing && followersCount === 0 ? (
-                    <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
-                  ) : (
-                    formatNumber(followersCount)
-                  )}
+                  {formatNumber(followersCount)}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
                   {t('profile.followers')}
@@ -2498,11 +2523,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
                 <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
-                  {followsSyncing && followingCount === 0 ? (
-                    <span className="inline-block w-7 h-4 rounded bg-[var(--border)] animate-pulse align-middle" />
-                  ) : (
-                    formatNumber(followingCount)
-                  )}
+                  {formatNumber(followingCount)}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
                   {t('profile.following')}
@@ -3314,7 +3335,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-[calc(84px+env(safe-area-inset-bottom,0px))] sm:bottom-6 left-1/2 -translate-x-1/2 z-[10070] px-4 py-2.5 rounded-full bg-[#16161B] text-white border border-white/15 shadow-2xl flex items-center gap-2 text-[13px] font-semibold"
+          className="fixed bottom-[calc(120px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(100px+env(safe-area-inset-bottom,0px))] left-1/2 -translate-x-1/2 z-[10070] px-4 py-2.5 rounded-full bg-[#16161B] text-white border border-white/15 shadow-2xl flex items-center gap-2 text-[13px] font-semibold"
         >
           <Check className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={2.5} />
           <span>{t('profile.profileSaved')}</span>

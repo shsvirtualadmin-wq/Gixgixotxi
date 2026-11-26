@@ -1118,6 +1118,7 @@ export const ur: TranslationDictionary = {
   'profile.imageUnder5mbError': 'براہ کرم 5 MB سے چھوٹی تصویر منتخب کریں۔',
   'profile.invalidImageError': 'تصویر کا فارمیٹ درست نہیں۔ PNG، JPG یا WebP استعمال کریں۔',
   'profile.level': 'لیول {{level}}',
+  'profile.levelLabel': 'لیول',
   'profile.levelShort': 'لیول {{level}}',
   'profile.limitReached': 'حد پوری ہو گئی',
   'profile.loadFollowersError': 'فالوورز لوڈ نہیں ہو سکے۔',

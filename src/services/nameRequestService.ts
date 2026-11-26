@@ -73,6 +73,25 @@ export async function submitNameRequest(params: {
  * Fetches all name requests for the admin panel.
  */
 export async function fetchNameRequests(filterStatus?: 'pending' | 'approved' | 'rejected' | 'all'): Promise<NameRequestDoc[]> {
+  const getDocsWithTimeout = <T,>(promise: Promise<T>, timeoutMs = 8000): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const err: any = new Error('Timed out loading name requests');
+        err.code = 'DEADLINE_EXCEEDED';
+        reject(err);
+      }, timeoutMs);
+      promise.then(
+        (res) => {
+          clearTimeout(timer);
+          resolve(res);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+    });
+
   try {
     const colRef = collection(db, 'nameRequests');
     let q;
@@ -83,16 +102,19 @@ export async function fetchNameRequests(filterStatus?: 'pending' | 'approved' | 
       q = query(colRef, orderBy('createdAt', 'desc'));
     }
 
-    const snap = await getDocs(q);
+    const snap = await getDocsWithTimeout(getDocs(q), 8000);
     return snap.docs.map((d) => ({
       id: d.id,
       ...(d.data() as Omit<NameRequestDoc, 'id'>),
     }));
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[nameRequestService] error fetching name requests:', err);
+    if (err?.code === 'DEADLINE_EXCEEDED') {
+      return [];
+    }
     // Fallback without orderBy if index is still building
     try {
-      const snap = await getDocs(collection(db, 'nameRequests'));
+      const snap = await getDocsWithTimeout(getDocs(collection(db, 'nameRequests')), 6000);
       const list = snap.docs.map((d) => ({
         id: d.id,
         ...(d.data() as Omit<NameRequestDoc, 'id'>),

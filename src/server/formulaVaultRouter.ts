@@ -186,6 +186,15 @@ export function loadFormulaVaultStore(): FormulaVaultStoreData {
           import_logs: Array.isArray(parsed.import_logs) ? parsed.import_logs : [],
         };
         recalculateFormulaVaultCounts(cachedFormulaStore);
+        const normStats = normalizeFormulaVaultStoreNumbering(cachedFormulaStore);
+        if (
+          normStats.fixedChapters > 0 ||
+          normStats.removedDuplicateFormulas > 0 ||
+          normStats.renumberedFormulas > 0
+        ) {
+          recalculateFormulaVaultCounts(cachedFormulaStore);
+          saveFormulaVaultStore(cachedFormulaStore);
+        }
         return cachedFormulaStore;
       }
     }
@@ -390,6 +399,164 @@ export function recalculateFormulaVaultCounts(store: FormulaVaultStoreData): voi
   if (modifiedSeedOrHeal) {
     saveFormulaVaultStore(store);
   }
+}
+
+function normalizeLatexKey(latex: string): string {
+  return String(latex || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+export function normalizeFormulaVaultStoreNumbering(
+  store: FormulaVaultStoreData,
+  targetCategoryId?: string
+): {
+  fixedChapters: number;
+  removedDuplicateFormulas: number;
+  renumberedFormulas: number;
+} {
+  let fixedChapters = 0;
+  let removedDuplicateFormulas = 0;
+  let renumberedFormulas = 0;
+
+  const targetCatIds = targetCategoryId
+    ? [targetCategoryId]
+    : Array.from(new Set(store.chapters.map((c) => c.category_id)));
+
+  for (const catId of targetCatIds) {
+    const catChaps = store.chapters
+      .filter((ch) => ch.category_id === catId)
+      .sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+          String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+          String(a.id || '').localeCompare(String(b.id || ''))
+      );
+
+    catChaps.forEach((ch, idx) => {
+      const seqNo = idx + 1;
+      if (Number(ch.chapter_no) !== seqNo) {
+        ch.chapter_no = seqNo;
+        fixedChapters += 1;
+      }
+      ch.sort_order = seqNo;
+      ch.search_text = `${seqNo} ${ch.title} ${ch.subtopics}`.toLowerCase().trim();
+    });
+
+    for (const ch of catChaps) {
+      const chapFormulas = store.formulas
+        .filter((f) => f.chapter_id === ch.id)
+        .sort(
+          (a, b) =>
+            Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+            String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+            String(a.id || '').localeCompare(String(b.id || ''))
+        );
+
+      const keptByLatex = new Map<string, D1FormulaRow>();
+      const keptOrdered: D1FormulaRow[] = [];
+      const idsToDelete = new Set<string>();
+
+      for (const f of chapFormulas) {
+        const key = normalizeLatexKey(f.formula_latex);
+        const existing = key ? keptByLatex.get(key) : undefined;
+        if (!existing) {
+          if (key) keptByLatex.set(key, f);
+          keptOrdered.push(f);
+        } else {
+          const existingScore =
+            (String(existing.title || '').trim() ? 2 : 0) +
+            (String(existing.note || '').trim() ? 1 : 0);
+          const candidateScore =
+            (String(f.title || '').trim() ? 2 : 0) + (String(f.note || '').trim() ? 1 : 0);
+          if (candidateScore > existingScore) {
+            idsToDelete.add(existing.id);
+            const pos = keptOrdered.indexOf(existing);
+            if (pos >= 0) keptOrdered[pos] = f;
+            keptByLatex.set(key, f);
+          } else {
+            idsToDelete.add(f.id);
+          }
+          removedDuplicateFormulas += 1;
+        }
+      }
+
+      if (idsToDelete.size > 0) {
+        store.formulas = store.formulas.filter((f) => !idsToDelete.has(f.id));
+      }
+
+      keptOrdered.forEach((f, idx) => {
+        const seqNo = idx + 1;
+        if (Number(f.formula_no) !== seqNo) {
+          f.formula_no = seqNo;
+          renumberedFormulas += 1;
+        }
+        f.sort_order = seqNo;
+      });
+    }
+  }
+
+  store.chapters.sort(
+    (a, b) =>
+      a.category_id.localeCompare(b.category_id) ||
+      Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+      Number(a.sort_order || 0) - Number(b.sort_order || 0)
+  );
+
+  return { fixedChapters, removedDuplicateFormulas, renumberedFormulas };
+}
+
+function repositionChapterInStore(
+  store: FormulaVaultStoreData,
+  categoryId: string,
+  chapterId: string,
+  desiredNo: number
+): void {
+  const catChaps = store.chapters
+    .filter((c) => c.category_id === categoryId)
+    .sort(
+      (a, b) =>
+        Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+        Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+        String(a.id).localeCompare(String(b.id))
+    );
+  const target = catChaps.find((c) => c.id === chapterId);
+  if (!target) return;
+  const others = catChaps.filter((c) => c.id !== chapterId);
+  const clampedIdx = Math.max(0, Math.min(others.length, Math.floor(desiredNo) - 1));
+  others.splice(clampedIdx, 0, target);
+  others.forEach((ch, idx) => {
+    const seqNo = idx + 1;
+    ch.chapter_no = seqNo;
+    ch.sort_order = seqNo;
+    ch.search_text = `${seqNo} ${ch.title} ${ch.subtopics}`.toLowerCase().trim();
+  });
+}
+
+function repositionFormulaInStore(
+  store: FormulaVaultStoreData,
+  chapterId: string,
+  formulaId: string,
+  desiredNo: number
+): void {
+  const chapForms = store.formulas
+    .filter((f) => f.chapter_id === chapterId)
+    .sort(
+      (a, b) =>
+        Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+        Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+        String(a.id).localeCompare(String(b.id))
+    );
+  const target = chapForms.find((f) => f.id === formulaId);
+  if (!target) return;
+  const others = chapForms.filter((f) => f.id !== formulaId);
+  const clampedIdx = Math.max(0, Math.min(others.length, Math.floor(desiredNo) - 1));
+  others.splice(clampedIdx, 0, target);
+  others.forEach((f, idx) => {
+    const seqNo = idx + 1;
+    f.formula_no = seqNo;
+    f.sort_order = seqNo;
+  });
 }
 
 function invalidateChapterPdfR2(store: FormulaVaultStoreData, chapterId: string): void {
@@ -891,8 +1058,9 @@ export function registerFormulaVaultRoutes(
       .filter((f) => f.chapter_id === chapter.id && (isAdmin || f.status === 'live'))
       .sort(
         (a, b) =>
+          Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
           Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
-          Number(a.formula_no || 0) - Number(b.formula_no || 0)
+          String(a.id).localeCompare(String(b.id))
       );
 
     const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
@@ -1341,11 +1509,13 @@ export function registerFormulaVaultRoutes(
 
     const catChapters = store.chapters.filter((ch) => ch.category_id === categoryId);
     const maxSort = catChapters.reduce((m, ch) => Math.max(m, Number(ch.sort_order || 0)), 0);
-    const maxChapNo = catChapters.reduce((m, ch) => Math.max(m, Number(ch.chapter_no || 0)), 0);
-    const chapterNo = Number.isFinite(Number(req.body?.chapter_no))
-      ? Math.max(1, Number(req.body.chapter_no))
-      : maxChapNo + 1;
-    const slug = slugifyText(String(req.body?.slug || title));
+    const extracted = extractLeadingChapterNoAndTitle(title, Number(req.body?.chapter_no || 0));
+    const cleanTitle = extracted.cleanTitle || title;
+    const chapterNo =
+      req.body?.chapter_no !== undefined && Number.isFinite(Number(req.body.chapter_no))
+        ? Math.max(1, Number(req.body.chapter_no))
+        : extracted.chapterNo || catChapters.length + 1;
+    const slug = slugifyText(String(req.body?.slug || cleanTitle));
     const subtopics = String(req.body?.subtopics || '').trim().slice(0, 260);
     const nowIso = new Date().toISOString();
 
@@ -1353,7 +1523,7 @@ export function registerFormulaVaultRoutes(
       id: `chap_${cat.slug}_${slug}_${crypto.randomUUID().slice(0, 5)}`,
       category_id: categoryId,
       chapter_no: chapterNo,
-      title,
+      title: cleanTitle,
       slug,
       subtopics,
       sort_order: maxSort + 1,
@@ -1361,12 +1531,13 @@ export function registerFormulaVaultRoutes(
       status: req.body?.status === 'draft' ? 'draft' : 'live',
       pdf_r2_key: '',
       pdf_updated_at: '',
-      search_text: `${chapterNo} ${title} ${subtopics}`.toLowerCase(),
+      search_text: `${chapterNo} ${cleanTitle} ${subtopics}`.toLowerCase(),
       created_at: nowIso,
       updated_at: nowIso,
     };
 
     store.chapters.push(newChap);
+    repositionChapterInStore(store, categoryId, newChap.id, chapterNo);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
     return res.status(201).json({ success: true, chapter: newChap });
@@ -1385,11 +1556,16 @@ export function registerFormulaVaultRoutes(
     }
 
     if (typeof req.body?.title === 'string' && req.body.title.trim()) {
-      ch.title = req.body.title.trim().slice(0, 140);
+      const extracted = extractLeadingChapterNoAndTitle(req.body.title.trim(), ch.chapter_no);
+      ch.title = (extracted.cleanTitle || req.body.title.trim()).slice(0, 140);
       ch.slug = slugifyText(req.body?.slug || ch.title);
     }
-    if (req.body?.chapter_no !== undefined && Number.isFinite(Number(req.body.chapter_no))) {
-      ch.chapter_no = Math.max(1, Number(req.body.chapter_no));
+    const requestedNo =
+      req.body?.chapter_no !== undefined && Number.isFinite(Number(req.body.chapter_no))
+        ? Math.max(1, Number(req.body.chapter_no))
+        : null;
+    if (requestedNo !== null) {
+      ch.chapter_no = requestedNo;
     }
     if (typeof req.body?.subtopics === 'string') {
       ch.subtopics = req.body.subtopics.trim().slice(0, 260);
@@ -1398,6 +1574,9 @@ export function registerFormulaVaultRoutes(
       ch.status = req.body.status;
     }
     ch.updated_at = new Date().toISOString();
+    if (requestedNo !== null) {
+      repositionChapterInStore(store, ch.category_id, ch.id, requestedNo);
+    }
     invalidateChapterPdfR2(store, ch.id);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
@@ -1416,8 +1595,14 @@ export function registerFormulaVaultRoutes(
     const store = loadFormulaVaultStore();
     orderedIds.forEach((id: string, idx: number) => {
       const ch = store.chapters.find((item) => item.id === id);
-      if (ch) ch.sort_order = idx + 1;
+      if (ch) {
+        ch.sort_order = idx + 1;
+        ch.chapter_no = idx + 1;
+        ch.search_text = `${ch.chapter_no} ${ch.title} ${ch.subtopics}`.toLowerCase().trim();
+        ch.updated_at = new Date().toISOString();
+      }
     });
+    recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
     return res.status(200).json({ success: true });
   });
@@ -1433,10 +1618,12 @@ export function registerFormulaVaultRoutes(
     if (idx < 0) {
       return res.status(404).json({ success: false, error: 'Chapter not found.' });
     }
+    const removedCategoryId = store.chapters[idx].category_id;
     invalidateChapterPdfR2(store, id);
     store.chapters.splice(idx, 1);
     store.formulas = store.formulas.filter((f) => f.chapter_id !== id);
     store.bookmarks = store.bookmarks.filter((b) => b.chapter_id !== id);
+    normalizeFormulaVaultStoreNumbering(store, removedCategoryId);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
     return res.status(200).json({ success: true });
@@ -1560,6 +1747,7 @@ export function registerFormulaVaultRoutes(
     };
 
     store.formulas.push(newFormula);
+    repositionFormulaInStore(store, ch.id, newFormula.id, formulaNo);
     invalidateChapterPdfR2(store, ch.id);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
@@ -1578,6 +1766,9 @@ export function registerFormulaVaultRoutes(
     if (!formula) {
       return res.status(404).json({ success: false, error: 'Formula not found.' });
     }
+
+    const previousChapterId = formula.chapter_id;
+    const previousCategoryId = formula.category_id;
 
     if (typeof req.body?.formula_latex === 'string' && req.body.formula_latex.trim()) {
       formula.formula_latex = req.body.formula_latex.trim();
@@ -1605,8 +1796,12 @@ export function registerFormulaVaultRoutes(
     if (typeof req.body?.note === 'string') {
       formula.note = req.body.note.trim().slice(0, 600);
     }
-    if (req.body?.formula_no !== undefined && Number.isFinite(Number(req.body.formula_no))) {
-      formula.formula_no = Math.max(1, Number(req.body.formula_no));
+    const requestedFormulaNo =
+      req.body?.formula_no !== undefined && Number.isFinite(Number(req.body.formula_no))
+        ? Math.max(1, Number(req.body.formula_no))
+        : null;
+    if (requestedFormulaNo !== null) {
+      formula.formula_no = requestedFormulaNo;
     }
     if (req.body?.status === 'live' || req.body?.status === 'draft') {
       formula.status = req.body.status;
@@ -1630,6 +1825,13 @@ export function registerFormulaVaultRoutes(
       .replace(/\s+/g, ' ')
       .trim();
     formula.updated_at = new Date().toISOString();
+
+    if (requestedFormulaNo !== null || formula.chapter_id !== previousChapterId) {
+      repositionFormulaInStore(store, formula.chapter_id, formula.id, formula.formula_no);
+      if (formula.chapter_id !== previousChapterId) {
+        normalizeFormulaVaultStoreNumbering(store, previousCategoryId);
+      }
+    }
 
     invalidateChapterPdfR2(store, formula.chapter_id);
     recalculateFormulaVaultCounts(store);
@@ -1677,6 +1879,7 @@ export function registerFormulaVaultRoutes(
     const removed = store.formulas[idx];
     store.formulas.splice(idx, 1);
     store.bookmarks = store.bookmarks.filter((b) => b.formula_id !== id);
+    normalizeFormulaVaultStoreNumbering(store, removed.category_id);
     invalidateChapterPdfR2(store, removed.chapter_id);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
@@ -1960,6 +2163,7 @@ export function registerFormulaVaultRoutes(
       store.import_logs.length = 100;
     }
 
+    normalizeFormulaVaultStoreNumbering(store, category.id);
     recalculateFormulaVaultCounts(store);
     saveFormulaVaultStore(store);
 
@@ -2013,6 +2217,89 @@ export function registerFormulaVaultRoutes(
         category_name: catMap.get(ch.category_id)?.name || '',
       }));
 
+    const duplicateChapters: Array<{
+      chapter: D1FormulaChapterRow;
+      duplicateOfId?: string;
+      reason: string;
+      category_name: string;
+    }> = [];
+
+    const chapsByCat = new Map<string, D1FormulaChapterRow[]>();
+    for (const ch of store.chapters) {
+      const list = chapsByCat.get(ch.category_id) || [];
+      list.push(ch);
+      chapsByCat.set(ch.category_id, list);
+    }
+
+    for (const [catId, catChaps] of chapsByCat.entries()) {
+      const catName = catMap.get(catId)?.name || '';
+      const byChNo = new Map<number, D1FormulaChapterRow[]>();
+      const byTitle = new Map<string, D1FormulaChapterRow[]>();
+      const flaggedChapIds = new Set<string>();
+
+      for (const ch of catChaps) {
+        const no = Number(ch.chapter_no || 0);
+        const listNo = byChNo.get(no) || [];
+        listNo.push(ch);
+        byChNo.set(no, listNo);
+
+        const key = normalizeChapterMatchKey(ch.title);
+        if (key) {
+          const listTitle = byTitle.get(key) || [];
+          listTitle.push(ch);
+          byTitle.set(key, listTitle);
+        }
+      }
+
+      for (const [no, group] of byChNo.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            flaggedChapIds.add(group[i].id);
+            duplicateChapters.push({
+              chapter: group[i],
+              duplicateOfId: group[0].id,
+              category_name: catName,
+              reason: `Duplicate chapter number #${String(no).padStart(2, '0')} (${group.length} chapters in ${catName || 'category'})`,
+            });
+          }
+        }
+      }
+
+      for (const [, group] of byTitle.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            if (!flaggedChapIds.has(group[i].id)) {
+              flaggedChapIds.add(group[i].id);
+              duplicateChapters.push({
+                chapter: group[i],
+                duplicateOfId: group[0].id,
+                category_name: catName,
+                reason: `Duplicate chapter title "${group[i].title}" (${group.length} copies)`,
+              });
+            }
+          }
+        }
+      }
+
+      const sortedChaps = [...catChaps].sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
+      sortedChaps.forEach((ch, idx) => {
+        const expected = idx + 1;
+        const actual = Number(ch.chapter_no || 0);
+        if (actual !== expected && !flaggedChapIds.has(ch.id)) {
+          flaggedChapIds.add(ch.id);
+          duplicateChapters.push({
+            chapter: ch,
+            category_name: catName,
+            reason: `Non-sequential chapter number #${String(actual).padStart(2, '0')} (expected #${String(expected).padStart(2, '0')})`,
+          });
+        }
+      });
+    }
+
     const duplicateFormulas: Array<{
       formula: D1FormulaRow;
       duplicateOfId: string;
@@ -2027,13 +2314,14 @@ export function registerFormulaVaultRoutes(
       const chFormulas = store.formulas.filter((f) => f.chapter_id === ch.id);
       const byNo = new Map<number, D1FormulaRow[]>();
       const byLatex = new Map<string, D1FormulaRow[]>();
+      const flaggedFormulaIds = new Set<string>();
 
       for (const f of chFormulas) {
         const listNo = byNo.get(f.formula_no) || [];
         listNo.push(f);
         byNo.set(f.formula_no, listNo);
 
-        const normLatex = f.formula_latex.trim().toLowerCase().replace(/\s+/g, '');
+        const normLatex = normalizeLatexKey(f.formula_latex);
         const listLatex = byLatex.get(normLatex) || [];
         listLatex.push(f);
         byLatex.set(normLatex, listLatex);
@@ -2042,6 +2330,7 @@ export function registerFormulaVaultRoutes(
       for (const [no, group] of byNo.entries()) {
         if (group.length > 1) {
           for (let i = 1; i < group.length; i++) {
+            flaggedFormulaIds.add(group[i].id);
             duplicateFormulas.push({
               formula: group[i],
               duplicateOfId: group[0].id,
@@ -2058,7 +2347,8 @@ export function registerFormulaVaultRoutes(
       for (const [, group] of byLatex.entries()) {
         if (group.length > 1) {
           for (let i = 1; i < group.length; i++) {
-            if (!duplicateFormulas.some((d) => d.formula.id === group[i].id)) {
+            if (!flaggedFormulaIds.has(group[i].id)) {
+              flaggedFormulaIds.add(group[i].id);
               duplicateFormulas.push({
                 formula: group[i],
                 duplicateOfId: group[0].id,
@@ -2072,15 +2362,37 @@ export function registerFormulaVaultRoutes(
           }
         }
       }
+
+      const sortedForms = [...chFormulas].sort(
+        (a, b) =>
+          Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
+      sortedForms.forEach((f, idx) => {
+        const expected = idx + 1;
+        const actual = Number(f.formula_no || 0);
+        if (actual !== expected && !flaggedFormulaIds.has(f.id)) {
+          flaggedFormulaIds.add(f.id);
+          duplicateFormulas.push({
+            formula: f,
+            duplicateOfId: f.id,
+            chapter_id: ch.id,
+            chapter_title: ch.title,
+            category_name: catMap.get(ch.category_id)?.name || '',
+            reason: `Non-sequential formula_no #${actual} (expected #${expected})`,
+          });
+        }
+      });
     }
 
+    const totalDuplicatesCount = duplicateFormulas.length + duplicateChapters.length;
     const openReportsCount = store.formula_reports.filter((r) => r.status === 'open').length;
 
     const healthPayload = {
       ok:
         brokenFormulas.length === 0 &&
         emptyChapters.length === 0 &&
-        duplicateFormulas.length === 0,
+        totalDuplicatesCount === 0,
       totalCategories: store.categories.length,
       totalChapters: store.chapters.length,
       totalFormulas: store.formulas.length,
@@ -2088,11 +2400,13 @@ export function registerFormulaVaultRoutes(
       draftFormulas: store.formulas.filter((f) => f.status === 'draft').length,
       brokenFormulasCount: brokenFormulas.length,
       emptyChaptersCount: emptyChapters.length,
-      duplicateFormulasCount: duplicateFormulas.length,
+      duplicateFormulasCount: totalDuplicatesCount,
+      duplicateChaptersCount: duplicateChapters.length,
       openReportsCount,
       brokenFormulas,
       emptyChapters,
       duplicateFormulas,
+      duplicateChapters,
       recentImports: store.import_logs.slice(0, 10),
     };
 
@@ -2113,37 +2427,6 @@ export function registerFormulaVaultRoutes(
     const store = loadFormulaVaultStore();
     let fixedCount = 0;
 
-    if (action === 'all' || action === 'deduplicate') {
-      for (const ch of store.chapters) {
-        const chFormulas = store.formulas
-          .filter((f) => f.chapter_id === ch.id)
-          .sort(
-            (a, b) =>
-              Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
-              Number(a.formula_no || 0) - Number(b.formula_no || 0)
-          );
-        const seenLatex = new Set<string>();
-        const kept: D1FormulaRow[] = [];
-        for (const f of chFormulas) {
-          const norm = f.formula_latex.trim().toLowerCase().replace(/\s+/g, '');
-          if (seenLatex.has(norm)) {
-            fixedCount++;
-            store.formulas = store.formulas.filter((item) => item.id !== f.id);
-          } else {
-            seenLatex.add(norm);
-            kept.push(f);
-          }
-        }
-        kept.forEach((f, idx) => {
-          if (f.formula_no !== idx + 1) {
-            f.formula_no = idx + 1;
-            fixedCount++;
-          }
-          f.sort_order = idx + 1;
-        });
-      }
-    }
-
     if (
       action === 'all' ||
       action === 'remove_empty_chapters' ||
@@ -2154,6 +2437,19 @@ export function registerFormulaVaultRoutes(
         store.formulas.some((f) => f.chapter_id === ch.id)
       );
       fixedCount += before - store.chapters.length;
+    }
+
+    if (
+      action === 'all' ||
+      action === 'deduplicate' ||
+      action === 'renumber' ||
+      action === 'remove_empty_chapters' ||
+      action === 'delete_empty_chapters'
+    ) {
+      recalculateFormulaVaultCounts(store);
+      const stats = normalizeFormulaVaultStoreNumbering(store);
+      fixedCount +=
+        stats.fixedChapters + stats.removedDuplicateFormulas + stats.renumberedFormulas;
     }
 
     recalculateFormulaVaultCounts(store);

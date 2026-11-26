@@ -106,6 +106,259 @@ export async function recalculateFormulaVaultD1Counts(
   }
 }
 
+function normalizeLatexComparisonKey(latex: string): string {
+  return String(latex || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+async function runBatchedD1(db: any, stmts: any[]): Promise<void> {
+  for (let i = 0; i < stmts.length; i += 50) {
+    await db.batch(stmts.slice(i, i + 50));
+  }
+}
+
+export async function normalizeFormulaVaultD1Numbering(
+  db: any,
+  targetCategoryId?: string
+): Promise<{
+  fixedChapters: number;
+  removedDuplicateFormulas: number;
+  renumberedFormulas: number;
+}> {
+  let fixedChapters = 0;
+  let removedDuplicateFormulas = 0;
+  let renumberedFormulas = 0;
+
+  try {
+    const chapsRes = targetCategoryId
+      ? await db
+          .prepare(
+            'SELECT * FROM chapters WHERE category_id = ? ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+          )
+          .bind(targetCategoryId)
+          .all()
+      : await db
+          .prepare(
+            'SELECT * FROM chapters ORDER BY category_id ASC, CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+          )
+          .all();
+
+    const allChaps: any[] = chapsRes.results || [];
+    const chapsByCat = new Map<string, any[]>();
+    for (const ch of allChaps) {
+      const cid = String(ch.category_id || '');
+      const list = chapsByCat.get(cid) || [];
+      list.push(ch);
+      chapsByCat.set(cid, list);
+    }
+
+    const stmts: any[] = [];
+
+    for (const [, catChaps] of chapsByCat.entries()) {
+      // 1. Merge duplicate chapters with same normalized title inside the category
+      const canonicalByKey = new Map<string, any>();
+      const kept: any[] = [];
+      for (const ch of catChaps) {
+        const extracted = extractWorkerLeadingChapterNoAndTitle(
+          String(ch.title || ''),
+          Number(ch.chapter_no || 0)
+        );
+        const cleanTitle = extracted.cleanTitle || String(ch.title || '').trim();
+        const key = normalizeWorkerChapterMatchKey(cleanTitle);
+        const existing = canonicalByKey.get(key);
+        if (!existing) {
+          ch.title = cleanTitle;
+          canonicalByKey.set(key, ch);
+          kept.push(ch);
+        } else if (String(existing.id) !== String(ch.id)) {
+          stmts.push(
+            db
+              .prepare('UPDATE formulas SET chapter_id = ? WHERE chapter_id = ? AND category_id = ?')
+              .bind(String(existing.id), String(ch.id), String(ch.category_id)),
+            db.prepare('DELETE FROM chapters WHERE id = ?').bind(String(ch.id))
+          );
+          fixedChapters += 1;
+        }
+      }
+
+      // 2. Re-sequence chapter_no = 1..N and sort_order = 1..N stably
+      kept.sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+          String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+          String(a.id || '').localeCompare(String(b.id || ''))
+      );
+
+      kept.forEach((ch, idx) => {
+        const seqNo = idx + 1;
+        const searchText = buildFormulaSearchText([seqNo, ch.title, ch.subtopics]);
+        if (
+          Number(ch.chapter_no) !== seqNo ||
+          Number(ch.sort_order) !== seqNo ||
+          String(ch.search_text || '') !== searchText
+        ) {
+          stmts.push(
+            db
+              .prepare(
+                "UPDATE chapters SET chapter_no = ?, sort_order = ?, title = ?, search_text = ?, updated_at = datetime('now') WHERE id = ?"
+              )
+              .bind(seqNo, seqNo, String(ch.title || ''), searchText, String(ch.id))
+          );
+          if (Number(ch.chapter_no) !== seqNo) fixedChapters += 1;
+        }
+      });
+    }
+
+    if (stmts.length > 0) {
+      await runBatchedD1(db, stmts);
+    }
+
+    // 3. Deduplicate exact-LaTeX formulas and re-sequence formula_no = 1..M per chapter
+    const formsRes = targetCategoryId
+      ? await db
+          .prepare(
+            'SELECT * FROM formulas WHERE category_id = ? ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+          )
+          .bind(targetCategoryId)
+          .all()
+      : await db
+          .prepare(
+            'SELECT * FROM formulas ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+          )
+          .all();
+
+    const allForms: any[] = formsRes.results || [];
+    const formsByChap = new Map<string, any[]>();
+    for (const f of allForms) {
+      const chId = String(f.chapter_id || '');
+      const list = formsByChap.get(chId) || [];
+      list.push(f);
+      formsByChap.set(chId, list);
+    }
+
+    const formStmts: any[] = [];
+    for (const [, chapForms] of formsByChap.entries()) {
+      chapForms.sort(
+        (a, b) =>
+          Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0) ||
+          String(a.created_at || '').localeCompare(String(b.created_at || '')) ||
+          String(a.id || '').localeCompare(String(b.id || ''))
+      );
+
+      // Prefer keeping the richest copy when identical LaTeX appears multiple times
+      const keptByLatex = new Map<string, any>();
+      const keptOrdered: any[] = [];
+      for (const f of chapForms) {
+        const key = normalizeLatexComparisonKey(String(f.formula_latex || ''));
+        const existing = key ? keptByLatex.get(key) : undefined;
+        if (!existing) {
+          if (key) keptByLatex.set(key, f);
+          keptOrdered.push(f);
+        } else {
+          const existingScore =
+            (String(existing.title || '').trim() ? 2 : 0) +
+            (String(existing.note || '').trim() ? 1 : 0);
+          const candidateScore =
+            (String(f.title || '').trim() ? 2 : 0) + (String(f.note || '').trim() ? 1 : 0);
+          if (candidateScore > existingScore) {
+            formStmts.push(
+              db.prepare('DELETE FROM formulas WHERE id = ?').bind(String(existing.id))
+            );
+            const pos = keptOrdered.indexOf(existing);
+            if (pos >= 0) keptOrdered[pos] = f;
+            keptByLatex.set(key, f);
+          } else {
+            formStmts.push(db.prepare('DELETE FROM formulas WHERE id = ?').bind(String(f.id)));
+          }
+          removedDuplicateFormulas += 1;
+        }
+      }
+
+      keptOrdered.forEach((f, idx) => {
+        const seqNo = idx + 1;
+        if (Number(f.formula_no) !== seqNo || Number(f.sort_order) !== seqNo) {
+          formStmts.push(
+            db
+              .prepare(
+                "UPDATE formulas SET formula_no = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?"
+              )
+              .bind(seqNo, seqNo, String(f.id))
+          );
+          if (Number(f.formula_no) !== seqNo) renumberedFormulas += 1;
+        }
+      });
+    }
+
+    if (formStmts.length > 0) {
+      await runBatchedD1(db, formStmts);
+    }
+
+    await recalculateFormulaVaultD1Counts(db, targetCategoryId);
+  } catch (err) {
+    console.warn('[FormulaVaultWorker] normalizeFormulaVaultD1Numbering warning:', err);
+  }
+
+  return { fixedChapters, removedDuplicateFormulas, renumberedFormulas };
+}
+
+async function repositionChapterNumberD1(
+  db: any,
+  categoryId: string,
+  chapterId: string,
+  desiredNo: number
+): Promise<void> {
+  const res = await db
+    .prepare(
+      'SELECT * FROM chapters WHERE category_id = ? ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC, id ASC'
+    )
+    .bind(categoryId)
+    .all();
+  const list: any[] = (res.results || []).filter((c: any) => String(c.id) !== String(chapterId));
+  const target = (res.results || []).find((c: any) => String(c.id) === String(chapterId));
+  if (!target) return;
+  const clampedIdx = Math.max(0, Math.min(list.length, Math.floor(desiredNo) - 1));
+  list.splice(clampedIdx, 0, target);
+  const stmts = list.map((ch, idx) => {
+    const seqNo = idx + 1;
+    const searchText = buildFormulaSearchText([seqNo, ch.title, ch.subtopics]);
+    return db
+      .prepare(
+        "UPDATE chapters SET chapter_no = ?, sort_order = ?, search_text = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .bind(seqNo, seqNo, searchText, String(ch.id));
+  });
+  if (stmts.length > 0) await runBatchedD1(db, stmts);
+}
+
+async function repositionFormulaNumberD1(
+  db: any,
+  chapterId: string,
+  formulaId: string,
+  desiredNo: number
+): Promise<void> {
+  const res = await db
+    .prepare(
+      'SELECT id, formula_no, sort_order FROM formulas WHERE chapter_id = ? ORDER BY CAST(formula_no AS INTEGER) ASC, sort_order ASC, id ASC'
+    )
+    .bind(chapterId)
+    .all();
+  const list: any[] = (res.results || []).filter((f: any) => String(f.id) !== String(formulaId));
+  const target = (res.results || []).find((f: any) => String(f.id) === String(formulaId));
+  if (!target) return;
+  const clampedIdx = Math.max(0, Math.min(list.length, Math.floor(desiredNo) - 1));
+  list.splice(clampedIdx, 0, target);
+  const stmts = list.map((f, idx) => {
+    const seqNo = idx + 1;
+    return db
+      .prepare(
+        "UPDATE formulas SET formula_no = ?, sort_order = ?, updated_at = datetime('now') WHERE id = ?"
+      )
+      .bind(seqNo, seqNo, String(f.id));
+  });
+  if (stmts.length > 0) await runBatchedD1(db, stmts);
+}
+
 let formulaSchemaEnsured = false;
 
 async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
@@ -402,7 +655,7 @@ async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
       await db.batch(seedStmts.slice(i, i + 50)).catch(() => {});
     }
 
-    await recalculateFormulaVaultD1Counts(db);
+    await normalizeFormulaVaultD1Numbering(db);
     formulaSchemaEnsured = true;
   } catch (err) {
     console.warn('[FormulaVaultWorker] Schema/seed check warning:', err);
@@ -567,8 +820,8 @@ export async function handleFormulaVaultWorkerRequest(params: {
 
     const itemsRes = await env.DB.prepare(
       includeDrafts
-        ? 'SELECT * FROM formulas WHERE chapter_id = ? ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?'
-        : "SELECT * FROM formulas WHERE chapter_id = ? AND status = 'live' ORDER BY sort_order ASC, formula_no ASC LIMIT ? OFFSET ?"
+        ? 'SELECT * FROM formulas WHERE chapter_id = ? ORDER BY CAST(formula_no AS INTEGER) ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?'
+        : "SELECT * FROM formulas WHERE chapter_id = ? AND status = 'live' ORDER BY CAST(formula_no AS INTEGER) ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?"
     )
       .bind(chapter.id, pageSize, offset)
       .all();
@@ -810,40 +1063,40 @@ export async function handleFormulaVaultWorkerRequest(params: {
       return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
     }
     await recalculateFormulaVaultD1Counts(env.DB);
-    const [catsRes, chapsRes, formsRes] = await Promise.all([
+    const [catsRes, chapsRes, formsRes, openReportsRes] = await Promise.all([
       env.DB.prepare('SELECT * FROM categories').all(),
-      env.DB.prepare('SELECT * FROM chapters').all(),
-      env.DB.prepare('SELECT * FROM formulas').all(),
+      env.DB.prepare('SELECT * FROM chapters ORDER BY category_id ASC, CAST(chapter_no AS INTEGER) ASC, sort_order ASC').all(),
+      env.DB.prepare('SELECT * FROM formulas ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC').all(),
+      env.DB.prepare("SELECT COUNT(*) AS cnt FROM formula_reports WHERE status = 'open'")
+        .first()
+        .catch(() => ({ cnt: 0 })),
     ]);
     const cats = catsRes.results || [];
     const chaps = chapsRes.results || [];
     const forms = formsRes.results || [];
+    const openReportsCount = Number((openReportsRes as any)?.cnt || 0);
     const chapMap = new Map<string, any>(chaps.map((c: any) => [String(c.id), c]));
     const catMap = new Map<string, any>(cats.map((c: any) => [String(c.id), c]));
 
     const emptyChapters = chaps
       .filter((ch: any) => !forms.some((f: any) => f.chapter_id === ch.id))
       .map((ch: any) => ({
-        id: ch.id,
-        title: ch.title,
+        ...ch,
         chapter_no: Number(ch.chapter_no || 1),
-        category_id: ch.category_id,
         category_name: catMap.get(String(ch.category_id))?.name || '',
       }));
 
-    const brokenLatexFormulas: any[] = [];
+    const brokenFormulas: any[] = [];
     const missingNoteFormulas: any[] = [];
     for (const f of forms as any[]) {
       const check = validateMath(String(f.formula_latex || ''));
       if (!check.valid) {
-        brokenLatexFormulas.push({
-          id: f.id,
+        brokenFormulas.push({
+          ...f,
           formula_no: Number(f.formula_no || 1),
-          formula_latex: f.formula_latex,
+          error: check.error || 'Invalid LaTeX',
           render_error: check.error || 'Invalid LaTeX',
-          chapter_id: f.chapter_id,
           chapter_title: chapMap.get(String(f.chapter_id))?.title || '',
-          category_id: f.category_id,
           category_name: catMap.get(String(f.category_id))?.name || '',
         });
       }
@@ -860,24 +1113,223 @@ export async function handleFormulaVaultWorkerRequest(params: {
       }
     }
 
+    // Detect duplicate / non-sequential chapters per category
+    const duplicateChapters: Array<{
+      chapter: any;
+      duplicateOfId?: string;
+      reason: string;
+      category_name: string;
+    }> = [];
+    const chapsByCat = new Map<string, any[]>();
+    for (const ch of chaps as any[]) {
+      const cid = String(ch.category_id || '');
+      const list = chapsByCat.get(cid) || [];
+      list.push(ch);
+      chapsByCat.set(cid, list);
+    }
+    for (const [cid, catChaps] of chapsByCat.entries()) {
+      const catName = catMap.get(cid)?.name || '';
+      const byChNo = new Map<number, any[]>();
+      const byChTitle = new Map<string, any[]>();
+      const flaggedChapIds = new Set<string>();
+
+      for (const ch of catChaps) {
+        const no = Number(ch.chapter_no || 0);
+        const listNo = byChNo.get(no) || [];
+        listNo.push(ch);
+        byChNo.set(no, listNo);
+
+        const key = normalizeWorkerChapterMatchKey(String(ch.title || ''));
+        if (key) {
+          const listTitle = byChTitle.get(key) || [];
+          listTitle.push(ch);
+          byChTitle.set(key, listTitle);
+        }
+      }
+
+      for (const [no, group] of byChNo.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            flaggedChapIds.add(String(group[i].id));
+            duplicateChapters.push({
+              chapter: group[i],
+              duplicateOfId: String(group[0].id),
+              category_name: catName,
+              reason: `Duplicate chapter number #${String(no).padStart(2, '0')} (${group.length} chapters in ${catName || 'category'})`,
+            });
+          }
+        }
+      }
+
+      for (const [, group] of byChTitle.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            if (!flaggedChapIds.has(String(group[i].id))) {
+              flaggedChapIds.add(String(group[i].id));
+              duplicateChapters.push({
+                chapter: group[i],
+                duplicateOfId: String(group[0].id),
+                category_name: catName,
+                reason: `Duplicate chapter title "${group[i].title}" (${group.length} copies)`,
+              });
+            }
+          }
+        }
+      }
+
+      const sortedChaps = [...catChaps].sort(
+        (a, b) =>
+          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
+      sortedChaps.forEach((ch, idx) => {
+        const expected = idx + 1;
+        const actual = Number(ch.chapter_no || 0);
+        if (actual !== expected && !flaggedChapIds.has(String(ch.id))) {
+          flaggedChapIds.add(String(ch.id));
+          duplicateChapters.push({
+            chapter: ch,
+            category_name: catName,
+            reason: `Non-sequential chapter number #${String(actual).padStart(2, '0')} (expected #${String(expected).padStart(2, '0')})`,
+          });
+        }
+      });
+    }
+
+    // Detect duplicate formula_no, identical LaTeX, and non-sequential formula_no per chapter
+    const duplicateFormulas: Array<{
+      formula: any;
+      duplicateOfId: string;
+      reason: string;
+      chapter_id: string;
+      chapter_title: string;
+      category_name: string;
+    }> = [];
+
+    const formsByChap = new Map<string, any[]>();
+    for (const f of forms as any[]) {
+      const chId = String(f.chapter_id || '');
+      const list = formsByChap.get(chId) || [];
+      list.push(f);
+      formsByChap.set(chId, list);
+    }
+
+    for (const [chId, chFormulas] of formsByChap.entries()) {
+      const ch = chapMap.get(chId);
+      const chTitle = ch?.title || '';
+      const catName = catMap.get(String(ch?.category_id || chFormulas[0]?.category_id || ''))?.name || '';
+      const byNo = new Map<number, any[]>();
+      const byLatex = new Map<string, any[]>();
+      const flaggedIds = new Set<string>();
+
+      for (const f of chFormulas) {
+        const no = Number(f.formula_no || 0);
+        const listNo = byNo.get(no) || [];
+        listNo.push(f);
+        byNo.set(no, listNo);
+
+        const normLatex = normalizeLatexComparisonKey(String(f.formula_latex || ''));
+        if (normLatex) {
+          const listLatex = byLatex.get(normLatex) || [];
+          listLatex.push(f);
+          byLatex.set(normLatex, listLatex);
+        }
+      }
+
+      for (const [no, group] of byNo.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            flaggedIds.add(String(group[i].id));
+            duplicateFormulas.push({
+              formula: group[i],
+              duplicateOfId: String(group[0].id),
+              chapter_id: chId,
+              chapter_title: chTitle,
+              category_name: catName,
+              reason: `Duplicate formula_no #${no} (${group.length} formulas)`,
+            });
+          }
+        }
+      }
+
+      for (const [, group] of byLatex.entries()) {
+        if (group.length > 1) {
+          for (let i = 1; i < group.length; i++) {
+            if (!flaggedIds.has(String(group[i].id))) {
+              flaggedIds.add(String(group[i].id));
+              duplicateFormulas.push({
+                formula: group[i],
+                duplicateOfId: String(group[0].id),
+                chapter_id: chId,
+                chapter_title: chTitle,
+                category_name: catName,
+                reason: `Identical LaTeX expression (${group.length} copies)`,
+              });
+            }
+          }
+        }
+      }
+
+      const sortedForms = [...chFormulas].sort(
+        (a, b) =>
+          Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      );
+      sortedForms.forEach((f, idx) => {
+        const expected = idx + 1;
+        const actual = Number(f.formula_no || 0);
+        if (actual !== expected && !flaggedIds.has(String(f.id))) {
+          flaggedIds.add(String(f.id));
+          duplicateFormulas.push({
+            formula: f,
+            duplicateOfId: String(f.id),
+            chapter_id: chId,
+            chapter_title: chTitle,
+            category_name: catName,
+            reason: `Non-sequential formula_no #${actual} (expected #${expected})`,
+          });
+        }
+      });
+    }
+
+    const totalDuplicatesCount = duplicateFormulas.length + duplicateChapters.length;
+    const liveFormulas = (forms as any[]).filter((f) => f.status === 'live').length;
+    const draftFormulas = (forms as any[]).filter((f) => f.status === 'draft').length;
+
+    const healthPayload = {
+      ok:
+        brokenFormulas.length === 0 &&
+        emptyChapters.length === 0 &&
+        totalDuplicatesCount === 0,
+      totalCategories: cats.length,
+      totalChapters: chaps.length,
+      totalFormulas: forms.length,
+      liveFormulas,
+      draftFormulas,
+      brokenFormulasCount: brokenFormulas.length,
+      brokenLatexCount: brokenFormulas.length,
+      emptyChaptersCount: emptyChapters.length,
+      duplicateFormulasCount: totalDuplicatesCount,
+      duplicateChaptersCount: duplicateChapters.length,
+      duplicateNumbersCount: totalDuplicatesCount,
+      openReportsCount,
+      missingNoteCount: missingNoteFormulas.length,
+      stalePdfCount: 0,
+      brokenFormulas,
+      brokenLatexFormulas: brokenFormulas,
+      emptyChapters,
+      duplicateFormulas,
+      duplicateChapters,
+      duplicateNumbers: duplicateFormulas,
+      missingNoteFormulas: missingNoteFormulas.slice(0, 50),
+      stalePdfChapters: [],
+    };
+
     return jsonResponse(
       {
         success: true,
-        health: {
-          totalCategories: cats.length,
-          totalChapters: chaps.length,
-          totalFormulas: forms.length,
-          emptyChaptersCount: emptyChapters.length,
-          brokenLatexCount: brokenLatexFormulas.length,
-          duplicateNumbersCount: 0,
-          missingNoteCount: missingNoteFormulas.length,
-          stalePdfCount: 0,
-          emptyChapters,
-          brokenLatexFormulas,
-          duplicateNumbers: [],
-          missingNoteFormulas: missingNoteFormulas.slice(0, 50),
-          stalePdfChapters: [],
-        },
+        ...healthPayload,
+        health: healthPayload,
       },
       200,
       cors
@@ -888,11 +1340,46 @@ export async function handleFormulaVaultWorkerRequest(params: {
     if (!isAdmin) {
       return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
     }
-    await recalculateFormulaVaultD1Counts(env.DB);
+    const body = (await req.json().catch(() => ({}))) as Record<string, any>;
+    const action = String(body.action || 'all');
+    let fixedCount = 0;
+
+    if (
+      action === 'all' ||
+      action === 'delete_empty_chapters' ||
+      action === 'remove_empty_chapters'
+    ) {
+      const emptyRes = await env.DB.prepare(
+        `SELECT id FROM chapters
+         WHERE NOT EXISTS (SELECT 1 FROM formulas f WHERE f.chapter_id = chapters.id)`
+      ).all();
+      const emptyIds = (emptyRes.results || []).map((r: any) => String(r.id));
+      if (emptyIds.length > 0) {
+        const delStmts = emptyIds.map((id: string) =>
+          env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(id)
+        );
+        await runBatchedD1(env.DB, delStmts);
+        fixedCount += emptyIds.length;
+      }
+    }
+
+    if (
+      action === 'all' ||
+      action === 'deduplicate' ||
+      action === 'renumber' ||
+      action === 'delete_empty_chapters' ||
+      action === 'remove_empty_chapters'
+    ) {
+      const stats = await normalizeFormulaVaultD1Numbering(env.DB);
+      fixedCount +=
+        stats.fixedChapters + stats.removedDuplicateFormulas + stats.renumberedFormulas;
+    }
+
     return jsonResponse(
       {
         success: true,
-        message: 'Recalculated live chapter & category formula counts and verified ordering.',
+        fixedCount,
+        message: `Normalized chapter & formula numbering and removed duplicates (${fixedCount} updates).`,
       },
       200,
       cors
@@ -977,21 +1464,29 @@ export async function handleFormulaVaultWorkerRequest(params: {
     if (!categoryId || !rawTitle) {
       return jsonResponse({ success: false, error: 'category_id and title are required.' }, 400, cors);
     }
-    const extracted = extractWorkerLeadingChapterNoAndTitle(rawTitle, Number(body.chapter_no || 1));
+    const countRow = await env.DB.prepare('SELECT COUNT(*) AS cnt FROM chapters WHERE category_id = ?')
+      .bind(categoryId)
+      .first();
+    const existingCount = Number((countRow as any)?.cnt || 0);
+    const extracted = extractWorkerLeadingChapterNoAndTitle(rawTitle, Number(body.chapter_no || 0));
     const title = extracted.cleanTitle || rawTitle;
-    const chapterNo = Number(body.chapter_no) > 0 ? Number(body.chapter_no) : extracted.chapterNo || 1;
+    const requestedNo =
+      Number(body.chapter_no) > 0
+        ? Number(body.chapter_no)
+        : extracted.chapterNo || existingCount + 1;
     const subtopics = String(body.subtopics || '').trim();
     const status = body.status === 'draft' ? 'draft' : 'live';
     const slug = buildFormulaSlug(title);
     const id = `chap_${buildFormulaSlug(categoryId)}_${slug}_${Date.now().toString(36)}`;
-    const searchText = buildFormulaSearchText([chapterNo, title, subtopics]);
+    const searchText = buildFormulaSearchText([requestedNo, title, subtopics]);
     await env.DB.prepare(
       `INSERT INTO chapters (
         id, category_id, chapter_no, title, slug, subtopics, sort_order, formula_count, status, search_text
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
     )
-      .bind(id, categoryId, chapterNo, title, slug, subtopics, chapterNo, status, searchText)
+      .bind(id, categoryId, requestedNo, title, slug, subtopics, requestedNo, status, searchText)
       .run();
+    await repositionChapterNumberD1(env.DB, categoryId, id, requestedNo);
     await recalculateFormulaVaultD1Counts(env.DB, categoryId);
     const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(id).first();
     return jsonResponse({ success: true, chapter }, 201, cors);
@@ -1002,9 +1497,14 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
     const ids: string[] = Array.isArray(body.orderedIds) ? body.orderedIds : [];
     const stmts = ids.map((id, idx) =>
-      env.DB.prepare('UPDATE chapters SET sort_order = ? WHERE id = ?').bind(idx + 1, String(id))
+      env.DB.prepare(
+        "UPDATE chapters SET sort_order = ?, chapter_no = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(idx + 1, idx + 1, String(id))
     );
-    if (stmts.length > 0) await env.DB.batch(stmts);
+    if (stmts.length > 0) await runBatchedD1(env.DB, stmts);
+    if (body.category_id) {
+      await recalculateFormulaVaultD1Counts(env.DB, String(body.category_id));
+    }
     return jsonResponse({ success: true }, 200, cors);
   }
 
@@ -1014,7 +1514,9 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const existing = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapId).first();
     if (!existing) return jsonResponse({ success: false, error: 'Chapter not found.' }, 404, cors);
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
-    const title = body.title !== undefined ? String(body.title).trim() : String(existing.title);
+    const rawTitle = body.title !== undefined ? String(body.title).trim() : String(existing.title);
+    const extracted = extractWorkerLeadingChapterNoAndTitle(rawTitle, Number(existing.chapter_no || 1));
+    const title = extracted.cleanTitle || rawTitle;
     const chapterNo =
       body.chapter_no !== undefined && Number.isFinite(Number(body.chapter_no))
         ? Math.max(1, Number(body.chapter_no))
@@ -1033,6 +1535,9 @@ export async function handleFormulaVaultWorkerRequest(params: {
     )
       .bind(chapterNo, title, subtopics, status, searchText, chapId)
       .run();
+    if (body.chapter_no !== undefined) {
+      await repositionChapterNumberD1(env.DB, String(existing.category_id), chapId, chapterNo);
+    }
     await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
     const chapter = await env.DB.prepare('SELECT * FROM chapters WHERE id = ?').bind(chapId).first();
     return jsonResponse({ success: true, chapter }, 200, cors);
@@ -1047,7 +1552,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
       env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(chapId),
     ]);
     if (existing?.category_id) {
-      await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
+      await normalizeFormulaVaultD1Numbering(env.DB, String(existing.category_id));
     }
     return jsonResponse({ success: true }, 200, cors);
   }
@@ -1056,20 +1561,36 @@ export async function handleFormulaVaultWorkerRequest(params: {
   if (sub === '/items' && method === 'POST') {
     if (!isAdmin) return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
-    const categoryId = String(body.category_id || '').trim();
     const chapterId = String(body.chapter_id || '').trim();
+    let categoryId = String(body.category_id || '').trim();
     const formulaLatex = String(body.formula_latex || '').trim();
-    if (!categoryId || !chapterId || !formulaLatex) {
-      return jsonResponse({ success: false, error: 'category_id, chapter_id and formula_latex are required.' }, 400, cors);
+    if (!chapterId || !formulaLatex) {
+      return jsonResponse({ success: false, error: 'chapter_id and formula_latex are required.' }, 400, cors);
+    }
+    if (!categoryId) {
+      const chapRow = await env.DB.prepare('SELECT category_id FROM chapters WHERE id = ?')
+        .bind(chapterId)
+        .first();
+      categoryId = String((chapRow as any)?.category_id || '').trim();
+    }
+    if (!categoryId) {
+      return jsonResponse({ success: false, error: 'Target chapter not found.' }, 404, cors);
     }
     const mathCheck = validateMath(formulaLatex);
     if (!mathCheck.valid) {
       return jsonResponse({ success: false, error: `Invalid LaTeX: ${mathCheck.error || 'syntax error'}` }, 400, cors);
     }
-    const formulaNo = Math.max(1, Number(body.formula_no || 1));
+    const countRow = await env.DB.prepare('SELECT COUNT(*) AS cnt FROM formulas WHERE chapter_id = ?')
+      .bind(chapterId)
+      .first();
+    const existingCount = Number((countRow as any)?.cnt || 0);
+    const formulaNo =
+      body.formula_no !== undefined && Number(body.formula_no) > 0
+        ? Math.max(1, Number(body.formula_no))
+        : existingCount + 1;
     const title = String(body.title || '').trim();
     const note = String(body.note || '').trim();
-    const plainText = String(body.plain_text || formulaLatex).trim();
+    const plainText = String(body.plain_text || body.formula_plain || formulaLatex).trim();
     const status = body.status === 'draft' ? 'draft' : 'live';
     const id = `form_${chapterId}_${formulaNo}_${Date.now().toString(36)}`;
     const searchText = buildFormulaSearchText([title, formulaLatex, plainText, note]);
@@ -1080,6 +1601,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
     )
       .bind(id, categoryId, chapterId, formulaNo, title, formulaLatex, plainText, note, status, formulaNo, searchText)
       .run();
+    await repositionFormulaNumberD1(env.DB, chapterId, id, formulaNo);
     await recalculateFormulaVaultD1Counts(env.DB, categoryId);
     const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(id).first();
     return jsonResponse({ success: true, formula }, 201, cors);
@@ -1090,13 +1612,11 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const body = (await req.json().catch(() => ({}))) as Record<string, any>;
     const ids: string[] = Array.isArray(body.orderedIds) ? body.orderedIds : [];
     const stmts = ids.map((id, idx) =>
-      env.DB.prepare('UPDATE formulas SET sort_order = ?, formula_no = ? WHERE id = ?').bind(
-        idx + 1,
-        idx + 1,
-        String(id)
-      )
+      env.DB.prepare(
+        "UPDATE formulas SET sort_order = ?, formula_no = ?, updated_at = datetime('now') WHERE id = ?"
+      ).bind(idx + 1, idx + 1, String(id))
     );
-    if (stmts.length > 0) await env.DB.batch(stmts);
+    if (stmts.length > 0) await runBatchedD1(env.DB, stmts);
     return jsonResponse({ success: true }, 200, cors);
   }
 
@@ -1120,7 +1640,11 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const title = body.title !== undefined ? String(body.title).trim() : String(existing.title || '');
     const note = body.note !== undefined ? String(body.note).trim() : String(existing.note || '');
     const plainText =
-      body.plain_text !== undefined ? String(body.plain_text).trim() : String(existing.plain_text || formulaLatex);
+      body.plain_text !== undefined
+        ? String(body.plain_text).trim()
+        : body.formula_plain !== undefined
+        ? String(body.formula_plain).trim()
+        : String(existing.plain_text || formulaLatex);
     const status =
       body.status !== undefined
         ? body.status === 'draft'
@@ -1139,6 +1663,12 @@ export async function handleFormulaVaultWorkerRequest(params: {
     )
       .bind(categoryId, chapterId, formulaNo, title, formulaLatex, plainText, note, status, searchText, itemId)
       .run();
+    if (body.formula_no !== undefined || chapterId !== String(existing.chapter_id)) {
+      await repositionFormulaNumberD1(env.DB, chapterId, itemId, formulaNo);
+      if (chapterId !== String(existing.chapter_id)) {
+        await normalizeFormulaVaultD1Numbering(env.DB, String(existing.category_id));
+      }
+    }
     await recalculateFormulaVaultD1Counts(env.DB, categoryId);
     const formula = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(itemId).first();
     return jsonResponse({ success: true, formula }, 200, cors);
@@ -1150,7 +1680,7 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const existing = await env.DB.prepare('SELECT * FROM formulas WHERE id = ?').bind(itemId).first();
     await env.DB.prepare('DELETE FROM formulas WHERE id = ?').bind(itemId).run();
     if (existing?.category_id) {
-      await recalculateFormulaVaultD1Counts(env.DB, String(existing.category_id));
+      await normalizeFormulaVaultD1Numbering(env.DB, String(existing.category_id));
     }
     return jsonResponse({ success: true }, 200, cors);
   }
@@ -1387,8 +1917,8 @@ export async function handleFormulaVaultWorkerRequest(params: {
       await env.DB.batch(writeStmts.slice(i, i + 50));
     }
 
-    // Refresh live chapter and category formula counts immediately
-    await recalculateFormulaVaultD1Counts(env.DB, String(cat.id));
+    // Refresh numbering and live chapter/category formula counts immediately
+    await normalizeFormulaVaultD1Numbering(env.DB, String(cat.id));
 
     await env.DB.prepare(
       `INSERT INTO import_logs (

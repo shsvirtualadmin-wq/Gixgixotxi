@@ -21,6 +21,7 @@ import { Breadcrumbs } from '@/components/ui/Breadcrumbs';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import {
+  computeScorePercentage,
   getAmbassadorTestById,
   getTestLeaderboard,
   getMyTestAttempts,
@@ -237,7 +238,9 @@ export const GrandLineTestInfoPage: React.FC = () => {
               {myAttempt && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   <CheckCircle2 size={13} />
-                  Attempted · {myAttempt.score}/{myAttempt.totalQuestions} ({myAttempt.percentage}%)
+                  <span>
+                    {`Attempted · ${myAttempt.score}/${myAttempt.totalQuestions} (${computeScorePercentage(myAttempt.score, myAttempt.totalQuestions, myAttempt.percentage)}%)`}
+                  </span>
                 </span>
               )}
             </div>
@@ -464,7 +467,7 @@ export const GrandLineTestInfoPage: React.FC = () => {
               </p>
             </div>
             <span className="glass-pill px-3 py-1 text-xs text-white/70 shrink-0">
-              {leaderboard.length} Attempt{leaderboard.length === 1 ? '' : 's'}
+              {`${leaderboard.length} ${leaderboard.length === 1 ? 'Attempt' : 'Attempts'}`}
             </span>
           </div>
 
@@ -485,6 +488,11 @@ export const GrandLineTestInfoPage: React.FC = () => {
                   (entry.userName || entry.studentName || entry.name || '').trim() || 'Student';
                 const isCurrentUser =
                   Boolean(user?.uid && entry.studentUid && entry.studentUid === user.uid);
+                const displayPercentage = computeScorePercentage(
+                  entry.score,
+                  entry.totalQuestions,
+                  entry.percentage
+                );
                 return (
                   <div
                     key={`${entry.rank}-${entry.id || displayName}`}
@@ -526,16 +534,16 @@ export const GrandLineTestInfoPage: React.FC = () => {
                           )}
                         </div>
                         <p className="text-[11px] text-white/55 truncate">
-                          {formatTimeTaken(entry.timeTakenSeconds)} · {entry.percentage}% accuracy
+                          {`${formatTimeTaken(entry.timeTakenSeconds)} · ${displayPercentage}% accuracy`}
                         </p>
                       </div>
                     </div>
                     <div className="text-right shrink-0 tabular-nums">
                       <span className="text-xs sm:text-sm font-bold text-white block">
-                        {entry.score}/{entry.totalQuestions}
+                        {`${entry.score}/${entry.totalQuestions}`}
                       </span>
                       <span className="block text-[10px] font-semibold text-[#D71921]">
-                        {entry.percentage}%
+                        {`${displayPercentage}%`}
                       </span>
                     </div>
                   </div>

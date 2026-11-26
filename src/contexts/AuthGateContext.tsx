@@ -65,7 +65,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const openSignInModal = useCallback(
     (label = 'continue', customRedirect?: string) => {
       const targetUrl = customRedirect || `${location.pathname}${location.search}${location.hash}`;
-      setActionLabel(label);
+      setActionLabel((label || '').trim() || 'continue');
       setRedirectPath(targetUrl);
       setStep('options');
       setGuestUsername('');

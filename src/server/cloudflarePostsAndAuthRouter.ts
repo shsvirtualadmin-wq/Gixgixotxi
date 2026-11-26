@@ -9202,11 +9202,25 @@ ${postSitemaps}
     return res.status(200).json({ attempts: storeAttempts });
   });
 
+  const computeSafePercentage = (scoreVal: unknown, totalVal: unknown, fallbackVal: unknown = 0) => {
+    const s = Number(scoreVal);
+    const t = Number(totalVal);
+    if (Number.isFinite(s) && Number.isFinite(t) && t > 0) {
+      return Math.max(0, Math.min(100, Math.round((s / t) * 100)));
+    }
+    const fb = Number(fallbackVal);
+    return Number.isFinite(fb) ? Math.max(0, Math.min(100, Math.round(fb))) : 0;
+  };
+
   const handleTestResultsOrLeaderboard = async (req: Request, res: Response) => {
     const store = loadD1Store() as any;
     const testId = decodeURIComponent(String(req.params.id || ''));
     const filtered = (store.testAttempts || [])
       .filter((a: any) => String(a.testId || a.test_id || '') === testId)
+      .map((a: any) => ({
+        ...a,
+        percentage: computeSafePercentage(a.score, a.totalQuestions ?? a.total_questions, a.percentage),
+      }))
       .sort(
         (a: any, b: any) =>
           Number(b.percentage || 0) - Number(a.percentage || 0) ||
@@ -9262,6 +9276,9 @@ ${postSitemaps}
         (live && !live.isDeleted && live.avatar) ||
         sanitizeStoreAvatarId(a.userAvatar, a.user_avatar);
       const timeSec = Number(a.timeTakenSeconds ?? a.time_taken_seconds ?? 0);
+      const attemptScore = Number(a.score || 0);
+      const attemptTotal = Number(a.totalQuestions ?? a.total_questions ?? 0);
+      const attemptPct = computeSafePercentage(attemptScore, attemptTotal, a.percentage);
       const existing = byUser.get(uid);
       if (!existing) {
         byUser.set(uid, {
@@ -9276,21 +9293,30 @@ ${postSitemaps}
           proBadge: (live && !live.isDeleted && live.proBadge) || null,
           plusBadge: (live && !live.isDeleted && live.plusBadge) ?? null,
           testsCompleted: 1,
-          totalScore: Number(a.score || 0),
-          totalQuestions: Number(a.totalQuestions || 0),
-          bestPercentage: Number(a.percentage || 0),
+          totalScore: attemptScore,
+          totalQuestions: attemptTotal,
+          bestAttemptPercentage: attemptPct,
+          percentage: attemptPct,
+          bestPercentage: attemptPct,
           timeTakenSeconds: timeSec,
           lastTestTitle: a.testTitle || 'Grand Line Drill',
           updatedAt: a.createdAt,
         });
       } else {
         existing.testsCompleted += 1;
-        existing.totalScore += Number(a.score || 0);
-        existing.totalQuestions += Number(a.totalQuestions || 0);
-        if (Number(a.percentage || 0) > existing.bestPercentage) {
-          existing.bestPercentage = Number(a.percentage || 0);
+        existing.totalScore += attemptScore;
+        existing.totalQuestions += attemptTotal;
+        if (attemptPct > existing.bestAttemptPercentage) {
+          existing.bestAttemptPercentage = attemptPct;
           existing.timeTakenSeconds = timeSec;
         }
+        const overallPct = computeSafePercentage(
+          existing.totalScore,
+          existing.totalQuestions,
+          existing.bestAttemptPercentage
+        );
+        existing.percentage = overallPct;
+        existing.bestPercentage = overallPct;
         if (existing.displayName === 'Student' && resolvedName !== 'Student') {
           existing.displayName = resolvedName;
           existing.userName = resolvedName;
@@ -9305,12 +9331,12 @@ ${postSitemaps}
     const leaderboard = Array.from(byUser.values())
       .sort(
         (a, b) =>
-          b.bestPercentage - a.bestPercentage ||
+          b.percentage - a.percentage ||
           b.totalScore - a.totalScore ||
           a.timeTakenSeconds - b.timeTakenSeconds
       )
       .slice(0, limitParam)
-      .map((entry, idx) => ({
+      .map(({ bestAttemptPercentage: _omitBest, ...entry }, idx) => ({
         ...entry,
         rank: idx + 1,
       }));
@@ -11334,12 +11360,25 @@ ${postSitemaps}
       return res.status(403).json({ error: 'UID mismatch.', code: 'FORBIDDEN' });
     }
 
-    const dateKey = computeServerPKTDateKey();
+    const requestedDateKey =
+      typeof body.dateKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.dateKey.trim())
+        ? body.dateKey.trim()
+        : '';
+    const dateKey = requestedDateKey || computeServerPKTDateKey();
     const store = loadD1Store() as any;
     const row = getOrCreateDailyUsageRow(store, effectiveUid, dateKey);
 
     if (typeof body.practiceAttemptsDelta === 'number' && body.practiceAttemptsDelta > 0) {
       row.practice_attempts = Number(row.practice_attempts || 0) + Math.floor(body.practiceAttemptsDelta);
+    }
+    const completedDeltaRaw =
+      typeof body.completedTestsDelta === 'number' && body.completedTestsDelta > 0
+        ? body.completedTestsDelta
+        : typeof body.practiceAttemptsDelta === 'number' && body.practiceAttemptsDelta > 0
+        ? body.practiceAttemptsDelta
+        : 0;
+    if (completedDeltaRaw > 0) {
+      row.completed_tests = Number(row.completed_tests || 0) + Math.floor(completedDeltaRaw);
     }
     if (typeof body.questionsSolvedDelta === 'number' && body.questionsSolvedDelta > 0) {
       row.questions_solved = Number(row.questions_solved || 0) + Math.floor(body.questionsSolvedDelta);
@@ -11348,7 +11387,9 @@ ${postSitemaps}
       row.ai_tutor_tokens = Number(row.ai_tutor_tokens || 0) + Math.floor(body.aiTutorTokensDelta);
     }
     row.updated_at = Date.now();
-    saveD1Store(store);
+    if (!effectiveUid.startsWith('hc_dummy_')) {
+      saveD1Store(store);
+    }
 
     return res.status(200).json({
       ok: true,
@@ -11357,8 +11398,101 @@ ${postSitemaps}
       timezone: 'Asia/Karachi',
       testsStarted: Number(row.tests_started || 0),
       practiceAttempts: Number(row.practice_attempts || 0),
+      completedTests: Number(row.completed_tests || 0),
       questionsSolved: Number(row.questions_solved || 0),
       aiTutorTokens: Number(row.ai_tutor_tokens || 0),
+    });
+  });
+
+  // GET /api/usage/streak-history — Fast PKT daily completion history for Streaks page
+  app.get('/api/usage/streak-history', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    const requestedUid = String(req.query.uid || '').trim();
+    const uid = user?.uid || requestedUid;
+    if (!uid) {
+      return res.status(401).json({ error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    }
+    if (user && requestedUid && requestedUid !== user.uid) {
+      const storeCheck = loadD1Store() as any;
+      const roleRow = resolveD1Role(storeCheck, user);
+      if (!['admin', 'superadmin'].includes(roleRow.role)) {
+        return res.status(403).json({ error: 'Forbidden: Cannot read another user streak history.', code: 'FORBIDDEN' });
+      }
+    }
+
+    const store = loadD1Store() as any;
+    ensureDailyUsageStoreArray(store);
+
+    const days: Record<
+      string,
+      { practiceAttempts: number; mcqsSolved: number; aiTutorTokens: number; arenaSessions: number }
+    > = {};
+
+    const upsertDay = (
+      pktDate: string,
+      practiceAttempts: number,
+      mcqsSolved: number,
+      aiTutorTokens = 0,
+      arenaSessions = 0
+    ) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(pktDate)) return;
+      const prev = days[pktDate];
+      days[pktDate] = {
+        practiceAttempts: Math.max(prev?.practiceAttempts || 0, practiceAttempts),
+        mcqsSolved: Math.max(prev?.mcqsSolved || 0, mcqsSolved),
+        aiTutorTokens: Math.max(prev?.aiTutorTokens || 0, aiTutorTokens),
+        arenaSessions: Math.max(prev?.arenaSessions || 0, arenaSessions),
+      };
+    };
+
+    // 1. Collect completed practice days from daily_starter_usage (or ephemeral healthcheck map)
+    const usageRows: any[] = uid.startsWith('hc_dummy_')
+      ? Array.from(healthcheckDailyUsageMap.values()).filter((r) => r.uid === uid)
+      : store.daily_starter_usage.filter((r: any) => r.uid === uid);
+
+    for (const r of usageRows) {
+      const completedCount = Number(r.completed_tests || 0);
+      const solvedCount = Number(r.questions_solved || 0);
+      if (completedCount <= 0 && solvedCount <= 0) continue;
+      const pktDate = String(r.pkt_date || '').trim();
+      const sessions = Math.max(completedCount, solvedCount > 0 ? 1 : 0);
+      upsertDay(pktDate, sessions, solvedCount, Number(r.ai_tutor_tokens || 0), 0);
+    }
+
+    // 2. Collect completed Grand Line / Ambassador test attempts from store.testAttempts
+    const testAttemptsByDay: Record<string, { count: number; mcqs: number }> = {};
+    for (const att of store.testAttempts || []) {
+      const attUid = String(att?.userUid || att?.uid || '').trim();
+      if (attUid !== uid) continue;
+      const rawTs = att.completedAt || att.submittedAt || att.createdAt;
+      const tsMs =
+        typeof rawTs === 'number'
+          ? rawTs < 1e11
+            ? rawTs * 1000
+            : rawTs
+          : Date.parse(String(rawTs || ''));
+      if (!Number.isFinite(tsMs)) continue;
+      const pktDate = computeServerPKTDateKey(tsMs);
+      const mcqCount = Math.max(
+        0,
+        Number(att.totalQuestions || (Array.isArray(att.gradedQuestions) ? att.gradedQuestions.length : 0) || 10)
+      );
+      if (!testAttemptsByDay[pktDate]) {
+        testAttemptsByDay[pktDate] = { count: 0, mcqs: 0 };
+      }
+      testAttemptsByDay[pktDate].count += 1;
+      testAttemptsByDay[pktDate].mcqs += mcqCount;
+    }
+    for (const [pktDate, agg] of Object.entries(testAttemptsByDay)) {
+      upsertDay(pktDate, agg.count, agg.mcqs);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      uid,
+      timezone: 'Asia/Karachi',
+      todayPKT: computeServerPKTDateKey(),
+      days,
     });
   });
 

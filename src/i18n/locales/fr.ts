@@ -1118,6 +1118,7 @@ export const fr: TranslationDictionary = {
   'profile.imageUnder5mbError': 'Veuillez choisir une image de moins de 5 Mo.',
   'profile.invalidImageError': 'Format non pris en charge. Utilisez PNG, JPG ou WebP.',
   'profile.level': 'Niveau {{level}}',
+  'profile.levelLabel': 'Niveau',
   'profile.levelShort': 'Niv. {{level}}',
   'profile.limitReached': 'Limite atteinte',
   'profile.loadFollowersError': 'Impossible de charger les abonnés.',

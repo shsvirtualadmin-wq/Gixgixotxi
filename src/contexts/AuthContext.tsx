@@ -1780,6 +1780,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return true;
         }
 
+        // Transient non-auth server/gateway errors (5xx/404) must not kick already-verified users to /login
+        if (!statusRes.ok && statusRes.status !== 401 && statusRes.status !== 403) {
+          if (isGoogleProviderUser(firebaseUser) || firebaseUser.emailVerified) {
+            setOtpVerificationState({
+              status: 'verified',
+              purpose: null,
+              email: firebaseUser.email || '',
+              maskedEmail: maskEmailClient(firebaseUser.email || ''),
+              cooldownSeconds: 0,
+              error: null,
+            });
+            return true;
+          }
+        }
+
         // Do NOT remove boardly_user_authenticated here while a user is mid-verification or on transient check errors;
         // explicit signOut or confirmed 401/unauthenticated handles clearing local session markers.
 
@@ -1925,6 +1940,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setUser(firebaseUser);
         setAuthStatus('authenticated');
+        setOtpVerificationState((prev) =>
+          (prev.status === 'verified' || prev.status === 'pending') &&
+          prev.email === (firebaseUser.email || '')
+            ? prev
+            : {
+                status: 'checking',
+                purpose: prev.purpose,
+                email: firebaseUser.email || '',
+                maskedEmail: maskEmailClient(firebaseUser.email || ''),
+                cooldownSeconds: prev.cooldownSeconds,
+                error: null,
+              }
+        );
         preloadSecurityAndSettingsForUid(firebaseUser.uid, false);
 
         // Run verification gate, Firestore profile load, and D1 `/api/auth/me` in parallel instead of a sequential waterfall

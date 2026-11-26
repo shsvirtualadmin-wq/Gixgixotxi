@@ -516,6 +516,11 @@ export function resolveStaticOrPatternRouteMeta(
       description:
         'Redeem your earned Kobans for custom student avatars, frames, and profile banners in the Boardly Store.',
     },
+    '/bookmarks': {
+      title: 'Bookmarks — Saved Formulas & Posts | Boardly',
+      description:
+        'Access your bookmarked Formula Vault equations and saved Boardly Commons study posts in one place.',
+    },
   };
 
   if (staticPages[cleanPath]) {

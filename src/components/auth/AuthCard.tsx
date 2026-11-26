@@ -899,7 +899,7 @@ export function AuthCard({
             : t('auth.createYourAccount')}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
-          {mode === 'signin' ? t('auth.signInSubtitle') : t('auth.signUpSubtitle')}
+          {mode === 'signin' ? t('auth.signInDesc') : t('auth.signUpSubtitle')}
         </p>
       </div>
 

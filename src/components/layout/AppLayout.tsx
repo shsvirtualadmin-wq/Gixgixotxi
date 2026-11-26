@@ -72,8 +72,10 @@ export function AppLayout({ children }: AppLayoutProps) {
         className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
           isMenuOpen ? 'pointer-events-none invisible select-none' : ''
         } ${
-          isFullBleedMain
-            ? 'max-w-none p-0 dashboard-main-scroll'
+          isSettingsRoute
+            ? 'max-w-none p-0'
+            : isFullBleedMain
+            ? 'max-w-none px-0 pt-0 dashboard-main-scroll'
             : isProfileRoute
             ? 'max-w-[1400px] px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 dashboard-main-scroll'
             : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'

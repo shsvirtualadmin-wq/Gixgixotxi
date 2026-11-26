@@ -68,6 +68,8 @@ const SUBPAGE_FALLBACK_MAP: Record<string, string> = {
   '/how-it-works': 'How It Works',
   '/faq': 'FAQ',
   '/verify': 'Verify',
+  '/bookmarks': 'Bookmarks',
+  '/dashboard/bookmarks': 'Bookmarks',
 };
 
 export function DashboardTopBar({

@@ -7,7 +7,6 @@ import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock'
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { BoardlyCoPilotCard } from '@/components/dashboard/BoardlyCoPilotCard';
-import { useSmoothMode } from '@/utils/smoothMode';
 import {
   Flame,
   ArrowRight,
@@ -45,6 +44,10 @@ import {
   saveD1UniversityAttempt,
   type D1WeakChapterItem,
 } from '@/services/universityMcqService';
+import {
+  computeStreakData,
+  getLocalStreakActivityMap,
+} from '@/services/streakEngine';
 import {
   type D1UniversityRow,
   type D1McqRow,
@@ -185,38 +188,6 @@ const UniversityCardLogo = memo(function UniversityCardLogo({
   );
 });
 
-const CountUpMcq = memo(function CountUpMcq({ value }: { value: number }) {
-  const { smoothMode } = useSmoothMode();
-  const { formatNumber } = useLanguage();
-  const target = Math.max(0, Math.floor(Number(value) || 0));
-  const [displayVal, setDisplayVal] = useState<number>(() => (smoothMode ? target : 0));
-
-  useEffect(() => {
-    if (smoothMode || target <= 0) {
-      setDisplayVal(target);
-      return;
-    }
-    let rafId = 0;
-    const duration = 650;
-    const start = performance.now();
-
-    const step = (now: number) => {
-      const elapsed = now - start;
-      const progress = Math.min(1, elapsed / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplayVal(Math.round(target * eased));
-      if (progress < 1) {
-        rafId = requestAnimationFrame(step);
-      }
-    };
-
-    rafId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafId);
-  }, [target, smoothMode]);
-
-  return <span className="ltr-nums">{formatNumber(displayVal)}</span>;
-});
-
 const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
   const [timeToMidnight, setTimeToMidnight] = useState('');
 
@@ -351,7 +322,11 @@ export function OverviewPage() {
   useEffect(() => {
     const handleAttemptsUpdated = () => setStatsVersion((v) => v + 1);
     window.addEventListener('boardly-d1-attempts-updated', handleAttemptsUpdated);
-    return () => window.removeEventListener('boardly-d1-attempts-updated', handleAttemptsUpdated);
+    window.addEventListener('boardly-streak-updated', handleAttemptsUpdated);
+    return () => {
+      window.removeEventListener('boardly-d1-attempts-updated', handleAttemptsUpdated);
+      window.removeEventListener('boardly-streak-updated', handleAttemptsUpdated);
+    };
   }, []);
 
   const d1Stats = useMemo(
@@ -404,9 +379,19 @@ export function OverviewPage() {
     cleanFullName && cleanFullName.toLowerCase() !== 'student'
       ? cleanFullName.split(' ')[0] || ''
       : '';
-  const safeStreak = Number.isFinite(Number(streak))
+  const localStreak = useMemo(() => {
+    if (!user?.uid) return 0;
+    const localMap = getLocalStreakActivityMap(user.uid);
+    const freezeActive = Boolean(
+      (profile as { streakFreezeActive?: boolean } | null)?.streakFreezeActive
+    );
+    return computeStreakData(localMap, { freezeActive }).currentStreak;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, profile, statsVersion]);
+  const profileStreak = Number.isFinite(Number(streak))
     ? Math.max(0, Math.floor(Number(streak)))
     : 0;
+  const safeStreak = Math.max(profileStreak, localStreak);
   const filledBars = Math.min(7, safeStreak);
 
   // ── Active University Full-Screen Test Runner State ──
@@ -937,7 +922,7 @@ export function OverviewPage() {
   const currentMcq = testMcqs[currentIndex];
 
   return (
-    <div data-student-page="dashboard" className="cockpit-root w-full max-w-full min-w-0 box-border space-y-6 pb-8">
+    <div data-student-page="dashboard" className="cockpit-root w-full max-w-full min-w-0 box-border space-y-6">
       {/* b) Boardly Co-Pilot live message */}
       <section aria-label="Boardly Co-Pilot">
         <BoardlyCoPilotCard
@@ -1099,7 +1084,7 @@ export function OverviewPage() {
                       }`}
                     >
                       {liveUniversities.map((uni, uniIdx) => {
-                        const mcqCount = Number(uni.mcq_count || 0);
+                        const mcqCount = Math.max(0, Math.floor(Number(uni.mcq_count || 0)));
                         const isEagerLogo = uniIdx < 2;
                         return (
                           <button
@@ -1147,7 +1132,7 @@ export function OverviewPage() {
                             {/* 3. Text: 50px dot-matrix MCQ count, MCQS label, 26px bold university name */}
                             <div className="uni-lg-meta">
                               <div className="uni-lg-count">
-                                <CountUpMcq value={mcqCount} />
+                                <span className="ltr-nums">{formatNumber(mcqCount)}</span>
                               </div>
                               <div className="uni-lg-mcqs-label">{t('nav.mcqs')}</div>
                               <div className="uni-lg-name" title={uni.name}>

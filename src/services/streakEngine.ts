@@ -5,13 +5,15 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  increment,
   query,
   where,
   serverTimestamp,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { invalidateSwrCache } from '@/lib/swrCache';
 import { syncPublicProfile } from '@/services/publicProfileService';
 
 /**
@@ -469,85 +471,445 @@ export function computeStreakFromSessions(
 }
 
 /**
- * ─── FIRESTORE QUERY & SYNC ───────────────────────────────────────────────────
+ * ─── LOCAL & MULTI-SOURCE STREAK ACTIVITY STORAGE ────────────────────────────
  */
 
-/**
- * Extracts completed session dates from attempts and usage records for a user.
- */
-export async function fetchUserCompletedSessionDates(uid: string): Promise<string[]> {
-  const dates: string[] = [];
+export interface StreakDayActivity {
+  practiceAttempts: number;
+  mcqsSolved: number;
+  aiTutorTokens?: number;
+  arenaSessions?: number;
+  hasActivity?: boolean;
+}
 
-  try {
-    // 1. Fetch completed attempts for user
-    const attemptsRef = collection(db, 'attempts');
-    let attemptDocs: QueryDocumentSnapshot<DocumentData>[] = [];
+export type StreakActivityMap = Record<string, StreakDayActivity>;
 
-    try {
-      const q1 = query(attemptsRef, where('uid', '==', uid));
-      const snap1 = await getDocs(q1);
-      attemptDocs = snap1.docs;
-    } catch {
-      // Fallback if index on uid is building
-    }
+const LOCAL_STREAK_ACTIVITY_PREFIX = 'boardly_streak_activity_v1_';
+const D1_ATTEMPTS_PREFIX = 'boardly_d1_cockpit_attempts_v2_';
 
-    if (attemptDocs.length === 0) {
-      try {
-        const q2 = query(attemptsRef, where('userId', '==', uid));
-        const snap2 = await getDocs(q2);
-        attemptDocs = snap2.docs;
-      } catch {
-        // Fallback
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
       }
-    }
-
-    for (const d of attemptDocs) {
-      const data = d.data();
-      // Valid session check: completed status (test, sprint, drill, mock, arena, grand line)
-      const isCompleted =
-        data.status === 'completed' ||
-        data.percentage !== undefined ||
-        data.score !== undefined ||
-        data.earnedMarks !== undefined;
-
-      if (!isCompleted) continue;
-
-      // Completion time is the single source of truth (completion time, not start time)
-      const completionTimestamp =
-        data.completedAt ||
-        data.submittedAt ||
-        data.endedAt ||
-        data.updatedAt ||
-        data.createdAt;
-
-      const pktDate = toPKTDateString(completionTimestamp);
-      if (pktDate) {
-        dates.push(pktDate);
-      }
-    }
-
-    // 2. Fetch usage subcollection records as secondary source for past practice days
-    try {
-      const usageSnap = await getDocs(collection(db, 'users', uid, 'usage'));
-      usageSnap.docs.forEach((d) => {
-        const udata = d.data();
-        const practiceCount = Number(udata.practiceAttempts ?? 0);
-        const arenaCount = Number(udata.arenaSessions ?? 0);
-        const testCount = Number(udata.testsUsed ?? 0);
-        if (practiceCount > 0 || arenaCount > 0 || testCount > 0) {
-          // Document ID is already a PKT date string 'YYYY-MM-DD'
-          if (/^\d{4}-\d{2}-\d{2}$/.test(d.id)) {
-            dates.push(d.id);
-          }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
         }
       });
-    } catch {
-      // Ignore if subcollection is empty
+  });
+}
+
+/**
+ * Merges multiple PKT date -> activity maps taking the highest recorded activity per day
+ * across sources so duplicate recording across local, API, and Firestore never inflates
+ * single-day counts while every active day is preserved.
+ */
+export function mergeStreakActivityMaps(
+  ...maps: Array<StreakActivityMap | null | undefined>
+): StreakActivityMap {
+  const merged: StreakActivityMap = {};
+  for (const map of maps) {
+    if (!map || typeof map !== 'object') continue;
+    for (const [dateStr, raw] of Object.entries(map)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !raw || typeof raw !== 'object') continue;
+      const practiceAttempts = Math.max(0, Number(raw.practiceAttempts ?? 0) || 0);
+      const mcqsSolved = Math.max(0, Number(raw.mcqsSolved ?? 0) || 0);
+      const aiTutorTokens = Math.max(0, Number(raw.aiTutorTokens ?? 0) || 0);
+      const arenaSessions = Math.max(0, Number(raw.arenaSessions ?? 0) || 0);
+      const hasActivity = Boolean(
+        practiceAttempts > 0 || mcqsSolved > 0 || arenaSessions > 0 || raw.hasActivity
+      );
+      if (!hasActivity) continue;
+
+      const prev = merged[dateStr];
+      merged[dateStr] = {
+        practiceAttempts: Math.max(prev?.practiceAttempts ?? 0, practiceAttempts || 1),
+        mcqsSolved: Math.max(prev?.mcqsSolved ?? 0, mcqsSolved),
+        aiTutorTokens: Math.max(prev?.aiTutorTokens ?? 0, aiTutorTokens),
+        arenaSessions: Math.max(prev?.arenaSessions ?? 0, arenaSessions),
+        hasActivity: true,
+      };
     }
-  } catch (err) {
-    console.warn('[streakEngine] Error fetching completed sessions for user:', uid, err);
+  }
+  return merged;
+}
+
+/**
+ * Synchronously reads locally recorded practice completions (both explicit streak log
+ * and D1 cockpit university attempts) for instant 0ms UI hydration.
+ */
+export function getLocalStreakActivityMap(uid?: string | null): StreakActivityMap {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  const effectiveUid = uid || 'guest';
+
+  const explicitMap: StreakActivityMap = {};
+  try {
+    const raw = window.localStorage.getItem(`${LOCAL_STREAK_ACTIVITY_PREFIX}${effectiveUid}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        for (const [dateStr, val] of Object.entries(parsed as Record<string, Record<string, unknown>>)) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !val || typeof val !== 'object') continue;
+          const practiceAttempts = Math.max(0, Number(val.practiceAttempts ?? 0) || 0);
+          const mcqsSolved = Math.max(0, Number(val.mcqsSolved ?? 0) || 0);
+          if (practiceAttempts > 0 || mcqsSolved > 0) {
+            explicitMap[dateStr] = {
+              practiceAttempts: Math.max(1, practiceAttempts),
+              mcqsSolved,
+              hasActivity: true,
+            };
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
   }
 
+  const d1AttemptsMap: StreakActivityMap = {};
+  try {
+    const rawAttempts = window.localStorage.getItem(`${D1_ATTEMPTS_PREFIX}${effectiveUid}`);
+    if (rawAttempts) {
+      const parsed = JSON.parse(rawAttempts);
+      if (Array.isArray(parsed)) {
+        for (const att of parsed) {
+          if (!att || typeof att !== 'object') continue;
+          const pktDate = toPKTDateString(att.createdAt || att.submittedAt);
+          if (!pktDate) continue;
+          const solved = Math.max(
+            0,
+            Number(att.answeredCount ?? att.totalQuestions ?? 0) || 0
+          );
+          const prev = d1AttemptsMap[pktDate];
+          d1AttemptsMap[pktDate] = {
+            practiceAttempts: (prev?.practiceAttempts ?? 0) + 1,
+            mcqsSolved: (prev?.mcqsSolved ?? 0) + (solved || 10),
+            hasActivity: true,
+          };
+        }
+      }
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  return mergeStreakActivityMaps(explicitMap, d1AttemptsMap);
+}
+
+/**
+ * Records a newly completed/submitted practice test toward the user's streak immediately
+ * (synchronously updating local storage, invalidating cached streak data, notifying listeners,
+ * and persisting to the server + Firestore in the background).
+ */
+export function recordCompletedPracticeForStreak(
+  uid: string | undefined | null,
+  opts?: {
+    mcqsSolved?: number;
+    completedAt?: string | number | Date;
+    source?: 'd1' | 'practice' | 'grandline';
+    skipApiRecord?: boolean;
+    skipFirestoreActivity?: boolean;
+  }
+): StreakComputationResult | null {
+  const effectiveUid = uid || 'guest';
+  const pktDate = toPKTDateString(opts?.completedAt || new Date()) || getCurrentPKTDate();
+  const solved = Math.max(0, Math.floor(Number(opts?.mcqsSolved ?? 0) || 0));
+
+  // 1. Synchronously persist to local streak activity log
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const key = `${LOCAL_STREAK_ACTIVITY_PREFIX}${effectiveUid}`;
+      const existingRaw = window.localStorage.getItem(key);
+      const parsed = existingRaw ? (JSON.parse(existingRaw) as StreakActivityMap) : {};
+      const safeMap: StreakActivityMap = parsed && typeof parsed === 'object' ? parsed : {};
+      const prev = safeMap[pktDate];
+      safeMap[pktDate] = {
+        practiceAttempts: (Number(prev?.practiceAttempts) || 0) + 1,
+        mcqsSolved: (Number(prev?.mcqsSolved) || 0) + (solved || 10),
+        hasActivity: true,
+      };
+      window.localStorage.setItem(key, JSON.stringify(safeMap));
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  // 2. Invalidate stale SWR cache for this user's streak page
+  if (uid) {
+    invalidateSwrCache(`streaks:user:${uid}`);
+  }
+
+  // 3. Recompute local streak synchronously and broadcast update event
+  const localActivityMap = getLocalStreakActivityMap(effectiveUid);
+  const computed = computeStreakData(localActivityMap);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('boardly-streak-updated', {
+        detail: {
+          uid: effectiveUid,
+          pktDate,
+          currentStreak: computed.currentStreak,
+          longestStreak: computed.longestStreak,
+          source: opts?.source || 'practice',
+        },
+      })
+    );
+  }
+
+  // 4. Non-blocking background persistence to server D1 & Firestore
+  if (typeof window !== 'undefined' && uid) {
+    if (!opts?.skipApiRecord) {
+      void (async () => {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (auth.currentUser && auth.currentUser.uid === uid) {
+            const token = await auth.currentUser.getIdToken().catch(() => null);
+            if (token) headers.Authorization = `Bearer ${token}`;
+          } else {
+            const guestToken =
+              window.localStorage?.getItem('boardly_guest_session_token') ||
+              window.localStorage?.getItem('boardly_guest_session_backup_v1') ||
+              '';
+            if (guestToken) headers['X-Guest-Session'] = guestToken;
+          }
+          await fetch('/api/usage/daily/record', {
+            method: 'POST',
+            credentials: 'include',
+            headers,
+            body: JSON.stringify({
+              uid,
+              dateKey: pktDate,
+              practiceAttemptsDelta: 1,
+              completedTestsDelta: 1,
+              questionsSolvedDelta: solved,
+            }),
+          });
+        } catch {
+          // Non-fatal background sync
+        }
+      })();
+    }
+
+    const isFirebaseUser = Boolean(
+      auth.currentUser && auth.currentUser.uid === uid && !uid.startsWith('guest_')
+    );
+    if (isFirebaseUser) {
+      if (!opts?.skipFirestoreActivity) {
+        void setDoc(
+          doc(db, 'users', uid, 'activity', pktDate),
+          {
+            practiceAttempts: increment(1),
+            questionsSolved: increment(solved),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {});
+      }
+
+      void setDoc(
+        doc(db, 'users', uid),
+        {
+          streak: computed.currentStreak,
+          longestStreak: computed.longestStreak,
+          lastActiveDate: pktDate,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+
+      void setDoc(
+        doc(db, 'streaks', uid),
+        {
+          currentStreak: computed.currentStreak,
+          longestStreak: computed.longestStreak,
+          todayActive: computed.todayActive,
+          todayPending: computed.todayPending,
+          lastActivePKT: pktDate,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
+  }
+
+  return computed;
+}
+
+/**
+ * ─── FIRESTORE & SERVER PARALLEL QUERY & SYNC ────────────────────────────────
+ */
+
+async function fetchServerStreakHistoryMap(uid: string): Promise<StreakActivityMap> {
+  if (typeof window === 'undefined' || !uid) return {};
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2200);
+  try {
+    const headers: Record<string, string> = {};
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      const token = await withTimeout(auth.currentUser.getIdToken(), 1200, null);
+      if (token) headers.Authorization = `Bearer ${token}`;
+    } else {
+      const guestToken =
+        window.localStorage?.getItem('boardly_guest_session_token') ||
+        window.localStorage?.getItem('boardly_guest_session_backup_v1') ||
+        '';
+      if (guestToken) headers['X-Guest-Session'] = guestToken;
+    }
+
+    const res = await fetch(`/api/usage/streak-history?uid=${encodeURIComponent(uid)}`, {
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) return {};
+    const data = await res.json().catch(() => null);
+    if (!data || typeof data.days !== 'object' || !data.days) return {};
+    return mergeStreakActivityMaps(data.days as StreakActivityMap);
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Fetches completed practice activity by PKT date across ALL sources in parallel with strict
+ * timeouts so the Streaks page stays fast and always reflects every completed test.
+ */
+export async function fetchUserStreakActivityMap(uid: string): Promise<StreakActivityMap> {
+  const localMap = getLocalStreakActivityMap(uid);
+  if (!uid) return localMap;
+
+  const isGuestUid = uid.startsWith('guest_') || uid === 'guest';
+  const canReadFirestore = !isGuestUid && Boolean(auth.currentUser);
+
+  const serverPromise = fetchServerStreakHistoryMap(uid);
+
+  if (!canReadFirestore) {
+    const serverMap = await serverPromise;
+    return mergeStreakActivityMaps(localMap, serverMap);
+  }
+
+  const attemptsRef = collection(db, 'attempts');
+  const [serverMap, snapByUserId, snapByUid, activitySnap, usageSnap] = await Promise.all([
+    serverPromise,
+    withTimeout(getDocs(query(attemptsRef, where('userId', '==', uid))), 2200, null),
+    withTimeout(getDocs(query(attemptsRef, where('uid', '==', uid))), 2200, null),
+    withTimeout(getDocs(collection(db, 'users', uid, 'activity')), 2200, null),
+    withTimeout(getDocs(collection(db, 'users', uid, 'usage')), 2200, null),
+  ]);
+
+  // 1. Deduplicated Firestore completed attempts
+  const attemptsMap: StreakActivityMap = {};
+  const seenAttemptIds = new Set<string>();
+  const allAttemptDocs: QueryDocumentSnapshot<DocumentData>[] = [
+    ...(snapByUserId?.docs ?? []),
+    ...(snapByUid?.docs ?? []),
+  ];
+
+  for (const d of allAttemptDocs) {
+    if (seenAttemptIds.has(d.id)) continue;
+    seenAttemptIds.add(d.id);
+    const data = d.data();
+    const isCompleted =
+      data.status === 'completed' ||
+      data.percentage !== undefined ||
+      data.score !== undefined ||
+      data.earnedMarks !== undefined;
+    if (!isCompleted) continue;
+
+    const completionTimestamp =
+      data.completedAt ||
+      data.submittedAt ||
+      data.endedAt ||
+      data.updatedAt ||
+      data.createdAt;
+
+    const pktDate = toPKTDateString(completionTimestamp);
+    if (!pktDate) continue;
+
+    const answered =
+      Number(data.correctAnswers ?? 0) + Number(data.wrongAnswers ?? 0);
+    const solved =
+      answered > 0
+        ? answered
+        : Number(data.answeredCount ?? data.totalQuestions ?? 10) || 10;
+    const prev = attemptsMap[pktDate];
+    attemptsMap[pktDate] = {
+      practiceAttempts: (prev?.practiceAttempts ?? 0) + 1,
+      mcqsSolved: (prev?.mcqsSolved ?? 0) + solved,
+      hasActivity: true,
+    };
+  }
+
+  // 2. Firestore users/{uid}/activity/{YYYY-MM-DD}
+  const activityMap: StreakActivityMap = {};
+  for (const d of activitySnap?.docs ?? []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.id)) continue;
+    const adata = d.data();
+    const practiceCount = Number(adata.practiceAttempts ?? 0);
+    const solvedCount = Number(adata.questionsSolved ?? 0);
+    const arenaCount = Number(adata.arenaSessions ?? 0);
+    if (practiceCount > 0 || solvedCount > 0 || arenaCount > 0) {
+      activityMap[d.id] = {
+        practiceAttempts: Math.max(1, practiceCount),
+        mcqsSolved: solvedCount,
+        arenaSessions: arenaCount,
+        hasActivity: true,
+      };
+    }
+  }
+
+  // 3. Firestore users/{uid}/usage/{YYYY-MM-DD}
+  const usageMap: StreakActivityMap = {};
+  for (const d of usageSnap?.docs ?? []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.id)) continue;
+    const udata = d.data();
+    const practiceCount = Number(udata.practiceAttempts ?? 0);
+    const arenaCount = Number(udata.arenaSessions ?? 0);
+    const testCount = Number(udata.testsUsed ?? 0);
+    const solvedCount = Number(udata.questionsSolved ?? 0);
+    if (practiceCount > 0 || arenaCount > 0 || testCount > 0 || solvedCount > 0) {
+      usageMap[d.id] = {
+        practiceAttempts: Math.max(1, practiceCount || testCount),
+        mcqsSolved: solvedCount,
+        arenaSessions: arenaCount,
+        hasActivity: true,
+      };
+    }
+  }
+
+  return mergeStreakActivityMaps(localMap, serverMap, attemptsMap, activityMap, usageMap);
+}
+
+/**
+ * Extracts completed session dates from all activity sources for a user.
+ */
+export async function fetchUserCompletedSessionDates(uid: string): Promise<string[]> {
+  const activityMap = await fetchUserStreakActivityMap(uid);
+  const dates: string[] = [];
+  for (const [dateStr, val] of Object.entries(activityMap)) {
+    const count = Math.max(1, Math.floor(Number(val.practiceAttempts || 1)));
+    for (let i = 0; i < count; i++) {
+      dates.push(dateStr);
+    }
+  }
   return dates;
 }
 
@@ -558,27 +920,24 @@ export async function syncUserStreak(
   uid: string,
   options?: { freezeActive?: boolean }
 ): Promise<StreakComputationResult> {
-  // 1. Fetch user doc for freeze setting
+  // 1. Fetch user doc for freeze setting and activity map in parallel
+  const [userSnap, activityMap] = await Promise.all([
+    options?.freezeActive === undefined
+      ? withTimeout(getDoc(doc(db, 'users', uid)), 2200, null)
+      : Promise.resolve(null),
+    fetchUserStreakActivityMap(uid),
+  ]);
+
   let freezeActive = options?.freezeActive ?? false;
-  try {
-    const userSnap = await getDoc(doc(db, 'users', uid));
-    if (userSnap.exists()) {
-      const udata = userSnap.data();
-      if (options?.freezeActive === undefined) {
-        freezeActive = Boolean(udata.streakFreezeActive);
-      }
-    }
-  } catch (err) {
-    console.warn('[streakEngine] Could not read user doc:', err);
+  if (options?.freezeActive === undefined && userSnap?.exists()) {
+    const udata = userSnap.data();
+    freezeActive = Boolean(udata.streakFreezeActive);
   }
 
-  // 2. Fetch all completed session PKT dates
-  const sessionDates = await fetchUserCompletedSessionDates(uid);
+  // 2. Run shared calculation
+  const result = computeStreakData(activityMap, { freezeActive });
 
-  // 3. Run shared calculation
-  const result = computeStreakFromSessions(sessionDates, { freezeActive });
-
-  // 4. Save to streaks/{uid}
+  // 3. Save to streaks/{uid}
   try {
     const streakDocRef = doc(db, 'streaks', uid);
     await setDoc(
@@ -604,10 +963,11 @@ export async function syncUserStreak(
     console.warn('[streakEngine] Failed to save streaks/{uid}:', err);
   }
 
-  // 5. Mirror to users/{uid}
+  // 4. Mirror to users/{uid}
   try {
     await updateDoc(doc(db, 'users', uid), {
       streak: result.currentStreak,
+      longestStreak: result.longestStreak,
       lastActiveDate: result.activePKTDays[result.activePKTDays.length - 1] || null,
       updatedAt: serverTimestamp(),
     });
@@ -615,7 +975,7 @@ export async function syncUserStreak(
     console.warn('[streakEngine] Failed to mirror streak to users/{uid}:', err);
   }
 
-  // 6. Mirror to publicProfiles/{uid} for leaderboards and squad views
+  // 5. Mirror to publicProfiles/{uid} for leaderboards and squad views
   try {
     await syncPublicProfile(uid, {
       publicStats: {

@@ -14,6 +14,7 @@ import {
 } from '@/utils/savedAccounts';
 
 import { perfMarkEnd } from '@/lib/perfMetrics';
+import { sanitizeRedirectTarget } from '@/utils/routeGuards';
 
 function preloadTargetChunksForDest(dest: string): Promise<unknown> {
   if (dest.startsWith('/superadmin')) {
@@ -40,7 +41,11 @@ export function LoginPage() {
   const {
     user,
     profile,
+    isGuest,
     profileLoading,
+    tokenClaims,
+    isAdmin,
+    isSuperAdmin,
     isSessionVerified,
     otpVerificationState,
     getRoleRedirectUrl,
@@ -78,8 +83,10 @@ export function LoginPage() {
         sessionStorage.removeItem('boardly_post_login_redirect');
         return;
       }
-      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
-      if (redirectParam && redirectParam.startsWith('/')) {
+      const redirectParam = sanitizeRedirectTarget(
+        searchParams.get('redirect') || searchParams.get('returnTo')
+      );
+      if (redirectParam) {
         sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
       }
     } catch {
@@ -105,19 +112,35 @@ export function LoginPage() {
     const searchParams = new URLSearchParams(location.search);
     const redirectParam = isAddAccountFlow
       ? null
-      : searchParams.get('redirect') || searchParams.get('returnTo');
+      : sanitizeRedirectTarget(searchParams.get('redirect') || searchParams.get('returnTo'));
     const storedRedirect = isAddAccountFlow
       ? null
-      : sessionStorage.getItem('boardly_post_login_redirect');
+      : sanitizeRedirectTarget(sessionStorage.getItem('boardly_post_login_redirect'));
     const pendingCrew = isAddAccountFlow
       ? null
       : sessionStorage.getItem('pending_join_crew_code');
-    const intendedTarget =
-      (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
-      (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
+    const intendedTarget = redirectParam || storedRedirect;
 
-    let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-    if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
+    // Wait for verified role claims before deciding role-default or student-onboarding redirects
+    if (!intendedTarget && !isGuest && !tokenClaims?.verified) {
+      return;
+    }
+
+    const effectiveRole = isSuperAdmin
+      ? 'super_admin'
+      : isAdmin
+      ? 'admin'
+      : profile?.role || 'student';
+
+    let dest = profile ? getRoleRedirectUrl(effectiveRole) : '/dashboard';
+    if (
+      profile &&
+      !profile.isGuest &&
+      !profile.onboardingCompleted &&
+      effectiveRole === 'student' &&
+      !isAdmin &&
+      !isSuperAdmin
+    ) {
       dest = intendedTarget
         ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
         : '/onboarding';
@@ -141,7 +164,7 @@ export function LoginPage() {
     ]).finally(() => {
       if (cancelled) return;
       logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
-      perfMarkEnd('login_to_dashboard', { dest, role: profile?.role || 'student' });
+      perfMarkEnd('login_to_dashboard', { dest, role: effectiveRole });
       navigate(dest, { replace: true });
     });
 
@@ -154,7 +177,11 @@ export function LoginPage() {
     submittedTargetUid,
     user,
     profile,
+    isGuest,
     profileLoading,
+    tokenClaims?.verified,
+    isAdmin,
+    isSuperAdmin,
     isSessionVerified,
     location.search,
     navigate,

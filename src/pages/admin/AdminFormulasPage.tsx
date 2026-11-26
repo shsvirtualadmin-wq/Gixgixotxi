@@ -70,6 +70,72 @@ import { useBodyScrollLock } from '../../utils/scrollLock';
 
 type PrimaryTab = 'formulas' | 'health' | 'reports';
 
+const AdminFormulaMathBox: React.FC<{ latex: string }> = ({ latex }) => {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [needsScroll, setNeedsScroll] = useState(false);
+
+  const measureAndFit = useCallback(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    const availableWidth = outer.clientWidth - 28;
+    if (availableWidth <= 0) return;
+
+    const katexNode = (inner.querySelector('.katex-html') || inner.querySelector('.katex')) as HTMLElement | null;
+    const naturalWidth = katexNode ? katexNode.scrollWidth : inner.scrollWidth;
+    if (!naturalWidth || naturalWidth <= availableWidth) {
+      setScale(1);
+      setNeedsScroll(false);
+      return;
+    }
+
+    const ratio = availableWidth / naturalWidth;
+    const clampedScale = Math.max(0.74, Math.min(1, Number(ratio.toFixed(3))));
+    setScale(clampedScale);
+    setNeedsScroll(naturalWidth * clampedScale > availableWidth + 2);
+  }, []);
+
+  useEffect(() => {
+    measureAndFit();
+    const raf = window.requestAnimationFrame(measureAndFit);
+    const timer = window.setTimeout(measureAndFit, 180);
+    const outer = outerRef.current;
+    let ro: ResizeObserver | null = null;
+    if (outer && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => measureAndFit());
+      ro.observe(outer);
+    }
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+      ro?.disconnect();
+    };
+  }, [latex, measureAndFit]);
+
+  return (
+    <div
+      ref={outerRef}
+      className={`rounded-2xl border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] px-3.5 py-3 text-sm text-[var(--text)] overflow-x-auto ${
+        needsScroll ? 'text-left' : 'text-center'
+      }`}
+    >
+      <div
+        ref={innerRef}
+        style={{
+          fontSize: scale < 1 ? `${Math.round(scale * 100)}%` : undefined,
+          width: 'max-content',
+          minWidth: '100%',
+        }}
+        className="[&_.katex-display-box]:my-0 [&_.katex-display-box]:overflow-visible [&_.katex-display]:my-0.5 [&_.katex-display]:overflow-visible"
+      >
+        <MathText text={`$$${latex}$$`} />
+      </div>
+    </div>
+  );
+};
+
 export const AdminFormulasPage: React.FC = () => {
   // Primary tabs: Formulas | Health | Reports
   const [activeTab, setActiveTab] = useState<PrimaryTab>('formulas');
@@ -634,6 +700,7 @@ export const AdminFormulasPage: React.FC = () => {
         showBanner('success', `Updated Formula #${fNoInput}.`);
       } else {
         await createFormulaItem({
+          category_id: selectedChapter.category_id,
           chapter_id: selectedChapter.id,
           formula_no: Number(fNoInput) || 1,
           title: fTitleInput.trim(),
@@ -669,22 +736,25 @@ export const AdminFormulasPage: React.FC = () => {
     }
   };
 
-  const handleMoveFormula = async (index: number, direction: -1 | 1) => {
+  const handleMoveFormula = async (formulaId: string, direction: -1 | 1) => {
     if (!selectedChapter) return;
+    const index = chapterFormulas.findIndex((f) => f.id === formulaId);
     const targetIdx = index + direction;
-    if (targetIdx < 0 || targetIdx >= chapterFormulas.length) return;
+    if (index < 0 || targetIdx < 0 || targetIdx >= chapterFormulas.length) return;
     const next = [...chapterFormulas];
     const [moved] = next.splice(index, 1);
     next.splice(targetIdx, 0, moved);
-    setChapterFormulas(next);
+    const renumbered = next.map((f, i) => ({ ...f, formula_no: i + 1, sort_order: i + 1 }));
+    setChapterFormulas(renumbered);
     try {
       await reorderFormulaItems(
         selectedChapter.id,
-        next.map((f) => f.id)
+        renumbered.map((f) => f.id)
       );
       await loadChapterFormulas(selectedChapter.id, true);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to reorder formulas.');
+      await loadChapterFormulas(selectedChapter.id, true);
     }
   };
 
@@ -1305,9 +1375,9 @@ export const AdminFormulasPage: React.FC = () => {
                               {String(ch.chapter_no).padStart(2, '0')}
                             </span>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-extrabold text-[var(--text)] truncate">
-                                  {ch.chapter_no} {ch.title}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-extrabold text-[var(--text)] break-words">
+                                  {ch.title}
                                 </span>
                                 <span
                                   className={`aqb-pill ${
@@ -1478,8 +1548,10 @@ export const AdminFormulasPage: React.FC = () => {
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveFormula(idx, -1)}
+                                  disabled={
+                                    idx === 0 || Boolean(searchQuery.trim()) || statusFilter !== 'all'
+                                  }
+                                  onClick={() => handleMoveFormula(formula.id, -1)}
                                   className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
                                   title="Move up"
                                 >
@@ -1487,8 +1559,12 @@ export const AdminFormulasPage: React.FC = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={idx === filteredFormulas.length - 1}
-                                  onClick={() => handleMoveFormula(idx, 1)}
+                                  disabled={
+                                    idx === filteredFormulas.length - 1 ||
+                                    Boolean(searchQuery.trim()) ||
+                                    statusFilter !== 'all'
+                                  }
+                                  onClick={() => handleMoveFormula(formula.id, 1)}
                                   className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
                                   title="Move down"
                                 >
@@ -1513,13 +1589,13 @@ export const AdminFormulasPage: React.FC = () => {
                               </div>
                             </div>
 
-                            <div className="rounded-2xl border border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] px-4 py-3 overflow-x-auto text-sm text-[var(--text)]">
-                              <MathText text={`$$${formula.formula_latex}$$`} />
-                            </div>
+                            <AdminFormulaMathBox latex={formula.formula_latex} />
 
-                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
-                              <span className="truncate">{formula.note || 'No note'}</span>
-                              <code className="font-mono text-[11px] opacity-75 truncate max-w-xs">
+                            <div className="mt-2.5 flex flex-col gap-1.5 text-xs text-[var(--text-muted)]">
+                              <p className="leading-relaxed break-words">
+                                {formula.note || 'No note'}
+                              </p>
+                              <code className="block w-full rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2.5 py-1.5 font-mono text-[11px] leading-relaxed opacity-85 break-words whitespace-pre-wrap">
                                 {formula.formula_latex}
                               </code>
                             </div>
@@ -1605,7 +1681,7 @@ export const AdminFormulasPage: React.FC = () => {
                           <div className="font-bold text-[var(--text)]">
                             {bf.category_name} · {bf.chapter_title} · #{bf.formula_no}
                           </div>
-                          <code className="block font-mono text-[11px] text-red-500 truncate mt-0.5">
+                          <code className="block font-mono text-[11px] text-red-500 break-words whitespace-pre-wrap mt-0.5">
                             {bf.formula_latex}
                           </code>
                           <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
@@ -1676,56 +1752,93 @@ export const AdminFormulasPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Duplicate Formulas Section */}
+                {/* Duplicate Chapters & Formulas Section */}
                 <div className="aqb-glass-card p-4 flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <h3 className="text-sm font-extrabold text-[var(--text)]">
-                      Duplicates ({healthData.duplicateFormulas.length})
+                      Duplicates &amp; Numbering Issues ({healthData.duplicateFormulasCount})
                     </h3>
-                    {healthData.duplicateFormulas.length > 0 && (
+                    {healthData.duplicateFormulasCount > 0 && (
                       <button
                         type="button"
                         disabled={fixingHealth}
                         onClick={async () => {
                           setFixingHealth(true);
-                          await fixFormulaBankHealth('deduplicate');
-                          await loadHealthTab();
-                          await loadOverview(true);
-                          setFixingHealth(false);
+                          try {
+                            const res = await fixFormulaBankHealth('deduplicate');
+                            await loadHealthTab();
+                            await loadOverview(true);
+                            if (selectedChapter?.id) {
+                              await loadChapterFormulas(selectedChapter.id, true);
+                            }
+                            showBanner(
+                              'success',
+                              `Normalized numbering and cleaned duplicates (${res.fixedCount} updates).`
+                            );
+                          } catch (err: any) {
+                            showBanner('error', err?.message || 'Failed to fix duplicates.');
+                          } finally {
+                            setFixingHealth(false);
+                          }
                         }}
                         className="aqb-btn aqb-btn--primary !min-h-[36px] !px-3 text-xs"
                       >
-                        Auto-Deduplicate
+                        Auto-Deduplicate &amp; Renumber
                       </button>
                     )}
                   </div>
-                  {healthData.duplicateFormulas.length === 0 ? (
+                  {healthData.duplicateFormulasCount === 0 ? (
                     <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                      Zero duplicate formula numbers or duplicate LaTeX rows found.
+                      Zero duplicate chapter numbers, duplicate formula numbers, or duplicate LaTeX rows found.
                     </div>
                   ) : (
-                    healthData.duplicateFormulas.map((dup, i) => (
-                      <div
-                        key={i}
-                        className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-2 text-xs"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-bold text-[var(--text)]">
-                            {dup.category_name} · {dup.chapter_title} · #{dup.formula.formula_no}
-                          </div>
-                          <div className="text-[11px] text-amber-600 dark:text-amber-400">
-                            {dup.reason}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => openEditFormulaModal(dup.formula)}
-                          className="aqb-btn aqb-btn--glass !min-h-[36px] !px-3 text-xs"
+                    <>
+                      {(healthData.duplicateChapters || []).map((dupCh, i) => (
+                        <div
+                          key={`dup-ch-${dupCh.chapter.id}-${i}`}
+                          className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-2 text-xs"
                         >
-                          Edit
-                        </button>
-                      </div>
-                    ))
+                          <div className="min-w-0">
+                            <div className="font-bold text-[var(--text)]">
+                              {dupCh.category_name} · Chapter #{String(dupCh.chapter.chapter_no).padStart(2, '0')}:{' '}
+                              {dupCh.chapter.title}
+                            </div>
+                            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                              {dupCh.reason}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openEditChapterModal(dupCh.chapter)}
+                            className="aqb-btn aqb-btn--glass !min-h-[36px] !px-3 text-xs shrink-0"
+                          >
+                            Edit Chapter
+                          </button>
+                        </div>
+                      ))}
+                      {healthData.duplicateFormulas.map((dup, i) => (
+                        <div
+                          key={`dup-f-${dup.formula?.id || i}-${i}`}
+                          className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-[var(--text)]">
+                              {dup.category_name} · {dup.chapter_title} · #{dup.formula.formula_no}
+                            </div>
+                            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                              {dup.reason}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openEditFormulaModal(dup.formula)}
+                            className="aqb-btn aqb-btn--glass !min-h-[36px] !px-3 text-xs shrink-0"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
               </>

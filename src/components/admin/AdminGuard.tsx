@@ -3,6 +3,12 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 import { perfMarkStart } from '@/lib/perfMetrics';
+import {
+  buildFullPath,
+  buildLoginRedirectUrl,
+  evaluateAdminRouteAccess,
+  persistPostLoginRedirect,
+} from '@/utils/routeGuards';
 
 interface AdminGuardProps {
   children: ReactNode;
@@ -25,6 +31,8 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
     tokenClaims,
     isAdmin,
     isSuperAdmin,
+    otpVerificationState,
+    isSessionVerified,
   } = useAuth();
   const location = useLocation();
 
@@ -34,25 +42,45 @@ export function AdminGuard({ children, requireSuperAdmin = false }: AdminGuardPr
     }
   }, [location.pathname]);
 
-  if (authStatus === 'loading' || profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
-    return <RoutePageSkeleton pathname={location.pathname} />;
-  }
-
-  if (!user || isGuest) {
-    const redirectTarget = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?redirect=${redirectTarget}`} replace />;
-  }
-
   const hasSuperAdmin = isSuperAdmin || tokenClaims?.superAdmin === true;
   const hasAdmin = hasSuperAdmin || isAdmin || tokenClaims?.admin === true;
 
+  const decision = evaluateAdminRouteAccess({
+    pathname: location.pathname,
+    authStatus,
+    profileLoading,
+    hasUser: Boolean(user),
+    isGuest,
+    tokenClaimsVerified: Boolean(tokenClaims?.verified),
+    isAdmin: hasAdmin,
+    isSuperAdmin: hasSuperAdmin,
+    otpStatus: otpVerificationState.status,
+    otpPurpose: otpVerificationState.purpose,
+    isSessionVerified,
+    requireSuperAdmin,
+  });
+
+  if (decision.action === 'loading') {
+    return <RoutePageSkeleton pathname={location.pathname} />;
+  }
+
+  if (decision.action === 'redirect_login' || decision.action === 'redirect_verify_email') {
+    const fullTarget = buildFullPath(location.pathname, location.search, location.hash);
+    persistPostLoginRedirect(fullTarget);
+    const dest =
+      decision.action === 'redirect_verify_email'
+        ? '/verify-email'
+        : buildLoginRedirectUrl(location.pathname, location.search, location.hash);
+    return <Navigate to={dest} replace />;
+  }
+
   // Fail closed: normal users (neither admin nor superAdmin claim) are redirected immediately
-  if (!hasAdmin) {
+  if (decision.action === 'redirect_dashboard') {
     return <Navigate to="/dashboard" replace />;
   }
 
   // SuperAdmin-only gate: regular admins are redirected to /admin
-  if ((requireSuperAdmin || location.pathname.startsWith('/superadmin')) && !hasSuperAdmin) {
+  if (decision.action === 'redirect_admin') {
     return <Navigate to="/admin" replace />;
   }
 

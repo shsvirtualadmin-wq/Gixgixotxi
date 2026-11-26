@@ -813,7 +813,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       style={{ '--commons-header-h': `${stickyHeaderHeight}px` } as React.CSSProperties}
-      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-clip mx-auto space-y-3 pb-[calc(128px+env(safe-area-inset-bottom,0px))]"
+      className="boardly-feed-container w-full max-w-2xl min-w-0 box-border overflow-x-clip mx-auto space-y-3 pb-12"
     >
       {isPublicRoute && (
         <PageMeta
@@ -1295,7 +1295,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="commons-back-to-top fixed bottom-[calc(104px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] end-4 sm:end-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          className="commons-back-to-top fixed bottom-[calc(120px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(100px+env(safe-area-inset-bottom,0px))] end-4 sm:end-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title={t('commons.backToTop')}
         >
           <ArrowUp size={14} />

@@ -792,7 +792,7 @@ export function AdminKobansPage() {
               <div className="akb-glass-card py-10 text-center space-y-2">
                 <Clock size={26} className="mx-auto text-[var(--text-muted)]" />
                 <p className="text-sm font-heading font-bold text-[var(--text)] m-0">
-                  No {requestFilter} Koban requests
+                  {requestFilter === 'all' ? 'No Koban requests' : `No ${requestFilter} Koban requests`}
                 </p>
                 <p className="text-xs text-[var(--text-muted)] m-0">
                   When students submit mobile payment verifications, they will appear here.

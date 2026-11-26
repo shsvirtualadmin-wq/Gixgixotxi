@@ -1118,6 +1118,7 @@ export const es: TranslationDictionary = {
   'profile.imageUnder5mbError': 'Elige una imagen menor a 5 MB.',
   'profile.invalidImageError': 'Formato no compatible. Usa PNG, JPG o WebP.',
   'profile.level': 'Nivel {{level}}',
+  'profile.levelLabel': 'Nivel',
   'profile.levelShort': 'Nv. {{level}}',
   'profile.limitReached': 'Límite alcanzado',
   'profile.loadFollowersError': 'No se pudieron cargar los seguidores.',

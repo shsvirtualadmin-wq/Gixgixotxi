@@ -7742,10 +7742,198 @@ export async function handleAuthApiRequest(
         .catch(() => ({ results: [] })),
     ]);
 
-    const d1PlusBadgesRes = await db
-      .prepare('SELECT user_id, plus_badge_design, plus_badge_visible FROM user_plus_badge')
-      .all<{ user_id: string; plus_badge_design: number | null; plus_badge_visible: number }>()
-      .catch(() => ({ results: [] }));
+    const [
+      d1PlusBadgesRes,
+      d1TestAttemptsRes,
+      d1DailyUsageRes,
+      d1RewardClaimsRes,
+      d1GuestsActivityRes,
+    ] = await Promise.all([
+      db
+        .prepare('SELECT user_id, plus_badge_design, plus_badge_visible FROM user_plus_badge')
+        .all<{ user_id: string; plus_badge_design: number | null; plus_badge_visible: number }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          `SELECT
+             ta.user_uid AS uid,
+             ta.id AS attempt_id,
+             ta.total_questions AS total_questions,
+             ta.created_at AS created_at,
+             COUNT(CASE WHEN aa.selected_index >= 0 THEN 1 END) AS answered_rows,
+             COUNT(aa.id) AS total_answer_rows
+           FROM test_attempts ta
+           LEFT JOIN attempt_answers aa ON aa.attempt_id = ta.id
+           GROUP BY ta.id`
+        )
+        .all<{
+          uid: string;
+          attempt_id: string;
+          total_questions: number;
+          created_at: number | string;
+          answered_rows: number;
+          total_answer_rows: number;
+        }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          'SELECT uid, pkt_date, tests_started, practice_attempts, questions_solved FROM daily_starter_usage'
+        )
+        .all<{
+          uid: string;
+          pkt_date: string;
+          tests_started: number;
+          practice_attempts: number;
+          questions_solved: number;
+        }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT uid, pkt_date, day_number FROM reward_daily_claims')
+        .all<{ uid: string; pkt_date: string; day_number: number }>()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare('SELECT uid, total_questions_solved, streak FROM guest_accounts')
+        .all<{ uid: string; total_questions_solved: number; streak: number }>()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const pktKeyFromMs = (ms: number): string => {
+      const d = new Date(ms + 5 * 3600 * 1000);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
+        d.getUTCDate()
+      ).padStart(2, '0')}`;
+    };
+
+    const shiftPktDay = (dateKey: string, delta: number): string => {
+      const [y, m, d] = dateKey.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + delta));
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(
+        dt.getUTCDate()
+      ).padStart(2, '0')}`;
+    };
+
+    const computePktStreakFromSet = (dates: Set<string>): number => {
+      if (dates.size === 0) return 0;
+      const todayKey = pktKeyFromMs(nowMs);
+      const yesterdayKey = shiftPktDay(todayKey, -1);
+      let cursor: string | null = dates.has(todayKey)
+        ? todayKey
+        : dates.has(yesterdayKey)
+        ? yesterdayKey
+        : null;
+      let count = 0;
+      while (cursor && dates.has(cursor)) {
+        count += 1;
+        cursor = shiftPktDay(cursor, -1);
+      }
+      return count;
+    };
+
+    type ActivityAccumulator = {
+      testAttemptsSolved: number;
+      dailyUsageSolved: number;
+      guestSolved: number;
+      storedStreak: number;
+      activeDates: Set<string>;
+    };
+    const activityAccByUid = new Map<string, ActivityAccumulator>();
+    const ensureAcc = (uid: string): ActivityAccumulator => {
+      let acc = activityAccByUid.get(uid);
+      if (!acc) {
+        acc = {
+          testAttemptsSolved: 0,
+          dailyUsageSolved: 0,
+          guestSolved: 0,
+          storedStreak: 0,
+          activeDates: new Set<string>(),
+        };
+        activityAccByUid.set(uid, acc);
+      }
+      return acc;
+    };
+
+    for (const row of d1TestAttemptsRes.results || []) {
+      const uid = String(row.uid || '').trim();
+      if (!uid) continue;
+      const acc = ensureAcc(uid);
+      const totalQ = Math.max(0, Math.floor(Number(row.total_questions || 0)));
+      const totalAnsRows = Math.max(0, Math.floor(Number(row.total_answer_rows || 0)));
+      const answeredRows = Math.max(0, Math.floor(Number(row.answered_rows || 0)));
+      let countForAttempt = totalAnsRows > 0 ? answeredRows : totalQ;
+      if (totalQ > 0 && countForAttempt > totalQ) countForAttempt = totalQ;
+      acc.testAttemptsSolved += Math.min(countForAttempt, 500);
+      const rawCreated = row.created_at;
+      const createdMs =
+        typeof rawCreated === 'number'
+          ? rawCreated > 1e12
+            ? rawCreated
+            : rawCreated * 1000
+          : typeof rawCreated === 'string'
+          ? Date.parse(rawCreated)
+          : NaN;
+      if (Number.isFinite(createdMs) && createdMs > 0) {
+        acc.activeDates.add(pktKeyFromMs(createdMs));
+      }
+    }
+
+    for (const row of d1DailyUsageRes.results || []) {
+      const uid = String(row.uid || '').trim();
+      if (!uid) continue;
+      const acc = ensureAcc(uid);
+      const qSolved = Math.max(0, Math.floor(Number(row.questions_solved || 0)));
+      const pAttempts = Math.max(0, Math.floor(Number(row.practice_attempts || 0)));
+      const tStarted = Math.max(0, Math.floor(Number(row.tests_started || 0)));
+      acc.dailyUsageSolved += qSolved;
+      if (
+        (qSolved > 0 || pAttempts > 0 || tStarted > 0) &&
+        typeof row.pkt_date === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(row.pkt_date)
+      ) {
+        acc.activeDates.add(row.pkt_date);
+      }
+    }
+
+    for (const row of d1RewardClaimsRes.results || []) {
+      const uid = String(row.uid || '').trim();
+      if (!uid) continue;
+      const acc = ensureAcc(uid);
+      if (typeof row.pkt_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.pkt_date)) {
+        acc.activeDates.add(row.pkt_date);
+      }
+    }
+
+    for (const row of d1GuestsActivityRes.results || []) {
+      const uid = String(row.uid || '').trim();
+      if (!uid) continue;
+      const acc = ensureAcc(uid);
+      acc.guestSolved = Math.max(acc.guestSolved, Math.floor(Number(row.total_questions_solved || 0)));
+      acc.storedStreak = Math.max(acc.storedStreak, Math.floor(Number(row.streak || 0)));
+    }
+
+    const userActivityByUid: Record<
+      string,
+      {
+        solved: number;
+        testAttemptsSolved: number;
+        dailyUsageSolved: number;
+        guestSolved: number;
+        streak: number;
+        activeDates: string[];
+      }
+    > = {};
+
+    for (const [uid, acc] of activityAccByUid.entries()) {
+      const computedStreak = computePktStreakFromSet(acc.activeDates);
+      const solved = Math.max(acc.testAttemptsSolved, acc.dailyUsageSolved, acc.guestSolved);
+      userActivityByUid[uid] = {
+        solved,
+        testAttemptsSolved: acc.testAttemptsSolved,
+        dailyUsageSolved: acc.dailyUsageSolved,
+        guestSolved: acc.guestSolved,
+        streak: Math.max(computedStreak, acc.storedStreak),
+        activeDates: Array.from(acc.activeDates).sort().slice(-60),
+      };
+    }
 
     const proBadgesByUid: Record<string, { design: string; visible: boolean }> = {};
     for (const pb of d1ProBadgesRes.results || []) {
@@ -7832,6 +8020,8 @@ export async function handleAuthApiRequest(
       proBadgeVisible?: boolean;
       plus_badge_design?: number | null;
       plus_badge_visible?: boolean;
+      totalQuestionsSolved?: number;
+      streak?: number;
     }> = [];
 
     for (const u of d1UsernamesRes.results || []) {
@@ -7873,6 +8063,7 @@ export async function handleAuthApiRequest(
 
       const pbEntry = proBadgesByUid[uid];
       const plbEntry = plusBadgesByUid[uid];
+      const actEntry = userActivityByUid[uid];
       d1Users.push({
         uid,
         username: usernameDisplay,
@@ -7891,6 +8082,8 @@ export async function handleAuthApiRequest(
         proBadgeVisible: pbEntry ? pbEntry.visible : true,
         plus_badge_design: plbEntry ? plbEntry.plus_badge_design : null,
         plus_badge_visible: plbEntry ? plbEntry.plus_badge_visible : true,
+        totalQuestionsSolved: actEntry ? actEntry.solved : 0,
+        streak: actEntry ? actEntry.streak : 0,
       });
     }
 
@@ -7975,6 +8168,7 @@ export async function handleAuthApiRequest(
       users2fa: statusByUid,
       proBadgesByUid,
       plusBadgesByUid,
+      userActivityByUid,
       d1Users,
       canManage2fa,
       callerHas2fa: callerStatus.twoFactorEnabled,

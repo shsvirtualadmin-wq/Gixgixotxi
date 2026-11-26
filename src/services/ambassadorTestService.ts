@@ -230,6 +230,10 @@ export function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
           year: 'numeric',
         });
 
+  const score = Number(raw.score ?? 0);
+  const totalQuestions = Number(raw.totalQuestions ?? raw.total_questions ?? 0);
+  const percentage = computeScorePercentage(score, totalQuestions, Number(raw.percentage ?? 0));
+
   return {
     id: String(raw.id || ''),
     testId: String(raw.testId || raw.test_id || ''),
@@ -243,15 +247,31 @@ export function normalizeAttemptRow(raw: any): AmbassadorTestAttempt {
     userName,
     name: userName,
     userAvatar: raw.userAvatar ?? raw.user_avatar ?? null,
-    score: Number(raw.score ?? 0),
-    totalQuestions: Number(raw.totalQuestions ?? raw.total_questions ?? 0),
-    percentage: Number(raw.percentage ?? 0),
+    score,
+    totalQuestions,
+    percentage,
     timeTakenSeconds: Number(raw.timeTakenSeconds ?? raw.time_taken_seconds ?? 0),
     rank: raw.rank !== undefined ? Number(raw.rank) : undefined,
     date: dateStr,
     gradedQuestions: Array.isArray(raw.gradedQuestions) ? raw.gradedQuestions : undefined,
     createdAt: ts,
   };
+}
+
+export function computeScorePercentage(
+  score: number,
+  totalQuestions: number,
+  fallbackPercentage = 0
+): number {
+  const safeScore = Number(score);
+  const safeTotal = Number(totalQuestions);
+  if (Number.isFinite(safeScore) && Number.isFinite(safeTotal) && safeTotal > 0) {
+    return Math.max(0, Math.min(100, Math.round((safeScore / safeTotal) * 100)));
+  }
+  const safeFallback = Number(fallbackPercentage);
+  return Number.isFinite(safeFallback)
+    ? Math.max(0, Math.min(100, Math.round(safeFallback)))
+    : 0;
 }
 
 /**
@@ -807,6 +827,13 @@ export async function getGrandLineLeaderboard(maxCount = 50): Promise<GrandLineL
         const displayName = String(
           d.displayName || d.userName || d.studentName || d.name || 'Student'
         ).trim() || 'Student';
+        const totalScore = Number(d.totalScore ?? d.score ?? 0);
+        const totalQuestions = Number(d.totalQuestions ?? 0);
+        const computedPct = computeScorePercentage(
+          totalScore,
+          totalQuestions,
+          Number(d.percentage ?? d.bestPercentage ?? 0)
+        );
         return {
           uid,
           userUid: uid,
@@ -816,9 +843,9 @@ export async function getGrandLineLeaderboard(maxCount = 50): Promise<GrandLineL
           name: displayName,
           userAvatar: d.userAvatar ?? d.user_avatar ?? null,
           testsCompleted: Number(d.testsCompleted || 1),
-          totalScore: Number(d.totalScore ?? d.score ?? 0),
-          totalQuestions: Number(d.totalQuestions ?? 0),
-          bestPercentage: Number(d.bestPercentage ?? d.percentage ?? 0),
+          totalScore,
+          totalQuestions,
+          bestPercentage: computedPct,
           timeTakenSeconds: Number(d.timeTakenSeconds ?? d.time_taken_seconds ?? 0),
           rank: d.rank !== undefined ? Number(d.rank) : idx + 1,
           lastTestTitle: String(d.lastTestTitle || d.testTitle || 'Grand Line Test'),
@@ -890,18 +917,23 @@ export async function getGlobalGrandLineTopScorers(
   maxCount = 10
 ): Promise<GlobalTopScorerEntry[]> {
   const entries = await getGrandLineLeaderboard(maxCount);
-  return entries.map((e, idx) => ({
-    uid: e.uid,
-    studentUid: e.uid,
-    name: e.displayName,
-    userAvatar: e.userAvatar || null,
-    score: e.totalScore,
-    totalQuestions: e.totalQuestions,
-    percentage: e.bestPercentage,
-    timeTakenSeconds: e.timeTakenSeconds || 0,
-    testsCompleted: e.testsCompleted,
-    rank: e.rank ?? idx + 1,
-  }));
+  return entries.map((e, idx) => {
+    const score = Number(e.totalScore ?? 0);
+    const totalQuestions = Number(e.totalQuestions ?? 0);
+    const percentage = computeScorePercentage(score, totalQuestions, e.bestPercentage);
+    return {
+      uid: e.uid,
+      studentUid: e.uid,
+      name: e.displayName,
+      userAvatar: e.userAvatar || null,
+      score,
+      totalQuestions,
+      percentage,
+      timeTakenSeconds: e.timeTakenSeconds || 0,
+      testsCompleted: e.testsCompleted,
+      rank: e.rank ?? idx + 1,
+    };
+  });
 }
 
 export const SAMPLE_CSV_TEMPLATE = `question,optionA,optionB,optionC,optionD,correctOption,explanation,topic,difficulty

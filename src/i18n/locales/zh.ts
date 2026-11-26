@@ -1118,6 +1118,7 @@ export const zh: TranslationDictionary = {
   'profile.imageUnder5mbError': '请选择小于 5 MB 的图片。',
   'profile.invalidImageError': '不支持的图片格式，请使用 PNG、JPG 或 WebP。',
   'profile.level': '等级 {{level}}',
+  'profile.levelLabel': '等级',
   'profile.levelShort': 'Lv. {{level}}',
   'profile.limitReached': '已达上限',
   'profile.loadFollowersError': '无法加载粉丝列表。',

@@ -34,6 +34,7 @@ import {
   notifyTestCompleted,
   computeSubjectBreakdownFromQuestions,
 } from './emailNotificationService';
+import { recordCompletedPracticeForStreak } from './streakEngine';
 
 /**
  * University marking configurations for official entrance exams.
@@ -1100,10 +1101,20 @@ export async function submitAttempt(
       headers: buildGuestAttemptHeaders(),
       body: JSON.stringify({
         uid,
+        dateKey: pktDateKey,
         practiceAttemptsDelta: 1,
+        completedTestsDelta: 1,
         questionsSolvedDelta: answeredCount,
       }),
     }).catch(() => {});
+
+    recordCompletedPracticeForStreak(uid, {
+      mcqsSolved: answeredCount || totalQuestions,
+      completedAt: new Date().toISOString(),
+      source: 'practice',
+      skipApiRecord: true,
+      skipFirestoreActivity: true,
+    });
 
     return {
       score,
@@ -1167,7 +1178,9 @@ export async function submitAttempt(
       },
       body: JSON.stringify({
         uid,
+        dateKey: pktDateKey,
         practiceAttemptsDelta: 1,
+        completedTestsDelta: 1,
         questionsSolvedDelta: answeredCount,
       }),
     }).catch(() => {});
@@ -1189,6 +1202,14 @@ export async function submitAttempt(
     console.warn('[testEngine] Failed to record daily activity:', err);
   }
 
+  recordCompletedPracticeForStreak(uid, {
+    mcqsSolved: answeredCount || totalQuestions,
+    completedAt: new Date().toISOString(),
+    source: 'practice',
+    skipApiRecord: true,
+    skipFirestoreActivity: true,
+  });
+
   // 4. Update user streak
   try {
     const userDocRef = doc(db, 'users', uid);
@@ -1206,6 +1227,7 @@ export async function submitAttempt(
       await updateDoc(userDocRef, {
         streak: newStreak,
         lastActiveDate: pktDateKey,
+        ...(answeredCount > 0 ? { totalQuestionsSolved: increment(answeredCount) } : {}),
         updatedAt: serverTimestamp(),
       });
     }

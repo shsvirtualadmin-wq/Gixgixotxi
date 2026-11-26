@@ -1118,6 +1118,7 @@ export const urLatn: TranslationDictionary = {
   'profile.imageUnder5mbError': '5 MB se kam size ki tasveer chunein.',
   'profile.invalidImageError': 'Yeh image format support nahi hota. PNG, JPG ya WebP lagayein.',
   'profile.level': 'Level {{level}}',
+  'profile.levelLabel': 'Level',
   'profile.levelShort': 'Lv. {{level}}',
   'profile.limitReached': 'Limit poori ho gayi',
   'profile.loadFollowersError': 'Followers load nahi ho sake.',

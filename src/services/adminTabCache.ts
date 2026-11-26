@@ -1,6 +1,8 @@
 import {
   fetchAdminStats,
   getCachedAdminStats,
+  getCachedOverviewApplications,
+  getApplicationsCacheVersion,
   fetchAuditLogs,
   fetchUsersPaginated,
   getCachedAdminUsersState,
@@ -52,21 +54,43 @@ export interface AdminOverviewCacheData {
   rewardsMode: RewardsMode | null;
   rewardsHealth: RewardsHealthResponse | null;
   updatedAt: number;
+  appsCacheVersion?: number;
 }
 
 let overviewCache: AdminOverviewCacheData | null = null;
 let overviewInFlight: Promise<AdminOverviewCacheData> | null = null;
 
 export function getCachedAdminOverview(): AdminOverviewCacheData | null {
-  if (overviewCache) return overviewCache;
+  const latestApps = getCachedOverviewApplications();
+  const currentAppsVersion = getApplicationsCacheVersion();
+  if (overviewCache && overviewCache.appsCacheVersion === currentAppsVersion) {
+    if (latestApps) {
+      return {
+        ...overviewCache,
+        stats: {
+          ...overviewCache.stats,
+          pendingCaptains: latestApps.pendingCaptains,
+          pendingCrew: latestApps.pendingCrew,
+        },
+      };
+    }
+    return overviewCache;
+  }
   const cachedStats = getCachedAdminStats();
   if (cachedStats) {
     return {
-      stats: cachedStats,
+      stats: latestApps
+        ? {
+            ...cachedStats,
+            pendingCaptains: latestApps.pendingCaptains,
+            pendingCrew: latestApps.pendingCrew,
+          }
+        : cachedStats,
       recentLogs: [],
       rewardsMode: null,
       rewardsHealth: null,
       updatedAt: Date.now() - SWR_TTL_MS,
+      appsCacheVersion: currentAppsVersion,
     };
   }
   return null;
@@ -80,9 +104,11 @@ export async function fetchAdminOverviewSWR(
   }
 ): Promise<AdminOverviewCacheData> {
   const now = Date.now();
+  const currentAppsVersion = getApplicationsCacheVersion();
   const isFresh =
     overviewCache &&
     !options?.force &&
+    overviewCache.appsCacheVersion === currentAppsVersion &&
     now - overviewCache.updatedAt < SWR_TTL_MS;
 
   if (isFresh && overviewCache) {
@@ -94,6 +120,7 @@ export async function fetchAdminOverviewSWR(
   }
 
   const runFetch = async (): Promise<AdminOverviewCacheData> => {
+    const versionAtStart = getApplicationsCacheVersion();
     const [stats, recentLogs, rState, rewardsHealth] = await Promise.all([
       fetchAdminStats({ force: options?.force }),
       fetchAuditLogs(5).catch(() => overviewCache?.recentLogs || ([] as AuditLog[])),
@@ -107,6 +134,7 @@ export async function fetchAdminOverviewSWR(
       rewardsMode: rState?.mode ?? overviewCache?.rewardsMode ?? null,
       rewardsHealth: rewardsHealth ?? overviewCache?.rewardsHealth ?? null,
       updatedAt: Date.now(),
+      appsCacheVersion: versionAtStart,
     };
     overviewCache = next;
     options?.onUpdate?.(next);
@@ -117,7 +145,7 @@ export async function fetchAdminOverviewSWR(
     overviewInFlight = null;
   });
 
-  if (overviewCache && !options?.force) {
+  if (overviewCache && !options?.force && overviewCache.appsCacheVersion === currentAppsVersion) {
     void overviewInFlight.catch(() => {});
     return overviewCache;
   }

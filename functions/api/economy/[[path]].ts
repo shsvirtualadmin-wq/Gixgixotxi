@@ -842,13 +842,36 @@ class HybridFirestoreHelper {
       }
     }
 
+    const fetchWithTimeout = async (url: string, headers: Record<string, string>, timeoutMs = 5000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { headers, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
     const sa = parseServiceAccountFromEnv(this.env);
     if (sa) {
       try {
-        const token = await getServiceAccountAccessToken(sa);
-        const resp = await fetch(
+        const token = await new Promise<string>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('sa-token-timeout')), 4000);
+          getServiceAccountAccessToken(sa).then(
+            (t) => {
+              clearTimeout(timer);
+              resolve(t);
+            },
+            (e) => {
+              clearTimeout(timer);
+              reject(e);
+            }
+          );
+        });
+        const resp = await fetchWithTimeout(
           `${this.baseUrl}/${collectionPath.replace(/^\/+/, '')}?pageSize=${pageSize}`,
-          { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+          { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          5000
         );
         if (resp.ok) {
           const json = (await resp.json()) as { documents?: any[] };
@@ -866,9 +889,10 @@ class HybridFirestoreHelper {
       }
     }
     try {
-      const resp = await fetch(
+      const resp = await fetchWithTimeout(
         `${this.baseUrl}/${collectionPath.replace(/^\/+/, '')}?pageSize=${pageSize}`,
-        { headers: { Authorization: this.bearerToken, Accept: 'application/json' } }
+        { Authorization: this.bearerToken, Accept: 'application/json' },
+        5000
       );
       if (!resp.ok) return Array.from(fallbackItems.values());
       const json = (await resp.json()) as { documents?: any[] };
@@ -899,7 +923,19 @@ async function getAllCoupons(fsHelper: HybridFirestoreHelper): Promise<Normalize
   // 2. Merge live promo code configured in Admin -> Ads (/admin/ads -> Promo code tab)
   //    (placed BEFORE Firestore `coupons/{CODE}` so authoritative Coupon Studio docs always win!)
   try {
-    const adsConfig = await loadAdsConfigServer(fsHelper.getEnv());
+    const adsConfig = await new Promise<Awaited<ReturnType<typeof loadAdsConfigServer>> | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), 4000);
+      loadAdsConfigServer(fsHelper.getEnv()).then(
+        (cfg) => {
+          clearTimeout(timer);
+          resolve(cfg);
+        },
+        () => {
+          clearTimeout(timer);
+          resolve(null);
+        }
+      );
+    });
     if (adsConfig?.promoCode?.code) {
       const p = adsConfig.promoCode;
       const cleanPromoCode = String(p.code).trim().toUpperCase();

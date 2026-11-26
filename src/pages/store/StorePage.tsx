@@ -1080,7 +1080,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   }
 
   return (
-    <div data-student-page="store" className="min-h-[100dvh] bg-[var(--bg-primary)] text-[var(--text-primary)] pb-[var(--sdn-page-pb)] overflow-x-clip">
+    <div data-student-page="store" className="min-h-[100dvh] bg-[var(--bg-primary)] text-[var(--text-primary)] pb-12 overflow-x-clip">
       <PageMeta
         title="Boardly Store — Animated Banners, Avatars, Frames, Profile Effects & Nameplates"
         description="Customize your Boardly identity with animated profile banners, avatar pictures, frames, profile effects, and nameplates using Kobans."
@@ -1961,7 +1961,7 @@ export const StorePage: React.FC<StorePageProps> = ({
           type="button"
           onClick={handleOpenCart}
           aria-label={t('cart.title')}
-          className={`fixed end-4 sm:end-6 bottom-[calc(88px+env(safe-area-inset-bottom,0px))] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
+          className={`fixed end-4 sm:end-6 bottom-[calc(120px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(100px+env(safe-area-inset-bottom,0px))] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
             cartPillBounce ? 'scale-110 ring-4 ring-[#E11D2A]/40' : ''
           }`}
         >

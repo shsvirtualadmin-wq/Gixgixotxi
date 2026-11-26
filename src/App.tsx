@@ -272,6 +272,9 @@ const AdminAdsPage = lazyWithRetry(() =>
 const AiMentorsPage = lazyWithRetry(() =>
   import('./pages/dashboard/AiMentorsPage').then(m => ({ default: m.AiMentorsPage }))
 );
+const BookmarksPage = lazyWithRetry(() =>
+  import('./pages/dashboard/BookmarksPage').then(m => ({ default: m.BookmarksPage }))
+);
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -456,6 +459,7 @@ function AppInner() {
             <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/:subPage" element={<SettingsPage />} />
+            <Route path="bookmarks" element={<BookmarksPage />} />
             <Route path="menu" element={<Navigate to="/settings" replace />} />
             <Route path="contact" element={<Navigate to="/contact" replace />} />
             <Route path="*" element={<NotFoundPage />} />
@@ -471,6 +475,7 @@ function AppInner() {
           <Route path="/locker" element={<LockerPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/saved" element={<CommonsFeedPage />} />
+          <Route path="/bookmarks" element={<BookmarksPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/:subPage" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />

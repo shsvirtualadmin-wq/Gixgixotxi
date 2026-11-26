@@ -14,6 +14,12 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { ensureWelcomeNotificationForUser } from '@/services/notificationService';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
 import { UserPlus, X } from 'lucide-react';
+import {
+  buildFullPath,
+  buildLoginRedirectUrl,
+  evaluateDashboardRouteAccess,
+  persistPostLoginRedirect,
+} from '@/utils/routeGuards';
 
 const GuestUpgradeModal = React.lazy(() =>
   import('@/components/auth/GuestUpgradeModal').then((m) => ({ default: m.GuestUpgradeModal }))
@@ -67,6 +73,14 @@ export function DashboardShell() {
     location.pathname.startsWith('/dashboard/commons') ||
     location.pathname.startsWith('/commons') ||
     location.pathname === '/saved';
+  const isAiRoute =
+    location.pathname === '/dashboard/ai' || location.pathname.startsWith('/dashboard/ai/');
+  const searchParams = new URLSearchParams(location.search);
+  const isInsideChatRoute =
+    /^\/(dashboard\/)?messages\/[^/]+/.test(location.pathname) ||
+    ((location.pathname === '/dashboard/messages' || location.pathname === '/messages') &&
+      Boolean(searchParams.get('uid') || searchParams.get('conversationId')));
+  const hideBottomNavSpace = isSettingsRoute || isAiRoute || isInsideChatRoute;
 
   useEffect(() => {
     if (user?.uid && isSessionVerified && !isGuest) {
@@ -105,33 +119,42 @@ export function DashboardShell() {
     return null;
   };
 
+  const signingOutNow =
+    isSigningOut ||
+    (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
+
+  const publicEquivalent = getPublicEquivalentForLoggedOut(location.pathname);
+  const routeDecision = evaluateDashboardRouteAccess({
+    authStatus,
+    isAuthenticated,
+    profileLoading,
+    hasUser: Boolean(user),
+    isGuest,
+    otpStatus: otpVerificationState.status,
+    otpPurpose: otpVerificationState.purpose,
+    isSessionVerified,
+    isSigningOut: signingOutNow,
+    publicEquivalent,
+  });
+
   useEffect(() => {
-    const signingOutNow =
-      isSigningOut ||
-      (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
     if (signingOutNow) {
       return;
     }
-    if (authStatus !== 'loading' && !isAuthenticated && !profileLoading && !user) {
-      const publicPath = getPublicEquivalentForLoggedOut(location.pathname);
-      if (publicPath) {
-        navigate(`${publicPath}${location.search}${location.hash}`, { replace: true });
-        return;
-      }
-      const target = `${location.pathname}${location.search}${location.hash}`;
-      try {
-        sessionStorage.setItem('boardly_post_login_redirect', target);
-      } catch {
-        // ignore storage errors
-      }
-      navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
+    if (routeDecision.action === 'redirect_public') {
+      navigate(`${routeDecision.target}${location.search}${location.hash}`, { replace: true });
+      return;
+    }
+    if (routeDecision.action === 'redirect_login') {
+      const target = buildFullPath(location.pathname, location.search, location.hash);
+      persistPostLoginRedirect(target);
+      navigate(buildLoginRedirectUrl(location.pathname, location.search, location.hash), {
+        replace: true,
+      });
     }
   }, [
-    isSigningOut,
-    authStatus,
-    isAuthenticated,
-    user,
-    profileLoading,
+    signingOutNow,
+    routeDecision,
     navigate,
     location.pathname,
     location.search,
@@ -139,34 +162,20 @@ export function DashboardShell() {
   ]);
 
   // Route guard: Logged-out users visiting protected routes are redirected to login with exact return URL
-  if (authStatus !== 'loading' && !isAuthenticated && !profileLoading && !user) {
-    const signingOutNow =
-      isSigningOut ||
-      (typeof window !== 'undefined' && Boolean((window as any).__boardlySigningOut));
-    if (signingOutNow) {
-      return <Navigate to="/login" replace />;
-    }
-    const publicPath = getPublicEquivalentForLoggedOut(location.pathname);
-    if (publicPath) {
-      return <Navigate to={`${publicPath}${location.search}${location.hash}`} replace />;
-    }
-    const target = `${location.pathname}${location.search}${location.hash}`;
-    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
+  if (routeDecision.action === 'redirect_login_clean') {
+    return <Navigate to="/login" replace />;
   }
-
-  // Route guard: Signed-in non-guest users who have NOT completed the 6-digit verification code step
-  if (user && !isGuest && otpVerificationState.status !== 'checking' && !isSessionVerified) {
-    const target = `${location.pathname}${location.search}${location.hash}`;
-    try {
-      sessionStorage.setItem('boardly_post_login_redirect', target);
-    } catch {
-      // ignore storage errors
-    }
-    const verifyDest =
-      otpVerificationState.purpose === 'signup'
+  if (routeDecision.action === 'redirect_public') {
+    return <Navigate to={`${routeDecision.target}${location.search}${location.hash}`} replace />;
+  }
+  if (routeDecision.action === 'redirect_login' || routeDecision.action === 'redirect_verify_email') {
+    const target = buildFullPath(location.pathname, location.search, location.hash);
+    persistPostLoginRedirect(target);
+    const dest =
+      routeDecision.action === 'redirect_verify_email'
         ? '/verify-email'
-        : `/login?redirect=${encodeURIComponent(target)}`;
-    return <Navigate to={verifyDest} replace />;
+        : buildLoginRedirectUrl(location.pathname, location.search, location.hash);
+    return <Navigate to={dest} replace />;
   }
 
   // NEVER return null or block with a full-screen startup gate — always render shell, route skeleton/cache, and bottom nav immediately
@@ -216,9 +225,9 @@ export function DashboardShell() {
           isSettingsRoute
             ? 'max-w-none p-0'
             : isProfileRoute
-            ? 'max-w-none p-0 dashboard-main-scroll'
-            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'
-        }`}
+            ? 'max-w-none px-0 pt-0'
+            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6'
+        } ${hideBottomNavSpace ? '' : 'dashboard-main-scroll'}`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
           <SingleSuspenseOutlet />

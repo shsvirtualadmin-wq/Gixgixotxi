@@ -49,6 +49,7 @@ import {
 } from '@/utils/grandLineSchedule';
 import { useServerSyncedClock } from '@/components/admin/GrandLineScheduleSheet';
 import { useBodyScrollLock } from '@/utils/scrollLock';
+import { recordCompletedPracticeForStreak } from '@/services/streakEngine';
 
 const DEFAULT_ALREADY_ATTEMPTED_MSG =
   'Each Grand Line test can only be attempted once.';
@@ -428,6 +429,12 @@ export function GrandLineTestRunnerPage() {
       const correctCount = gradedList.filter((g) => g.isCorrect).length;
       const wrongCount = Math.max(0, attemptedCount - correctCount);
 
+      recordCompletedPracticeForStreak(user?.uid, {
+        mcqsSolved: attemptedCount || totalQ,
+        completedAt: attempt.date || new Date().toISOString(),
+        source: 'grandline',
+      });
+
       notifyTestCompleted({
         attemptId: attempt.id || test.id,
         studentName: attempt.userName || attempt.studentName || studentName,
@@ -459,7 +466,7 @@ export function GrandLineTestRunnerPage() {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [test, submitted, submitting, answers, resolveStudentProfileName, resolveStudentAvatar]);
+  }, [test, submitted, submitting, answers, resolveStudentProfileName, resolveStudentAvatar, user?.uid]);
 
   // Countdown timer
   useEffect(() => {

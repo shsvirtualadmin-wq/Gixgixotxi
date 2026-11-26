@@ -337,6 +337,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   const [section, setSectionState] = useState<SettingsSectionId>(() =>
     mapRouteParamToSection(initialSubPage)
   );
+  useEffect(() => {
+    setSectionState(mapRouteParamToSection(initialSubPage));
+  }, [initialSubPage]);
   const setSection = useCallback(
     (next: SettingsSectionId) => {
       setSectionState(next);

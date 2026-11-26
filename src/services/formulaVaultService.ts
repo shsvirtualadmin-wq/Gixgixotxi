@@ -57,6 +57,7 @@ export interface FormulaBankHealthData {
   brokenFormulasCount: number;
   emptyChaptersCount: number;
   duplicateFormulasCount: number;
+  duplicateChaptersCount: number;
   openReportsCount: number;
   brokenFormulas: Array<
     D1FormulaItemRow & {
@@ -75,6 +76,12 @@ export interface FormulaBankHealthData {
     duplicateOfId: string;
     reason: string;
     chapter_title: string;
+    category_name: string;
+  }>;
+  duplicateChapters: Array<{
+    chapter: D1FormulaChapterRow;
+    duplicateOfId?: string;
+    reason: string;
     category_name: string;
   }>;
 }
@@ -231,10 +238,15 @@ export async function fetchChapterFormulas(
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && data.chapter) {
+        const sortedFormulas = (Array.isArray(data.formulas) ? [...data.formulas] : []).sort(
+          (a, b) =>
+            Number(a.formula_no || 0) - Number(b.formula_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        );
         const result: FormulaChapterDetailResponse = {
           chapter: data.chapter,
           category: data.category || null,
-          formulas: Array.isArray(data.formulas) ? data.formulas : [],
+          formulas: sortedFormulas,
           total: Number(data.total || 0),
           page: Number(data.page || 1),
           pageSize: Number(data.pageSize || 200),
@@ -575,6 +587,7 @@ export async function deleteFormulaChapter(id: string): Promise<void> {
 }
 
 export async function createFormulaItem(payload: {
+  category_id?: string;
   chapter_id: string;
   formula_no?: number;
   title?: string;
@@ -690,27 +703,53 @@ export async function fetchFormulaBankHealth(): Promise<FormulaBankHealthData> {
     throw new Error(data.error || 'Failed to load Formula Bank health.');
   }
   const h = data.health || data;
+  const brokenFormulas = Array.isArray(h.brokenFormulas)
+    ? h.brokenFormulas
+    : Array.isArray(h.brokenLatexFormulas)
+    ? h.brokenLatexFormulas
+    : [];
+  const emptyChapters = Array.isArray(h.emptyChapters) ? h.emptyChapters : [];
+  const duplicateFormulas = Array.isArray(h.duplicateFormulas)
+    ? h.duplicateFormulas
+    : Array.isArray(h.duplicateNumbers)
+    ? h.duplicateNumbers
+    : [];
+  const duplicateChapters = Array.isArray(h.duplicateChapters) ? h.duplicateChapters : [];
+  const duplicateFormulasCount = Math.max(
+    Number(h.duplicateFormulasCount ?? h.duplicateNumbersCount ?? 0),
+    duplicateFormulas.length + duplicateChapters.length
+  );
+  const brokenFormulasCount = Math.max(
+    Number(h.brokenFormulasCount ?? h.brokenLatexCount ?? 0),
+    brokenFormulas.length
+  );
+  const emptyChaptersCount = Math.max(
+    Number(h.emptyChaptersCount ?? 0),
+    emptyChapters.length
+  );
+
   return {
-    ok: Boolean(h.ok ?? true),
+    ok: Boolean(
+      h.ok ??
+        (brokenFormulasCount === 0 && emptyChaptersCount === 0 && duplicateFormulasCount === 0)
+    ),
     totalCategories: Number(h.totalCategories || 0),
     totalChapters: Number(h.totalChapters || 0),
     totalFormulas: Number(h.totalFormulas || 0),
     liveFormulas: Number(h.liveFormulas || 0),
     draftFormulas: Number(h.draftFormulas || 0),
-    brokenFormulasCount: Number(
-      h.brokenFormulasCount ?? (Array.isArray(h.brokenFormulas) ? h.brokenFormulas.length : 0)
-    ),
-    emptyChaptersCount: Number(
-      h.emptyChaptersCount ?? (Array.isArray(h.emptyChapters) ? h.emptyChapters.length : 0)
-    ),
-    duplicateFormulasCount: Number(
-      h.duplicateFormulasCount ??
-        (Array.isArray(h.duplicateFormulas) ? h.duplicateFormulas.length : 0)
+    brokenFormulasCount,
+    emptyChaptersCount,
+    duplicateFormulasCount,
+    duplicateChaptersCount: Math.max(
+      Number(h.duplicateChaptersCount ?? 0),
+      duplicateChapters.length
     ),
     openReportsCount: Number(h.openReportsCount || 0),
-    brokenFormulas: Array.isArray(h.brokenFormulas) ? h.brokenFormulas : [],
-    emptyChapters: Array.isArray(h.emptyChapters) ? h.emptyChapters : [],
-    duplicateFormulas: Array.isArray(h.duplicateFormulas) ? h.duplicateFormulas : [],
+    brokenFormulas,
+    emptyChapters,
+    duplicateFormulas,
+    duplicateChapters,
   };
 }
 

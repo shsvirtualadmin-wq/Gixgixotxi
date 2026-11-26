@@ -129,19 +129,14 @@ export function CrewPage() {
   };
 
   return (
-    <div data-student-page="crew" className="cw-screen-root min-h-screen w-full flex flex-col justify-between overflow-x-clip transition-colors duration-150">
+    <div data-student-page="crew" className="cw-screen-root min-h-screen w-full flex flex-col overflow-x-clip transition-colors duration-150">
       <PageMeta
         title="Study Crew & Campus Squads — Boardly"
         description={`Study together in squads of up to ${MAX_CREW_MEMBERS} students. Take practice tests, track leaderboards, and build consistent daily preparation habits.`}
       />
 
       <div
-        className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-2 space-y-6 flex-1"
-        style={{
-          paddingBottom: isLoggedIn
-            ? 'var(--sdn-page-pb)'
-            : '48px',
-        }}
+        className="mx-auto w-full max-w-5xl px-3.5 sm:px-6 lg:px-8 pt-2 pb-12 space-y-6 flex-1"
       >
         {/* ── 1. Doto Page Title & Intro ── */}
         <div className="space-y-2 px-1">

@@ -256,7 +256,9 @@ export const AdminNameRequestsSection: React.FC<AdminNameRequestsSectionProps> =
         ) : filteredRequests.length === 0 ? (
           <div className="py-16 text-center text-xs text-[var(--muted)] font-heading space-y-1">
             <ShieldAlert size={28} className="mx-auto text-[var(--muted)] mb-2 opacity-50" />
-            <p className="font-semibold text-[var(--text)]">No {statusFilter !== 'all' ? statusFilter : ''} name requests</p>
+            <p className="font-semibold text-[var(--text)]">
+              {statusFilter === 'all' ? 'No name requests' : `No ${statusFilter} name requests`}
+            </p>
             <p className="text-[11px] text-[var(--muted)]">
               When students attempt to register reserved names containing "shs", "boardly", etc., their review requests will appear here.
             </p>

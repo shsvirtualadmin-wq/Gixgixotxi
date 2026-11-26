@@ -61,6 +61,11 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
 import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
+import {
+  computeUsersPagination,
+  extractProfileSolvedCount,
+  extractProfileStreakCount,
+} from '@/lib/adminUsersHelpers';
 
 const PAGE_SIZE = 20;
 
@@ -442,7 +447,8 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
       : null;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
-  const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
+  const qSolved = extractProfileSolvedCount(u as unknown as Record<string, unknown>);
+  const resolvedStreak = extractProfileStreakCount(u as unknown as Record<string, unknown>) ?? 0;
   const joinedMs = resolveUserJoinedAtMs(u);
   const lastActiveMs = resolveUserLastActiveAtMs(u);
   const trackLabel = u.targetUniversity || 'General Prep';
@@ -561,12 +567,25 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
             {trackLabel}
           </span>
           <div className="flex items-center justify-end gap-2 mt-0.5 font-mono text-[11px] tabular-nums">
-            <span className="font-bold text-[var(--text)]">
+            <span
+              className={
+                qSolved !== null && qSolved > 0
+                  ? 'font-bold text-[var(--text)]'
+                  : 'font-medium text-[var(--muted)]'
+              }
+            >
               {qSolved !== null ? `${qSolved.toLocaleString()} MCQs` : '—'}
             </span>
-            <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
-              <Flame size={11} className="text-amber-400" />
-              {u.streak || 0}d
+            <span
+              className={`inline-flex items-center gap-0.5 ${
+                resolvedStreak > 0 ? 'text-amber-400 font-semibold' : 'text-[var(--muted)]'
+              }`}
+            >
+              <Flame
+                size={11}
+                className={resolvedStreak > 0 ? 'text-amber-400' : 'text-[var(--text-faint)]'}
+              />
+              {resolvedStreak}d
             </span>
           </div>
         </div>
@@ -650,7 +669,8 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       : null;
   const studentId = formatStudentId(u);
   const emailOrHandle = resolveEmailOrHandle(u, isGuestUser, isSuperAdmin);
-  const qSolved = typeof u.totalQuestionsSolved === 'number' ? u.totalQuestionsSolved : null;
+  const qSolved = extractProfileSolvedCount(u as unknown as Record<string, unknown>);
+  const resolvedStreak = extractProfileStreakCount(u as unknown as Record<string, unknown>) ?? 0;
   const joinedMs = resolveUserJoinedAtMs(u);
   const lastActiveMs = resolveUserLastActiveAtMs(u);
   const trackLabel = u.targetUniversity || 'General Prep';
@@ -772,7 +792,7 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
         title="Click to inspect practice attempts"
       >
         {qSolved !== null ? (
-          <span>
+          <span className={qSolved > 0 ? 'text-[var(--text)]' : 'text-[var(--muted)] font-medium'}>
             {qSolved.toLocaleString()}{' '}
             <span className="text-[10px] font-normal text-[var(--muted)]">MCQs</span>
           </span>
@@ -782,10 +802,19 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       </td>
 
       {/* 8. Streak */}
-      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono text-[12px] text-[var(--text)] tabular-nums">
-        <span className="inline-flex items-center gap-1">
-          <Flame size={12} className="text-amber-400 shrink-0" />
-          <span>{u.streak || 0}d</span>
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono text-[12px] tabular-nums">
+        <span
+          className={`inline-flex items-center gap-1 ${
+            resolvedStreak > 0 ? 'text-[var(--text)] font-semibold' : 'text-[var(--muted)]'
+          }`}
+        >
+          <Flame
+            size={12}
+            className={
+              resolvedStreak > 0 ? 'text-amber-400 shrink-0' : 'text-[var(--text-faint)] shrink-0'
+            }
+          />
+          <span>{resolvedStreak}d</span>
         </span>
       </td>
 
@@ -862,10 +891,14 @@ export function AdminUsersPage() {
     user,
     isAdmin,
     isSuperAdmin: authIsSuperAdmin,
+    tokenClaims,
     hasPermission,
     profileLoading,
   } = useAuth();
-  const canViewUsers = hasPermission('users.view');
+  const hasAdminAccess = Boolean(
+    isAdmin || authIsSuperAdmin || tokenClaims?.admin === true || tokenClaims?.superAdmin === true
+  );
+  const canViewUsers = Boolean(authIsSuperAdmin || tokenClaims?.superAdmin === true || hasPermission('users.view'));
   const [requestUsersViewOpen, setRequestUsersViewOpen] = useState(false);
   const [adminTab, setAdminTab] = useState<'users' | 'nameRequests'>('users');
   const [pendingNameRequestsCount, setPendingNameRequestsCount] = useState<number>(0);
@@ -885,6 +918,7 @@ export function AdminUsersPage() {
   );
   const [loading, setLoading] = useState<boolean>(() => !initialCache && canViewUsers);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingPageTarget, setLoadingPageTarget] = useState<number | null>(null);
   const [searchingServer, setSearchingServer] = useState(false);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(
     () => (canViewUsers ? initialCache?.lastDoc ?? null : null)
@@ -895,6 +929,16 @@ export function AdminUsersPage() {
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  const allUsersRef = useRef<UserProfile[]>(allUsers);
+  allUsersRef.current = allUsers;
+  const lastDocRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(lastDoc);
+  lastDocRef.current = lastDoc;
+  const hasMoreRef = useRef<boolean>(hasMore);
+  hasMoreRef.current = hasMore;
+  const totalDirectoryCountRef = useRef<number>(totalDirectoryCount);
+  totalDirectoryCountRef.current = totalDirectoryCount;
+  const loadingMoreRef = useRef<boolean>(false);
 
   // Sort & Filters
   const [sortBy, setSortBy] = useState<AdminUserSortKey>(
@@ -999,9 +1043,23 @@ export function AdminUsersPage() {
     }
   };
 
+  const isMountedRef = useRef(true);
+  const loadRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const loadUsers = useCallback(
     async (options?: { force?: boolean; sortOverride?: AdminUserSortKey }) => {
-      if (!user || !isAdmin || !canViewUsers) return;
+      if (!user || !hasAdminAccess || !canViewUsers) {
+        if (isMountedRef.current) setLoading(false);
+        return;
+      }
+      const requestId = ++loadRequestIdRef.current;
       const targetSort = options?.sortOverride ?? sortBy;
       const currentCached = getCachedAdminUsersState();
       if (!currentCached || options?.sortOverride) {
@@ -1011,12 +1069,25 @@ export function AdminUsersPage() {
         setLoading(true);
       }
       setError(null);
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null;
       try {
-        const res = await fetchUsersPaginated({
-          limitCount: PAGE_SIZE,
-          sortBy: targetSort,
-          force: options?.force,
-        });
+        const res = await Promise.race([
+          fetchUsersPaginated({
+            limitCount: PAGE_SIZE,
+            sortBy: targetSort,
+            force: options?.force,
+          }),
+          new Promise<never>((_, reject) => {
+            safetyTimer = setTimeout(() => {
+              const timeoutErr: any = new Error(
+                'Users refresh timed out. Please try again.'
+              );
+              timeoutErr.code = 'DEADLINE_EXCEEDED';
+              reject(timeoutErr);
+            }, 15000);
+          }),
+        ]);
+        if (!isMountedRef.current || loadRequestIdRef.current !== requestId) return;
         setAllUsers(res.users);
         setTotalDirectoryCount(res.totalCount);
         setUser2faMap((prev) => ({ ...prev, ...res.user2faMap }));
@@ -1025,6 +1096,7 @@ export function AdminUsersPage() {
         setCurrentPage(1);
         setLoadState('loaded');
       } catch (err: unknown) {
+        if (!isMountedRef.current || loadRequestIdRef.current !== requestId) return;
         console.error('[AdminUsersPage] Failed to load users:', err);
         const e = err as Partial<AdminDiagnosticError>;
         setError({
@@ -1039,22 +1111,25 @@ export function AdminUsersPage() {
           setLoadState('error');
         }
       } finally {
-        setLoading(false);
+        if (safetyTimer) clearTimeout(safetyTimer);
+        if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+          setLoading(false);
+        }
       }
     },
-    [user, isAdmin, canViewUsers, sortBy]
+    [user, hasAdminAccess, canViewUsers, sortBy]
   );
 
   // Initial load once auth and admin-role check settle
   const initialLoadedRef = useRef(false);
   useEffect(() => {
     if (profileLoading) return;
-    if (!user || !isAdmin || !canViewUsers) {
+    if (!user || !hasAdminAccess || !canViewUsers) {
       if (!canViewUsers) {
         setAllUsers([]);
         setUser2faMap({});
-        setLoading(false);
       }
+      setLoading(false);
       return;
     }
     if (initialLoadedRef.current) return;
@@ -1076,7 +1151,7 @@ export function AdminUsersPage() {
     } else {
       void loadUsers({ sortOverride: sortBy });
     }
-  }, [profileLoading, user, isAdmin, canViewUsers, sortBy, loadUsers]);
+  }, [profileLoading, user, hasAdminAccess, canViewUsers, sortBy, loadUsers]);
 
   const handleSortChange = (nextSort: AdminUserSortKey) => {
     if (nextSort === sortBy) return;
@@ -1085,40 +1160,133 @@ export function AdminUsersPage() {
     void loadUsers({ sortOverride: nextSort, force: true });
   };
 
-  const handleLoadMore = async () => {
-    if (!lastDoc || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const res = await fetchUsersPaginated({
-        limitCount: PAGE_SIZE,
-        sortBy,
-        startAfterDoc: lastDoc,
-      });
-      setAllUsers((prev) => {
-        const byUid = new Map<string, UserProfile>();
-        for (const u of prev) byUid.set(u.uid, u);
-        for (const u of res.users) {
-          if (!byUid.has(u.uid)) byUid.set(u.uid, u);
+  const ensureUsersLoadedUpTo = useCallback(
+    async (
+      neededCount: number,
+      options?: { loadAll?: boolean; targetPage?: number | null }
+    ): Promise<{ loadedCount: number; hasMore: boolean; effectiveTotal: number }> => {
+      const loadAll = Boolean(options?.loadAll);
+      if (loadingMoreRef.current) {
+        const curLoaded = allUsersRef.current.length;
+        const curMore = hasMoreRef.current;
+        return {
+          loadedCount: curLoaded,
+          hasMore: curMore,
+          effectiveTotal: curMore
+            ? Math.max(totalDirectoryCountRef.current, curLoaded)
+            : curLoaded,
+        };
+      }
+      if (!hasMoreRef.current || (!loadAll && allUsersRef.current.length >= neededCount)) {
+        const curLoaded = allUsersRef.current.length;
+        const curMore = hasMoreRef.current;
+        return {
+          loadedCount: curLoaded,
+          hasMore: curMore,
+          effectiveTotal: curMore
+            ? Math.max(totalDirectoryCountRef.current, curLoaded)
+            : curLoaded,
+        };
+      }
+
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+      if (options?.targetPage) {
+        setLoadingPageTarget(options.targetPage);
+      }
+
+      const byUid = new Map<string, UserProfile>();
+      for (const u of allUsersRef.current) {
+        byUid.set(u.uid, u);
+      }
+      let cursor = lastDocRef.current;
+      let more = hasMoreRef.current;
+      let dirTotal = totalDirectoryCountRef.current;
+      const merged2fa: Record<string, UserTwoFactorSummary> = {};
+
+      try {
+        const MAX_BATCHES = 30;
+        for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
+          if (!more) break;
+          if (!loadAll && byUid.size >= neededCount) break;
+
+          // If hydrated from sessionStorage without a live Firestore cursor, fetch page 1 live first.
+          if (!cursor) {
+            const firstRes = await fetchUsersPaginated({
+              limitCount: PAGE_SIZE,
+              sortBy,
+              force: true,
+            });
+            for (const u of firstRes.users) {
+              byUid.set(u.uid, { ...(byUid.get(u.uid) || {}), ...u } as UserProfile);
+            }
+            Object.assign(merged2fa, firstRes.user2faMap);
+            dirTotal = Math.max(dirTotal, firstRes.totalCount);
+            cursor = firstRes.lastDoc;
+            more = firstRes.hasMore;
+            if (!cursor || !more) break;
+            continue;
+          }
+
+          const prevCursor = cursor;
+          const res = await fetchUsersPaginated({
+            limitCount: PAGE_SIZE,
+            sortBy,
+            startAfterDoc: cursor,
+          });
+          for (const u of res.users) {
+            byUid.set(u.uid, { ...(byUid.get(u.uid) || {}), ...u } as UserProfile);
+          }
+          Object.assign(merged2fa, res.user2faMap);
+          dirTotal = Math.max(dirTotal, res.totalCount);
+          cursor = res.lastDoc;
+          more = res.hasMore;
+
+          if (!cursor || cursor === prevCursor || res.users.length === 0) {
+            more = false;
+            break;
+          }
         }
-        return sortAdminUsers(Array.from(byUid.values()), sortBy);
-      });
-      setTotalDirectoryCount((prev) => Math.max(prev, res.totalCount));
-      setUser2faMap((prev) => ({ ...prev, ...res.user2faMap }));
-      setLastDoc(res.lastDoc);
-      setHasMore(res.hasMore);
-    } catch (err: unknown) {
-      console.error('[AdminUsersPage] Failed to load more users:', err);
-      const e = err as Partial<AdminDiagnosticError>;
-      setError({
-        code: e?.code || 'USERS_LOAD_MORE_FAILED',
-        message: e?.message || 'Failed to load additional users from database.',
-        collection: 'users',
-        operation: 'handleLoadMore',
-      });
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+
+        const sortedMerged = sortAdminUsers(Array.from(byUid.values()), sortBy);
+        const finalTotal = more ? Math.max(dirTotal, sortedMerged.length) : sortedMerged.length;
+
+        setAllUsers(sortedMerged);
+        setTotalDirectoryCount(finalTotal);
+        if (Object.keys(merged2fa).length > 0) {
+          setUser2faMap((prev) => ({ ...prev, ...merged2fa }));
+        }
+        setLastDoc(cursor);
+        setHasMore(more);
+
+        return {
+          loadedCount: sortedMerged.length,
+          hasMore: more,
+          effectiveTotal: finalTotal,
+        };
+      } catch (err: unknown) {
+        console.error('[AdminUsersPage] Failed to load page of users:', err);
+        const e = err as Partial<AdminDiagnosticError>;
+        setError({
+          code: e?.code || 'USERS_PAGE_LOAD_FAILED',
+          message: e?.message || 'Failed to load requested page of users from database.',
+          collection: 'users',
+          operation: 'ensureUsersLoadedUpTo',
+        });
+        const curLoaded = allUsersRef.current.length;
+        return {
+          loadedCount: curLoaded,
+          hasMore: hasMoreRef.current,
+          effectiveTotal: Math.max(totalDirectoryCountRef.current, curLoaded),
+        };
+      } finally {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+        setLoadingPageTarget(null);
+      }
+    },
+    [sortBy]
+  );
 
   const handleServerSearch = async () => {
     const q = search.trim();
@@ -1332,12 +1500,69 @@ export function AdminUsersPage() {
     sortBy,
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
+  // Automatically hydrate remaining directory pages when filtering or sorting by activity
+  // so filters and solved/streak leaderboards stay accurate across the full user directory.
+  useEffect(() => {
+    if (loading || loadState !== 'loaded' || !hasMore || loadingMoreRef.current) return;
+    if (hasActiveFilters || sortBy === 'questions' || sortBy === 'streak') {
+      void ensureUsersLoadedUpTo(Number.MAX_SAFE_INTEGER, { loadAll: true });
+    }
+  }, [loading, loadState, hasMore, hasActiveFilters, sortBy, ensureUsersLoadedUpTo]);
+
+  const pagination = useMemo(
+    () =>
+      computeUsersPagination({
+        loadedFilteredCount: filteredUsers.length,
+        totalDirectoryCount,
+        hasMore,
+        hasActiveFilters,
+        currentPage,
+        pageSize: PAGE_SIZE,
+      }),
+    [filteredUsers.length, totalDirectoryCount, hasMore, hasActiveFilters, currentPage]
+  );
+
+  const {
+    effectiveTotal: paginationTotal,
+    totalPages,
+    safePage,
+    startIndex: pageStartIndex,
+    endIndex: pageEndIndex,
+    visiblePages,
+  } = pagination;
+
   const paginatedUsers = useMemo(() => {
     const startIdx = (safePage - 1) * PAGE_SIZE;
     return filteredUsers.slice(startIdx, startIdx + PAGE_SIZE);
   }, [filteredUsers, safePage]);
+
+  const handleGoToPage = useCallback(
+    async (targetPage: number) => {
+      const clampedTarget = Math.max(1, Math.min(targetPage, totalPages));
+      if (clampedTarget === safePage && paginatedUsers.length > 0) return;
+
+      const neededCount = clampedTarget * PAGE_SIZE;
+      if (!hasActiveFilters && filteredUsers.length < neededCount && hasMore) {
+        const result = await ensureUsersLoadedUpTo(neededCount, {
+          targetPage: clampedTarget,
+        });
+        const nextTotalPages = Math.max(1, Math.ceil(result.effectiveTotal / PAGE_SIZE));
+        setCurrentPage(Math.min(clampedTarget, nextTotalPages));
+        return;
+      }
+
+      setCurrentPage(clampedTarget);
+    },
+    [
+      totalPages,
+      safePage,
+      paginatedUsers.length,
+      hasActiveFilters,
+      filteredUsers.length,
+      hasMore,
+      ensureUsersLoadedUpTo,
+    ]
+  );
 
   const selectablePageUids = useMemo(
     () =>
@@ -1453,32 +1678,28 @@ export function AdminUsersPage() {
 
   const resultSummaryText = useMemo(() => {
     if (isInitialLoading) return 'Loading users...';
-    const showingCount = paginatedUsers.length;
     if (hasActiveFilters) {
+      if (loadingMore && filteredUsers.length === 0) {
+        return `Searching all ${effectiveTotalN.toLocaleString()} users...`;
+      }
       if (filteredUsers.length === 0) {
         return `Showing 0 of ${effectiveTotalN.toLocaleString()} users`;
       }
-      if (totalPages > 1) {
-        const start = (safePage - 1) * PAGE_SIZE + 1;
-        const end = Math.min(safePage * PAGE_SIZE, filteredUsers.length);
-        return `Showing ${start}–${end} of ${filteredUsers.length.toLocaleString()} matching (${effectiveTotalN.toLocaleString()} total)`;
-      }
-      return `Showing ${showingCount.toLocaleString()} of ${effectiveTotalN.toLocaleString()} users`;
+      return `Showing ${pageStartIndex}–${pageEndIndex} of ${filteredUsers.length.toLocaleString()} matching (${effectiveTotalN.toLocaleString()} total)`;
     }
-    if (totalPages > 1) {
-      const start = (safePage - 1) * PAGE_SIZE + 1;
-      const end = Math.min(safePage * PAGE_SIZE, filteredUsers.length);
-      return `Showing ${start}–${end} of ${effectiveTotalN.toLocaleString()} users`;
+    if (paginationTotal === 0) {
+      return 'Showing 0 users';
     }
-    return `Showing ${showingCount.toLocaleString()} of ${effectiveTotalN.toLocaleString()} users`;
+    return `Showing ${pageStartIndex}–${pageEndIndex} of ${paginationTotal.toLocaleString()} users`;
   }, [
     isInitialLoading,
-    paginatedUsers.length,
     hasActiveFilters,
+    loadingMore,
     filteredUsers.length,
     effectiveTotalN,
-    totalPages,
-    safePage,
+    pageStartIndex,
+    pageEndIndex,
+    paginationTotal,
   ]);
 
   if (!profileLoading && !canViewUsers) {
@@ -2080,30 +2301,24 @@ export function AdminUsersPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="font-heading font-semibold text-[14px] text-[var(--text)]">
-                    No users match your current filters
+                    {loadingMore
+                      ? 'Searching full user directory...'
+                      : 'No users match your current filters'}
                   </p>
                   <p className="font-heading text-[12px] text-[var(--muted)]">
-                    Try adjusting or clearing your filters{hasMore ? `, or load the next ${PAGE_SIZE} users` : ''}.
+                    {loadingMore
+                      ? `Checking all ${effectiveTotalN.toLocaleString()} accounts...`
+                      : 'Try adjusting or clearing your filters to view the directory.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-center pt-1">
-                  {hasAnyModifier && (
+                  {hasAnyModifier && !loadingMore && (
                     <button
                       type="button"
                       onClick={handleResetFilters}
                       className="press-scale h-9 px-4 rounded-full bg-[#D71921] text-white text-[12px] font-heading font-semibold cursor-pointer"
                     >
                       Reset filters
-                    </button>
-                  )}
-                  {hasMore && (
-                    <button
-                      type="button"
-                      onClick={() => void handleLoadMore()}
-                      disabled={loadingMore}
-                      className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] cursor-pointer disabled:opacity-50"
-                    >
-                      {loadingMore ? 'Loading...' : `Load next ${PAGE_SIZE}`}
                     </button>
                   )}
                 </div>
@@ -2232,31 +2447,24 @@ export function AdminUsersPage() {
                           </div>
                           <div className="space-y-1">
                             <p className="font-heading font-semibold text-[14px] text-[var(--text)]">
-                              No users match your current filters
+                              {loadingMore
+                                ? 'Searching full user directory...'
+                                : 'No users match your current filters'}
                             </p>
                             <p className="font-heading text-[12px] text-[var(--muted)]">
-                              Adjust or reset your filters to view the directory
-                              {hasMore ? `, or load the next ${PAGE_SIZE} users from the database` : ''}.
+                              {loadingMore
+                                ? `Checking all ${effectiveTotalN.toLocaleString()} accounts...`
+                                : 'Adjust or reset your filters to view the directory.'}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 pt-1">
-                            {hasAnyModifier && (
+                            {hasAnyModifier && !loadingMore && (
                               <button
                                 type="button"
                                 onClick={handleResetFilters}
                                 className="press-scale h-9 px-4 rounded-full bg-[#D71921] text-white text-[12px] font-heading font-semibold cursor-pointer"
                               >
                                 Reset filters
-                              </button>
-                            )}
-                            {hasMore && (
-                              <button
-                                type="button"
-                                onClick={() => void handleLoadMore()}
-                                disabled={loadingMore}
-                                className="press-scale h-9 px-4 rounded-full border border-[var(--border)] text-[12px] font-heading text-[var(--text)] hover:border-white/35 cursor-pointer disabled:opacity-50"
-                              >
-                                {loadingMore ? 'Loading...' : `Load next ${PAGE_SIZE} users`}
                               </button>
                             )}
                           </div>
@@ -2289,58 +2497,89 @@ export function AdminUsersPage() {
             </div>
           </div>
 
-          {/* ─── PAGINATION & LOAD MORE FOOTER (20 PER PAGE) ────────────────── */}
-          {!isTableBusy && (filteredUsers.length > 0 || hasMore) && (
-            <div className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-4 text-xs font-mono text-[var(--muted)]">
-              <span>
-                {resultSummaryText} &middot; {PAGE_SIZE} per page
+          {/* ─── UNIFIED PAGE-BASED PAGINATION FOOTER (20 PER PAGE) ─────────── */}
+          {!isTableBusy && paginationTotal > 0 && (
+            <div
+              data-testid="users-pagination-footer"
+              className="flex items-center justify-between flex-wrap gap-3 px-1 pt-1 pb-4 text-xs font-mono text-[var(--muted)]"
+            >
+              <span className="inline-flex items-center gap-2">
+                <span>
+                  {resultSummaryText} &middot; {PAGE_SIZE} per page
+                </span>
+                {loadingMore && (
+                  <span className="text-[11px] text-[#D71921] font-semibold">
+                    {loadingPageTarget ? `Loading page ${loadingPageTarget}...` : 'Loading...'}
+                  </span>
+                )}
               </span>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {totalPages > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      data-pressable
-                      disabled={safePage <= 1}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                    >
-                      <ChevronLeft size={14} />
-                      <span>Prev</span>
-                    </button>
-                    <span className="px-2 text-[var(--text)]">
-                      Page {safePage} of {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      data-pressable
-                      disabled={safePage >= totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
-                    >
-                      <span>Next</span>
-                      <ChevronRight size={14} />
-                    </button>
-                  </>
-                )}
-
-                {hasMore && (
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
                     data-pressable
-                    data-testid="users-load-more-btn"
-                    onClick={() => void handleLoadMore()}
-                    disabled={loadingMore}
-                    className="press-scale relative overflow-hidden inline-flex items-center justify-center gap-2 h-9 px-4 rounded-[12px] border border-[#D71921]/45 bg-[#D71921]/10 hover:bg-[#D71921]/20 text-[12px] font-heading font-semibold text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer min-w-[140px]"
+                    data-testid="users-prev-page-btn"
+                    disabled={safePage <= 1 || loadingMore}
+                    onClick={() => void handleGoToPage(safePage - 1)}
+                    className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
                   >
-                    <span>
-                      {loadingMore ? `Loading next ${PAGE_SIZE}...` : `Load more (${PAGE_SIZE})`}
-                    </span>
-                    {loadingMore && <ButtonLineLoader />}
+                    <ChevronLeft size={14} />
+                    <span>Prev</span>
                   </button>
-                )}
-              </div>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    {visiblePages.map((entry, idx) =>
+                      entry === 'ellipsis' ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="px-1.5 text-[var(--text-faint)] select-none"
+                          aria-hidden="true"
+                        >
+                          &hellip;
+                        </span>
+                      ) : (
+                        <button
+                          key={entry}
+                          type="button"
+                          data-pressable
+                          data-testid={`users-page-btn-${entry}`}
+                          aria-current={entry === safePage ? 'page' : undefined}
+                          disabled={loadingMore}
+                          onClick={() => void handleGoToPage(entry)}
+                          className={`press-scale relative overflow-hidden inline-flex items-center justify-center min-w-[36px] h-9 px-2.5 rounded-[12px] border text-[12px] font-mono font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                            entry === safePage
+                              ? 'border-[#D71921] bg-[#D71921] text-white'
+                              : 'border-[var(--border)] bg-[var(--card)] text-[var(--text)] hover:border-white/30'
+                          }`}
+                        >
+                          <span>{entry}</span>
+                          {loadingPageTarget === entry && <ButtonLineLoader />}
+                        </button>
+                      )
+                    )}
+                  </div>
+
+                  <span
+                    data-testid="users-page-indicator"
+                    className="px-2 text-[var(--text)] whitespace-nowrap"
+                  >
+                    Page {safePage} of {totalPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    data-pressable
+                    data-testid="users-next-page-btn"
+                    disabled={safePage >= totalPages || loadingMore}
+                    onClick={() => void handleGoToPage(safePage + 1)}
+                    className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                  >
+                    <span>Next</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>

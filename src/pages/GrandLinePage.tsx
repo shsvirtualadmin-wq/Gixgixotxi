@@ -20,6 +20,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import {
+  computeScorePercentage,
   getAllPublicGrandLineTests,
   getAllGrandLineTestsForAdmin,
   getMyTestAttempts,
@@ -379,7 +380,7 @@ export function GrandLinePage() {
                           {test.subject}
                         </span>
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--muted)]">
-                          {test.questionCount} Questions
+                          {`${test.questionCount} ${test.questionCount === 1 ? 'Question' : 'Questions'}`}
                         </span>
 
                         {/* Status Pill & Countdown */}
@@ -394,7 +395,7 @@ export function GrandLinePage() {
                           <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-400">
                             <CheckCircle2 size={11} />
                             <span>
-                              Attempted · {myAttempt.score}/{myAttempt.totalQuestions} ({myAttempt.percentage}%)
+                              {`Attempted · ${myAttempt.score}/${myAttempt.totalQuestions} (${computeScorePercentage(myAttempt.score, myAttempt.totalQuestions, myAttempt.percentage)}%)`}
                             </span>
                           </span>
                         )}
@@ -595,7 +596,7 @@ export function GrandLinePage() {
 
             {activeTest && (
               <span className="glass-pill px-3 py-1 text-xs font-mono text-[var(--muted)] shrink-0">
-                {leaderboard.length} {leaderboard.length === 1 ? 'Attempt' : 'Attempts'} Recorded
+                {`${leaderboard.length} ${leaderboard.length === 1 ? 'Attempt' : 'Attempts'} Recorded`}
               </span>
             )}
           </div>
@@ -622,11 +623,11 @@ export function GrandLinePage() {
                   String(
                     entry.userName || entry.studentName || entry.name || 'Student'
                   ).trim() || 'Student';
-                const totalQ = Math.max(1, Number(entry.totalQuestions || 0));
-                const accuracyPct =
-                  typeof entry.percentage === 'number'
-                    ? entry.percentage
-                    : Math.round((Number(entry.score || 0) / totalQ) * 100);
+                const accuracyPct = computeScorePercentage(
+                  entry.score,
+                  entry.totalQuestions,
+                  entry.percentage
+                );
                 const isOwnRow = Boolean(
                   user &&
                     ((entry.userUid && entry.userUid === user.uid) ||

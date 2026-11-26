@@ -31,6 +31,7 @@ import {
   fetchOverviewQuestionsCard,
   fetchOverviewAttemptsCard,
   fetchOverviewApplicationsCard,
+  getCachedOverviewApplications,
   fetchOverviewPaymentsCard,
   fetchOverviewReviewsCard,
   fetchOverviewSubjectsCard,
@@ -182,17 +183,12 @@ export function AdminOverviewPage() {
     error: null,
   }));
 
+  const initialAppsSummary = getCachedOverviewApplications();
   const [applicationsCard, setApplicationsCard] = useState<
     CardState<{ pendingCaptains: number; pendingCrew: number; totalPending: number }>
   >(() => ({
-    loading: !initialStats,
-    data: initialStats
-      ? {
-          pendingCaptains: initialStats.pendingCaptains,
-          pendingCrew: initialStats.pendingCrew,
-          totalPending: (initialStats.pendingCaptains || 0) + (initialStats.pendingCrew || 0),
-        }
-      : null,
+    loading: !initialAppsSummary,
+    data: initialAppsSummary,
     error: null,
   }));
 

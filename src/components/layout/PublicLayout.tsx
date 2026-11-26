@@ -23,9 +23,9 @@ const LazyAppLayout = lazy(() =>
  *   and the red Boardly Footer.
  */
 export function PublicLayout() {
-  const { user, profileLoading } = useAuth();
+  const { user, profileLoading, authStatus } = useAuth();
   const location = useLocation();
-  const sessionStatus = getSessionStatus(user, profileLoading);
+  const sessionStatus = getSessionStatus(user, profileLoading, authStatus);
 
   const pathname = location.pathname;
   const isHomePage = pathname === '/';

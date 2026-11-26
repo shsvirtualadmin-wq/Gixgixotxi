@@ -288,7 +288,7 @@ export const PublicPostDetailPage: React.FC = () => {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 px-4 sm:px-6 flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-16 px-4 sm:px-6 flex items-center justify-center">
         <LineLoader context="generic" variant="section" />
       </div>
     );
@@ -548,7 +548,7 @@ export const PublicPostDetailPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-clip bg-[var(--bg)] text-[var(--text)] pt-28 pb-[calc(120px+env(safe-area-inset-bottom,0px))] px-4 sm:px-6">
+    <div className="min-h-screen w-full max-w-full min-w-0 box-border overflow-x-clip bg-[var(--bg)] text-[var(--text)] pt-28 pb-16 px-4 sm:px-6">
       <PageMeta
         title={`${post.title} | Boardly Commons`}
         description={

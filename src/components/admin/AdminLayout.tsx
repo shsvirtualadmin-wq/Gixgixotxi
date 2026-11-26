@@ -31,6 +31,12 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { getDisplayInitial, getDisplayName } from '@/utils/displayName';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
+import {
+  buildFullPath,
+  buildLoginRedirectUrl,
+  evaluateAdminRouteAccess,
+  persistPostLoginRedirect,
+} from '@/utils/routeGuards';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { motion } from 'framer-motion';
@@ -94,7 +100,10 @@ export function AdminLayout() {
   const {
     user,
     profile,
+    authStatus,
+    isGuest,
     profileLoading,
+    tokenClaims,
     isAdmin,
     isSuperAdmin,
     hasPermission,
@@ -239,16 +248,36 @@ export function AdminLayout() {
   };
 
   // Fail-closed route guard before rendering any admin shell or children
-  if (!isAdmin && !isSuperAdmin && (profileLoading || otpVerificationState.status === 'checking')) {
+  const adminAccess = evaluateAdminRouteAccess({
+    pathname: location.pathname,
+    authStatus,
+    profileLoading,
+    hasUser: Boolean(user),
+    isGuest,
+    tokenClaimsVerified: Boolean(tokenClaims?.verified),
+    isAdmin,
+    isSuperAdmin,
+    otpStatus: otpVerificationState.status,
+    otpPurpose: otpVerificationState.purpose,
+    isSessionVerified,
+  });
+
+  if (adminAccess.action === 'loading') {
     return <RoutePageSkeleton pathname={location.pathname} />;
   }
-  if (!user || !isSessionVerified) {
-    return <Navigate to="/login?redirect=/admin" replace />;
+  if (adminAccess.action === 'redirect_login' || adminAccess.action === 'redirect_verify_email') {
+    const fullTarget = buildFullPath(location.pathname, location.search, location.hash);
+    persistPostLoginRedirect(fullTarget);
+    const dest =
+      adminAccess.action === 'redirect_verify_email'
+        ? '/verify-email'
+        : buildLoginRedirectUrl(location.pathname, location.search, location.hash);
+    return <Navigate to={dest} replace />;
   }
-  if (!isAdmin && !isSuperAdmin) {
+  if (adminAccess.action === 'redirect_dashboard') {
     return <Navigate to="/dashboard" replace />;
   }
-  if (location.pathname.startsWith('/superadmin') && !isSuperAdmin) {
+  if (adminAccess.action === 'redirect_admin') {
     return <Navigate to="/admin" replace />;
   }
 

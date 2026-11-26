@@ -3,6 +3,12 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { RoutePageSkeleton } from '@/components/ui/Skeleton';
 import { CrewApplyPage } from '@/pages/crew/CrewApplyPage';
+import {
+  buildFullPath,
+  buildLoginRedirectUrl,
+  evaluateRoleGuardAccess,
+  persistPostLoginRedirect,
+} from '@/utils/routeGuards';
 
 interface RoleGuardProps {
   requiredRole: 'crew' | 'captain';
@@ -19,38 +25,49 @@ export function RoleGuard({ requiredRole, children }: RoleGuardProps) {
     isSuperAdmin,
     tokenClaims,
     isGuest,
+    otpVerificationState,
+    isSessionVerified,
   } = useAuth();
   const location = useLocation();
 
-  if (authStatus === 'loading' || profileLoading || (Boolean(user) && !isGuest && !tokenClaims.verified)) {
-    return <RoutePageSkeleton />;
-  }
-
-  // Not logged in or guest -> redirect to login with return parameter
-  if (!user || isGuest) {
-    const target = `${location.pathname}${location.search}${location.hash}`;
-    try {
-      sessionStorage.setItem('boardly_post_login_redirect', target);
-    } catch {
-      // Ignore storage errors
-    }
-    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
-  }
-
   // Hierarchy: superAdmin > admin > captain > student (strictly from ID token custom claims)
-  // - superAdmin === true
-  // - admin === true || superAdmin
-  // - captain === true || admin || superAdmin
   const hasSuperAdmin = isSuperAdmin || tokenClaims?.superAdmin === true;
   const hasAdmin = hasSuperAdmin || isAdmin || tokenClaims?.admin === true;
   const hasCaptainOrAboveClaim =
     hasAdmin || isCaptain || tokenClaims?.captain === true;
 
-  if (hasCaptainOrAboveClaim) {
+  const decision = evaluateRoleGuardAccess({
+    requiredRole,
+    authStatus,
+    profileLoading,
+    hasUser: Boolean(user),
+    isGuest,
+    tokenClaimsVerified: Boolean(tokenClaims?.verified),
+    hasCaptainOrAbove: hasCaptainOrAboveClaim,
+    otpStatus: otpVerificationState.status,
+    otpPurpose: otpVerificationState.purpose,
+    isSessionVerified,
+  });
+
+  if (decision.action === 'loading') {
+    return <RoutePageSkeleton pathname={location.pathname} />;
+  }
+
+  if (decision.action === 'redirect_login' || decision.action === 'redirect_verify_email') {
+    const target = buildFullPath(location.pathname, location.search, location.hash);
+    persistPostLoginRedirect(target);
+    const dest =
+      decision.action === 'redirect_verify_email'
+        ? '/verify-email'
+        : buildLoginRedirectUrl(location.pathname, location.search, location.hash);
+    return <Navigate to={dest} replace />;
+  }
+
+  if (decision.action === 'allow') {
     return <>{children}</>;
   }
 
-  if (requiredRole === 'crew') {
+  if (decision.action === 'show_crew_apply') {
     return <CrewApplyPage />;
   }
 

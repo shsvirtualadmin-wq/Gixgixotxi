@@ -2341,7 +2341,7 @@ export const AdminQuestionsPage: React.FC = () => {
               <div className="aqb-glass-card p-8 text-center flex flex-col items-center gap-2">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
                 <div className="text-sm font-extrabold text-[var(--text)]">
-                  No {reportFilter !== 'all' ? reportFilter : ''} student reports
+                  {reportFilter === 'all' ? 'No student reports' : `No ${reportFilter} student reports`}
                 </div>
                 <p className="text-xs text-[var(--text-muted)] max-w-xs">
                   When students flag a question for a typo or key issue, it appears here.

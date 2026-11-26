@@ -712,7 +712,7 @@ export function RewardsPage() {
       <div
         className="mx-auto w-full max-w-2xl px-4 pt-4 sm:pt-6 space-y-6 flex-1"
         style={{
-          paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+          paddingBottom: 'calc(48px + env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* ─── SUPER ADMIN BANNER WHEN MODE IS NOT "EVERYONE" ─────────────── */}

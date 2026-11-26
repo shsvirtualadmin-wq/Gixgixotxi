@@ -1984,57 +1984,77 @@ export function buildInitialFormulaVaultSeed(): {
   const chapters: D1FormulaChapterRow[] = [];
   const formulas: D1FormulaRow[] = [];
 
+  // Group chapters by category and assign strictly sequential 1..N chapter_no & sort_order
+  const chaptersByCategory = new Map<string, SeedChapterSpec[]>();
   for (const ch of RAW_SEED_CHAPTERS) {
-    const chFormulas: D1FormulaRow[] = ch.formulas.map((f, idx) => {
-      const fId = `form_${ch.id}_${f.formula_no}`;
-      const searchText = `${ch.title} ${ch.subtopics} ${f.title} ${f.plain_text} ${f.note} ${f.formula_latex}`
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
-      return {
-        id: fId,
+    const list = chaptersByCategory.get(ch.category_id) || [];
+    list.push(ch);
+    chaptersByCategory.set(ch.category_id, list);
+  }
+
+  for (const [, list] of chaptersByCategory.entries()) {
+    list.sort(
+      (a, b) =>
+        Number(a.chapter_no) - Number(b.chapter_no) ||
+        Number(a.sort_order) - Number(b.sort_order) ||
+        a.title.localeCompare(b.title)
+    );
+
+    list.forEach((ch, chIdx) => {
+      const seqChapterNo = chIdx + 1;
+      const chFormulas: D1FormulaRow[] = ch.formulas.map((f, idx) => {
+        const seqFormulaNo = idx + 1;
+        const fId = `form_${ch.id}_${seqFormulaNo}`;
+        const searchText = `${ch.title} ${ch.subtopics} ${f.title} ${f.plain_text} ${f.note} ${f.formula_latex}`
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .trim();
+        return {
+          id: fId,
+          category_id: ch.category_id,
+          chapter_id: ch.id,
+          formula_no: seqFormulaNo,
+          title: f.title,
+          formula_latex: f.formula_latex,
+          plain_text: f.plain_text,
+          formula_plain: f.plain_text,
+          note: f.note,
+          status: 'live',
+          sort_order: seqFormulaNo,
+          is_featured: seqFormulaNo <= 2 ? 1 : 0,
+          is_render_valid: 1,
+          render_error: '',
+          search_text: searchText,
+          created_at: NOW_ISO,
+          updated_at: NOW_ISO,
+        };
+      });
+
+      formulas.push(...chFormulas);
+
+      chapters.push({
+        id: ch.id,
         category_id: ch.category_id,
-        chapter_id: ch.id,
-        formula_no: f.formula_no,
-        title: f.title,
-        formula_latex: f.formula_latex,
-        plain_text: f.plain_text,
-        formula_plain: f.plain_text,
-        note: f.note,
+        chapter_no: seqChapterNo,
+        title: ch.title,
+        slug: ch.slug,
+        subtopics: ch.subtopics,
+        sort_order: seqChapterNo,
+        formula_count: chFormulas.length,
         status: 'live',
-        sort_order: idx + 1,
-        is_featured: f.formula_no <= 2 ? 1 : 0,
-        is_render_valid: 1,
-        render_error: '',
-        search_text: searchText,
+        pdf_r2_key: '',
+        pdf_updated_at: '',
+        pdf_generated_at: '',
+        search_text: `${seqChapterNo} ${ch.title} ${ch.subtopics}`.toLowerCase(),
         created_at: NOW_ISO,
         updated_at: NOW_ISO,
-      };
-    });
-
-    formulas.push(...chFormulas);
-
-    chapters.push({
-      id: ch.id,
-      category_id: ch.category_id,
-      chapter_no: ch.chapter_no,
-      title: ch.title,
-      slug: ch.slug,
-      subtopics: ch.subtopics,
-      sort_order: ch.sort_order,
-      formula_count: chFormulas.length,
-      status: 'live',
-      pdf_r2_key: '',
-      pdf_updated_at: '',
-      pdf_generated_at: '',
-      search_text: `${ch.chapter_no} ${ch.title} ${ch.subtopics}`.toLowerCase(),
-      created_at: NOW_ISO,
-      updated_at: NOW_ISO,
+      });
     });
   }
 
   chapters.sort(
     (a, b) =>
+      a.category_id.localeCompare(b.category_id) ||
       Number(a.chapter_no) - Number(b.chapter_no) ||
       Number(a.sort_order) - Number(b.sort_order)
   );
