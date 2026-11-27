@@ -1287,8 +1287,23 @@ export function normalizeLiveSubjectCounts(
   return { subjectCounts, entries, sum };
 }
 
+let lastKnownPositiveBankTotal = 0;
+
+function extractUniMcqCount(u: any): number {
+  const raw = u?.mcq_count ?? u?.mcqCount ?? u?.total_mcqs ?? 0;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function getCachedLiveQuestionBankStats(): BankHealthData | null {
-  if (liveBankStatsMemoryCache?.data && Date.now() < liveBankStatsMemoryCache.expiresAt) {
+  if (
+    liveBankStatsMemoryCache?.data &&
+    Date.now() < liveBankStatsMemoryCache.expiresAt &&
+    (liveBankStatsMemoryCache.data.totalMcqs > 0 ||
+      (liveBankStatsMemoryCache.data.totalUniversities > 0 &&
+        liveBankStatsMemoryCache.data.liveUniversities === 0 &&
+        lastKnownPositiveBankTotal === 0))
+  ) {
     return liveBankStatsMemoryCache.data;
   }
   return null;
@@ -1297,6 +1312,7 @@ export function getCachedLiveQuestionBankStats(): BankHealthData | null {
 export function invalidateLiveQuestionBankStatsCache(): void {
   liveBankStatsMemoryCache = null;
   liveBankStatsInFlight = null;
+  lastKnownPositiveBankTotal = 0;
   if (typeof window !== 'undefined' && window.sessionStorage) {
     try {
       window.sessionStorage.removeItem(LIVE_BANK_STATS_SESSION_KEY);
@@ -1321,16 +1337,25 @@ export async function fetchLiveQuestionBankStats(options?: {
   const force = Boolean(options?.force);
   const strict = Boolean(options?.strict);
 
-  if (!force && liveBankStatsMemoryCache && Date.now() < liveBankStatsMemoryCache.expiresAt) {
-    return liveBankStatsMemoryCache.data;
+  const cachedValid = getCachedLiveQuestionBankStats();
+  if (!force && cachedValid) {
+    return cachedValid;
   }
   if (!force && liveBankStatsInFlight) {
     return liveBankStatsInFlight;
   }
 
-  const run = (async (): Promise<BankHealthData> => {
-    const endpoint = force ? `/api/mcqs/health?_t=${Date.now()}` : '/api/mcqs/health';
-    const raw = await apiRequest<any>(endpoint, { cache: 'no-store' });
+  const fetchAndParseHealth = async (cacheBust: boolean): Promise<{
+    result: BankHealthData;
+    hasRawTotal: boolean;
+    subjectSum: number;
+    uniSum: number;
+  }> => {
+    const endpoint = cacheBust ? `/api/mcqs/health?_t=${Date.now()}` : '/api/mcqs/health';
+    const raw = await apiRequest<any>(endpoint, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
     if (!raw || raw.ok === false || raw.success === false) {
       throw new Error(raw?.error || raw?.message || 'GET /api/mcqs/health returned an error');
     }
@@ -1341,9 +1366,14 @@ export async function fetchLiveQuestionBankStats(options?: {
       ? raw.universities
       : [];
     const totalUniversities = Number(raw.totalUniversities ?? uniList.length);
-    const liveUniversities = Number(
-      raw.liveUniversities ?? uniList.filter((u: any) => Number(u?.mcq_count || 0) > 0).length
-    );
+    const computedLiveUnis = uniList.filter((u: any) => extractUniMcqCount(u) > 0).length;
+    const rawLiveUnis =
+      raw.liveUniversities !== undefined &&
+      raw.liveUniversities !== null &&
+      Number.isFinite(Number(raw.liveUniversities))
+        ? Number(raw.liveUniversities)
+        : computedLiveUnis;
+    const liveUniversities = Math.max(rawLiveUnis, computedLiveUnis);
     const comingSoonUniversities = Number(
       raw.comingSoonUniversities ?? Math.max(0, totalUniversities - liveUniversities)
     );
@@ -1351,7 +1381,7 @@ export async function fetchLiveQuestionBankStats(options?: {
     const normalizedSubjects = normalizeLiveSubjectCounts(
       raw.bySubject && typeof raw.bySubject === 'object' ? raw.bySubject : {}
     );
-    const uniSum = uniList.reduce((acc: number, u: any) => acc + Number(u?.mcq_count || 0), 0);
+    const uniSum = uniList.reduce((acc: number, u: any) => acc + extractUniMcqCount(u), 0);
     const hasRawTotal =
       raw.totalMcqs !== undefined &&
       raw.totalMcqs !== null &&
@@ -1362,13 +1392,6 @@ export async function fetchLiveQuestionBankStats(options?: {
       rawTotal !== null
         ? Math.max(rawTotal, normalizedSubjects.sum, uniSum)
         : Math.max(normalizedSubjects.sum, uniSum);
-
-    if (strict && !hasRawTotal && normalizedSubjects.sum === 0 && uniSum === 0) {
-      throw new Error('GET /api/mcqs/health returned an incomplete payload');
-    }
-    if (strict && totalMcqs === 0 && totalUniversities === 0) {
-      throw new Error('GET /api/mcqs/health returned an empty bank response');
-    }
 
     const lastImportAt =
       extractLastImportTimestamp(raw.lastImportAt) ??
@@ -1384,16 +1407,20 @@ export async function fetchLiveQuestionBankStats(options?: {
       missingExplanations: Number(raw.missingExplanations ?? raw.missingExplanationCount ?? 0),
       openReports: Number(raw.openReports ?? raw.openReportsCount ?? 0),
       lastImportAt,
-      databaseName: typeof raw.databaseName === 'string' && raw.databaseName.trim()
-        ? raw.databaseName.trim()
-        : 'boardly-posts-db',
-      byUniversity: uniList.map((u: any) => ({
-        id: String(u?.id || ''),
-        name: String(u?.name || ''),
-        slug: String(u?.slug || ''),
-        mcq_count: Number(u?.mcq_count || 0),
-        is_live: Number(u?.mcq_count || 0) > 0 ? 1 : 0,
-      })),
+      databaseName:
+        typeof raw.databaseName === 'string' && raw.databaseName.trim()
+          ? raw.databaseName.trim()
+          : 'boardly-posts-db',
+      byUniversity: uniList.map((u: any) => {
+        const count = extractUniMcqCount(u);
+        return {
+          id: String(u?.id || ''),
+          name: String(u?.name || ''),
+          slug: String(u?.slug || ''),
+          mcq_count: count,
+          is_live: count > 0 ? 1 : 0,
+        };
+      }),
       bySubject: normalizedSubjects.subjectCounts,
       byDifficulty: {
         easy: Number(raw.byDifficulty?.easy ?? 0),
@@ -1409,10 +1436,55 @@ export async function fetchLiveQuestionBankStats(options?: {
       },
     };
 
-    liveBankStatsMemoryCache = {
-      data: result,
-      expiresAt: Date.now() + LIVE_BANK_STATS_TTL_MS,
-    };
+    return { result, hasRawTotal, subjectSum: normalizedSubjects.sum, uniSum };
+  };
+
+  const run = (async (): Promise<BankHealthData> => {
+    let parsed = await fetchAndParseHealth(force);
+
+    // Guard against transient 0-count responses when universities exist or a positive bank was previously observed
+    const isSuspiciousZero =
+      parsed.result.totalMcqs === 0 &&
+      (parsed.result.liveUniversities > 0 ||
+        lastKnownPositiveBankTotal > 0 ||
+        (strict && parsed.result.totalUniversities > 0));
+
+    if (isSuspiciousZero) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      try {
+        parsed = await fetchAndParseHealth(true);
+      } catch {
+        // Keep initial parsed result to evaluate strict validation below
+      }
+    }
+
+    const { result, hasRawTotal, subjectSum, uniSum } = parsed;
+
+    if (strict && !hasRawTotal && subjectSum === 0 && uniSum === 0) {
+      throw new Error('GET /api/mcqs/health returned an incomplete payload');
+    }
+    if (strict && result.totalMcqs === 0 && result.totalUniversities === 0) {
+      throw new Error('GET /api/mcqs/health returned an empty bank response');
+    }
+    if (result.totalMcqs === 0 && result.liveUniversities > 0) {
+      throw new Error('GET /api/mcqs/health returned contradictory zero total with live universities');
+    }
+    if (strict && result.totalMcqs === 0 && lastKnownPositiveBankTotal > 0) {
+      throw new Error('GET /api/mcqs/health transiently returned 0 for an active question bank');
+    }
+
+    if (result.totalMcqs > 0) {
+      lastKnownPositiveBankTotal = result.totalMcqs;
+      liveBankStatsMemoryCache = {
+        data: result,
+        expiresAt: Date.now() + LIVE_BANK_STATS_TTL_MS,
+      };
+    } else if (strict && result.totalUniversities > 0 && lastKnownPositiveBankTotal === 0) {
+      liveBankStatsMemoryCache = {
+        data: result,
+        expiresAt: Date.now() + LIVE_BANK_STATS_TTL_MS,
+      };
+    }
     return result;
   })();
 

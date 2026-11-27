@@ -20,7 +20,7 @@ export function CommunityGuidelinesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] antialiased px-4 sm:px-6 md:px-8 pt-3 pb-32 flex justify-center selection:bg-[#D71921] selection:text-white page-slide-right">
+    <div className="min-h-full bg-[var(--bg)] text-[var(--text)] antialiased px-4 sm:px-6 md:px-8 pt-3 pb-[var(--sdn-page-pb)] flex justify-center selection:bg-[#D71921] selection:text-white page-slide-right">
       <div className="w-full max-w-3xl space-y-6">
         {/* Floating Glass Top Bar (radius 30px) with Circular Glass Back Button & Red Badge */}
         <header className="sticky top-2 z-30 glass glass-panel rounded-[30px] px-4 sm:px-5 py-3 flex items-center justify-between gap-3">

@@ -37,6 +37,7 @@ import { useStoreCart } from '@/hooks/useStoreCart';
 import { useTheme } from '@/hooks/useTheme';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { scrollPageToTop } from '@/utils/scrollContainer';
 import {
   COSMETICS_CATALOG,
   type CosmeticItem,
@@ -1036,7 +1037,7 @@ export const StorePage: React.FC<StorePageProps> = ({
     }));
     setLoadoutExpanded(true);
     setDetailItemId(null);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop('smooth');
   };
 
   const tabs: { id: StoreTab; label: string; count: number }[] = [
@@ -1919,7 +1920,7 @@ export const StorePage: React.FC<StorePageProps> = ({
 
       {/* Sticky Multi-Select Bar (above floating bottom nav, hidden when cart drawer is open) */}
       {selectionMode && !cartOpen && (
-        <div className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg bottom-[calc(86px+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl bg-[var(--bg-card)] border border-[#E11D2A]/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
+        <div className="fixed inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg bottom-[calc(var(--sdn-dock-safe-area)+10px)] z-40 rounded-2xl bg-[var(--bg-card)] border border-[#E11D2A]/50 shadow-2xl px-4 py-3 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs sm:text-sm font-black text-[var(--text-primary)] truncate">
               {t('store.selectedCount', { count: formatNumber(selectedIds.length) })} ·{' '}
@@ -1961,7 +1962,7 @@ export const StorePage: React.FC<StorePageProps> = ({
           type="button"
           onClick={handleOpenCart}
           aria-label={t('cart.title')}
-          className={`fixed end-4 sm:end-6 bottom-[calc(120px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(100px+env(safe-area-inset-bottom,0px))] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
+          className={`fixed end-4 sm:end-6 bottom-[calc(var(--sdn-dock-safe-area)+12px)] z-40 h-12 px-4 rounded-full bg-[#E11D2A] hover:bg-[#c81824] text-white shadow-xl border border-white/20 flex items-center gap-2 text-xs sm:text-sm font-black transition-all active:scale-95 ${
             cartPillBounce ? 'scale-110 ring-4 ring-[#E11D2A]/40' : ''
           }`}
         >

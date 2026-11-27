@@ -5407,12 +5407,12 @@ ${urls
           );
         }
 
-        // GET /api/mcqs/health
+        // GET /api/mcqs/health (strictly read-only to avoid D1 write locks on health checks)
         if (mcqSub === '/health' && req.method === 'GET') {
-          await recalculateAllD1UniCounts().catch(() => {});
-          const [uniRes, totalRow, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
+          const [uniRes, totalRow, uniCountRes, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
             env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
             env.DB.prepare('SELECT COUNT(*) as cnt FROM mcqs').first<{ cnt: number }>(),
+            env.DB.prepare('SELECT university_id, COUNT(*) as cnt FROM mcqs GROUP BY university_id').all<{ university_id: string; cnt: number }>(),
             env.DB.prepare('SELECT subject, COUNT(*) as cnt FROM mcqs GROUP BY subject').all<{ subject: string; cnt: number }>(),
             env.DB.prepare('SELECT difficulty, COUNT(*) as cnt FROM mcqs GROUP BY difficulty').all<{ difficulty: string; cnt: number }>(),
             env.DB.prepare("SELECT COUNT(*) as cnt FROM mcqs WHERE TRIM(COALESCE(explanation, '')) = ''").first<{ cnt: number }>(),
@@ -5421,7 +5421,23 @@ ${urls
             env.DB.prepare('SELECT MAX(created_at) as last_at FROM imports').first<{ last_at: string | null }>().catch(() => null),
           ]);
 
-          const universities = uniRes.results || [];
+          const liveCountByUni = new Map<string, number>();
+          for (const row of uniCountRes.results || []) {
+            const uid = String(row.university_id || '').trim();
+            if (!uid) continue;
+            liveCountByUni.set(uid, Number(row.cnt || 0));
+          }
+
+          const universities = (uniRes.results || []).map((u) => {
+            const liveCount = liveCountByUni.has(u.id)
+              ? liveCountByUni.get(u.id)!
+              : Number(u.mcq_count || 0);
+            return {
+              ...u,
+              mcq_count: liveCount,
+              is_live: liveCount > 0 ? 1 : 0,
+            };
+          });
           const bySubject: Record<string, number> = {};
           let subjectSum = 0;
           for (const r of subRes.results || []) {
@@ -5482,6 +5498,9 @@ ${urls
             {
               ...cors,
               'Cache-Control': 'no-store, no-cache, must-revalidate',
+              'CDN-Cache-Control': 'no-store',
+              'Cloudflare-CDN-Cache-Control': 'no-store',
+              Pragma: 'no-cache',
             }
           );
         }

@@ -93,28 +93,40 @@ interface CardState<T> {
   error: { source: string; status: string | number; message: string } | null;
 }
 
+function normalizeErrorStatus(rawStatus: unknown, fallbackCode?: string): string | number {
+  const rawStr = String(rawStatus ?? '').trim();
+  const upper = rawStr.toUpperCase();
+  if (!rawStr || upper === '200' || upper === 'HTTP_200' || upper === 'OK') {
+    const cleanFallback = String(fallbackCode ?? '').trim();
+    const upperFallback = cleanFallback.toUpperCase();
+    if (
+      cleanFallback &&
+      upperFallback !== '200' &&
+      upperFallback !== 'HTTP_200' &&
+      upperFallback !== 'OK'
+    ) {
+      return cleanFallback;
+    }
+    return 'STAT_UNAVAILABLE';
+  }
+  return typeof rawStatus === 'number' || typeof rawStatus === 'string' ? rawStatus : rawStr;
+}
+
 function parseCardError(
   err: unknown,
   fallbackSource: string
 ): { source: string; status: string | number; message: string } {
   if (err instanceof AdminStatCardError) {
-    const safeStatus =
-      err.status === 200 || err.status === '200' ? 'STAT_UNAVAILABLE' : err.status;
     return {
       source: err.source,
-      status: safeStatus,
+      status: normalizeErrorStatus(err.status),
       message: err.message,
     };
   }
   const e = err as { code?: string; status?: number | string; message?: string; collection?: string };
   const source = e?.collection ? `firestore:${e.collection}` : fallbackSource;
   const rawStatus = e?.status ?? e?.code ?? 'ERROR';
-  const status =
-    rawStatus === 200 || rawStatus === '200'
-      ? e?.code && e.code !== '200'
-        ? e.code
-        : 'STAT_UNAVAILABLE'
-      : rawStatus;
+  const status = normalizeErrorStatus(rawStatus, e?.code);
   const message = e?.message || `Failed to load ${source}`;
   return { source, status, message };
 }
@@ -128,11 +140,25 @@ function isTransientCardError(parsed: { status: string | number; message: string
     statusStr.includes('deadline') ||
     statusStr.includes('timeout') ||
     statusStr.includes('unavailable') ||
+    statusStr.includes('rest_count_failed') ||
+    statusStr.includes('firestore_error') ||
+    statusStr.includes('empty_count') ||
+    statusStr.includes('malformed') ||
+    statusStr.includes('aborted') ||
+    statusStr.includes('internal') ||
+    statusStr.includes('unknown') ||
+    statusStr.includes('cancelled') ||
+    statusStr.includes('408') ||
+    statusStr.includes('429') ||
+    statusStr.includes('500') ||
+    statusStr.includes('502') ||
     statusStr.includes('503') ||
     statusStr.includes('504') ||
     msgStr.includes('timed out') ||
     msgStr.includes('timeout') ||
-    msgStr.includes('network')
+    msgStr.includes('network') ||
+    msgStr.includes('fetch') ||
+    msgStr.includes('transport')
   );
 }
 
@@ -234,12 +260,18 @@ export function AdminOverviewPage() {
   const [rewardsMode, setRewardsMode] = useState<RewardsMode | null>(
     () => initialOverview?.rewardsMode ?? null
   );
+  const [rewardsModeLoading, setRewardsModeLoading] = useState<boolean>(
+    () => !initialOverview?.rewardsMode
+  );
   const [pendingRewardsMode, setPendingRewardsMode] = useState<RewardsMode | null>(null);
   const [updatingRewardsMode, setUpdatingRewardsMode] = useState(false);
   const [rewardsModeSuccess, setRewardsModeSuccess] = useState<string | null>(null);
   const [rewardsModeError, setRewardsModeError] = useState<string | null>(null);
   const [rewardsHealth, setRewardsHealth] = useState<RewardsHealthResponse | null>(
     () => initialOverview?.rewardsHealth ?? null
+  );
+  const [rewardsHealthLoading, setRewardsHealthLoading] = useState<boolean>(
+    () => !initialOverview?.rewardsHealth
   );
   const [checkingRewardsHealth, setCheckingRewardsHealth] = useState(false);
 
@@ -391,39 +423,39 @@ export function AdminOverviewPage() {
     async (force = false, allowAutoRetry = true) => {
       const reqId = nextRequestId('attempts');
       setAttemptsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
-      try {
-        const data = await fetchOverviewAttemptsCard({ force });
-        if (!isLatestRequest('attempts', reqId)) return;
-        setAttemptsCard({ loading: false, data, error: null });
-        clearCardFailure('attempts');
-      } catch (err) {
-        if (!isLatestRequest('attempts', reqId)) return;
-        const parsed = parseCardError(err, 'firestore:attempts');
-        if (allowAutoRetry && isTransientCardError(parsed)) {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
+      const retryDelaysMs = allowAutoRetry ? [800, 1800] : [];
+      let lastErr: unknown = null;
+
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+        try {
+          const data = await fetchOverviewAttemptsCard({ force: force || attempt > 0 });
           if (!isLatestRequest('attempts', reqId)) return;
-          try {
-            const retryData = await fetchOverviewAttemptsCard({ force: true });
+          setAttemptsCard({ loading: false, data, error: null });
+          clearCardFailure('attempts');
+          return;
+        } catch (err) {
+          if (!isLatestRequest('attempts', reqId)) return;
+          lastErr = err;
+          const parsed = parseCardError(err, 'firestore:attempts');
+          const delayMs = retryDelaysMs[attempt];
+          if (delayMs !== undefined && isTransientCardError(parsed)) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
             if (!isLatestRequest('attempts', reqId)) return;
-            setAttemptsCard({ loading: false, data: retryData, error: null });
-            clearCardFailure('attempts');
-            return;
-          } catch (retryErr) {
-            if (!isLatestRequest('attempts', reqId)) return;
-            const retryParsed = reportCardFailure('attempts', retryErr, 'firestore:attempts');
-            setAttemptsCard({ loading: false, data: null, error: retryParsed });
-            return;
+            continue;
           }
+          break;
         }
-        const reported = reportCardFailure('attempts', err, 'firestore:attempts');
-        setAttemptsCard({ loading: false, data: null, error: reported });
       }
+
+      if (!isLatestRequest('attempts', reqId)) return;
+      const reported = reportCardFailure('attempts', lastErr, 'firestore:attempts');
+      setAttemptsCard({ loading: false, data: null, error: reported });
     },
     [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadApplicationsCard = useCallback(
-    async (force = false) => {
+    async (force = false, allowAutoRetry = true) => {
       const reqId = nextRequestId('applications');
       setApplicationsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
@@ -433,19 +465,40 @@ export function AdminOverviewPage() {
         clearCardFailure('applications');
       } catch (err) {
         if (!isLatestRequest('applications', reqId)) return;
-        const parsed = reportCardFailure(
+        const parsed = parseCardError(err, 'firestore:captainApplications,crewApplications');
+        if (allowAutoRetry && isTransientCardError(parsed)) {
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          if (!isLatestRequest('applications', reqId)) return;
+          try {
+            const retryData = await fetchOverviewApplicationsCard({ force: true });
+            if (!isLatestRequest('applications', reqId)) return;
+            setApplicationsCard({ loading: false, data: retryData, error: null });
+            clearCardFailure('applications');
+            return;
+          } catch (retryErr) {
+            if (!isLatestRequest('applications', reqId)) return;
+            const retryParsed = reportCardFailure(
+              'applications',
+              retryErr,
+              'firestore:captainApplications,crewApplications'
+            );
+            setApplicationsCard({ loading: false, data: null, error: retryParsed });
+            return;
+          }
+        }
+        const reported = reportCardFailure(
           'applications',
           err,
           'firestore:captainApplications,crewApplications'
         );
-        setApplicationsCard({ loading: false, data: null, error: parsed });
+        setApplicationsCard({ loading: false, data: null, error: reported });
       }
     },
     [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadPaymentsCard = useCallback(
-    async (force = false) => {
+    async (force = false, allowAutoRetry = true) => {
       const reqId = nextRequestId('payments');
       setPaymentsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
@@ -455,8 +508,25 @@ export function AdminOverviewPage() {
         clearCardFailure('payments');
       } catch (err) {
         if (!isLatestRequest('payments', reqId)) return;
-        const parsed = reportCardFailure('payments', err, 'firestore:paymentRequests');
-        setPaymentsCard({ loading: false, data: null, error: parsed });
+        const parsed = parseCardError(err, 'firestore:paymentRequests');
+        if (allowAutoRetry && isTransientCardError(parsed)) {
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          if (!isLatestRequest('payments', reqId)) return;
+          try {
+            const retryData = await fetchOverviewPaymentsCard({ force: true });
+            if (!isLatestRequest('payments', reqId)) return;
+            setPaymentsCard({ loading: false, data: retryData, error: null });
+            clearCardFailure('payments');
+            return;
+          } catch (retryErr) {
+            if (!isLatestRequest('payments', reqId)) return;
+            const retryParsed = reportCardFailure('payments', retryErr, 'firestore:paymentRequests');
+            setPaymentsCard({ loading: false, data: null, error: retryParsed });
+            return;
+          }
+        }
+        const reported = reportCardFailure('payments', err, 'firestore:paymentRequests');
+        setPaymentsCard({ loading: false, data: null, error: reported });
       }
     },
     [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
@@ -466,33 +536,33 @@ export function AdminOverviewPage() {
     async (force = false, allowAutoRetry = true) => {
       const reqId = nextRequestId('reviews');
       setReviewsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
-      try {
-        const data = await fetchOverviewReviewsCard({ force });
-        if (!isLatestRequest('reviews', reqId)) return;
-        setReviewsCard({ loading: false, data, error: null });
-        clearCardFailure('reviews');
-      } catch (err) {
-        if (!isLatestRequest('reviews', reqId)) return;
-        const parsed = parseCardError(err, 'firestore:reviews');
-        if (allowAutoRetry && isTransientCardError(parsed)) {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
+      const retryDelaysMs = allowAutoRetry ? [800, 1800] : [];
+      let lastErr: unknown = null;
+
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+        try {
+          const data = await fetchOverviewReviewsCard({ force: force || attempt > 0 });
           if (!isLatestRequest('reviews', reqId)) return;
-          try {
-            const retryData = await fetchOverviewReviewsCard({ force: true });
+          setReviewsCard({ loading: false, data, error: null });
+          clearCardFailure('reviews');
+          return;
+        } catch (err) {
+          if (!isLatestRequest('reviews', reqId)) return;
+          lastErr = err;
+          const parsed = parseCardError(err, 'firestore:reviews');
+          const delayMs = retryDelaysMs[attempt];
+          if (delayMs !== undefined && isTransientCardError(parsed)) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
             if (!isLatestRequest('reviews', reqId)) return;
-            setReviewsCard({ loading: false, data: retryData, error: null });
-            clearCardFailure('reviews');
-            return;
-          } catch (retryErr) {
-            if (!isLatestRequest('reviews', reqId)) return;
-            const retryParsed = reportCardFailure('reviews', retryErr, 'firestore:reviews');
-            setReviewsCard({ loading: false, data: null, error: retryParsed });
-            return;
+            continue;
           }
+          break;
         }
-        const reported = reportCardFailure('reviews', err, 'firestore:reviews');
-        setReviewsCard({ loading: false, data: null, error: reported });
       }
+
+      if (!isLatestRequest('reviews', reqId)) return;
+      const reported = reportCardFailure('reviews', lastErr, 'firestore:reviews');
+      setReviewsCard({ loading: false, data: null, error: reported });
     },
     [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
@@ -548,6 +618,7 @@ export function AdminOverviewPage() {
       if (res.ok && res.counters) {
         setRadarItems(res.items || []);
         setRadarCounters(res.counters);
+        clearGenericErrorToasts();
       } else {
         setRadarItems([]);
         setRadarCounters(null);
@@ -584,9 +655,11 @@ export function AdminOverviewPage() {
     }
   };
 
+  const userUid = user?.uid ?? null;
+
   const loadData = useCallback(
     async (options?: { force?: boolean }) => {
-      if (!user || !isAdmin) return;
+      if (!userUid || !isAdmin) return;
       const force = Boolean(options?.force);
       if (force) {
         setIsRefreshing(true);
@@ -606,17 +679,25 @@ export function AdminOverviewPage() {
       ];
 
       if (isSuperAdmin) {
+        setRewardsModeLoading((prev) => prev || force);
+        setRewardsHealthLoading((prev) => prev || force);
         tasks.push(
           loadRecentLogs(force),
-          fetchRewardsState(user.uid)
+          fetchRewardsState(userUid)
             .then((st) => {
-              if (isMountedRef.current && st?.mode) {
+              if (!isMountedRef.current) return;
+              if (st?.loadError) {
+                reportCardFailure('rewardsState', new Error(st.loadError), 'GET /api/rewards/summary');
+              } else if (st?.mode) {
                 setRewardsMode(st.mode);
                 clearCardFailure('rewardsState');
               }
             })
             .catch((err) => {
-              reportCardFailure('rewardsState', err, 'GET /api/rewards/state');
+              reportCardFailure('rewardsState', err, 'GET /api/rewards/summary');
+            })
+            .finally(() => {
+              if (isMountedRef.current) setRewardsModeLoading(false);
             }),
           fetchRewardsHealth()
             .then((rh) => {
@@ -628,16 +709,20 @@ export function AdminOverviewPage() {
             .catch((err) => {
               reportCardFailure('rewardsHealth', err, 'GET /api/rewards/health');
             })
+            .finally(() => {
+              if (isMountedRef.current) setRewardsHealthLoading(false);
+            })
         );
       }
 
       await Promise.allSettled(tasks);
+      clearGenericErrorToasts();
       if (isMountedRef.current) {
         setIsRefreshing(false);
       }
     },
     [
-      user,
+      userUid,
       isAdmin,
       isSuperAdmin,
       loadUsersAndPlansCard,
@@ -655,10 +740,10 @@ export function AdminOverviewPage() {
 
   // Wait for auth AND admin-role check to finish before starting fetches
   useEffect(() => {
-    if (!profileLoading && user && isAdmin) {
+    if (!profileLoading && userUid && isAdmin) {
       void loadData();
     }
-  }, [profileLoading, user, isAdmin, loadData]);
+  }, [profileLoading, userUid, isAdmin, loadData]);
 
   const handleConfirmSeed = async () => {
     setIsConfirmSeedOpen(false);
@@ -757,7 +842,7 @@ export function AdminOverviewPage() {
     retryFn: () => void,
     testId?: string
   ) => {
-    if (card.loading && !card.data) {
+    if ((profileLoading || card.loading) && !card.data) {
       return (
         <div className="my-2 flex items-center" aria-label="Loading metric">
           <span className="h-9 sm:h-10 w-24 rounded-xl bg-[var(--surface-hover)] animate-pulse" />
@@ -844,7 +929,7 @@ export function AdminOverviewPage() {
             () => void loadUsersAndPlansCard(true),
             'admin-overview-total-users'
           )}
-          {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+          {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
             <div className="flex flex-wrap items-center gap-1.5 mb-2" aria-label="Loading user breakdown">
               <span className="h-5 w-14 rounded bg-[var(--surface-hover)] animate-pulse" />
               <span className="h-5 w-12 rounded bg-[var(--surface-hover)] animate-pulse" />
@@ -918,7 +1003,7 @@ export function AdminOverviewPage() {
             () => void loadQuestionBankCard(true),
             'admin-overview-total-questions'
           )}
-          {questionBankCard.loading && !questionBankCard.data ? (
+          {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
             <div className="h-3.5 w-36 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
           ) : questionBankCard.data &&
             !questionBankCard.error &&
@@ -1047,7 +1132,7 @@ export function AdminOverviewPage() {
           )}
         </div>
 
-        {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+        {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
           <div
             data-testid="plans-snapshot-loading"
             className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs"
@@ -1258,7 +1343,7 @@ export function AdminOverviewPage() {
               >
                 {counter.label}
               </span>
-              {radarLoading && !radarCounters ? (
+              {(profileLoading || radarLoading) && !radarCounters ? (
                 <div
                   className="h-6 w-12 rounded-md animate-pulse mt-1"
                   style={{ backgroundColor: 'var(--pill-card-bg)' }}
@@ -1490,7 +1575,7 @@ export function AdminOverviewPage() {
               <Users size={16} className="text-red-500 shrink-0" />
               <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-1.5">
                 <span>Users directory</span>
-                {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+                {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
                   <span
                     className="inline-block h-4 w-10 rounded-md bg-[var(--surface-hover)] animate-pulse"
                     aria-label="Loading user count"
@@ -1513,7 +1598,7 @@ export function AdminOverviewPage() {
             </Link>
           </div>
 
-          {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+          {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {Array.from({ length: 6 }).map((_, idx) => (
                 <div
@@ -1605,7 +1690,7 @@ export function AdminOverviewPage() {
             Questions by subject
           </h2>
           <div className="flex items-center gap-2">
-            {questionBankCard.loading && !questionBankCard.data ? (
+            {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
               <span className="h-3.5 w-28 rounded bg-[var(--surface-hover)] animate-pulse" />
             ) : questionBankCard.data && typeof questionBankCard.data.totalQuestions === 'number' ? (
               <span className="font-heading text-[12px] text-[var(--muted)]">
@@ -1624,7 +1709,21 @@ export function AdminOverviewPage() {
           </div>
         </div>
 
-        {questionBankCard.error || (!questionBankCard.loading && !questionBankCard.data) ? (
+        {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
+            {CORE_SUBJECTS.map((subj) => (
+              <div
+                key={subj}
+                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+              >
+                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
+                  {subj}
+                </span>
+                <span className="h-6 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : questionBankCard.error || !questionBankCard.data ? (
           <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
             <span>
               {questionBankCard.error
@@ -1638,20 +1737,6 @@ export function AdminOverviewPage() {
             >
               Retry
             </button>
-          </div>
-        ) : questionBankCard.loading && !questionBankCard.data ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
-            {CORE_SUBJECTS.map((subj) => (
-              <div
-                key={subj}
-                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-              >
-                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
-                  {subj}
-                </span>
-                <span className="h-6 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-2" />
-              </div>
-            ))}
           </div>
         ) : questionBankCard.data && questionBankCard.data.subjects.length === 0 ? (
           <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)] text-xs font-mono flex items-center justify-between">
@@ -1774,38 +1859,50 @@ export function AdminOverviewPage() {
                 </div>
               </div>
 
-              <div
-                role="group"
-                aria-label="Rewards mode switch"
-                data-testid="rewards-mode-segmented-control"
-                className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
-              >
-                {(
-                  [
-                    { id: 'off', label: 'Off' },
-                    { id: 'admin_only', label: 'Admin only (testing)' },
-                    { id: 'everyone', label: 'Everyone' },
-                  ] as const
-                ).map((opt) => {
-                  const active = rewardsMode === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      data-testid={`rewards-mode-btn-${opt.id}`}
-                      disabled={updatingRewardsMode}
-                      onClick={() => handleSelectRewardsMode(opt.id)}
-                      className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
-                        active
-                          ? 'bg-[#D71921] text-white shadow-sm'
-                          : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {(profileLoading || rewardsModeLoading) && !rewardsMode ? (
+                <div
+                  data-testid="rewards-mode-loading"
+                  className="inline-flex items-center gap-1.5 p-1.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+                  aria-label="Loading rewards mode"
+                >
+                  <span className="h-8 w-14 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
+                  <span className="h-8 w-32 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
+                  <span className="h-8 w-20 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
+                </div>
+              ) : (
+                <div
+                  role="group"
+                  aria-label="Rewards mode switch"
+                  data-testid="rewards-mode-segmented-control"
+                  className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+                >
+                  {(
+                    [
+                      { id: 'off', label: 'Off' },
+                      { id: 'admin_only', label: 'Admin only (testing)' },
+                      { id: 'everyone', label: 'Everyone' },
+                    ] as const
+                  ).map((opt) => {
+                    const active = rewardsMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        data-testid={`rewards-mode-btn-${opt.id}`}
+                        disabled={updatingRewardsMode}
+                        onClick={() => handleSelectRewardsMode(opt.id)}
+                        className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
+                          active
+                            ? 'bg-[#D71921] text-white shadow-sm'
+                            : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div
@@ -1813,7 +1910,9 @@ export function AdminOverviewPage() {
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]"
             >
               <div className="flex items-start sm:items-center gap-2.5 min-w-0">
-                {rewardsHealth?.ok ? (
+                {(profileLoading || rewardsHealthLoading) && !rewardsHealth ? (
+                  <span className="h-4 w-4 rounded-full bg-[var(--surface-hover)] animate-pulse shrink-0" />
+                ) : rewardsHealth?.ok ? (
                   <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
                 ) : (
                   <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
@@ -1823,22 +1922,30 @@ export function AdminOverviewPage() {
                     <span className="font-heading font-semibold text-[var(--text)]">
                       Firestore Credit Health:
                     </span>
-                    <span
-                      data-testid="admin-rewards-health-status"
-                      className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                        rewardsHealth?.ok
-                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                          : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                      }`}
-                    >
-                      {checkingRewardsHealth
-                        ? 'checking...'
-                        : rewardsHealth
-                        ? rewardsHealth.ok
-                          ? 'ok'
-                          : rewardsHealth.reason
-                        : 'not_checked'}
-                    </span>
+                    {(profileLoading || rewardsHealthLoading) && !rewardsHealth ? (
+                      <span
+                        data-testid="admin-rewards-health-loading"
+                        className="inline-block h-5 w-20 rounded-full bg-[var(--surface-hover)] animate-pulse"
+                        aria-label="Loading rewards health"
+                      />
+                    ) : (
+                      <span
+                        data-testid="admin-rewards-health-status"
+                        className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                          rewardsHealth?.ok
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        }`}
+                      >
+                        {checkingRewardsHealth
+                          ? 'checking...'
+                          : rewardsHealth
+                          ? rewardsHealth.ok
+                            ? 'ok'
+                            : rewardsHealth.reason
+                          : 'unavailable'}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1953,7 +2060,7 @@ export function AdminOverviewPage() {
               </Link>
             </div>
 
-            {recentLogsCard.loading && !recentLogsCard.data ? (
+            {(profileLoading || recentLogsCard.loading) && !recentLogsCard.data ? (
               <div className="space-y-2" aria-label="Loading audit logs">
                 {[0, 1, 2].map((idx) => (
                   <div

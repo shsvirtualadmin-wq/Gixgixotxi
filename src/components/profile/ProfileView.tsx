@@ -17,6 +17,7 @@ import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getPageScrollY, scrollPageToTop, subscribePageScroll } from '@/utils/scrollContainer';
 import {
   Edit2,
   UserPlus,
@@ -766,11 +767,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Sticky top bar scroll border + reset scroll to 0 on uid change
   useEffect(() => {
     if (!previewMode && !isModal) {
-      window.scrollTo({ top: 0, behavior: 'auto' });
+      scrollPageToTop('auto');
     }
     let rafId = 0;
     const syncScrolled = () => {
-      const over = window.scrollY > 4;
+      const over = getPageScrollY() > 4;
       setScrolled((prev) => (prev === over ? prev : over));
     };
     const onScroll = () => {
@@ -781,10 +782,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
     };
     syncScrolled();
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const unsubscribe = subscribePageScroll(onScroll);
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
-      window.removeEventListener('scroll', onScroll);
+      unsubscribe();
     };
   }, [uid, previewMode, isModal]);
 

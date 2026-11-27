@@ -15,6 +15,7 @@ import {
   Timestamp,
   getCountFromServer,
   getDocFromServer,
+  getDocsFromServer,
   addDoc,
   startAfter,
   arrayUnion,
@@ -149,8 +150,11 @@ export class AdminStatCardError extends Error {
   status: number | string;
 
   constructor(source: string, status: number | string, detail?: string) {
+    const rawStr = String(status ?? '').trim().toUpperCase();
     const normalizedStatus =
-      status === 200 || status === '200' || status === '' ? 'STAT_UNAVAILABLE' : status;
+      !rawStr || rawStr === '200' || rawStr === 'HTTP_200' || rawStr === 'OK'
+        ? 'STAT_UNAVAILABLE'
+        : status;
     const cleanDetail = detail ? ` — ${detail}` : '';
     super(`${source} [${normalizedStatus}]${cleanDetail}`);
     this.name = 'AdminStatCardError';
@@ -374,69 +378,6 @@ export interface CachedAdminUsersDirectory {
 }
 
 const ADMIN_SWR_FRESH_MS = 45_000;
-const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
-const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v2';
-
-function readAdminSessionCache<T>(key: string): { at: number; data: T } | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { at?: number; data?: T };
-    if (!parsed || typeof parsed.at !== 'number' || !parsed.data) return null;
-    if (Date.now() - parsed.at > ADMIN_SESSION_MAX_AGE_MS) return null;
-    return { at: parsed.at, data: parsed.data };
-  } catch {
-    return null;
-  }
-}
-
-function writeAdminSessionCache<T>(key: string, data: T): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data }));
-  } catch {
-    // ignore quota / private-mode storage failures
-  }
-}
-
-function projectUserForListCache(u: UserProfile): UserProfile {
-  return {
-    uid: u.uid,
-    email: u.email,
-    username: (u as any).username,
-    displayName: u.displayName,
-    display_name: (u as any).display_name,
-    name: u.name,
-    realName: (u as any).realName,
-    shortId: u.shortId,
-    role: u.role,
-    plan: u.plan,
-    planTier: (u as any).planTier,
-    isPremium: (u as any).isPremium,
-    isPro: (u as any).isPro,
-    isPlus: (u as any).isPlus,
-    suspended: u.suspended,
-    isSuspended: (u as any).isSuspended,
-    isGuest: u.isGuest,
-    accountType: u.accountType,
-    targetUniversity: u.targetUniversity,
-    totalQuestionsSolved: u.totalQuestionsSolved,
-    streak: u.streak,
-    createdAt: u.createdAt,
-    lastActiveAt: u.lastActiveAt,
-    avatar: u.avatar,
-    equipped: u.equipped ? { avatar: u.equipped.avatar } : undefined,
-    twoFactorStatus: u.twoFactorStatus,
-    proBadgeDesign: (u as any).proBadgeDesign,
-    proBadgeVisible: (u as any).proBadgeVisible,
-    proBadge: (u as any).proBadge,
-    plus_badge_design: (u as any).plus_badge_design,
-    plus_badge_visible: (u as any).plus_badge_visible,
-    plus_badge_id: (u as any).plus_badge_id,
-    plusBadge: (u as any).plusBadge,
-  } as unknown as UserProfile;
-}
 
 let cachedAdminStats: AdminStats | null = null;
 let inFlightAdminStatsPromise: Promise<AdminStats> | null = null;
@@ -581,16 +522,11 @@ export function getCachedAdminStats(): AdminStats | null {
 }
 
 export function getCachedAdminUsersState(): CachedAdminUsersDirectory | null {
-  if (cachedAdminUsersDirectory) return cachedAdminUsersDirectory;
-  const restored = readAdminSessionCache<Omit<CachedAdminUsersDirectory, 'lastDoc'>>(
-    ADMIN_USERS_P1_SESSION_KEY
-  );
-  if (restored) {
-    cachedAdminUsersDirectory = {
-      ...restored.data,
-      lastDoc: null,
-      fromSessionStorage: true,
-    };
+  if (
+    cachedAdminUsersDirectory &&
+    !cachedAdminUsersDirectory.fromSessionStorage &&
+    Date.now() - cachedAdminUsersDirectory.loadedAt < ADMIN_SWR_FRESH_MS
+  ) {
     return cachedAdminUsersDirectory;
   }
   return null;
@@ -1134,11 +1070,12 @@ function isTransientFirestoreError(err: any): boolean {
 async function getDocsWithTimeoutAndRetry(
   q: Parameters<typeof getDocs>[0],
   label: string,
-  timeoutMs = 8000
+  timeoutMs = 9000,
+  maxAttempts = 3
 ): Promise<Awaited<ReturnType<typeof getDocs>>> {
   const runOnce = async (ms: number) =>
     Promise.race([
-      getDocs(q),
+      getDocsFromServer(q),
       new Promise<never>((_, reject) =>
         setTimeout(() => {
           const tErr: any = new Error(`Timed out reading ${label}`);
@@ -1148,20 +1085,27 @@ async function getDocsWithTimeoutAndRetry(
       ),
     ]);
 
-  try {
-    return await runOnce(timeoutMs);
-  } catch (err: any) {
-    const code = String(err?.code || '').toLowerCase();
-    if (code === 'permission-denied' || code === 'unauthenticated') {
-      await ensureAdminAuthToken(true);
-      return runOnce(timeoutMs + 2000);
+  const backoffMs = [350, 900, 1600];
+  let lastErr: any = null;
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt += 1) {
+    const effectiveTimeout = timeoutMs + (attempt - 1) * 2000;
+    try {
+      return await runOnce(effectiveTimeout);
+    } catch (err: any) {
+      lastErr = err;
+      const code = String(err?.code || '').toLowerCase();
+      if (attempt === 1 && (code === 'permission-denied' || code === 'unauthenticated')) {
+        await ensureAdminAuthToken(true);
+        continue;
+      }
+      if (attempt < maxAttempts && isTransientFirestoreError(err)) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt - 1] ?? 900));
+        continue;
+      }
+      throw err;
     }
-    if (isTransientFirestoreError(err)) {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      return runOnce(timeoutMs + 2500);
-    }
-    throw err;
   }
+  throw lastErr;
 }
 
 async function countCollectionPaginated(
@@ -1301,7 +1245,7 @@ async function strictCountOrThrow(
   };
 
   try {
-    const c = await tryFirestoreCount(false, 7000);
+    const c = await tryFirestoreCount(false, 8500);
     if (typeof c === 'number' && Number.isFinite(c)) return c;
     const emptyErr: any = new Error(`Empty count response from ${collectionLabel}`);
     emptyErr.code = 'EMPTY_COUNT';
@@ -1311,23 +1255,29 @@ async function strictCountOrThrow(
     const code = String(err1?.code || '').toLowerCase();
     if (code === 'permission-denied' || code === 'unauthenticated') {
       try {
-        const c2 = await tryFirestoreCount(true, 8000);
+        const c2 = await tryFirestoreCount(true, 9500);
         if (typeof c2 === 'number' && Number.isFinite(c2)) return c2;
       } catch (err2) {
         firestoreErr = err2;
       }
     } else if (isTransientFirestoreError(err1)) {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 350));
-        const c2 = await tryFirestoreCount(false, 9000);
-        if (typeof c2 === 'number' && Number.isFinite(c2)) return c2;
-      } catch (err2) {
-        firestoreErr = err2;
+      for (const [delayMs, timeoutMs] of [
+        [350, 9500],
+        [900, 11000],
+      ] as const) {
+        try {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          const cRetry = await tryFirestoreCount(false, timeoutMs);
+          if (typeof cRetry === 'number' && Number.isFinite(cRetry)) return cRetry;
+        } catch (retryErr) {
+          firestoreErr = retryErr;
+          if (!isTransientFirestoreError(retryErr)) break;
+        }
       }
     }
   }
 
-  // Tier 3: Bounded paginated Web SDK getDocs fallback
+  // Tier 3: Bounded paginated Web SDK getDocsFromServer fallback
   if (options?.paginatedFallback) {
     try {
       const paginatedCount = await options.paginatedFallback();
@@ -1356,8 +1306,14 @@ async function strictCountOrThrow(
         }
       }
     }
-    const rawSrvStatus = srv.status && srv.status !== 200 ? srv.status : null;
-    const status = firestoreErr?.code || rawSrvStatus || 'STAT_UNAVAILABLE';
+    const rawSrvStatus =
+      srv.status && srv.status !== 200 && String(srv.status) !== '200' ? srv.status : null;
+    const rawFsCode = String(firestoreErr?.code || '').trim();
+    const safeFsCode =
+      rawFsCode && !['200', 'HTTP_200', 'OK'].includes(rawFsCode.toUpperCase())
+        ? rawFsCode
+        : null;
+    const status = safeFsCode || rawSrvStatus || 'STAT_UNAVAILABLE';
     const msg =
       firestoreErr?.message ||
       srv.errorMessage ||
@@ -1365,8 +1321,11 @@ async function strictCountOrThrow(
     throw new AdminStatCardError(`${collectionLabel} | GET /api/admin/stats`, status, msg);
   }
 
-  const rawCode = firestoreErr?.code;
-  const code = rawCode && rawCode !== 200 && rawCode !== '200' ? rawCode : 'FIRESTORE_ERROR';
+  const rawCodeStr = String(firestoreErr?.code ?? '').trim();
+  const code =
+    rawCodeStr && !['200', 'HTTP_200', 'OK'].includes(rawCodeStr.toUpperCase())
+      ? rawCodeStr
+      : 'STAT_UNAVAILABLE';
   const msg = firestoreErr?.message || `Failed to count ${collectionLabel}`;
   throw new AdminStatCardError(collectionLabel, code, msg);
 }
@@ -1708,7 +1667,12 @@ export async function fetchOverviewUsersAndPlansSnapshot(options?: {
     if (plans) {
       cachedPlanAnalytics = { at: nowMs, data: plans };
     }
-    cachedOverviewUsersAndPlans = { at: nowMs, data: snapshot };
+    // Only cache complete snapshots so transient plan or preview failures are retried cleanly on next mount
+    if (plans && !plansError && previewUsers !== null) {
+      cachedOverviewUsersAndPlans = { at: nowMs, data: snapshot };
+    } else {
+      cachedOverviewUsersAndPlans = null;
+    }
 
     if (cachedAdminStats) {
       cachedAdminStats = {
@@ -1816,14 +1780,14 @@ export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): 
         restConfig: {
           collectionId: 'attempts',
           pageSize: 300,
-          maxPages: 30,
-          timeoutMs: 7000,
+          maxPages: 40,
+          timeoutMs: 9000,
         },
         paginatedFallback: () =>
           countCollectionPaginated(attemptsCol, {
-            pageSize: 50,
-            maxPages: 25,
-            perPageTimeoutMs: 7000,
+            pageSize: 25,
+            maxPages: 40,
+            perPageTimeoutMs: 10000,
             collectionLabel: 'firestore:attempts',
             useDocumentIdOrder: true,
           }),
@@ -2030,26 +1994,26 @@ export async function fetchOverviewReviewsCard(options?: { force?: boolean }): P
         restConfig: {
           collectionId: 'reviews',
           filter: { fieldPath: 'status', stringValue: 'pending' },
-          pageSize: 200,
-          maxPages: 15,
-          timeoutMs: 7000,
+          pageSize: 250,
+          maxPages: 20,
+          timeoutMs: 9000,
         },
         paginatedFallback: async () => {
           try {
             return await countCollectionPaginated(reviewsCol, {
               whereClauses: [where('status', '==', 'pending')],
-              pageSize: 60,
-              maxPages: 12,
-              perPageTimeoutMs: 7000,
+              pageSize: 40,
+              maxPages: 15,
+              perPageTimeoutMs: 10000,
               collectionLabel: 'firestore:reviews',
               useDocumentIdOrder: false,
             });
           } catch {
             // Secondary bounded fallback if status filter index is unavailable or slow
             return countCollectionPaginated(reviewsCol, {
-              pageSize: 80,
-              maxPages: 8,
-              perPageTimeoutMs: 7000,
+              pageSize: 50,
+              maxPages: 10,
+              perPageTimeoutMs: 10000,
               collectionLabel: 'firestore:reviews',
               useDocumentIdOrder: true,
               filterDoc: (d) => String(d.status || '').trim().toLowerCase() === 'pending',
@@ -2261,6 +2225,9 @@ export async function fetchUsersPaginated(options?: {
         return await fetchFirestoreUsersTotalCount(Boolean(options?.force));
       } catch (err) {
         console.warn('[AdminService] fetchFirestoreUsersTotalCount warning:', err);
+        if (!hasSearch && isFirstPage) {
+          throw err;
+        }
         return cachedUsersCollectionCount?.count ?? null;
       }
     };
@@ -2453,14 +2420,14 @@ export async function fetchUsersPaginated(options?: {
     const fetchFirestoreUsersWithRetry = async () => {
       const q = query(ref, ...queryConstraints);
       try {
-        return await withTimeout(getDocs(q), 6000, 'users-list-query');
+        return await withTimeout(getDocsFromServer(q), 7000, 'users-list-query');
       } catch (firstErr: any) {
         const code = String(firstErr?.code || '');
         if (code === 'DEADLINE_EXCEEDED') {
           throw firstErr;
         }
         await ensureAdminAuthToken(true);
-        return await withTimeout(getDocs(q), 6000, 'users-list-query-retry');
+        return await withTimeout(getDocsFromServer(q), 8000, 'users-list-query-retry');
       }
     };
 
@@ -2755,24 +2722,6 @@ export async function fetchUsersPaginated(options?: {
           fromSessionStorage: false,
         };
         syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
-        // Save compact list-only snapshot to sessionStorage for instant reopen (SWR)
-        const compactUsers = sortedUsers.slice(0, 20).map(projectUserForListCache);
-        writeAdminSessionCache(ADMIN_USERS_P1_SESSION_KEY, {
-          users: compactUsers,
-          allDirectoryUsers: compactUsers,
-          user2faMap,
-          proBadgesByUid,
-          plusBadgesByUid,
-          userActivityByUid,
-          securityLogs: [],
-          ...breakdown,
-          totalCount: estimatedTotal,
-          firestoreTotalCount: firestoreCount ?? undefined,
-          sortBy,
-          hasMore,
-          loadedAt: Date.now(),
-          queryTimeMs,
-        });
       }
 
       console.log(
@@ -4186,12 +4135,14 @@ export async function fetchUserRecentAttempts(
   limitCount = 5
 ): Promise<Array<{ id: string; subject?: string; score?: number; totalQuestions?: number; percentage?: number; createdAt?: Timestamp | { seconds: number } | string | null }>> {
   try {
+    await ensureAdminAuthToken(false);
+    const boundedLimit = Math.min(Math.max(1, limitCount), 50);
     const q = query(
       collection(db, 'attempts'),
       where('userId', '==', userId),
-      limit(limitCount)
+      limit(boundedLimit)
     );
-    const snap = await getDocs(q);
+    const snap = await getDocsWithTimeoutAndRetry(q, 'firestore:attempts', 9000);
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (err) {
     console.warn('[AdminService] fetchUserRecentAttempts error:', err);
@@ -5464,15 +5415,35 @@ export async function rejectPaymentRequest(
 }
 
 // ─── REVIEW MODERATION ───────────────────────────────────────────────────────
-export async function fetchReviews(statusFilter = 'all'): Promise<StudentReview[]> {
+export async function fetchReviews(statusFilter = 'all', limitCount = 50): Promise<StudentReview[]> {
+  await ensureAdminAuthToken(false);
+  const boundedLimit = Math.min(Math.max(1, limitCount), 100);
+  const ref = collection(db, 'reviews');
+  const normalizedStatus = String(statusFilter || 'all').trim().toLowerCase();
   try {
-    const ref = collection(db, 'reviews');
-    const q = statusFilter !== 'all'
-      ? query(ref, where('status', '==', statusFilter), limit(50))
-      : query(ref, limit(50));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as StudentReview));
+    const q =
+      normalizedStatus !== 'all'
+        ? query(ref, where('status', '==', normalizedStatus), limit(boundedLimit))
+        : query(ref, orderBy(documentId()), limit(boundedLimit));
+    const snap = await getDocsWithTimeoutAndRetry(q, 'firestore:reviews', 9000);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as StudentReview));
   } catch (err) {
+    if (normalizedStatus !== 'all') {
+      try {
+        // Bounded fallback scan if status index is slow or unavailable
+        const fallbackSnap = await getDocsWithTimeoutAndRetry(
+          query(ref, orderBy(documentId()), limit(Math.min(boundedLimit * 2, 100))),
+          'firestore:reviews',
+          9000
+        );
+        return fallbackSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as StudentReview))
+          .filter((r) => String(r.status || '').trim().toLowerCase() === normalizedStatus)
+          .slice(0, boundedLimit);
+      } catch {
+        // fall through to throw wrapped primary error
+      }
+    }
     console.error('[AdminService] fetchReviews error:', err);
     throw wrapFirestoreError(err, 'reviews', 'fetchReviews');
   }
@@ -5503,29 +5474,6 @@ export async function deleteReview(adminEmail: string, reviewId: string): Promis
 
 // ─── AUDIT LOGS ──────────────────────────────────────────────────────────────
 export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
-  const fetchServerGrandLineAuditLogs = async (): Promise<AuditLog[]> => {
-    try {
-      const res = await fetchAdminJsonWithRetry<{ ok?: boolean; logs?: any[] }>(
-        '/api/admin/grand-line-audit-logs'
-      );
-      if (!res.ok || !Array.isArray(res.data?.logs)) return [];
-      return res.data.logs.map((row: any) => {
-        const ms = Number(row.timestampMs || Date.now());
-        return {
-          id: String(row.id || `gl_${ms}`),
-          adminEmail: String(row.adminEmail || 'admin'),
-          action: String(row.action || 'grand_line_schedule_status_updated'),
-          targetUid: row.targetUid || undefined,
-          targetEmail: row.targetEmail || undefined,
-          details: row.details || {},
-          timestamp: Timestamp.fromMillis(ms),
-        } as AuditLog;
-      });
-    } catch {
-      return [];
-    }
-  };
-
   const mergeLogs = (firestoreLogs: AuditLog[], serverLogs: AuditLog[]): AuditLog[] => {
     const byKey = new Map<string, AuditLog>();
     for (const item of [...firestoreLogs, ...serverLogs]) {
@@ -5553,27 +5501,71 @@ export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
       .slice(0, limitCount);
   };
 
-  const serverLogsPromise = fetchServerGrandLineAuditLogs();
+  const fetchServerGrandLineAuditLogsResult = async (): Promise<{
+    ok: boolean;
+    logs: AuditLog[];
+  }> => {
+    try {
+      const res = await fetchAdminJsonWithRetry<{ ok?: boolean; logs?: any[] }>(
+        '/api/admin/grand-line-audit-logs'
+      );
+      if (!res.ok || !Array.isArray(res.data?.logs)) return { ok: false, logs: [] };
+      return {
+        ok: true,
+        logs: res.data.logs.map((row: any) => {
+          const ms = Number(row.timestampMs || Date.now());
+          return {
+            id: String(row.id || `gl_${ms}`),
+            adminEmail: String(row.adminEmail || 'admin'),
+            action: String(row.action || 'grand_line_schedule_status_updated'),
+            targetUid: row.targetUid || undefined,
+            targetEmail: row.targetEmail || undefined,
+            details: row.details || {},
+            timestamp: Timestamp.fromMillis(ms),
+          } as AuditLog;
+        }),
+      };
+    } catch {
+      return { ok: false, logs: [] };
+    }
+  };
+
+  const serverLogsPromise = fetchServerGrandLineAuditLogsResult();
 
   try {
     const ref = collection(db, 'auditLogs');
     const q = query(ref, orderBy('timestamp', 'desc'), limit(limitCount));
-    const [snap, serverLogs] = await Promise.all([getDocs(q), serverLogsPromise]);
+    const [snap, serverRes] = await Promise.all([
+      getDocsWithTimeoutAndRetry(q, 'firestore:auditLogs', 8000),
+      serverLogsPromise,
+    ]);
     const firestoreLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
-    return mergeLogs(firestoreLogs, serverLogs);
+    return mergeLogs(firestoreLogs, serverRes.logs);
   } catch (err) {
-    // If index is not yet built, fall back to simple limit without order
+    // If index is not yet built, fall back to simple server limit without order
     console.warn('[AdminService] fetchAuditLogs fallback:', err);
     try {
-      const [snap, serverLogs] = await Promise.all([
-        getDocs(query(collection(db, 'auditLogs'), limit(limitCount))),
+      const [snap, serverRes] = await Promise.all([
+        getDocsWithTimeoutAndRetry(
+          query(collection(db, 'auditLogs'), limit(limitCount)),
+          'firestore:auditLogs',
+          8000
+        ),
         serverLogsPromise,
       ]);
       const firestoreLogs = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
-      return mergeLogs(firestoreLogs, serverLogs);
-    } catch (fallbackErr) {
+      return mergeLogs(firestoreLogs, serverRes.logs);
+    } catch (fallbackErr: any) {
       console.warn('[AdminService] fetchAuditLogs secondary fallback warning:', fallbackErr);
-      return await serverLogsPromise;
+      const serverRes = await serverLogsPromise;
+      if (serverRes.ok) {
+        return serverRes.logs.slice(0, limitCount);
+      }
+      throw new AdminStatCardError(
+        'firestore:auditLogs | GET /api/admin/grand-line-audit-logs',
+        fallbackErr?.code || fallbackErr?.status || 500,
+        fallbackErr?.message || 'Failed to load recent audit logs'
+      );
     }
   }
 }

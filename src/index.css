@@ -7343,12 +7343,22 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
    ========================================================================== */
 
 :root {
+  /* Exact height occupied by the floating bottom nav dock (+ raised AI FAB on <1024px) + clean top clearance */
+  --sdn-dock-safe-area: calc(108px + env(safe-area-inset-bottom, 0px));
   /* 64px nav + 12-16px bottom offset + 25px raised AI FAB + pulse ring + breathing room = 156px */
   --sdn-page-pb: calc(156px + env(safe-area-inset-bottom, 0px));
 }
 
+@media (min-width: 900px) and (max-width: 1023.98px) {
+  :root {
+    --sdn-dock-safe-area: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (min-width: 1024px) {
   :root {
+    /* 64px nav + 16px bottom offset + 12px clean top margin above dock (AI FAB hidden on lg+) = 92px */
+    --sdn-dock-safe-area: calc(92px + env(safe-area-inset-bottom, 0px));
     /* 64px nav + 16px bottom offset + 64px generous desktop clearance (AI FAB hidden on lg+) = 144px */
     --sdn-page-pb: calc(144px + env(safe-area-inset-bottom, 0px));
   }
@@ -7357,6 +7367,33 @@ body:has(.aqb-sheet-backdrop) [data-admin-bottom-nav="true"] {
 /* Explicit scroll clearance helper so last cards & CTAs never sit under the floating dock */
 .dashboard-main-scroll {
   padding-bottom: var(--sdn-page-pb) !important;
+}
+
+/* Docked student scroll viewport: clips page content strictly above the floating bottom nav safe-area tray */
+.student-scroll-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-padding-bottom: 48px;
+}
+
+/* Inside the docked viewport, the bottom tray already reserves --sdn-dock-safe-area below <main>,
+   so <main> adds comfortable inner breathing room below the last card/row/calendar date. */
+.student-scroll-viewport .dashboard-main-scroll {
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Dedicated non-overlapping bottom safe-area tray underneath the floating bottom navigation pill */
+.student-bottom-nav-tray {
+  height: var(--sdn-dock-safe-area);
+  min-height: var(--sdn-dock-safe-area);
+  background-color: var(--bg);
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  position: relative;
+  z-index: 20;
+}
+
+.student-bottom-nav-tray--rewards {
+  background-color: var(--rw-bg, var(--bg));
 }
 
 /* Dock wrapper: phone-first floating pill 12px from left/right, 12px above bottom + safe-area, 64px tall, fully rounded.
@@ -12340,19 +12377,18 @@ input[type="search"]:active,
   scrollbar-width: thin;
 }
 
-.formula-math-scroll--overflow {
-  mask-image: linear-gradient(
-    to right,
-    #000 0%,
-    #000 calc(100% - 28px),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    #000 0%,
-    #000 calc(100% - 28px),
-    transparent 100%
-  );
+.formula-math-fit .katex-display-box,
+.formula-math-fit .katex-display {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  max-width: none !important;
+}
+
+.formula-math-fit .katex-fallback {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .formula-modal-backdrop {

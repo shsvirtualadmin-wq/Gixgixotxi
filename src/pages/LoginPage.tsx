@@ -37,6 +37,30 @@ function preloadTargetChunksForDest(dest: string): Promise<unknown> {
       import('@/pages/admin/AdminOverviewPage'),
     ]);
   }
+  if (dest.startsWith('/bookmarks') || dest.startsWith('/dashboard/bookmarks')) {
+    return Promise.allSettled([
+      import('@/components/dashboard/DashboardShell'),
+      import('@/pages/dashboard/BookmarksPage'),
+    ]);
+  }
+  if (dest.startsWith('/settings') || dest.startsWith('/dashboard/settings')) {
+    return Promise.allSettled([
+      import('@/components/dashboard/DashboardShell'),
+      import('@/pages/dashboard/SettingsPage'),
+    ]);
+  }
+  if (dest.startsWith('/leaderboard') || dest.startsWith('/grand-line/leaderboard')) {
+    return Promise.allSettled([
+      import('@/components/layout/AppLayout'),
+      import('@/pages/GrandLineLeaderboardPage'),
+    ]);
+  }
+  if (dest.startsWith('/privacy')) {
+    return Promise.allSettled([
+      import('@/components/layout/AppLayout'),
+      import('@/pages/PrivacyPage'),
+    ]);
+  }
   return Promise.allSettled([
     import('@/components/dashboard/DashboardShell'),
     import('@/pages/dashboard/OverviewPage'),

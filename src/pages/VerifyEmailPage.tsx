@@ -34,6 +34,12 @@ export function VerifyEmailPage() {
     linkToken ? 'verifying' : 'idle'
   );
   const [linkError, setLinkError] = useState('');
+  const pendingRedirectTarget =
+    sanitizeRedirectTarget(searchParams.get('redirect') || searchParams.get('returnTo')) ||
+    readPostLoginRedirect();
+  const loginDestination = pendingRedirectTarget
+    ? `/login?redirect=${encodeURIComponent(pendingRedirectTarget)}`
+    : '/login';
 
   // Handle fallback verification link click (?token=...&uid=...)
   useEffect(() => {
@@ -114,7 +120,7 @@ export function VerifyEmailPage() {
             </p>
           </div>
           <Link
-            to="/login"
+            to={loginDestination}
             className="btn-red w-full flex items-center justify-center gap-2 cursor-pointer"
             style={{ height: '52px' }}
           >
@@ -151,7 +157,7 @@ export function VerifyEmailPage() {
             </p>
           </div>
           <Link
-            to="/login"
+            to={loginDestination}
             className="btn-red w-full flex items-center justify-center gap-2 cursor-pointer"
             style={{ height: '52px' }}
           >

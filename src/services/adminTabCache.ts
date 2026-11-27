@@ -30,7 +30,7 @@ import {
 import { getCaptainAllotmentStatus } from './kobanService';
 import {
   fetchUniversities,
-  fetchBankHealth,
+  fetchLiveQuestionBankStats,
   fetchMcqReports,
   fetchMcqs,
   fetchUniversityTopics,
@@ -553,7 +553,7 @@ export async function fetchAdminQuestionsInitSWR(options?: {
   const runFetch = async (): Promise<AdminQuestionsInitCacheData> => {
     const [universities, healthData, reports] = await Promise.all([
       fetchUniversities(Boolean(options?.force)),
-      fetchBankHealth({ force: Boolean(options?.force) }).catch(
+      fetchLiveQuestionBankStats({ force: Boolean(options?.force), strict: true }).catch(
         () => questionsInitCache?.healthData || null
       ),
       fetchMcqReports().catch(() => questionsInitCache?.reports || []),

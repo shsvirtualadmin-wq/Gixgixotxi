@@ -107,6 +107,7 @@ export const en: TranslationDictionary = {
   'nav.notifications': 'Notifications',
   'nav.plansBilling': 'Plans & Billing',
   'nav.formulas': 'Formula Vault',
+  'nav.bookmarks': 'Bookmarks',
   'nav.certificates': 'Certificates',
   'nav.crew': 'Crew',
   'nav.mcqs': 'MCQs',

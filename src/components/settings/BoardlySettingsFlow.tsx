@@ -1749,11 +1749,11 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         onClick={() => navigateTo('/formulas')}
       />
     ),
-    matchesSearch('Bookmarks', 'bookmarks', 'saved', 'saved posts', 'saved formulas', 'favorites') && (
+    matchesSearch(t('nav.bookmarks'), 'bookmarks', 'saved', 'saved posts', 'saved formulas', 'favorites') && (
       <SettingsRow
         key="bookmarks"
         icon={<Bookmark />}
-        label="Bookmarks"
+        label={t('nav.bookmarks')}
         onClick={() => navigateTo('/bookmarks')}
       />
     ),

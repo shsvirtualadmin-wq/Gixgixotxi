@@ -1218,6 +1218,34 @@
       "is_suspended": 0,
       "created_at": 1795536758294,
       "last_active_at": 1795536758331
+    },
+    {
+      "uid": "guest_1795754823016_06e562a832",
+      "username": "bilalkhan99",
+      "username_lower": "bilalkhan99__abandoned_guest_1795754823016_06e562a832",
+      "display_name": "bilalkhan99",
+      "short_id": "4F0480",
+      "account_type": "guest",
+      "is_guest": 1,
+      "email": "",
+      "plan": "free",
+      "role": "student",
+      "status": "abandoned",
+      "abandoned_at": 1795754823090,
+      "purge_after": 1796359623090,
+      "upgraded_to_uid": null,
+      "upgraded_at": null,
+      "target_university": "NUST",
+      "tests_completed": 0,
+      "total_questions_solved": 0,
+      "streak": 0,
+      "stats_json": "{}",
+      "attempts_json": "[]",
+      "ip_hash": "bfe6cb8d5f48f69d24d7d938ae884939b9b274c271cdf7c7c4f2be2aecd30a24",
+      "device_id_hash": "1e5621a467b8ef54711fb1e6eb55a66eb1ef47161ae6b22e9e17b86027f2f1aa",
+      "is_suspended": 0,
+      "created_at": 1795754823016,
+      "last_active_at": 1795754823090
     }
   ],
   "guest_sessions": [
@@ -1315,6 +1343,18 @@
       "created_at": 1795536758294,
       "last_active_at": 1795536758294,
       "expires_at": 1798128758294,
+      "revoked": 1
+    },
+    {
+      "session_id": "gsess_1795754823016_8dce85573312",
+      "token_hash": "fc75819bc7100e406099c553d3b20040bbb6160624895405cf194a96d7ea9b2f",
+      "uid": "guest_1795754823016_06e562a832",
+      "ip_hash": "bfe6cb8d5f48f69d24d7d938ae884939b9b274c271cdf7c7c4f2be2aecd30a24",
+      "device_id_hash": "1e5621a467b8ef54711fb1e6eb55a66eb1ef47161ae6b22e9e17b86027f2f1aa",
+      "user_agent": "",
+      "created_at": 1795754823016,
+      "last_active_at": 1795754823016,
+      "expires_at": 1798346823016,
       "revoked": 1
     }
   ],

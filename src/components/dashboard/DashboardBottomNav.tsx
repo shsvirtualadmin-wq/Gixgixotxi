@@ -109,7 +109,7 @@ function computeMetricsFromRect(rect: DOMRect, isRtl = false): CachedDockMetrics
 }
 
 function DashboardBottomNavComponent() {
-  const { user, profileLoading, isCaptain, isAdmin, isSuperAdmin } = useAuth();
+  const { user, profileLoading, authStatus, isCaptain, isAdmin, isSuperAdmin } = useAuth();
   const { requireAuth } = useAuthGate();
   const { t, isRtl, resolvedLanguage } = useLanguage();
   const { isOpen: isProfileModalOpen } = useProfileModal();
@@ -125,8 +125,8 @@ function DashboardBottomNavComponent() {
   const [isExternalModalOpen, setIsExternalModalOpen] = useState(false);
   const lowEndDevice = useMemo(() => isLowEndHardware(), []);
 
-  const isAuthenticated = isUserAuthenticated(user, profileLoading);
-  const homeUrl = getHomeUrl(user, profileLoading);
+  const isAuthenticated = isUserAuthenticated(user, profileLoading, authStatus);
+  const homeUrl = getHomeUrl(user, profileLoading, authStatus);
 
   const isApprovedCaptain = Boolean(isCaptain || isAdmin || isSuperAdmin);
 

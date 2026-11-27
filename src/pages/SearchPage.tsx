@@ -11,6 +11,7 @@ import {
 import { SYLLABUS_MAP } from '@/constants/syllabusMap';
 import { slugify } from '@/constants/taxonomy';
 import { maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import type { CommonsPost } from '@/types/commons';
 
@@ -107,7 +108,7 @@ export const SearchPage: React.FC = () => {
         if (!s.includes(subjectFilter)) return false;
       }
       if (!cleanQ) return true;
-      const hay = `${p.title} ${p.description} ${p.subject} ${p.chapter} ${(p.tags || []).join(' ')}`.toLowerCase();
+      const hay = `${p.title} ${stripMarkdown(p.description)} ${p.subject} ${p.chapter} ${(p.tags || []).join(' ')}`.toLowerCase();
       return hay.includes(cleanQ);
     });
   }, [posts, cleanQ, subjectFilter, typeFilter]);
@@ -331,10 +332,12 @@ export const SearchPage: React.FC = () => {
                         {formatRelativeTimePkt(post, nowMs)} · 👍 {getPostLikeSnapshot(post.id, post.upvotes || 0).count}
                       </span>
                     </div>
-                    <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mb-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">{post.title}</h3>
-                    <p className="boardly-post-content text-xs text-[var(--muted)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                      {maskPublicUserText(post.description)}
-                    </p>
+                    <h3 className="boardly-post-title text-sm font-bold text-[var(--text)] mb-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">{stripMarkdown(post.title)}</h3>
+                    {stripMarkdown(maskPublicUserText(post.description)) && (
+                      <p className="boardly-post-content text-xs text-[var(--muted)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+                        {stripMarkdown(maskPublicUserText(post.description))}
+                      </p>
+                    )}
                   </Link>
                 );
               })}

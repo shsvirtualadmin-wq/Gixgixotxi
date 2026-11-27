@@ -163,14 +163,17 @@ export function evaluatePublicLayoutAccess(
   const isHomePage = pathname === '/' || pathname === '';
 
   if (isHomePage) {
+    const safePending = sanitizeRedirectTarget(pendingRedirect);
     if (sessionStatus === 'authenticated') {
-      const safePending = sanitizeRedirectTarget(pendingRedirect);
       if (safePending && safePending !== '/') {
         return { action: 'redirect', target: safePending, clearPendingRedirect: true };
       }
       return { action: 'redirect', target: '/dashboard/commons', clearPendingRedirect: false };
     }
-    if (sessionStatus === 'loading' && isOptimisticallyAuthenticated) {
+    if (
+      sessionStatus === 'loading' &&
+      (isOptimisticallyAuthenticated || Boolean(safePending && safePending !== '/'))
+    ) {
       return { action: 'loading_authenticated_home' };
     }
     return { action: 'render_public_layout' };

@@ -7,7 +7,7 @@ import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
+import { BoardlyLoader, BoardlySuspenseBoundary } from '@/components/ui/BoardlyLoader';
 import { scheduleIdleTabPrefetch } from '@/lib/routePrefetch';
 import { perfMarkEnd } from '@/lib/perfMetrics';
 import React, { Suspense, useEffect, useState } from 'react';
@@ -172,9 +172,73 @@ export function DashboardShell() {
     return <Navigate to={dest} replace />;
   }
 
-  // NEVER return null or block with a full-screen startup gate — always render shell, route skeleton/cache, and bottom nav immediately
+  if (routeDecision.action === 'loading' && !isAuthenticated) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col antialiased overflow-x-clip bg-[var(--bg)] text-[var(--text)]">
+        <PageMeta
+          title="Student Cockpit — Boardly"
+          description="Private Boardly student dashboard and practice cockpit."
+          noindex={true}
+        />
+        <BoardlyLoader variant="page" />
+      </div>
+    );
+  }
+
+  const hasDockedBottomNav = !isSettingsRoute && !hideBottomNavSpace;
+
+  const guestNoticeBanner = isGuest && !guestNoteDismissed && (
+    <div className="max-w-[1400px] w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-2 shrink-0">
+      <div className="px-3.5 py-2 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
+        <span>
+          Signed in as guest (<strong className="text-[var(--text)] font-mono">@{profile?.username || user?.displayName || 'guest'}</strong>). Clearing browser data means you cannot return unless you upgrade.
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setUpgradeModalOpen(true)}
+            className="px-2.5 py-1 rounded-full bg-[#D71921] text-white font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer hover:opacity-90 transition-opacity"
+          >
+            <UserPlus size={12} />
+            <span>Create account</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setGuestNoteDismissed(true)}
+            className="p-1 text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+            aria-label="Dismiss guest notice"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const mainElement = (
+    <main
+      className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col ${
+        isSettingsRoute
+          ? 'max-w-none p-0'
+          : isProfileRoute
+          ? 'max-w-none px-0 pt-0'
+          : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6'
+      } ${hideBottomNavSpace ? '' : 'dashboard-main-scroll'}`}
+    >
+      <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
+        <SingleSuspenseOutlet />
+      </DashboardErrorBoundary>
+    </main>
+  );
+
+  // Keep signed-in shell, route content/cache, and bottom nav mounted cleanly while verification settles
   return (
-    <div className="min-h-[100dvh] flex flex-col antialiased overflow-x-clip bg-[var(--bg)] text-[var(--text)]">
+    <div
+      data-student-nav-layout={hasDockedBottomNav ? 'docked' : 'standard'}
+      className={`${
+        hasDockedBottomNav ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh] overflow-x-clip'
+      } flex flex-col antialiased bg-[var(--bg)] text-[var(--text)]`}
+    >
       <PageMeta
         title="Student Cockpit — Boardly"
         description="Private Boardly student dashboard and practice cockpit."
@@ -184,49 +248,27 @@ export function DashboardShell() {
       {!isProfileRoute && !isCommonsRoute && !isSettingsRoute && <DashboardTopBar />}
       {!isGuest && <LegalUpdateNoticeBanner />}
 
-      {/* Small non-blocking note for guests (Part B Rule 3) */}
-      {isGuest && !guestNoteDismissed && (
-        <div className="max-w-[1400px] w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-2">
-          <div className="px-3.5 py-2 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-            <span>
-              Signed in as guest (<strong className="text-[var(--text)] font-mono">@{profile?.username || user?.displayName || 'guest'}</strong>). Clearing browser data means you cannot return unless you upgrade.
-            </span>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setUpgradeModalOpen(true)}
-                className="px-2.5 py-1 rounded-full bg-[#D71921] text-white font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                <UserPlus size={12} />
-                <span>Create account</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setGuestNoteDismissed(true)}
-                className="p-1 text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-                aria-label="Dismiss guest notice"
-              >
-                <X size={14} />
-              </button>
-            </div>
+      {hasDockedBottomNav ? (
+        <>
+          <div
+            data-student-scroll-container="true"
+            className="student-scroll-viewport flex-1 min-h-0 w-full overflow-y-auto overflow-x-clip flex flex-col"
+          >
+            {guestNoticeBanner}
+            {mainElement}
           </div>
-        </div>
+          <div
+            data-bottom-nav-safe-area="true"
+            className="student-bottom-nav-tray shrink-0 w-full pointer-events-none"
+            aria-hidden="true"
+          />
+        </>
+      ) : (
+        <>
+          {guestNoticeBanner}
+          {mainElement}
+        </>
       )}
-
-      {/* Main Content Container — full viewport width centered up to 1400px, ad-free dashboard cockpit */}
-      <main
-        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col ${
-          isSettingsRoute
-            ? 'max-w-none p-0'
-            : isProfileRoute
-            ? 'max-w-none px-0 pt-0'
-            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6'
-        } ${hideBottomNavSpace ? '' : 'dashboard-main-scroll'}`}
-      >
-        <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
-          <SingleSuspenseOutlet />
-        </DashboardErrorBoundary>
-      </main>
 
       {/* Unified Student Pill Navigation — hidden on Settings-area pages (Settings, Account, Security, Privacy, Plans and billing) */}
       {!isSettingsRoute && <DashboardBottomNav />}

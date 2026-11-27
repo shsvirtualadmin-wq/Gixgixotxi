@@ -21,7 +21,12 @@ import { Link } from 'react-router-dom';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
-import { sanitizeStudentDisplayName, buildEntitySlug } from '@/utils/privacy';
+import {
+  sanitizeStudentDisplayName,
+  buildEntitySlug,
+  maskPublicUserText,
+} from '@/utils/privacy';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 import { formatRelativeTimePkt, useSharedNow } from '@/utils/dateFormat';
 import { useTheme } from '@/hooks/useTheme';
 import { LineLoader } from '@/components/ui/LineLoader';
@@ -147,7 +152,8 @@ export function CommonsSearchModal({
 
     // 1. Client filter on loaded feed posts
     const clientPostMatches = initialFeedPosts.filter((p) => {
-      const text = `${p.title || ''} ${p.description || ''} ${p.subject || ''} ${p.chapter || ''} ${p.target || ''} ${(p.tags || []).join(' ')} ${p.isAnonymous ? '' : p.authorName || ''}`.toLowerCase();
+      const plainDesc = stripMarkdown(p.description || '');
+      const text = `${p.title || ''} ${plainDesc} ${p.subject || ''} ${p.chapter || ''} ${p.target || ''} ${(p.tags || []).join(' ')} ${p.isAnonymous ? '' : p.authorName || ''}`.toLowerCase();
       return tokens.every((token) => text.includes(token));
     });
 
@@ -438,6 +444,7 @@ export function CommonsSearchModal({
                     post.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 
                   const postUrl = `/commons/post/${buildEntitySlug(post.id, post.title)}`;
+                  const plainSnippet = stripMarkdown(maskPublicUserText(post.description));
                   return (
                     <Link
                       key={post.id}
@@ -466,13 +473,13 @@ export function CommonsSearchModal({
 
                       {/* Title: Bold */}
                       <h4 className="boardly-post-title text-sm font-bold text-primary group-hover:text-accent transition-colors line-clamp-1 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                        {post.title}
+                        {stripMarkdown(post.title)}
                       </h4>
 
                       {/* Short 1-line preview */}
-                      {post.description && (
+                      {plainSnippet && (
                         <p className="boardly-post-content text-xs text-secondary line-clamp-1 leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                          {post.description}
+                          {plainSnippet}
                         </p>
                       )}
 

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   User,
   Settings,
+  Bookmark,
   ShoppingBag,
   Gift,
   Sparkles,
@@ -200,6 +201,14 @@ export const DashboardMenuContent: React.FC<DashboardMenuContentProps> = ({
           <span className="inline-flex items-center gap-2.5 min-w-0">
             <Sparkles className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
             <span className="truncate">{t('nav.locker')}</span>
+          </span>
+          <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
+        </button>
+
+        <button type="button" onClick={() => onNavigate('/bookmarks')} className={itemClass}>
+          <span className="inline-flex items-center gap-2.5 min-w-0">
+            <Bookmark className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
+            <span className="truncate">{t('nav.bookmarks')}</span>
           </span>
           <ChevronRight className="w-4 h-4 shrink-0 text-[var(--text-muted)]" />
         </button>

@@ -37,8 +37,10 @@ function isRetryableHttpStatus(status: number): boolean {
 }
 
 function normalizeRestErrorCode(status: number, bodyStatus?: string): string {
-  if (bodyStatus && bodyStatus !== '200' && bodyStatus !== 'OK') {
-    return bodyStatus;
+  const cleanBody = typeof bodyStatus === 'string' ? bodyStatus.trim() : '';
+  const upperBody = cleanBody.toUpperCase();
+  if (cleanBody && upperBody !== '200' && upperBody !== 'HTTP_200' && upperBody !== 'OK') {
+    return cleanBody;
   }
   if (status === 401) return 'UNAUTHENTICATED';
   if (status === 403) return 'PERMISSION_DENIED';
@@ -51,11 +53,12 @@ function normalizeRestErrorCode(status: number, bodyStatus?: string): string {
 
 async function fetchJsonWithTimeoutAndRetry(
   url: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | null,
   getToken: (forceRefresh?: boolean) => Promise<string | null>,
   timeoutMs: number,
   label: string,
-  fetchImpl: typeof fetch
+  fetchImpl: typeof fetch,
+  options?: { method?: 'GET' | 'POST'; maxAttempts?: number }
 ): Promise<any> {
   let token = await getToken(false);
   if (!token) {
@@ -64,23 +67,32 @@ async function fetchJsonWithTimeoutAndRetry(
     throw err;
   }
 
+  const method = options?.method ?? (body === null ? 'GET' : 'POST');
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 3);
+  const backoffMs = [350, 850, 1500];
+
   let lastErr: any = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const controller = new AbortController();
-    const effectiveTimeout = attempt === 1 ? timeoutMs : timeoutMs + 2000;
+    const effectiveTimeout = timeoutMs + (attempt - 1) * 2000;
     const timer = setTimeout(() => {
       controller.abort();
     }, effectiveTimeout);
 
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      };
+      if (method !== 'GET') {
+        headers['Content-Type'] = 'application/json';
+      }
+
       const res = await fetchImpl(url, {
-        method: 'POST',
+        method,
         cache: 'no-store',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+        headers,
+        ...(method !== 'GET' && body !== null ? { body: JSON.stringify(body) } : {}),
         signal: controller.signal,
       });
 
@@ -118,8 +130,8 @@ async function fetchJsonWithTimeoutAndRetry(
         }
       }
 
-      if (attempt === 1 && isRetryableHttpStatus(res.status)) {
-        await new Promise((resolve) => setTimeout(resolve, 350));
+      if (attempt < maxAttempts && isRetryableHttpStatus(res.status)) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt - 1] ?? 850));
         continue;
       }
 
@@ -145,8 +157,8 @@ async function fetchJsonWithTimeoutAndRetry(
         code === 'INVALID_ARGUMENT' ||
         code === 'RESOURCE_EXHAUSTED';
 
-      if (attempt === 1 && !nonRetryable) {
-        await new Promise((resolve) => setTimeout(resolve, 350));
+      if (attempt < maxAttempts && !nonRetryable) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt - 1] ?? 850));
         continue;
       }
       throw lastErr;
@@ -169,8 +181,26 @@ function buildStructuredWhere(filter?: FirestoreRestFilter): Record<string, unkn
   };
 }
 
-function extractAggregateCount(payload: any): number | null {
+function throwIfRowContainsError(rows: any[], collectionId: string): void {
+  for (const r of rows) {
+    if (r && typeof r === 'object' && r.error) {
+      const apiErr: any = new Error(
+        typeof r.error?.message === 'string' && r.error.message.trim()
+          ? r.error.message.trim()
+          : `Firestore REST query error on firestore:${collectionId}`
+      );
+      apiErr.code = normalizeRestErrorCode(
+        Number(r.error?.code || 500),
+        typeof r.error?.status === 'string' ? r.error.status : undefined
+      );
+      throw apiErr;
+    }
+  }
+}
+
+function extractAggregateCount(payload: any, collectionId: string): number | null {
   const rows = Array.isArray(payload) ? payload : payload ? [payload] : [];
+  throwIfRowContainsError(rows, collectionId);
   for (const row of rows) {
     const field = row?.result?.aggregateFields?.count;
     if (!field || typeof field !== 'object') continue;
@@ -240,10 +270,21 @@ async function runKeysOnlyPaginatedCount(params: {
       getToken,
       timeoutMs,
       `firestore:${collectionId}`,
-      fetchImpl
+      fetchImpl,
+      { method: 'POST', maxAttempts: 2 }
     );
 
-    const docRows = (Array.isArray(rows) ? rows : []).filter(
+    if (!Array.isArray(rows)) {
+      const malformedErr: any = new Error(
+        `Malformed query response from firestore:${collectionId}`
+      );
+      malformedErr.code = 'MALFORMED_QUERY_RESPONSE';
+      throw malformedErr;
+    }
+
+    throwIfRowContainsError(rows, collectionId);
+
+    const docRows = rows.filter(
       (r: any) => r && typeof r === 'object' && r.document && typeof r.document.name === 'string'
     );
 
@@ -270,14 +311,121 @@ async function runKeysOnlyPaginatedCount(params: {
 }
 
 /**
+ * Index-free paginated REST fallback using `GET .../documents/{collectionId}` with field masks.
+ * Transfers only document names (or the single filter field) so large docs like `attempts`
+ * stay lightweight and never require composite indexes.
+ */
+async function runListDocumentsPaginatedCount(params: {
+  baseUrl: string;
+  collectionId: string;
+  filter?: FirestoreRestFilter;
+  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  timeoutMs: number;
+  pageSize: number;
+  maxPages: number;
+  fetchImpl: typeof fetch;
+}): Promise<number> {
+  const {
+    baseUrl,
+    collectionId,
+    filter,
+    getToken,
+    timeoutMs,
+    pageSize,
+    maxPages,
+    fetchImpl,
+  } = params;
+
+  let total = 0;
+  let pageToken: string | null = null;
+  const expectedFilterVal = filter ? filter.stringValue.trim().toLowerCase() : null;
+  const maskField = filter ? filter.fieldPath : '__name__';
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const qs = new URLSearchParams();
+    qs.set('pageSize', String(Math.min(Math.max(1, pageSize), 300)));
+    qs.set('mask.fieldPaths', maskField);
+    if (pageToken) {
+      qs.set('pageToken', pageToken);
+    }
+
+    const payload = await fetchJsonWithTimeoutAndRetry(
+      `${baseUrl}/${encodeURIComponent(collectionId)}?${qs.toString()}`,
+      null,
+      getToken,
+      timeoutMs,
+      `firestore:${collectionId}`,
+      fetchImpl,
+      { method: 'GET', maxAttempts: 2 }
+    );
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const malformedErr: any = new Error(
+        `Malformed list response from firestore:${collectionId}`
+      );
+      malformedErr.code = 'MALFORMED_LIST_RESPONSE';
+      throw malformedErr;
+    }
+
+    if ((payload as any).error) {
+      const errObj = (payload as any).error;
+      const apiErr: any = new Error(
+        typeof errObj?.message === 'string' && errObj.message.trim()
+          ? errObj.message.trim()
+          : `Firestore REST list error on firestore:${collectionId}`
+      );
+      apiErr.code = normalizeRestErrorCode(
+        Number(errObj?.code || 500),
+        typeof errObj?.status === 'string' ? errObj.status : undefined
+      );
+      throw apiErr;
+    }
+
+    const hasDocumentsKey = Object.prototype.hasOwnProperty.call(payload, 'documents');
+    if (
+      (!hasDocumentsKey && Object.keys(payload).length > 0) ||
+      (hasDocumentsKey && !Array.isArray((payload as any).documents))
+    ) {
+      const malformedErr: any = new Error(
+        `Malformed list response from firestore:${collectionId}`
+      );
+      malformedErr.code = 'MALFORMED_LIST_RESPONSE';
+      throw malformedErr;
+    }
+
+    const docs = hasDocumentsKey ? (payload as any).documents : [];
+    if (filter && expectedFilterVal !== null) {
+      for (const d of docs) {
+        const rawVal = d?.fields?.[filter.fieldPath]?.stringValue;
+        if (typeof rawVal === 'string' && rawVal.trim().toLowerCase() === expectedFilterVal) {
+          total += 1;
+        }
+      }
+    } else {
+      total += docs.length;
+    }
+
+    const nextToken =
+      typeof (payload as any).nextPageToken === 'string' && (payload as any).nextPageToken.trim()
+        ? (payload as any).nextPageToken.trim()
+        : null;
+    if (!nextToken || docs.length === 0) {
+      break;
+    }
+    pageToken = nextToken;
+  }
+
+  return total;
+}
+
+/**
  * Counts a Firestore collection directly over Firestore REST v1 using the signed-in admin's
  * Firebase Auth ID token (enforcing the exact same firestore.rules).
  *
  * Bypasses the Firestore Web SDK's single experimentalForceLongPolling stream and IndexedDB locks:
  *   1. Fast server aggregation (`:runAggregationQuery`) with timeout + retry.
  *   2. Keys-only paginated `:runQuery` (`select: [__name__]`) transferring only doc names (tiny payload).
- *   3. If a filtered query hits an index/precondition error, falls back to a field-masked
- *      `select: [__name__, filter.fieldPath]` paginated scan.
+ *   3. Index-free masked `GET .../documents/{collectionId}` paginated scan (`mask.fieldPaths`).
  */
 export async function countCollectionViaFirestoreRest(
   options: FirestoreRestCountOptions
@@ -286,7 +434,7 @@ export async function countCollectionViaFirestoreRest(
     collectionId,
     filter,
     getToken,
-    timeoutMs = 7000,
+    timeoutMs = 9000,
     pageSize = 250,
     maxPages = 25,
     fetchImpl = globalThis.fetch,
@@ -322,10 +470,11 @@ export async function countCollectionViaFirestoreRest(
       getToken,
       timeoutMs,
       `firestore:${collectionId}`,
-      fetchImpl
+      fetchImpl,
+      { method: 'POST', maxAttempts: 2 }
     );
 
-    const count = extractAggregateCount(payload);
+    const count = extractAggregateCount(payload, collectionId);
     if (count !== null) {
       return { count, strategy: 'rest_aggregation' };
     }
@@ -342,6 +491,7 @@ export async function countCollectionViaFirestoreRest(
   }
 
   // 2. Fallback: keys-only paginated :runQuery (zero heavy document fields transferred)
+  let paginatedErr: any = null;
   try {
     const count = await runKeysOnlyPaginatedCount({
       baseUrl,
@@ -355,29 +505,29 @@ export async function countCollectionViaFirestoreRest(
       fetchImpl,
     });
     return { count, strategy: 'rest_paginated' };
-  } catch (paginatedErr: any) {
-    // 3. Secondary fallback for filtered collections: field-masked scan of just the filter field
-    if (filter) {
-      const code = String(paginatedErr?.code || '').toUpperCase();
-      if (code !== 'PERMISSION_DENIED' && code !== 'UNAUTHENTICATED' && code !== 'RESOURCE_EXHAUSTED') {
-        try {
-          const count = await runKeysOnlyPaginatedCount({
-            baseUrl,
-            collectionId,
-            filter,
-            useServerFilter: false,
-            getToken,
-            timeoutMs,
-            pageSize: Math.min(pageSize, 200),
-            maxPages: Math.min(maxPages, 15),
-            fetchImpl,
-          });
-          return { count, strategy: 'rest_filtered_scan' };
-        } catch {
-          // fall through to throw primary error
-        }
-      }
+  } catch (err: any) {
+    paginatedErr = err;
+    const code = String(err?.code || '').toUpperCase();
+    if (code === 'PERMISSION_DENIED' || code === 'UNAUTHENTICATED' || code === 'RESOURCE_EXHAUSTED') {
+      throw err;
     }
-    throw paginatedErr || aggError;
+  }
+
+  // 3. Index-free masked GET listDocuments fallback (transfers only doc names or single filter field)
+  try {
+    const count = await runListDocumentsPaginatedCount({
+      baseUrl,
+      collectionId,
+      filter,
+      getToken,
+      timeoutMs,
+      pageSize: Math.min(pageSize, 300),
+      maxPages: Math.min(maxPages, 35),
+      fetchImpl,
+    });
+    return { count, strategy: 'rest_filtered_scan' };
+  } catch (listErr: any) {
+    // Prefer the most informative error without losing malformed-query diagnostics
+    throw paginatedErr || listErr || aggError;
   }
 }

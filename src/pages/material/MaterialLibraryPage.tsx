@@ -29,7 +29,8 @@ import {
 } from '@/components/commons/PostingWizardModal';
 import { createCommonsPost, fetchCommonsPosts } from '@/services/commonsService';
 import { uploadCommonsAttachment, extractR2KeyFromUrl } from '@/services/commonsUploadService';
-import { buildEntitySlug } from '@/utils/privacy';
+import { buildEntitySlug, maskPublicUserText } from '@/utils/privacy';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 import { resolveCreatedAtMs, formatRelativeTimePkt } from '@/utils/dateFormat';
 import type { CommonsFileAttachment, CommonsPostType } from '@/types/commons';
 import { AdSlot } from '@/components/AdSlot';
@@ -740,9 +741,9 @@ export const MaterialLibraryPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {item.description && (
+                    {stripMarkdown(maskPublicUserText(item.description)) && (
                       <p className="text-[13px] text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
-                        {item.description}
+                        {stripMarkdown(maskPublicUserText(item.description))}
                       </p>
                     )}
                   </div>

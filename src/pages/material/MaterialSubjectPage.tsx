@@ -9,6 +9,7 @@ import { formatSubjectName } from '@/constants/taxonomy';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
 import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 import { routes, resolveValidMcqSubject } from '@/utils/routes';
 import type { CommonsPost } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
@@ -167,9 +168,11 @@ export const MaterialSubjectPage: React.FC = () => {
                     >
                       {item.title}
                     </Link>
-                    <p className="boardly-post-content text-xs text-[var(--text-secondary)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
-                      {maskPublicUserText(item.description)}
-                    </p>
+                    {stripMarkdown(maskPublicUserText(item.description)) && (
+                      <p className="boardly-post-content text-xs text-[var(--text-secondary)] line-clamp-2 min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]">
+                        {stripMarkdown(maskPublicUserText(item.description))}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[var(--border)] min-w-0">

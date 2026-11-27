@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   buildFullPath,
   buildLoginRedirectUrl,
@@ -359,6 +361,59 @@ function runTests() {
       isSessionVerified: true,
     }),
     { action: 'allow' }
+  );
+
+  // 7. Cold load on '/' with a valid pending redirect must wait in loading instead of flashing LandingPage
+  assert.deepEqual(
+    evaluatePublicLayoutAccess({
+      pathname: '/',
+      sessionStatus: 'loading',
+      isOptimisticallyAuthenticated: false,
+      pendingRedirect: '/bookmarks',
+    }),
+    { action: 'loading_authenticated_home' },
+    'Cold load on / with a pending redirect must not flash LandingPage'
+  );
+
+  // 8. Regression checks: AuthContext onAuthStateChanged listener stability & /bookmarks route + Settings entries
+  const authContextSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/contexts/AuthContext.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    authContextSrc.includes('refreshActiveGrantsRef.current'),
+    'AuthContext must invoke refreshActiveGrants via ref inside onAuthStateChanged'
+  );
+  assert.equal(
+    /evaluateVerifiedRoleState,\s*refreshActiveGrants,/.test(authContextSrc),
+    false,
+    'onAuthStateChanged effect must not depend on refreshActiveGrants (causes mid-hydration teardown)'
+  );
+
+  const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.ok(appSrc.includes('path="/bookmarks"'), 'App.tsx must register /bookmarks route');
+  assert.ok(appSrc.includes('path="bookmarks"'), 'App.tsx must register /dashboard/bookmarks route');
+  assert.ok(
+    appSrc.includes('path="/settings/bookmarks"'),
+    'App.tsx must register /settings/bookmarks redirect'
+  );
+
+  const settingsFlowSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/settings/BoardlySettingsFlow.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    settingsFlowSrc.includes("navigateTo('/bookmarks')"),
+    'Settings menu (BoardlySettingsFlow) must include a Bookmarks entry navigating to /bookmarks'
+  );
+
+  const menuSheetSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/dashboard/HamburgerMenuSheet.tsx'),
+    'utf8'
+  );
+  assert.ok(
+    menuSheetSrc.includes("onNavigate('/bookmarks')"),
+    'Account dropdown menu (DashboardMenuContent) must include a Bookmarks entry'
   );
 
   console.log('✓ All direct-entry & refresh route guard tests passed!');

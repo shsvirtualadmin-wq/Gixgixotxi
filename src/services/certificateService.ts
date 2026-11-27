@@ -558,6 +558,7 @@ export async function fetchAdminSignatures(): Promise<{
     const res = await apiFetch<any>(endpoint, {
       requireAuth: true,
       timeoutMs: PREVIEW_REQUEST_TIMEOUT_MS,
+      silentErrorToast: true,
     });
     const history: AdminSignatureRecord[] = Array.isArray(res?.history)
       ? res.history.map(normalizeSignatureRecord)
@@ -756,6 +757,7 @@ export async function fetchAdminCertificates(params?: {
     const res = await apiFetch<any>(endpoint, {
       requireAuth: true,
       timeoutMs: PREVIEW_REQUEST_TIMEOUT_MS,
+      silentErrorToast: true,
     });
     let activeSignature: AdminSignatureRecord | null = res?.activeSignature
       ? normalizeSignatureRecord(res.activeSignature)

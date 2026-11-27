@@ -1,3 +1,5 @@
+import { stripMarkdown } from './stripMarkdown';
+
 export interface ResolvedRouteMeta {
   title: string;
   description: string;
@@ -106,9 +108,7 @@ export function resolveStaticOrPatternRouteMeta(
     const post = dynamicData?.post;
     if (post && post.title) {
       const title = `${post.title} | Boardly Commons`;
-      const rawText = String(post.description || '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const rawText = stripMarkdown(String(post.description || ''));
       const desc = rawText
         ? rawText.length > 158
           ? `${rawText.slice(0, 155).trimEnd()}...`
@@ -156,10 +156,7 @@ export function resolveStaticOrPatternRouteMeta(
     if (post && post.title) {
       const title = `${post.title} — ${post.subject || 'Study Material'} PDF & Notes | Boardly`;
       const desc =
-        String(post.description || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200) ||
+        stripMarkdown(String(post.description || '')).slice(0, 200) ||
         `Read and download "${post.title}" (${post.subject || 'Study Notes'}) for Class 11, Class 12 & Entrance Test prep on Boardly.`;
       return {
         title,

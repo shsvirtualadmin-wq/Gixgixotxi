@@ -907,8 +907,8 @@ export function AdminUsersPage() {
   const [allUsers, setAllUsers] = useState<UserProfile[]>(() =>
     canViewUsers ? initialCache?.allDirectoryUsers ?? [] : []
   );
-  const [totalDirectoryCount, setTotalDirectoryCount] = useState<number>(() =>
-    canViewUsers ? initialCache?.totalCount ?? initialCache?.allDirectoryUsers.length ?? 0 : 0
+  const [totalDirectoryCount, setTotalDirectoryCount] = useState<number | null>(() =>
+    canViewUsers && initialCache ? initialCache.totalCount : null
   );
   const [user2faMap, setUser2faMap] = useState<Record<string, UserTwoFactorSummary>>(
     () => (canViewUsers ? initialCache?.user2faMap ?? {} : {})
@@ -936,8 +936,8 @@ export function AdminUsersPage() {
   lastDocRef.current = lastDoc;
   const hasMoreRef = useRef<boolean>(hasMore);
   hasMoreRef.current = hasMore;
-  const totalDirectoryCountRef = useRef<number>(totalDirectoryCount);
-  totalDirectoryCountRef.current = totalDirectoryCount;
+  const totalDirectoryCountRef = useRef<number>(totalDirectoryCount ?? 0);
+  totalDirectoryCountRef.current = totalDirectoryCount ?? 0;
   const loadingMoreRef = useRef<boolean>(false);
 
   // Sort & Filters
@@ -1513,7 +1513,7 @@ export function AdminUsersPage() {
     () =>
       computeUsersPagination({
         loadedFilteredCount: filteredUsers.length,
-        totalDirectoryCount,
+        totalDirectoryCount: totalDirectoryCount ?? 0,
         hasMore,
         hasActiveFilters,
         currentPage,
@@ -1674,10 +1674,13 @@ export function AdminUsersPage() {
 
   const isInitialLoading = (profileLoading || loadState === 'loading') && allUsers.length === 0;
   const isTableBusy = isInitialLoading || (loading && allUsers.length === 0);
-  const effectiveTotalN = Math.max(totalDirectoryCount, allUsers.length);
+  const effectiveTotalN = Math.max(totalDirectoryCount ?? 0, allUsers.length);
 
   const resultSummaryText = useMemo(() => {
     if (isInitialLoading) return 'Loading users...';
+    if (loadState === 'error' && allUsers.length === 0) {
+      return 'Unable to load users';
+    }
     if (hasActiveFilters) {
       if (loadingMore && filteredUsers.length === 0) {
         return `Searching all ${effectiveTotalN.toLocaleString()} users...`;
@@ -1693,6 +1696,8 @@ export function AdminUsersPage() {
     return `Showing ${pageStartIndex}–${pageEndIndex} of ${paginationTotal.toLocaleString()} users`;
   }, [
     isInitialLoading,
+    loadState,
+    allUsers.length,
     hasActiveFilters,
     loadingMore,
     filteredUsers.length,
@@ -1878,7 +1883,7 @@ export function AdminUsersPage() {
           <UsersIcon size={14} />
           <span data-testid="admin-users-tab-count" className="inline-flex items-center gap-1">
             <span>All Users</span>
-            {isInitialLoading ? (
+            {isInitialLoading || (totalDirectoryCount === null && loadState !== 'error') ? (
               <span
                 className="inline-block h-3.5 w-8 rounded bg-current/20 animate-pulse"
                 aria-label="Loading total users"

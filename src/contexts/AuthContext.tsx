@@ -1486,6 +1486,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     requestOtpCodeForUserRef.current = requestOtpCodeForUser;
   }, [requestOtpCodeForUser]);
 
+  const refreshActiveGrantsRef = useRef(refreshActiveGrants);
+  useEffect(() => {
+    refreshActiveGrantsRef.current = refreshActiveGrants;
+  }, [refreshActiveGrants]);
+
   // Helper to resolve current user/guest from the unified `/api/auth/me` endpoint
   const resolveServerGuestSession = useCallback(async (): Promise<boolean> => {
     try {
@@ -2043,7 +2048,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (hasAdminClaim && Array.isArray(meData.activeGrants)) {
             setActiveGrants(meData.activeGrants);
           } else if (hasAdminClaim && !hasSuperAdminClaim) {
-            refreshActiveGrants().catch(() => {});
+            refreshActiveGrantsRef.current().catch(() => {});
           }
 
           const rawServerDisplayName = String(
@@ -2312,7 +2317,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     resolveServerGuestSession,
     evaluateUserVerificationGate,
     evaluateVerifiedRoleState,
-    refreshActiveGrants,
   ]);
 
   // ── Requirement 2: Listen for `users/{uid}.claimsUpdatedAt` signal and force token refresh ──

@@ -24,6 +24,7 @@ import { RoleBadge } from '@/components/ui/RoleBadge';
 import { ProBadge } from '@/components/ui/ProBadge';
 import { PlusBadge } from '@/components/ui/PlusBadge';
 import { MathText } from '@/components/ui/MathText';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 import { CommonsImageAttachment } from '@/components/commons/CommonsImageAttachment';
 import { CommonsImageViewerModal } from '@/components/commons/CommonsImageViewerModal';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
@@ -552,7 +553,7 @@ export const PublicPostDetailPage: React.FC = () => {
       <PageMeta
         title={`${post.title} | Boardly Commons`}
         description={
-          maskPublicUserText(post.description).replace(/\s+/g, ' ').trim().slice(0, 155) ||
+          stripMarkdown(maskPublicUserText(post.description)).slice(0, 155) ||
           `Read ${post.title} shared in Boardly Commons for ${resolvedPractice.label || 'exam'} preparation.`
         }
         canonicalPath={canonicalPath}

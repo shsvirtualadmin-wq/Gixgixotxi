@@ -29,7 +29,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isProfileRoute =
     pathname.startsWith('/dashboard/profile') || pathname === '/profile/edit';
   const isSettingsRoute =
-    pathname.startsWith('/settings') || pathname.startsWith('/dashboard/settings');
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/dashboard/settings') ||
+    pathname === '/dashboard/plan' ||
+    pathname === '/dashboard/plans' ||
+    pathname === '/plans' ||
+    pathname === '/plan' ||
+    pathname === '/wallet' ||
+    pathname === '/checkout';
   const isCommonsFeedRoute =
     pathname === '/commons' ||
     pathname === '/commons/trending' ||
@@ -43,6 +50,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     pathname === '/store/get-kobans' ||
     pathname === '/dashboard/store';
   const isCrewOverviewRoute = pathname === '/crew';
+  const isAiRoute =
+    pathname === '/dashboard/ai' || pathname.startsWith('/dashboard/ai/');
+  const searchParams = new URLSearchParams(location.search);
+  const isInsideChatRoute =
+    /^\/(dashboard\/)?messages\/[^/]+/.test(pathname) ||
+    ((pathname === '/dashboard/messages' || pathname === '/messages') &&
+      Boolean(searchParams.get('uid') || searchParams.get('conversationId')));
 
   const hideTopBar =
     isProfileRoute || isSettingsRoute || isCommonsFeedRoute || isStoreMainRoute;
@@ -50,10 +64,38 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isFullBleedMain =
     isSettingsRoute || isStoreMainRoute || pathname === '/rewards';
 
+  const hasDockedBottomNav =
+    !isCrewOverviewRoute && !isSettingsRoute && !isAiRoute && !isInsideChatRoute;
+
+  const mainElement = (
+    <main
+      inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
+      aria-hidden={isMenuOpen ? 'true' : undefined}
+      className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
+        isMenuOpen ? 'pointer-events-none invisible select-none' : ''
+      } ${
+        isSettingsRoute
+          ? 'max-w-none p-0'
+          : isFullBleedMain
+          ? 'max-w-none px-0 pt-0 dashboard-main-scroll'
+          : isProfileRoute
+          ? 'max-w-[1400px] px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 dashboard-main-scroll'
+          : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'
+      }`}
+    >
+      <BoardlySuspenseBoundary variant="page">
+        {children ?? <Outlet />}
+      </BoardlySuspenseBoundary>
+    </main>
+  );
+
   return (
     <div
       data-student-shell="true"
-      className={`relative min-h-[100dvh] flex flex-col antialiased overflow-x-clip ${
+      data-student-nav-layout={hasDockedBottomNav ? 'docked' : 'standard'}
+      className={`relative ${
+        hasDockedBottomNav ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh] overflow-x-clip'
+      } flex flex-col antialiased ${
         isSettingsRoute
           ? 'bg-[var(--menu-bg)] text-[var(--menu-text)]'
           : pathname === '/rewards'
@@ -66,25 +108,25 @@ export function AppLayout({ children }: AppLayoutProps) {
       {!hideTopBar && <DashboardTopBar />}
       {!isGuest && <LegalUpdateNoticeBanner />}
 
-      <main
-        inert={isMenuOpen ? ('' as unknown as boolean) : undefined}
-        aria-hidden={isMenuOpen ? 'true' : undefined}
-        className={`flex-1 w-full min-w-0 box-border overflow-x-clip mx-auto flex flex-col transition-all duration-200 ${
-          isMenuOpen ? 'pointer-events-none invisible select-none' : ''
-        } ${
-          isSettingsRoute
-            ? 'max-w-none p-0'
-            : isFullBleedMain
-            ? 'max-w-none px-0 pt-0 dashboard-main-scroll'
-            : isProfileRoute
-            ? 'max-w-[1400px] px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 dashboard-main-scroll'
-            : 'max-w-[1400px] px-3.5 sm:px-6 lg:px-8 pt-4 sm:pt-6 dashboard-main-scroll'
-        }`}
-      >
-        <BoardlySuspenseBoundary variant="page">
-          {children ?? <Outlet />}
-        </BoardlySuspenseBoundary>
-      </main>
+      {hasDockedBottomNav ? (
+        <>
+          <div
+            data-student-scroll-container="true"
+            className="student-scroll-viewport flex-1 min-h-0 w-full overflow-y-auto overflow-x-clip flex flex-col"
+          >
+            {mainElement}
+          </div>
+          <div
+            data-bottom-nav-safe-area="true"
+            className={`student-bottom-nav-tray shrink-0 w-full pointer-events-none ${
+              pathname === '/rewards' ? 'student-bottom-nav-tray--rewards' : ''
+            }`}
+            aria-hidden="true"
+          />
+        </>
+      ) : (
+        mainElement
+      )}
 
       {!isCrewOverviewRoute && <DashboardBottomNav />}
     </div>

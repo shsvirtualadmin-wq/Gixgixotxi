@@ -14,6 +14,7 @@ import {
   LogOut,
   Compass,
   Sigma,
+  Bookmark,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -134,6 +135,22 @@ export function DashboardSidebar() {
         >
           <Sigma size={18} />
           <span>Formula Vault</span>
+        </NavLink>
+
+        {/* 2c. Bookmarks */}
+        <NavLink
+          to="/bookmarks"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              isActive
+                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+            }`
+          }
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+        >
+          <Bookmark size={18} />
+          <span>Bookmarks</span>
         </NavLink>
 
         {/* 3. Grand Line */}

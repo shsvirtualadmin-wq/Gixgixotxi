@@ -407,7 +407,7 @@ export function StreaksPage() {
 
   if (loading && !streakData) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-6 antialiased pb-10 rs-body text-[var(--rs-text)]">
+      <div className="w-full max-w-xl mx-auto px-4 py-6 antialiased pb-12 rs-body text-[var(--rs-text)]">
         <StreaksPageSkeleton />
       </div>
     );
@@ -416,7 +416,7 @@ export function StreaksPage() {
   // Error State with Retry
   if (hasError || !streakData) {
     return (
-      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center text-center gap-4 antialiased pb-10 rs-body text-[var(--rs-text)]">
+      <div className="w-full max-w-xl mx-auto px-4 py-12 flex flex-col items-center text-center gap-4 antialiased pb-12 rs-body text-[var(--rs-text)]">
         <div className="w-14 h-14 rounded-full bg-[var(--rs-red)]/15 text-[var(--rs-red-text)] flex items-center justify-center">
           <AlertCircle size={28} />
         </div>
@@ -441,7 +441,7 @@ export function StreaksPage() {
 
   return (
     <div
-      className="w-full max-w-xl mx-auto px-4 pt-6 pb-10 flex flex-col gap-5 antialiased select-none rs-body text-[var(--rs-text)]"
+      className="w-full max-w-xl mx-auto px-4 pt-6 pb-12 flex flex-col gap-5 antialiased select-none rs-body text-[var(--rs-text)]"
     >
       {/* ── 1. Top of Page ──────────────────────────────────────────────── */}
       <div className="flex items-start gap-3.5">

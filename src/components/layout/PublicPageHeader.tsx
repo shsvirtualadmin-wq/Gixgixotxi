@@ -4,7 +4,9 @@ import { useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
+import { useAuth } from '@/contexts/AuthContext';
 import { useHomeUrl, useSmartBack } from '@/utils/homeUrl';
+import { buildLoginRedirectUrl } from '@/utils/routeGuards';
 
 interface PublicPageHeaderProps {
   title?: string;
@@ -44,9 +46,11 @@ const ROUTE_TITLE_MAP: Record<string, string> = {
 
 export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => {
   const location = useLocation();
+  const { authStatus } = useAuth();
   const { theme, toggle } = useTheme();
   const homeUrl = useHomeUrl();
   const handleBack = useSmartBack();
+  const signInUrl = buildLoginRedirectUrl(location.pathname, location.search, location.hash);
 
   // Resolve display title from prop or route path
   const displayTitle =
@@ -108,6 +112,16 @@ export const PublicPageHeader: React.FC<PublicPageHeaderProps> = ({ title }) => 
         >
           {isDark ? <Sun size={17} /> : <Moon size={17} />}
         </button>
+
+        {authStatus === 'unauthenticated' && (
+          <Link
+            to={signInUrl}
+            className="inline-flex items-center justify-center min-h-[44px] h-[44px] px-4 rounded-full bg-white text-[#780a14] hover:bg-white/90 active:scale-95 text-xs font-heading font-semibold transition-colors whitespace-nowrap"
+            style={{ color: '#780a14' }}
+          >
+            Sign In
+          </Link>
+        )}
 
         <Link
           to={homeUrl}

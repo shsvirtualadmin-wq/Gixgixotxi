@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Bookmark,
   BookOpen,
@@ -24,6 +24,7 @@ import {
 import { fetchUserSavedPosts, toggleSavePost } from '@/services/commonsService';
 import type { CommonsPost } from '@/types/commons';
 import { buildEntitySlug, maskPublicUserText } from '@/utils/privacy';
+import { stripMarkdown } from '@/utils/stripMarkdown';
 
 type BookmarkTab = 'all' | 'formulas' | 'posts';
 
@@ -57,10 +58,42 @@ function formatRelativeDate(value: unknown): string {
   });
 }
 
+function parseBookmarkTab(raw: string | null): BookmarkTab {
+  if (raw === 'formulas' || raw === 'posts') return raw;
+  return 'all';
+}
+
 export const BookmarksPage: React.FC = () => {
   const { user, isGuest, authStatus } = useAuth();
-  const [activeTab, setActiveTab] = useState<BookmarkTab>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTabState] = useState<BookmarkTab>(() =>
+    parseBookmarkTab(searchParams.get('tab'))
+  );
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const nextTab = parseBookmarkTab(searchParams.get('tab'));
+    setActiveTabState((prev) => (prev === nextTab ? prev : nextTab));
+  }, [searchParams]);
+
+  const setActiveTab = useCallback(
+    (tab: BookmarkTab) => {
+      setActiveTabState(tab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === 'all') {
+            next.delete('tab');
+          } else {
+            next.set('tab', tab);
+          }
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
   const [formulas, setFormulas] = useState<BookmarkedFormulaItem[]>([]);
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -578,9 +611,9 @@ export const BookmarksPage: React.FC = () => {
                           </button>
                         </div>
 
-                        {post.description && (
+                        {stripMarkdown(maskPublicUserText(post.description)) && (
                           <p className="text-sm text-[var(--muted)] line-clamp-3 leading-relaxed">
-                            {maskPublicUserText(post.description)}
+                            {stripMarkdown(maskPublicUserText(post.description))}
                           </p>
                         )}
                       </div>

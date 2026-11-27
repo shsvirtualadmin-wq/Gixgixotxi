@@ -47,6 +47,19 @@ export function dismissApiToast(options?: {
   }
 }
 
+let isPageUnloading = false;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    isPageUnloading = true;
+  });
+  window.addEventListener('pagehide', () => {
+    isPageUnloading = true;
+  });
+  window.addEventListener('pageshow', () => {
+    isPageUnloading = false;
+  });
+}
+
 /**
  * Removes any stale generic error toast ("Something went wrong. Please try again.")
  * when underlying reads succeed on retry or across page transitions.
@@ -69,6 +82,9 @@ export function clearGenericErrorToasts(): void {
       if (prevTimer) window.clearTimeout(prevTimer);
       el.remove();
     }
+  }
+  if (container.children.length === 0) {
+    container.remove();
   }
 }
 
@@ -288,13 +304,18 @@ export async function apiRequest<T = any>(
   const {
     body,
     headers: customHeaders,
-    silentErrorToast = false,
+    silentErrorToast: rawSilentErrorToast,
     requireAuth: _requireAuth = false,
     skipAuth = false,
     timeoutMs = 15000,
     signal: externalSignal,
     ...rest
   } = options;
+  const method = String(rest.method || 'GET').toUpperCase();
+  // Read-only GET requests default to silent error toasts unless explicitly opted in,
+  // so transient background/read retries never leave a persistent generic error toast across loads.
+  const silentErrorToast =
+    rawSilentErrorToast !== undefined ? rawSilentErrorToast : method === 'GET';
 
   const token = skipAuth ? null : await getBearerToken(false);
   const guestSessionToken = skipAuth ? null : getStoredGuestSessionToken();
@@ -330,7 +351,6 @@ export async function apiRequest<T = any>(
   }
 
   const url = resolveApiPath(path);
-  const method = String(rest.method || 'GET').toUpperCase();
   const maxAttempts = method === 'GET' ? 2 : 1;
   const toastTag = `api:${method}:${url}`;
 
@@ -407,7 +427,9 @@ export async function apiRequest<T = any>(
       wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
       wrappedErr.rawMessage = rawMsg;
       (wrappedErr as ApiError & { url?: string }).url = url;
-      if (!silentErrorToast) showApiToast(safeMsg, 'error', { tag: toastTag });
+      if (!silentErrorToast && !isExternalAbort && !isPageUnloading) {
+        showApiToast(safeMsg, 'error', { tag: toastTag });
+      }
       throw wrappedErr;
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
@@ -495,6 +517,7 @@ export async function apiRequest<T = any>(
     err.data = data;
     if (
       !silentErrorToast &&
+      !isPageUnloading &&
       !isSigningOutActive &&
       !isGuestExpiredOrInvalid &&
       serverCode !== 'EMAIL_VERIFICATION_REQUIRED'

@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
 import { safetyCleanupScrollLocks } from '@/utils/scrollLock';
+import {
+  getPageScrollY,
+  scrollPageToTop,
+  scrollPageToY,
+  subscribePageScroll,
+} from '@/utils/scrollContainer';
 
 const scrollPositionsByKey = new Map<string, number>();
 const scrollPositionsByPath = new Map<string, number>();
@@ -16,7 +22,7 @@ function saveScrollPosition(key: string, pathKey: string, y: number): void {
 }
 
 /**
- * Automatically scrolls the window to the top on forward (PUSH/REPLACE) route changes,
+ * Automatically scrolls to the top on forward (PUSH/REPLACE) route changes,
  * preserves and restores the user's scroll position when navigating Back/Forward (POP),
  * and scrolls smoothly to URL hash anchors when present.
  */
@@ -38,15 +44,19 @@ export function ScrollToTop() {
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
-        saveScrollPosition(activeRouteRef.current.key, activeRouteRef.current.pathKey, window.scrollY);
+        saveScrollPosition(
+          activeRouteRef.current.key,
+          activeRouteRef.current.pathKey,
+          getPageScrollY()
+        );
       });
     };
 
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const unsubscribe = subscribePageScroll(onScroll);
     return () => {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
-      saveScrollPosition(key, pathKey, window.scrollY);
-      window.removeEventListener('scroll', onScroll);
+      saveScrollPosition(key, pathKey, getPageScrollY());
+      unsubscribe();
     };
   }, [key, pathname, search]);
 
@@ -78,7 +88,7 @@ export function ScrollToTop() {
       const savedY =
         scrollPositionsByKey.get(key) ?? scrollPositionsByPath.get(pathKey) ?? 0;
       const restore = () => {
-        window.scrollTo(0, savedY);
+        scrollPageToY(savedY, 'auto');
       };
       const r1 = window.requestAnimationFrame(() => {
         restore();
@@ -87,11 +97,7 @@ export function ScrollToTop() {
       return () => window.cancelAnimationFrame(r1);
     }
 
-    window.scrollTo(0, 0);
-    if (typeof document !== 'undefined') {
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    }
+    scrollPageToTop('auto');
   }, [pathname, search, hash, key, navigationType]);
 
   return null;

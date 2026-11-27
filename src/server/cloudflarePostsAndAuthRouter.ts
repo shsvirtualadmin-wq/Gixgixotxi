@@ -6906,6 +6906,8 @@ ${postSitemaps}
     }
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
     return res.status(200).json({
       ok: true,
       success: true,

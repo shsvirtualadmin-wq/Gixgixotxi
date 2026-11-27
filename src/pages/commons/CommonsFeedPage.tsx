@@ -42,6 +42,7 @@ import { getDisplayName } from '@/utils/displayName';
 import { AdSlot } from '@/components/AdSlot';
 import { useAdsConfig } from '@/services/adsConfigService';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { getPageScrollY, scrollPageToTop, subscribePageScroll } from '@/utils/scrollContainer';
 
 // Per-tab feed keys for isolated All / Trending / Following state
 type FeedTabKey = 'all' | 'trending' | 'following';
@@ -346,19 +347,19 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       if (rafId) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = 0;
-        const over = window.scrollY > 380;
+        const over = getPageScrollY() > 380;
         setShowBackToTop((prev) => (prev === over ? prev : over));
       });
     };
-    window.addEventListener('scroll', handleScroll, { passive: true });
+    const unsubscribe = subscribePageScroll(handleScroll);
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
-      window.removeEventListener('scroll', handleScroll);
+      unsubscribe();
     };
   }, []);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollPageToTop('smooth');
   };
 
   const targetPostId = searchParams.get('post') || searchParams.get('id');
@@ -704,7 +705,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   // Mobile pull-to-refresh touch handlers (never interfere with normal downward scrolling)
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (window.scrollY <= 0) {
+    if (getPageScrollY() <= 0) {
       touchStartY.current = e.touches[0].clientY;
       setIsPulling(true);
     } else {
@@ -714,7 +715,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isPulling) return;
-    if (window.scrollY > 0) {
+    if (getPageScrollY() > 0) {
       setIsPulling(false);
       setPullDistance(0);
       return;
@@ -758,7 +759,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
           ]),
         }));
       }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollPageToTop('smooth');
       void loadPosts(false, 'all');
     },
     [loadPosts, setClassFilter, setFeedTab, setSubjectFilter]
@@ -1295,7 +1296,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       {showBackToTop && (
         <button
           onClick={scrollToTop}
-          className="commons-back-to-top fixed bottom-[calc(120px+env(safe-area-inset-bottom,0px))] lg:bottom-[calc(100px+env(safe-area-inset-bottom,0px))] end-4 sm:end-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          className="commons-back-to-top fixed bottom-[calc(var(--sdn-dock-safe-area)+12px)] end-4 sm:end-8 z-50 px-3.5 py-2 rounded-full border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title={t('commons.backToTop')}
         >
           <ArrowUp size={14} />
