@@ -441,17 +441,9 @@ class SharedMentorWebGLEngine {
         profile.bustWebp,
         configure,
         undefined,
-        () => {
-          // Fallback to PNG if WebP fails
-          this.loader.load(
-            profile.bustPng,
-            configure,
-            undefined,
-            (err) => {
-              this.loadingPromises.delete(profile.slug);
-              reject(err);
-            }
-          );
+        (err) => {
+          this.loadingPromises.delete(profile.slug);
+          reject(err);
         }
       );
     });

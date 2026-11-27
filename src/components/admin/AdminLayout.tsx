@@ -39,7 +39,6 @@ import {
 } from '@/utils/routeGuards';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
-import { motion } from 'framer-motion';
 import { NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useBodyScrollLock, safetyCleanupScrollLocks } from '@/utils/scrollLock';
@@ -300,6 +299,19 @@ export function AdminLayout() {
   const isSecondaryActive = visibleSecondaryNav.some((item) =>
     location.pathname.startsWith(item.to.split('?')[0])
   );
+
+  const mobilePrimaryNav = visiblePrimaryNav.slice(0, 5);
+  const mobileActivePrimaryIdx = mobilePrimaryNav.findIndex((item) => {
+    const base = item.to.split('?')[0];
+    return item.end ? location.pathname === base : location.pathname.startsWith(base);
+  });
+  const mobileActiveTabIdx =
+    mobileActivePrimaryIdx >= 0
+      ? mobileActivePrimaryIdx
+      : isSecondaryActive
+      ? mobilePrimaryNav.length
+      : -1;
+  const mobileTabCount = mobilePrimaryNav.length + 1;
 
   const isNavItemLocked = (item: AdminNavItem): boolean => {
     if (isSuperAdmin) return false;
@@ -569,7 +581,21 @@ export function AdminLayout() {
               role="tablist"
               className="rounded-[32px] glass dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between select-none relative h-[62px] pointer-events-auto"
             >
-              {visiblePrimaryNav.slice(0, 5).map((item) => {
+              {mobileActiveTabIdx >= 0 && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full z-0"
+                  style={{
+                    width: `calc((100% - 12px) / ${mobileTabCount})`,
+                    transform: `translate3d(${mobileActiveTabIdx * 100}%, 0, 0)`,
+                    transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    backgroundColor: '#D71921',
+                    boxShadow:
+                      '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
+                  }}
+                />
+              )}
+              {mobilePrimaryNav.map((item) => {
                 const { to, label, icon: Icon, end } = item;
                 const locked = isNavItemLocked(item);
                 const badgeCount = locked ? 0 : getPendingBadgeCount(item);
@@ -590,23 +616,6 @@ export function AdminLayout() {
                   >
                     {({ isActive }) => (
                       <>
-                        {isActive && (
-                          <motion.div
-                            layoutId="adminActiveNavPill"
-                            className="absolute inset-0 rounded-full z-0"
-                            style={{
-                              backgroundColor: '#D71921',
-                              boxShadow:
-                                '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
-                            }}
-                            transition={{
-                              type: 'spring',
-                              stiffness: 450,
-                              damping: 35,
-                              mass: 0.6,
-                            }}
-                          />
-                        )}
                         <span
                           className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
                             isActive
@@ -653,23 +662,6 @@ export function AdminLayout() {
                 onTouchEnd={(e) => e.stopPropagation()}
                 className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
               >
-                {isSecondaryActive && (
-                  <motion.div
-                    layoutId="adminActiveNavPill"
-                    className="absolute inset-0 rounded-full z-0"
-                    style={{
-                      backgroundColor: '#D71921',
-                      boxShadow:
-                        '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
-                    }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 450,
-                      damping: 35,
-                      mass: 0.6,
-                    }}
-                  />
-                )}
                 <span
                   className={`relative z-10 flex items-center justify-center transition-colors max-w-full pointer-events-none ${
                     isSecondaryActive

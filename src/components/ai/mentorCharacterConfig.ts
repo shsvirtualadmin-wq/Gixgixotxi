@@ -23,7 +23,6 @@ export interface MentorCharacterProfile {
   accentHex: string;
   accentRgb: [number, number, number];
   bustWebp: string;
-  bustPng: string;
   avatarWebp: string;
   /** Normalized WebGL UV coordinates (u: 0..1 left-to-right, v: 0..1 bottom-to-top) */
   landmarks: {
@@ -109,7 +108,6 @@ export function getMentorCharacterProfile(mentorId: AiMentorId): MentorCharacter
     accentHex: cfg.accent,
     accentRgb: hexToRgbNorm(cfg.accent),
     bustWebp: `/assets/mentors/${slug}/bust.webp`,
-    bustPng: `/assets/mentors/${slug}/bust.png`,
     avatarWebp: `/assets/mentors/${slug}/avatar.webp`,
     landmarks: LANDMARKS_BY_SLUG[slug],
   };

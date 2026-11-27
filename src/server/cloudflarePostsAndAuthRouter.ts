@@ -1157,7 +1157,10 @@ export function rowToCommonsPost(
         : rawUrl.startsWith('/api/r2/')
         ? rawUrl.slice('/api/r2/'.length)
         : '');
-    const localExists = r2Key && fs.existsSync(path.join(R2_LOCAL_DIR, r2Key));
+    const localExists =
+      Boolean(r2Key) &&
+      (fs.existsSync(path.join(R2_LOCAL_DIR, r2Key)) ||
+        fs.existsSync(path.join(process.cwd(), 'public', 'api', 'r2', r2Key)));
     const isImage =
       String(f?.type || '').startsWith('image/') ||
       /\.(png|jpe?g|webp|gif)$/i.test(String(f?.name || ''));

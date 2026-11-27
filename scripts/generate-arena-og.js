@@ -74,10 +74,8 @@ async function generateArenaOg() {
 
   const svgBuffer = Buffer.from(svg);
   const outPath1 = path.join(process.cwd(), 'public', 'og-arena.png');
-  const outPath2 = path.join(process.cwd(), 'public', 'assets', 'boardly-arena-og.png');
 
   await sharp(svgBuffer).png().toFile(outPath1);
-  await sharp(svgBuffer).png().toFile(outPath2);
   console.log('Successfully generated og-arena.png (1200x630)');
 }
 
