@@ -584,7 +584,7 @@ export function ProCheckoutSheet({
               <h3 className="text-[20px] font-semibold" style={{ color: 'var(--text)' }}>
                 {t('plans.activatedUntil', {
                   tier: completedState.planTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro',
-                  date: completedState.newExpiryLabel,
+                  date: completedState.newExpiryLabel || t('plans.activeMembership'),
                 })}
               </h3>
               <p className="text-[14px]" style={{ color: 'var(--text-muted)' }}>
@@ -595,11 +595,13 @@ export function ProCheckoutSheet({
                   : completedState.wasExtension && completedState.previousExpiryLabel
                   ? t('plans.extendedFromTo', {
                       from: completedState.previousExpiryLabel,
-                      to: completedState.newExpiryLabel,
+                      to: completedState.newExpiryLabel || completedState.previousExpiryLabel,
                     })
                   : t('plans.planNowActive', {
-                      planName: completedState.planName,
-                      days: formatNumber(completedState.durationDays),
+                      planName:
+                        completedState.planName ||
+                        (completedState.planTier === 'plus' ? 'Boardly Plus' : 'Boardly Pro'),
+                      days: formatNumber(completedState.durationDays ?? 0),
                     })}
               </p>
 
@@ -643,8 +645,8 @@ export function ProCheckoutSheet({
               <p className="text-[14px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                 {t('plans.requestReceivedBody', {
                   amount: formatPKR(completedState.pkrAmount ?? 0),
-                  tid: completedState.tid || '',
-                  planName: completedState.planName,
+                  tid: completedState.tid || '—',
+                  planName: completedState.planName || 'Boardly Pro',
                 })}
               </p>
             </div>
@@ -842,12 +844,12 @@ export function ProCheckoutSheet({
               <span className="text-end text-[14px] font-semibold ltr-nums" style={{ color: 'var(--text)' }}>
                 {expiryPreview.isSameTierExtension
                   ? t('plans.expiryDaysAdded', {
-                      date: expiryPreview.newExpiryLabel,
-                      days: formatNumber(expiryPreview.daysAdded),
+                      date: expiryPreview.newExpiryLabel || '—',
+                      days: formatNumber(expiryPreview.daysAdded ?? 0),
                     })
                   : t('plans.expiryDaysTotal', {
-                      date: expiryPreview.newExpiryLabel,
-                      days: formatNumber(expiryPreview.daysAdded),
+                      date: expiryPreview.newExpiryLabel || '—',
+                      days: formatNumber(expiryPreview.daysAdded ?? 0),
                     })}
               </span>
             </div>
@@ -939,7 +941,9 @@ export function ProCheckoutSheet({
                     ? t('plans.couponAppliedBonus', {
                         amount: formatNumber(appliedCoupon.bonusKobans),
                       })
-                    : t('plans.couponAppliedLabel', { label: appliedCoupon.label })}
+                    : t('plans.couponAppliedLabel', {
+                        label: appliedCoupon.label || appliedCoupon.code || t('plans.applied'),
+                      })}
                 </span>
               </p>
             )}

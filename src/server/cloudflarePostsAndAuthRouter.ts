@@ -7491,8 +7491,12 @@ ${postSitemaps}
     const universities = store.universities || [];
     let resolvedUniId = uniParam;
     if (uniParam && uniParam !== 'all') {
+      const lower = uniParam.toLowerCase();
       const matched = universities.find(
-        (u) => u.id === uniParam || u.slug.toLowerCase() === uniParam.toLowerCase()
+        (u) =>
+          u.id === uniParam ||
+          u.slug.toLowerCase() === lower ||
+          u.name.toLowerCase() === lower
       );
       if (matched) resolvedUniId = matched.id;
     }

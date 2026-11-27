@@ -249,6 +249,11 @@ function withTimeout<T>(promise: Promise<T>, ms = PROFILE_REQUEST_TIMEOUT_MS, la
   });
 }
 
+function toSafeCount(val: unknown): number {
+  const n = Number(val);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
 export function computeLevelFromStats(stats: {
   xp?: number;
   testsCompleted?: number;
@@ -479,8 +484,8 @@ function buildImmediateOwnSeed(
     status: ownProfile?.status || '',
     shortId,
     studentId: shortId,
-    followersCount: Number(ownProfile?.followersCount ?? 0),
-    followingCount: Number(ownProfile?.followingCount ?? 0),
+    followersCount: toSafeCount(ownProfile?.followersCount),
+    followingCount: toSafeCount(ownProfile?.followingCount),
     isBanned: Boolean(ownProfile?.isBanned),
     proBadge: myProBadgeVisible ? myProBadgeDesign : null,
     stats: {
@@ -592,8 +597,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [followsError, setFollowsError] = useState<string | null>(null);
-  const [followersCount, setFollowersCount] = useState<number>(() => Number(profile?.followersCount ?? 0));
-  const [followingCount, setFollowingCount] = useState<number>(() => Number(profile?.followingCount ?? 0));
+  const [followersCount, setFollowersCount] = useState<number>(() => toSafeCount(profile?.followersCount));
+  const [followingCount, setFollowingCount] = useState<number>(() => toSafeCount(profile?.followingCount));
   const [, setPostsCount] = useState(0);
   const followsReqIdRef = useRef(0);
   const tRef = useRef(t);
@@ -886,8 +891,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       status: propData.status || 'Active',
       shortId: resolvedShortId,
       studentId: resolvedShortId,
-      followersCount: Number(propData.followersCount ?? 0),
-      followingCount: Number(propData.followingCount ?? 0),
+      followersCount: toSafeCount(propData.followersCount),
+      followingCount: toSafeCount(propData.followingCount),
       proBadge: propData.proBadge ?? null,
       stats: propData.stats || {
         streakDays: 1,
@@ -897,6 +902,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         xp: 120,
       },
     });
+    setFollowersCount(toSafeCount(propData.followersCount));
+    setFollowingCount(toSafeCount(propData.followingCount));
     setBasicsLoading(false);
     setBasicsError(null);
   }, [previewMode, propData, uid]);
@@ -930,8 +937,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
     if (immediateSeed) {
       setProfile(immediateSeed);
-      setFollowersCount(Number(immediateSeed.followersCount ?? 0));
-      setFollowingCount(Number(immediateSeed.followingCount ?? 0));
+      setFollowersCount(toSafeCount(immediateSeed.followersCount));
+      setFollowingCount(toSafeCount(immediateSeed.followingCount));
       hydrateEditFields(immediateSeed);
       setBasicsLoading(false);
     } else {
@@ -1240,8 +1247,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           status: resolvedStatus,
           shortId,
           studentId: shortId,
-          followersCount: Number(uData?.followersCount ?? immediateSeed?.followersCount ?? 0),
-          followingCount: Number(uData?.followingCount ?? immediateSeed?.followingCount ?? 0),
+          followersCount: toSafeCount(uData?.followersCount ?? immediateSeed?.followersCount),
+          followingCount: toSafeCount(uData?.followingCount ?? immediateSeed?.followingCount),
           isBanned: Boolean(uData?.isBanned),
           proBadge: resolvedProBadge,
           rawProBadge: typeof rawBadgeFromSources === 'string' ? rawBadgeFromSources : null,
@@ -1273,8 +1280,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         };
 
         setProfile(enriched);
-        setFollowersCount((prev) => (prev > 0 ? prev : enriched.followersCount || 0));
-        setFollowingCount((prev) => (prev > 0 ? prev : enriched.followingCount || 0));
+        setFollowersCount((prev) => (prev > 0 ? prev : toSafeCount(enriched.followersCount)));
+        setFollowingCount((prev) => (prev > 0 ? prev : toSafeCount(enriched.followingCount)));
         hydrateEditFields(enriched);
         writeCachedProfile(uid, enriched);
         setBasicsError(null);
@@ -2507,10 +2514,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <button
                 type="button"
                 onClick={() => openFollowList('followers')}
-                className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
+                className="w-full bg-transparent px-1 py-1 text-center hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
                 <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
-                  {formatNumber(followersCount)}
+                  {formatNumber(toSafeCount(followersCount))}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
                   {t('profile.followers')}
@@ -2520,10 +2527,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <button
                 type="button"
                 onClick={() => openFollowList('following')}
-                className="px-1 py-1 hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
+                className="w-full bg-transparent px-1 py-1 text-center hover:bg-[var(--settings-row-hover)] rounded-lg transition-colors cursor-pointer"
               >
                 <div className="font-inter-num ltr-nums text-[17px] sm:text-[18px] font-bold text-[var(--text)]">
-                  {formatNumber(followingCount)}
+                  {formatNumber(toSafeCount(followingCount))}
                 </div>
                 <div className="text-[11px] font-medium text-[var(--text-muted)] mt-0.5">
                   {t('profile.following')}
@@ -3019,7 +3026,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               {uHandle && <span className="truncate ltr-nums">{uHandle}</span>}
                               {uHandle && <span aria-hidden="true">·</span>}
                               <span className="font-inter-num ltr-nums shrink-0">
-                                {t('profile.levelShort', { level: formatNumber(u.level) })}
+                                {t('profile.levelShort', {
+                                  level: formatNumber(Math.max(1, Number(u.level) || 1)),
+                                })}
                               </span>
                             </div>
                           </div>

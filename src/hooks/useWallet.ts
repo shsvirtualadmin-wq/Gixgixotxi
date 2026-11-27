@@ -602,10 +602,8 @@ export function useWallet() {
       setWalletError(resolved.error);
       if (resolved.confirmed) {
         setInventoryLoaded(true);
-        setBalanceLoaded(true);
-      } else if (getKobans(uid).loaded) {
-        setBalanceLoaded(true);
       }
+      setBalanceLoaded(true);
       return resolved.wallet;
     } finally {
       setLoading(false);

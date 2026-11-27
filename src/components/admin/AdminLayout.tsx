@@ -61,21 +61,21 @@ interface AdminNavItem {
   end?: boolean;
   permission?: PermissionKey;
   superAdminOnly?: boolean;
-  superAdminOnlyBadge?: boolean;
+  badgeKey?: 'accessRequests' | 'moderation';
 }
 
 const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/questions', label: 'Questions', icon: Database, permission: 'mcq.manage' },
   { to: '/admin/formulas', label: 'Formula Bank', icon: BookOpen, permission: 'mcq.manage' },
-  { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete' },
+  { to: '/admin/commons', label: 'Moderation', icon: MessageSquare, permission: 'content.delete', badgeKey: 'moderation' },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2, permission: 'users.role' },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'users.plan' },
   { to: '/admin/coupons', label: 'Coupon Studio', icon: Ticket, permission: 'users.plan' },
   { to: '/admin/ads', label: 'Ads', icon: Megaphone },
   { to: '/superadmin', label: 'Superadmin Area', icon: ShieldAlert, superAdminOnly: true, end: true },
   { to: '/admin/users', label: 'Users', icon: Users, permission: 'users.view', superAdminOnly: true },
-  { to: '/admin/access-requests', label: 'Access Requests', icon: KeyRound, permission: 'audit.view', superAdminOnly: true, superAdminOnlyBadge: true },
+  { to: '/admin/access-requests', label: 'Access Requests', icon: KeyRound, permission: 'audit.view', superAdminOnly: true, badgeKey: 'accessRequests' },
   { to: '/admin/announcements', label: 'Announcements', icon: Megaphone, permission: 'announcements.manage', superAdminOnly: true },
   { to: '/admin/certificates', label: 'Certificates', icon: Award, permission: 'certificates.issue', superAdminOnly: true },
 ];
@@ -116,6 +116,7 @@ export function AdminLayout() {
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [pendingModerationCount, setPendingModerationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
   useBodyScrollLock(isMoreOpen, 'admin-more-sheet');
@@ -181,15 +182,74 @@ export function AdminLayout() {
         void loadPendingCount();
       }
     };
+    const handleUpdated = () => {
+      void loadPendingCount();
+    };
     void loadPendingCount();
     const timer = window.setInterval(loadPendingCount, 30000);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('boardly:access-requests-updated', handleUpdated);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('boardly:access-requests-updated', handleUpdated);
     };
   }, [user, isSuperAdmin]);
+
+  // Poll pending moderation queue count so badge only renders when flagged items exist
+  const canModerateCommons = isSuperAdmin || hasPermission('content.delete');
+  useEffect(() => {
+    if (!user || (!isAdmin && !isSuperAdmin) || !canModerateCommons) {
+      setPendingModerationCount(0);
+      return;
+    }
+    let cancelled = false;
+    const loadModerationCount = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      try {
+        const res = await apiRequest<{
+          success?: boolean;
+          flaggedPosts?: unknown[];
+          reports?: Array<{ status?: string }>;
+        }>('/api/posts/moderation/queue', { method: 'GET', silentErrorToast: true });
+        if (!cancelled && res) {
+          const flaggedCount = Array.isArray(res.flaggedPosts) ? res.flaggedPosts.length : 0;
+          const pendingReportsCount = Array.isArray(res.reports)
+            ? res.reports.filter((r) => !r.status || r.status === 'pending').length
+            : 0;
+          setPendingModerationCount(Math.max(flaggedCount, pendingReportsCount));
+        }
+      } catch {
+        // non-fatal
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void loadModerationCount();
+      }
+    };
+    const handleModerationUpdated = (ev: Event) => {
+      const detailCount = (ev as CustomEvent<{ count?: number }>).detail?.count;
+      if (typeof detailCount === 'number' && Number.isFinite(detailCount)) {
+        setPendingModerationCount(Math.max(0, Math.floor(detailCount)));
+      } else {
+        void loadModerationCount();
+      }
+    };
+    void loadModerationCount();
+    const timer = window.setInterval(loadModerationCount, 30000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('boardly:moderation-updated', handleModerationUpdated);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('boardly:moderation-updated', handleModerationUpdated);
+    };
+  }, [user, isAdmin, isSuperAdmin, canModerateCommons]);
 
   // Prefetch admin tab chunks and SWR data during idle time once AdminLayout is verified
   useEffect(() => {
@@ -245,6 +305,16 @@ export function AdminLayout() {
     if (item.superAdminOnly) return true;
     if (!item.permission) return false;
     return !hasPermission(item.permission);
+  };
+
+  const getPendingBadgeCount = (item: AdminNavItem): number => {
+    if (item.badgeKey === 'accessRequests') {
+      return isSuperAdmin ? pendingRequestsCount : 0;
+    }
+    if (item.badgeKey === 'moderation') {
+      return canModerateCommons ? pendingModerationCount : 0;
+    }
+    return 0;
   };
 
   // Fail-closed route guard before rendering any admin shell or children
@@ -307,8 +377,9 @@ export function AdminLayout() {
         {/* Sidebar Links */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {visibleSidebarNav.map((item) => {
-            const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
+            const { to, label, icon: Icon, end } = item;
             const locked = isNavItemLocked(item);
+            const badgeCount = locked ? 0 : getPendingBadgeCount(item);
             return (
               <NavLink
                 key={to}
@@ -334,16 +405,10 @@ export function AdminLayout() {
                     {locked && (
                       <Lock size={12} className="text-amber-400 shrink-0" aria-label="Locked" />
                     )}
-                    {superAdminOnlyBadge && isSuperAdmin && pendingRequestsCount > 0 && (
+                    {badgeCount > 0 && (
                       <span className="px-1.5 py-0.5 rounded-full bg-[var(--red)] text-white text-[10px] font-bold leading-none shrink-0">
-                        {pendingRequestsCount}
+                        {badgeCount}
                       </span>
-                    )}
-                    {isActive && !locked && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-[var(--red)]"
-                        aria-hidden="true"
-                      />
                     )}
                   </>
                 )}
@@ -504,8 +569,9 @@ export function AdminLayout() {
               className="rounded-[32px] glass dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between select-none relative h-[62px] pointer-events-auto"
             >
               {visiblePrimaryNav.slice(0, 5).map((item) => {
-                const { to, label, icon: Icon, end, superAdminOnlyBadge } = item;
+                const { to, label, icon: Icon, end } = item;
                 const locked = isNavItemLocked(item);
+                const badgeCount = locked ? 0 : getPendingBadgeCount(item);
                 return (
                   <NavLink
                     key={to}
@@ -555,9 +621,9 @@ export function AdminLayout() {
                                 className="absolute -top-1 -right-1.5 text-amber-400"
                               />
                             )}
-                            {superAdminOnlyBadge && isSuperAdmin && pendingRequestsCount > 0 && (
+                            {badgeCount > 0 && (
                               <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[var(--red)] text-white text-[9px] font-bold">
-                                {pendingRequestsCount}
+                                {badgeCount}
                               </span>
                             )}
                           </div>
@@ -685,6 +751,7 @@ export function AdminLayout() {
                 {[...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].map((item) => {
                   const { to, label, icon: Icon } = item;
                   const locked = isNavItemLocked(item);
+                  const badgeCount = locked ? 0 : getPendingBadgeCount(item);
                   const active = location.pathname.startsWith(to.split('?')[0]);
                   return (
                     <Link
@@ -703,6 +770,11 @@ export function AdminLayout() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {locked && <Lock size={14} className="text-amber-600 dark:text-amber-400" />}
+                        {badgeCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-[var(--red)] text-white text-[11px] font-bold leading-none shrink-0">
+                            {badgeCount}
+                          </span>
+                        )}
                         <ChevronRight size={18} className="text-[var(--text-muted)]" />
                       </div>
                     </Link>

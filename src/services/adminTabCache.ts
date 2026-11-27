@@ -491,14 +491,16 @@ export function getCachedAdminQuestionsInit(): AdminQuestionsInitCacheData | nul
 }
 
 export function buildAdminUniMcqsCacheKey(params: {
-  universityId: string;
+  universityId?: string;
+  university_id?: string;
   subject?: string;
   topic?: string;
   difficulty?: string;
   search?: string;
 }): string {
+  const resolvedUniId = (params.universityId || params.university_id || '').trim();
   return [
-    params.universityId,
+    resolvedUniId,
     params.subject || 'all',
     params.topic || 'all',
     params.difficulty || 'all',
@@ -508,14 +510,17 @@ export function buildAdminUniMcqsCacheKey(params: {
 
 export function getCachedAdminUniversityMcqs(
   params: {
-    universityId: string;
+    universityId?: string;
+    university_id?: string;
     subject?: string;
     topic?: string;
     difficulty?: string;
     search?: string;
   }
 ): AdminUniversityMcqsCacheData | null {
-  const key = buildAdminUniMcqsCacheKey(params);
+  const resolvedUniId = (params.universityId || params.university_id || '').trim();
+  if (!resolvedUniId) return null;
+  const key = buildAdminUniMcqsCacheKey({ ...params, universityId: resolvedUniId });
   return uniMcqsCacheByKey.get(key) || null;
 }
 
@@ -578,7 +583,8 @@ export async function fetchAdminQuestionsInitSWR(options?: {
 }
 
 export async function fetchAdminUniversityMcqsSWR(params: {
-  universityId: string;
+  universityId?: string;
+  university_id?: string;
   subject?: string;
   topic?: string;
   difficulty?: string;
@@ -588,7 +594,8 @@ export async function fetchAdminUniversityMcqsSWR(params: {
   force?: boolean;
   onUpdate?: (data: AdminUniversityMcqsCacheData) => void;
 }): Promise<AdminUniversityMcqsCacheData> {
-  const key = buildAdminUniMcqsCacheKey(params);
+  const resolvedUniId = (params.universityId || params.university_id || '').trim();
+  const key = buildAdminUniMcqsCacheKey({ ...params, universityId: resolvedUniId });
   const isFirstPage = !params.offset || params.offset === 0;
   const existing = isFirstPage ? uniMcqsCacheByKey.get(key) : undefined;
   const now = Date.now();
@@ -605,7 +612,7 @@ export async function fetchAdminUniversityMcqsSWR(params: {
   const runFetch = async (): Promise<AdminUniversityMcqsCacheData> => {
     const [mcqRes, topicsRes] = await Promise.all([
       fetchMcqs({
-        university_id: params.universityId,
+        university_id: resolvedUniId || undefined,
         subject:
           params.subject && params.subject !== 'all' ? params.subject : undefined,
         topic: params.topic && params.topic !== 'all' ? params.topic : undefined,
@@ -618,7 +625,7 @@ export async function fetchAdminUniversityMcqsSWR(params: {
         offset: params.offset ?? 0,
         include_answers: true,
       }),
-      fetchUniversityTopics(params.universityId, Boolean(params.force)).catch(
+      fetchUniversityTopics(resolvedUniId, Boolean(params.force)).catch(
         () => ({ subjects: [], flat: [] })
       ),
     ]);

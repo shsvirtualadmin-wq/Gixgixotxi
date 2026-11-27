@@ -40,6 +40,9 @@ export function AdminCommonsPage() {
       if (resp.status === 404) {
         setFlaggedPosts([]);
         setReports([]);
+        window.dispatchEvent(
+          new CustomEvent('boardly:moderation-updated', { detail: { count: 0 } })
+        );
         return;
       }
       const data = await resp.json().catch(() => ({}));
@@ -55,6 +58,11 @@ export function AdminCommonsPage() {
 
       setFlaggedPosts(posts);
       setReports(reps);
+      window.dispatchEvent(
+        new CustomEvent('boardly:moderation-updated', {
+          detail: { count: Math.max(posts.length, reps.length) },
+        })
+      );
     } catch (err: any) {
       console.error('[AdminCommonsPage] load error:', err);
       setQueueError(err?.message || 'Could not load moderation queue.');
@@ -100,6 +108,7 @@ export function AdminCommonsPage() {
         throw new Error('Delete request failed');
       }
       setFlaggedPosts((prev) => prev.filter((p) => p.id !== post.id));
+      window.dispatchEvent(new CustomEvent('boardly:moderation-updated'));
       setActionNotice('Post permanently deleted from Cloudflare D1.');
     } catch (err: any) {
       setActionNotice(`Delete failed: ${err.message}`);

@@ -167,7 +167,9 @@ export const GuestUpgradeModal: React.FC<GuestUpgradeModalProps> = ({
             {t('auth.createYourAccount')}
           </h2>
           <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-            {t('auth.upgradeGuestDesc', { username: `@${guestUsername}` })}
+            {t('auth.upgradeGuestDesc', {
+              username: (guestUsername || 'guest').replace(/^@+/, '') || 'guest',
+            })}
           </p>
         </div>
 

@@ -1679,7 +1679,7 @@ export function RewardsPage() {
                   {
                     step: 1,
                     title: t('rewards.step1Title'),
-                    desc: t('rewards.step1Desc', { code: state.referral.myCode }),
+                    desc: t('rewards.step1Desc', { code: state.referral.myCode || 'BOARDLY' }),
                   },
                   {
                     step: 2,

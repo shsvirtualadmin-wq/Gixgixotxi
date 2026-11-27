@@ -196,13 +196,38 @@ export function applyDocumentLanguage(resolved: ResolvedLanguage): void {
   ensureScriptFontLoaded(resolved);
 }
 
+const FALLBACK_PLACEHOLDER_VALUES: Record<string, string> = {
+  level: '1',
+  count: '0',
+  amount: '0',
+  days: '0',
+  xp: '0',
+  score: '0',
+  points: '0',
+  rank: '1',
+  action: 'continue on Boardly',
+};
+
 function interpolate(template: string, params?: TranslationParams): string {
-  if (!params) return template;
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
-    const val = params[key];
-    if (val === null || val === undefined) return match;
-    return String(val);
+  if (!template.includes('{{')) return template;
+  let hadMissingParam = false;
+  const replaced = template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+    const val = params?.[key];
+    if (val !== null && val !== undefined && String(val).trim() !== '') {
+      return String(val);
+    }
+    const fallback = FALLBACK_PLACEHOLDER_VALUES[key];
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    hadMissingParam = true;
+    return '';
   });
+  if (!hadMissingParam) return replaced;
+  return replaced
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .trim();
 }
 
 export function translate(
@@ -237,15 +262,16 @@ export function formatNumber(
   lang: ResolvedLanguage = activeResolvedLanguage,
   options?: Intl.NumberFormatOptions
 ): string {
-  if (!Number.isFinite(value)) return '0';
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return '0';
   const meta = getLanguageMeta(lang);
   try {
     return new Intl.NumberFormat(meta.intlLocale, {
       numberingSystem: 'latn',
       ...options,
-    } as Intl.NumberFormatOptions).format(value);
+    } as Intl.NumberFormatOptions).format(numeric);
   } catch {
-    return value.toLocaleString('en-US');
+    return numeric.toLocaleString('en-US');
   }
 }
 

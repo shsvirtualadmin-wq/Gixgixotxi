@@ -83,8 +83,13 @@ export function StatusBanner({
   const statusPillText =
     planStatus?.state === 'active' && planStatus.expiryFormatted
       ? planStatus.expiryFormatted.startsWith('Active') || planStatus.expiryFormatted === 'Unlimited'
-        ? planStatus.timeLeftLabel
-        : t('plans.activeUntilWithTime', { date: planStatus.expiryFormatted, timeLeft: planStatus.timeLeftLabel })
+        ? planStatus.timeLeftLabel || planStatus.expiryFormatted
+        : planStatus.timeLeftLabel
+        ? t('plans.activeUntilWithTime', {
+            date: planStatus.expiryFormatted,
+            timeLeft: planStatus.timeLeftLabel,
+          })
+        : t('plans.activeUntil', { date: planStatus.expiryFormatted })
       : proSummary.statusText;
 
   return (

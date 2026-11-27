@@ -21,6 +21,20 @@ interface AuthGateContextValue {
 
 const AuthGateContext = createContext<AuthGateContextValue | null>(null);
 
+const DEFAULT_AUTH_ACTION = 'access this feature';
+
+function normalizeAuthActionLabel(raw?: string | null): string {
+  const cleaned = String(raw ?? '')
+    .trim()
+    .replace(/^sign\s+in\s+(?:or\s+continue\s+as\s+a\s+guest\s+)?to\s+/i, '')
+    .replace(/\.+$/g, '')
+    .trim();
+  if (!cleaned || cleaned.toLowerCase() === 'continue') {
+    return DEFAULT_AUTH_ACTION;
+  }
+  return cleaned;
+}
+
 export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, signInWithGoogle, signInAsGuest, checkUsernameAvailability } = useAuth();
   const { t } = useLanguage();
@@ -29,7 +43,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'options' | 'guest'>('options');
-  const [actionLabel, setActionLabel] = useState('continue');
+  const [actionLabel, setActionLabel] = useState(DEFAULT_AUTH_ACTION);
   const [redirectPath, setRedirectPath] = useState<string | null>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -63,9 +77,9 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const openSignInModal = useCallback(
-    (label = 'continue', customRedirect?: string) => {
+    (label = DEFAULT_AUTH_ACTION, customRedirect?: string) => {
       const targetUrl = customRedirect || `${location.pathname}${location.search}${location.hash}`;
-      setActionLabel((label || '').trim() || 'continue');
+      setActionLabel(normalizeAuthActionLabel(label));
       setRedirectPath(targetUrl);
       setStep('options');
       setGuestUsername('');
@@ -415,7 +429,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                       {t('auth.continueAsGuest')}
                     </h2>
                     <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
-                      {t('auth.guestPickUsername', { action: actionLabel })}
+                      {t('auth.guestPickUsername', { action: normalizeAuthActionLabel(actionLabel) })}
                     </p>
                   </div>
 
@@ -533,7 +547,7 @@ export const AuthGateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   </h2>
 
                   <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-6">
-                    {t('auth.signInSubtitle', { action: actionLabel })}
+                    {t('auth.signInSubtitle', { action: normalizeAuthActionLabel(actionLabel) })}
                   </p>
 
                   {errorMsg && (

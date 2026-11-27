@@ -244,15 +244,13 @@ export const AdminQuestionsPage: React.FC = () => {
   // Core Data State (hydrated from SWR cache if available)
   const cachedInit = useMemo(() => getCachedAdminQuestionsInit(), []);
   const initialUniId = useMemo(
-    () => cachedInit?.universities?.[0]?.id || 'uni_fast-nuces',
+    () => cachedInit?.universities?.[0]?.id || 'uni_fast_nuces',
     [cachedInit]
   );
   const cachedInitialMcqs = useMemo(
     () =>
       getCachedAdminUniversityMcqs({
-        university_id: initialUniId,
-        limit: 20,
-        offset: 0,
+        universityId: initialUniId,
       }),
     [initialUniId]
   );
@@ -357,7 +355,7 @@ export const AdminQuestionsPage: React.FC = () => {
 
   // Bank Health & Reports State
   const [healthData, setHealthData] = useState<BankHealthData | null>(
-    () => cachedInit?.health ?? null
+    () => cachedInit?.healthData ?? null
   );
   const [fixingHealthKey, setFixingHealthKey] = useState<string | null>(null);
   const [reports, setReports] = useState<D1McqReportRow[]>(() => cachedInit?.reports ?? []);
@@ -417,6 +415,7 @@ export const AdminQuestionsPage: React.FC = () => {
   );
 
   const isMountedRef = useRef(true);
+  const mcqLoadReqIdRef = useRef(0);
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -430,25 +429,28 @@ export const AdminQuestionsPage: React.FC = () => {
       const existing = getCachedAdminQuestionsInit();
       if (existing && !forceRefresh) {
         setUniversities(existing.universities);
-        setHealthData(existing.health);
+        setHealthData(existing.healthData);
         setReports(existing.reports);
         setLoading(false);
       } else if (!existing) {
         setLoading(true);
       }
       try {
-        const fresh = await fetchAdminQuestionsInitSWR((updated) => {
-          if (!isMountedRef.current) return;
-          setUniversities(updated.universities);
-          setHealthData(updated.health);
-          setReports(updated.reports);
-        }, forceRefresh);
+        const fresh = await fetchAdminQuestionsInitSWR({
+          force: forceRefresh,
+          onUpdate: (updated) => {
+            if (!isMountedRef.current) return;
+            setUniversities(updated.universities);
+            setHealthData(updated.healthData);
+            setReports(updated.reports);
+          },
+        });
         if (!isMountedRef.current) return;
         setUniversities(fresh.universities);
         for (const u of fresh.universities) {
           if (u.logo_url) primeUniversityLogoCache(u.logo_url);
         }
-        setHealthData(fresh.health);
+        setHealthData(fresh.healthData);
         setReports(fresh.reports);
         if (fresh.universities.length > 0 && !fresh.universities.some((u) => u.id === selectedUniId)) {
           setSelectedUniId(fresh.universities[0].id);
@@ -476,26 +478,35 @@ export const AdminQuestionsPage: React.FC = () => {
   const loadUniversityMcqs = useCallback(
     async (resetOffset = true, forceRefresh = false) => {
       if (!selectedUniId) return;
+      const reqId = ++mcqLoadReqIdRef.current;
       const nextOffset = resetOffset ? 0 : mcqPageOffset;
-      const queryParams = {
-        university_id: selectedUniId,
-        subject: filterSubject !== 'all' ? filterSubject : undefined,
-        topic: filterTopic !== 'all' ? filterTopic : undefined,
-        difficulty: filterDifficulty !== 'all' ? filterDifficulty : undefined,
-        search: searchQuery.trim() || undefined,
-        limit: 20,
-        offset: nextOffset,
+      const subjectParam = filterSubject !== 'all' ? filterSubject : undefined;
+      const topicParam = filterTopic !== 'all' ? filterTopic : undefined;
+      const difficultyParam = filterDifficulty !== 'all' ? filterDifficulty : undefined;
+      const searchParam = searchQuery.trim() || undefined;
+      const cacheQueryParams = {
+        universityId: selectedUniId,
+        subject: subjectParam,
+        topic: topicParam,
+        difficulty: difficultyParam,
+        search: searchParam,
       };
 
       if (resetOffset) {
-        const cached = getCachedAdminUniversityMcqs(queryParams);
+        const cached = getCachedAdminUniversityMcqs(cacheQueryParams);
         if (cached && !forceRefresh) {
           setMcqs(cached.mcqs);
           setMcqPageOffset(cached.mcqs.length);
           setTotalMcqsForFilter(cached.total);
           setUniTopics(cached.subjects || []);
           setMcqsLoading(false);
-        } else if (!cached) {
+        } else {
+          if (!cached) {
+            setMcqs([]);
+            setMcqPageOffset(0);
+            setTotalMcqsForFilter(0);
+            setUniTopics([]);
+          }
           setMcqsLoading(true);
         }
       } else {
@@ -504,18 +515,20 @@ export const AdminQuestionsPage: React.FC = () => {
 
       try {
         if (resetOffset) {
-          const fresh = await fetchAdminUniversityMcqsSWR(
-            queryParams,
-            (updated) => {
-              if (!isMountedRef.current) return;
+          const fresh = await fetchAdminUniversityMcqsSWR({
+            ...cacheQueryParams,
+            limit: 20,
+            offset: 0,
+            force: forceRefresh,
+            onUpdate: (updated) => {
+              if (!isMountedRef.current || mcqLoadReqIdRef.current !== reqId) return;
               setMcqs(updated.mcqs);
               setMcqPageOffset(updated.mcqs.length);
               setTotalMcqsForFilter(updated.total);
               setUniTopics(updated.subjects || []);
             },
-            forceRefresh
-          );
-          if (!isMountedRef.current) return;
+          });
+          if (!isMountedRef.current || mcqLoadReqIdRef.current !== reqId) return;
           setMcqs(fresh.mcqs);
           setMcqPageOffset(fresh.mcqs.length);
           setSelectedMcqIds(new Set());
@@ -524,23 +537,29 @@ export const AdminQuestionsPage: React.FC = () => {
         } else {
           const [mcqRes, topicsRes] = await Promise.all([
             fetchMcqs({
-              ...queryParams,
+              university_id: selectedUniId,
+              subject: subjectParam,
+              topic: topicParam,
+              difficulty: difficultyParam,
+              search: searchParam,
+              limit: 20,
+              offset: nextOffset,
               include_answers: true,
             }),
             fetchUniversityTopics(selectedUniId),
           ]);
-          if (!isMountedRef.current) return;
+          if (!isMountedRef.current || mcqLoadReqIdRef.current !== reqId) return;
           setMcqs((prev) => [...prev, ...mcqRes.mcqs]);
           setMcqPageOffset((prev) => prev + mcqRes.mcqs.length);
           setTotalMcqsForFilter(mcqRes.total);
           setUniTopics(topicsRes.subjects || []);
         }
       } catch (err: any) {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && mcqLoadReqIdRef.current === reqId) {
           showBanner('error', err?.message || 'Failed to load university MCQs');
         }
       } finally {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && mcqLoadReqIdRef.current === reqId) {
           setMcqsLoading(false);
         }
       }
@@ -921,7 +940,7 @@ export const AdminQuestionsPage: React.FC = () => {
         setMcqModalOpen(false);
       }
 
-      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+      await Promise.all([loadInitialData(true), loadUniversityMcqs(true, true)]);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to save MCQ');
     } finally {
@@ -941,7 +960,7 @@ export const AdminQuestionsPage: React.FC = () => {
       showBanner('success', `Deleted ${confirmDeleteMcqModal.ids.length} MCQ(s)`);
       setConfirmDeleteMcqModal(null);
       setSelectedMcqIds(new Set());
-      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+      await Promise.all([loadInitialData(true), loadUniversityMcqs(true, true)]);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to delete MCQs');
     } finally {
@@ -959,7 +978,7 @@ export const AdminQuestionsPage: React.FC = () => {
       showBanner('success', `Moved ${res.movedCount} MCQ(s) to ${destUni?.name || moveTargetUniId}`);
       setMoveModalOpen(false);
       setSelectedMcqIds(new Set());
-      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+      await Promise.all([loadInitialData(true), loadUniversityMcqs(true, true)]);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to move MCQs');
     } finally {
@@ -1119,7 +1138,7 @@ export const AdminQuestionsPage: React.FC = () => {
             bulkModalUniversity?.name || lockedUniversityId
           }`
         );
-        await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+        await Promise.all([loadInitialData(true), loadUniversityMcqs(true, true)]);
       } else {
         showBanner(
           'info',
@@ -1143,7 +1162,7 @@ export const AdminQuestionsPage: React.FC = () => {
     try {
       const res = await fixBankHealthIntegrity(issueType, selectedUniId);
       showBanner('success', `Fixed integrity check (${res.fixedCount} item(s) synchronized)`);
-      await Promise.all([loadInitialData(), loadUniversityMcqs(true)]);
+      await Promise.all([loadInitialData(true), loadUniversityMcqs(true, true)]);
     } catch (err: any) {
       showBanner('error', err?.message || 'Failed to run integrity fix');
     } finally {
@@ -2506,6 +2525,10 @@ export const AdminQuestionsPage: React.FC = () => {
                           setSelectedUniId(uni.id);
                           setFilterSubject('all');
                           setFilterTopic('all');
+                          setFilterDifficulty('all');
+                          setSearchQuery('');
+                          setExpandedMcqId(null);
+                          setSelectedMcqIds(new Set());
                           setUniSheetOpen(false);
                         }}
                         className={`aqb-glass-card p-3.5 text-left flex items-center justify-between gap-2.5 ${

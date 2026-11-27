@@ -989,7 +989,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           <p className="text-[13px] mt-1 text-[var(--text-muted)]">
             {isOwnProfile
               ? t('profile.noPostsOwnDesc')
-              : t('profile.noPostsOtherDesc', { name: authorDisplayName })}
+              : t('profile.noPostsOtherDesc', { name: authorDisplayName || 'This student' })}
           </p>
         </div>
       ) : (
@@ -1343,7 +1343,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                           <div className="flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg bg-[var(--bg)] text-[var(--text-muted)]">
                             <span className="inline-flex items-center gap-1">
                               <CornerDownRight className="w-3 h-3 rtl-mirror" />
-                              {t('profile.replyingTo', { name: replyTarget.authorName })}
+                              {t('profile.replyingTo', {
+                                name: replyTarget.authorName || 'Student',
+                              })}
                             </span>
                             <button
                               type="button"
@@ -1374,7 +1376,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                             }}
                             placeholder={
                               replyTarget
-                                ? t('profile.replyToPlaceholder', { name: replyTarget.authorName })
+                                ? t('profile.replyToPlaceholder', {
+                                    name: replyTarget.authorName || 'Student',
+                                  })
                                 : t('commons.writeComment')
                             }
                             className="flex-1 min-h-[42px] px-3.5 rounded-full bg-[var(--bg)] border border-[var(--border)] text-[13px] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none text-start"

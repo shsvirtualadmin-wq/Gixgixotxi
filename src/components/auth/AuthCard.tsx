@@ -959,7 +959,9 @@ export function AuthCard({
                   <button
                     type="button"
                     disabled={Boolean(switchingSavedUid)}
-                    aria-label={t('auth.removeAccountAria', { name: acc.displayName })}
+                    aria-label={t('auth.removeAccountAria', {
+                      name: acc.displayName || acc.email || t('settings.account'),
+                    })}
                     onClick={async () => {
                       const next = await removeSavedAccountSession(acc.uid);
                       setSavedAccounts(next);

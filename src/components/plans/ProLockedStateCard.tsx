@@ -65,7 +65,9 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
                 {isPlus ? t('plans.alreadyHavePlus') : t('plans.alreadyHavePro')}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
-                {t('plans.activePlanDesc', { planName: planStatus.planName })}
+                {t('plans.activePlanDesc', {
+                  planName: planStatus.planName || (isPlus ? 'Boardly Plus' : 'Boardly Pro'),
+                })}
               </p>
             </div>
           </div>
@@ -143,7 +145,7 @@ export const ProLockedStateCard: React.FC<ProLockedStateCardProps> = ({
                 {t('plans.paymentVerifyingTitle')}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1 leading-relaxed">
-                {t('plans.paymentSubmissionReceived', { planName: req.planName })}
+                {t('plans.paymentSubmissionReceived', { planName: req.planName || 'Boardly Pro' })}
               </p>
             </div>
           </div>
