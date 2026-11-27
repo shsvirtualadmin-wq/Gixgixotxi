@@ -840,57 +840,95 @@ class StoreFxScheduler {
   private idToElement = new Map<string, HTMLElement>();
   private visibilityMap = new WeakMap<HTMLElement, boolean>();
   private observer: IntersectionObserver | null = null;
+  private mql: MediaQueryList | null = null;
+  private runtimeAttached = false;
   private rafId: number | null = null;
   private lastNow = 0;
   private elapsed = 0;
   private isTabVisible = true;
   private prefersReducedMotion = false;
 
-  constructor() {
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      this.isTabVisible = document.visibilityState === 'visible';
-      document.addEventListener('visibilitychange', () => {
-        this.isTabVisible = document.visibilityState === 'visible';
-        if (this.isTabVisible) {
-          this.lastNow = performance.now();
-          this.ensureLoop();
-        } else {
-          this.stopLoop();
-        }
-      });
+  private handleVisibilityChange = () => {
+    if (typeof document === 'undefined') return;
+    this.isTabVisible = document.visibilityState === 'visible';
+    if (this.isTabVisible) {
+      this.lastNow = performance.now();
+      this.ensureLoop();
+    } else {
+      this.stopLoop();
+    }
+  };
 
-      try {
-        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-        this.prefersReducedMotion = mq.matches;
-        mq.addEventListener('change', (e) => {
-          this.prefersReducedMotion = e.matches;
-          if (this.prefersReducedMotion) {
-            this.stopLoop();
-            this.renderAllStatic();
-          } else {
-            this.ensureLoop();
+  private handleReducedMotionChange = (e: MediaQueryListEvent) => {
+    this.prefersReducedMotion = e.matches;
+    if (this.prefersReducedMotion) {
+      this.stopLoop();
+      this.renderAllStatic();
+    } else {
+      this.ensureLoop();
+    }
+  };
+
+  private attachRuntime(): void {
+    if (this.runtimeAttached || typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+    this.runtimeAttached = true;
+    this.isTabVisible = document.visibilityState === 'visible';
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.mql = mq;
+      this.prefersReducedMotion = mq.matches;
+      mq.addEventListener('change', this.handleReducedMotionChange);
+    } catch {
+      // ignore
+    }
+
+    if (typeof IntersectionObserver !== 'undefined') {
+      this.observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const el = entry.target as HTMLElement;
+            this.visibilityMap.set(el, entry.isIntersecting);
           }
-        });
-      } catch {
-        // ignore
-      }
-
-      if (typeof IntersectionObserver !== 'undefined') {
-        this.observer = new IntersectionObserver(
-          (entries) => {
-            for (const entry of entries) {
-              const el = entry.target as HTMLElement;
-              this.visibilityMap.set(el, entry.isIntersecting);
-            }
-            this.ensureLoop();
-          },
-          { threshold: 0.01, rootMargin: '80px' }
-        );
-      }
+          this.ensureLoop();
+        },
+        { threshold: 0.01, rootMargin: '80px' }
+      );
     }
   }
 
+  private detachRuntime(): void {
+    this.stopLoop();
+    if (!this.runtimeAttached) return;
+    this.runtimeAttached = false;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (this.mql) {
+      try {
+        this.mql.removeEventListener('change', this.handleReducedMotionChange);
+      } catch {
+        // ignore
+      }
+      this.mql = null;
+    }
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+  }
+
+  destroy(): void {
+    this.tasks.clear();
+    this.idToElement.clear();
+    this.detachRuntime();
+  }
+
   register(task: FxTask): () => void {
+    this.attachRuntime();
     const el = task.element;
     const normalizedTask: FxTask = {
       ...task,
@@ -935,7 +973,7 @@ class StoreFxScheduler {
     }
     this.observer?.unobserve(el);
     if (this.tasks.size === 0) {
-      this.stopLoop();
+      this.detachRuntime();
     }
   }
 

@@ -323,41 +323,63 @@ function startSubscription(uid: string, authProfileFallback?: UserProfile | null
       // Ignore unsub error
     }
   };
+  attachGlobalProfileRefreshListeners();
 }
 
-if (typeof window !== 'undefined') {
-  const handleWindowRefresh = () => {
-    if (!activeUid || activeUid.startsWith('guest_')) return;
-    const now = Date.now();
-    if (now - lastFocusRefreshAt < 1500) return;
-    lastFocusRefreshAt = now;
+let globalProfileListenersAttached = false;
+
+const handleWindowRefresh = () => {
+  if (!activeUid || activeUid.startsWith('guest_')) return;
+  const now = Date.now();
+  if (now - lastFocusRefreshAt < 1500) return;
+  lastFocusRefreshAt = now;
+  forceRefreshUserProfile(activeUid).catch(() => {});
+};
+
+const handlePlanRefreshEvent = () => {
+  if (activeUid && !activeUid.startsWith('guest_')) {
     forceRefreshUserProfile(activeUid).catch(() => {});
-  };
+  }
+};
+
+const handleVisibilityRefresh = () => {
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+    handleWindowRefresh();
+  }
+};
+
+function attachGlobalProfileRefreshListeners(): void {
+  if (typeof window === 'undefined' || globalProfileListenersAttached) return;
+  globalProfileListenersAttached = true;
   window.addEventListener('focus', handleWindowRefresh);
-  window.addEventListener('boardly:plan-refresh', () => {
-    if (activeUid && !activeUid.startsWith('guest_')) {
-      forceRefreshUserProfile(activeUid).catch(() => {});
-    }
-  });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      handleWindowRefresh();
-    }
-  });
+  window.addEventListener('boardly:plan-refresh', handlePlanRefreshEvent);
+  document.addEventListener('visibilitychange', handleVisibilityRefresh);
+}
+
+function detachGlobalProfileRefreshListeners(): void {
+  if (typeof window === 'undefined' || !globalProfileListenersAttached) return;
+  globalProfileListenersAttached = false;
+  window.removeEventListener('focus', handleWindowRefresh);
+  window.removeEventListener('boardly:plan-refresh', handlePlanRefreshEvent);
+  document.removeEventListener('visibilitychange', handleVisibilityRefresh);
 }
 
 function releaseSubscription() {
   if (teardownTimeout) clearTimeout(teardownTimeout);
   teardownTimeout = setTimeout(() => {
-    if (subscriberCallbacks.size === 0 && activeUnsub) {
-      activeUnsub();
-      activeUnsub = null;
-      activeUid = null;
+    if (subscriberCallbacks.size === 0) {
+      if (activeUnsub) {
+        activeUnsub();
+        activeUnsub = null;
+        activeUid = null;
+      }
+      detachGlobalProfileRefreshListeners();
     }
   }, 15000);
 }
 
 export function teardownSharedUserProfile(): void {
+  detachGlobalProfileRefreshListeners();
   if (teardownTimeout) {
     clearTimeout(teardownTimeout);
     teardownTimeout = null;

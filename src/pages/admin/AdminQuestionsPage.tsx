@@ -231,6 +231,184 @@ const ComboboxField: React.FC<ComboboxFieldProps> = ({
   );
 };
 
+const ADMIN_MCQ_CHUNK_SIZE = 20;
+
+interface AdminMcqCardProps {
+  mcq: D1McqRow;
+  isSelected: boolean;
+  isExpanded: boolean;
+  universityName: string;
+  onToggleSelect: (id: string) => void;
+  onToggleExpand: (id: string) => void;
+  onEdit: (mcq: D1McqRow) => void;
+  onRequestDelete: (id: string, universityName: string) => void;
+}
+
+const AdminMcqCard = React.memo(function AdminMcqCard({
+  mcq,
+  isSelected,
+  isExpanded,
+  universityName,
+  onToggleSelect,
+  onToggleExpand,
+  onEdit,
+  onRequestDelete,
+}: AdminMcqCardProps) {
+  const diffClass =
+    mcq.difficulty === 'easy'
+      ? 'aqb-pill--easy'
+      : mcq.difficulty === 'hard'
+      ? 'aqb-pill--hard'
+      : 'aqb-pill--medium';
+
+  return (
+    <article
+      className={`cv-auto-card aqb-glass-card p-3.5 sm:p-4 ${
+        isSelected ? 'aqb-glass-card--selected' : ''
+      }`}
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <label
+          className="pt-0.5 flex items-center justify-center cursor-pointer shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect(mcq.id)}
+            aria-label="Select question"
+            className="w-4 h-4 rounded accent-[var(--accent)] cursor-pointer"
+          />
+        </label>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onToggleExpand(mcq.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onToggleExpand(mcq.id);
+            }
+          }}
+          className="flex-1 min-w-0 cursor-pointer"
+        >
+          {/* Tags & Correct Answer Badge */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="aqb-pill aqb-pill--tag truncate max-w-[140px]">
+                {mcq.subject}
+              </span>
+              <span className="aqb-pill aqb-pill--tag truncate max-w-[150px]">
+                {mcq.topic}
+              </span>
+              <span className={`aqb-pill ${diffClass}`}>
+                {mcq.difficulty || 'medium'}
+              </span>
+            </div>
+            <span className="aqb-pill aqb-pill--live tabular-nums">
+              Ans: {mcq.correct_answer}
+            </span>
+          </div>
+
+          {/* 2-Line Question Preview with KaTeX */}
+          <div
+            className={`text-sm font-semibold text-[var(--text)] leading-snug break-words ${
+              isExpanded ? '' : 'line-clamp-2'
+            }`}
+          >
+            <MathText text={mcq.question} />
+          </div>
+
+          <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted)]">
+            <span>{isExpanded ? 'Tap to collapse' : 'Tap to view options'}</span>
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded Options A-D, Explanation & Actions */}
+      {isExpanded && (
+        <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {(
+              [
+                ['A', mcq.option_a],
+                ['B', mcq.option_b],
+                ['C', mcq.option_c],
+                ['D', mcq.option_d],
+              ] as const
+            ).map(([letter, text]) => {
+              const isCorrect = mcq.correct_answer === letter;
+              return (
+                <div
+                  key={letter}
+                  className={`rounded-2xl p-2.5 border text-xs flex items-start gap-2 min-w-0 ${
+                    isCorrect
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text)] font-bold'
+                      : 'border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
+                      isCorrect
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-black/10 dark:bg-white/10 text-[var(--text)]'
+                    }`}
+                  >
+                    {letter}
+                  </span>
+                  <div className="min-w-0 break-words leading-relaxed">
+                    <MathText text={text} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {mcq.explanation ? (
+            <div className="rounded-2xl p-3 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
+              <div className="font-bold uppercase tracking-wider text-[10.5px] text-[var(--text-muted)] mb-1">
+                Explanation
+              </div>
+              <div className="leading-relaxed break-words">
+                <MathText text={mcq.explanation} />
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] italic text-[var(--text-muted)]">
+              No explanation provided.
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onEdit(mcq)}
+              className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3.5 text-xs"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onRequestDelete(mcq.id, universityName)}
+              className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3.5 text-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </article>
+  );
+});
+
 export const AdminQuestionsPage: React.FC = () => {
   const { profileLoading, isAdmin } = useAuth();
 
@@ -280,9 +458,36 @@ export const AdminQuestionsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterSheetOpen, setFilterSheetOpen] = useState<boolean>(false);
 
-  // MCQ Card Expansion & Multi-Select
+  // MCQ Card Expansion, Multi-Select & Chunked Rendering
   const [expandedMcqId, setExpandedMcqId] = useState<string | null>(null);
   const [selectedMcqIds, setSelectedMcqIds] = useState<Set<string>>(new Set());
+  const [visibleMcqCount, setVisibleMcqCount] = useState<number>(ADMIN_MCQ_CHUNK_SIZE);
+
+  useEffect(() => {
+    setVisibleMcqCount(ADMIN_MCQ_CHUNK_SIZE);
+  }, [selectedUniId, filterSubject, filterTopic, filterDifficulty, searchQuery]);
+
+  const visibleMcqs = useMemo(() => mcqs.slice(0, visibleMcqCount), [mcqs, visibleMcqCount]);
+
+  const handleToggleSelectMcq = useCallback((mcqId: string) => {
+    setSelectedMcqIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(mcqId)) next.delete(mcqId);
+      else next.add(mcqId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleExpandMcq = useCallback((mcqId: string) => {
+    setExpandedMcqId((prev) => (prev === mcqId ? null : mcqId));
+  }, []);
+
+  const handleRequestDeleteMcq = useCallback((mcqId: string, uniName: string) => {
+    setConfirmDeleteMcqModal({
+      ids: [mcqId],
+      label: `this MCQ from ${uniName || 'university'}`,
+    });
+  }, []);
 
   // Destructive & Move Confirmation Modals
   const [confirmDeleteMcqModal, setConfirmDeleteMcqModal] = useState<{
@@ -846,24 +1051,27 @@ export const AdminQuestionsPage: React.FC = () => {
     setMcqModalOpen(true);
   };
 
-  const openEditMcqModal = (mcq: D1McqRow) => {
-    setEditingMcq(mcq);
-    setMcqTargetUniId(mcq.university_id || selectedUniId);
-    setMcqUniPickerOpen(false);
-    setMcqSubject(mcq.subject);
-    setMcqTopic(mcq.topic);
-    setMcqDifficulty(mcq.difficulty || 'medium');
-    setMcqQuestion(mcq.question);
-    setMcqOptA(mcq.option_a);
-    setMcqOptB(mcq.option_b);
-    setMcqOptC(mcq.option_c);
-    setMcqOptD(mcq.option_d);
-    setMcqCorrect(mcq.correct_answer || 'A');
-    setMcqExplanation(mcq.explanation || '');
-    setMcqPreviewOpen(false);
-    setMcqDirty(false);
-    setMcqModalOpen(true);
-  };
+  const openEditMcqModal = useCallback(
+    (mcq: D1McqRow) => {
+      setEditingMcq(mcq);
+      setMcqTargetUniId(mcq.university_id || selectedUniId);
+      setMcqUniPickerOpen(false);
+      setMcqSubject(mcq.subject);
+      setMcqTopic(mcq.topic);
+      setMcqDifficulty(mcq.difficulty || 'medium');
+      setMcqQuestion(mcq.question);
+      setMcqOptA(mcq.option_a);
+      setMcqOptB(mcq.option_b);
+      setMcqOptC(mcq.option_c);
+      setMcqOptD(mcq.option_d);
+      setMcqCorrect(mcq.correct_answer || 'A');
+      setMcqExplanation(mcq.explanation || '');
+      setMcqPreviewOpen(false);
+      setMcqDirty(false);
+      setMcqModalOpen(true);
+    },
+    [selectedUniId]
+  );
 
   const insertLatexSnippet = (snippet: string) => {
     const el = questionInputRef.current;
@@ -1856,7 +2064,7 @@ export const AdminQuestionsPage: React.FC = () => {
               <div className="flex flex-col gap-2.5">
                 <div className="flex items-center justify-between px-1 text-xs font-semibold text-[var(--text-muted)]">
                   <span className="tabular-nums">
-                    Showing {mcqs.length} of {totalMcqsForFilter.toLocaleString()} MCQs
+                    Showing {visibleMcqs.length} of {totalMcqsForFilter.toLocaleString()} MCQs
                   </span>
                   {mcqs.length > 0 && (
                     <button
@@ -1875,194 +2083,40 @@ export const AdminQuestionsPage: React.FC = () => {
                   )}
                 </div>
 
-                {mcqs.map((mcq) => {
-                  const isSelected = selectedMcqIds.has(mcq.id);
-                  const isExpanded = expandedMcqId === mcq.id;
-                  const diffClass =
-                    mcq.difficulty === 'easy'
-                      ? 'aqb-pill--easy'
-                      : mcq.difficulty === 'hard'
-                      ? 'aqb-pill--hard'
-                      : 'aqb-pill--medium';
+                {visibleMcqs.map((mcq) => (
+                  <AdminMcqCard
+                    key={mcq.id}
+                    mcq={mcq}
+                    isSelected={selectedMcqIds.has(mcq.id)}
+                    isExpanded={expandedMcqId === mcq.id}
+                    universityName={selectedUniversity?.name || 'university'}
+                    onToggleSelect={handleToggleSelectMcq}
+                    onToggleExpand={handleToggleExpandMcq}
+                    onEdit={openEditMcqModal}
+                    onRequestDelete={handleRequestDeleteMcq}
+                  />
+                ))}
 
-                  return (
-                    <article
-                      key={mcq.id}
-                      className={`aqb-glass-card p-3.5 sm:p-4 ${
-                        isSelected ? 'aqb-glass-card--selected' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-3 min-w-0">
-                        <label
-                          className="pt-0.5 flex items-center justify-center cursor-pointer shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              setSelectedMcqIds((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(mcq.id)) next.delete(mcq.id);
-                                else next.add(mcq.id);
-                                return next;
-                              });
-                            }}
-                            aria-label="Select question"
-                            className="w-4 h-4 rounded accent-[var(--accent)] cursor-pointer"
-                          />
-                        </label>
-
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          onClick={() =>
-                            setExpandedMcqId((prev) => (prev === mcq.id ? null : mcq.id))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              setExpandedMcqId((prev) => (prev === mcq.id ? null : mcq.id));
-                            }
-                          }}
-                          className="flex-1 min-w-0 cursor-pointer"
-                        >
-                          {/* Tags & Correct Answer Badge */}
-                          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2">
-                            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                              <span className="aqb-pill aqb-pill--tag truncate max-w-[140px]">
-                                {mcq.subject}
-                              </span>
-                              <span className="aqb-pill aqb-pill--tag truncate max-w-[150px]">
-                                {mcq.topic}
-                              </span>
-                              <span className={`aqb-pill ${diffClass}`}>
-                                {mcq.difficulty || 'medium'}
-                              </span>
-                            </div>
-                            <span className="aqb-pill aqb-pill--live tabular-nums">
-                              Ans: {mcq.correct_answer}
-                            </span>
-                          </div>
-
-                          {/* 2-Line Question Preview with KaTeX */}
-                          <div
-                            className={`text-sm font-semibold text-[var(--text)] leading-snug break-words ${
-                              isExpanded ? '' : 'line-clamp-2'
-                            }`}
-                          >
-                            <MathText text={mcq.question} />
-                          </div>
-
-                          <div className="mt-2 flex items-center justify-between text-[11px] font-semibold text-[var(--text-muted)]">
-                            <span>{isExpanded ? 'Tap to collapse' : 'Tap to view options'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Expanded Options A-D, Explanation & Actions */}
-                      {isExpanded && (
-                        <div className="mt-3 pt-3 border-t border-[var(--border)] flex flex-col gap-2.5">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {(
-                              [
-                                ['A', mcq.option_a],
-                                ['B', mcq.option_b],
-                                ['C', mcq.option_c],
-                                ['D', mcq.option_d],
-                              ] as const
-                            ).map(([letter, text]) => {
-                              const isCorrect = mcq.correct_answer === letter;
-                              return (
-                                <div
-                                  key={letter}
-                                  className={`rounded-2xl p-2.5 border text-xs flex items-start gap-2 min-w-0 ${
-                                    isCorrect
-                                      ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text)] font-bold'
-                                      : 'border-[var(--border)] bg-black/[0.02] dark:bg-white/[0.03] text-[var(--text-secondary)]'
-                                  }`}
-                                >
-                                  <span
-                                    className={`w-5 h-5 rounded-full text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
-                                      isCorrect
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-black/10 dark:bg-white/10 text-[var(--text)]'
-                                    }`}
-                                  >
-                                    {letter}
-                                  </span>
-                                  <div className="min-w-0 break-words leading-relaxed">
-                                    <MathText text={text} />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {mcq.explanation ? (
-                            <div className="rounded-2xl p-3 bg-black/[0.03] dark:bg-white/[0.04] border border-[var(--border)] text-xs text-[var(--text-secondary)]">
-                              <div className="font-bold uppercase tracking-wider text-[10.5px] text-[var(--text-muted)] mb-1">
-                                Explanation
-                              </div>
-                              <div className="leading-relaxed break-words">
-                                <MathText text={mcq.explanation} />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="text-[11px] italic text-[var(--text-muted)]">
-                              No explanation provided.
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-end gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditMcqModal(mcq)}
-                              className="aqb-btn aqb-btn--glass !min-h-[44px] !px-3.5 text-xs"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setConfirmDeleteMcqModal({
-                                  ids: [mcq.id],
-                                  label: `this MCQ from ${
-                                    selectedUniversity?.name || 'university'
-                                  }`,
-                                })
-                              }
-                              className="aqb-btn aqb-btn--danger !min-h-[44px] !px-3.5 text-xs"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-
-                {/* Pagination: Load More after 50 rows */}
-                {mcqs.length < totalMcqsForFilter && (
+                {/* Chunked Pagination: reveal 20 at a time locally, then fetch next server page */}
+                {(visibleMcqCount < mcqs.length || mcqs.length < totalMcqsForFilter) && (
                   <button
                     type="button"
                     disabled={loadingMoreMcqs}
-                    onClick={handleLoadMoreMcqs}
+                    onClick={() => {
+                      if (visibleMcqCount < mcqs.length) {
+                        setVisibleMcqCount((c) => c + ADMIN_MCQ_CHUNK_SIZE);
+                      } else {
+                        setVisibleMcqCount((c) => c + ADMIN_MCQ_CHUNK_SIZE);
+                        void handleLoadMoreMcqs();
+                      }
+                    }}
                     className="aqb-btn aqb-btn--glass w-full mt-1"
                   >
                     {loadingMoreMcqs ? (
                       <ButtonLineLoader label="Loading more…" />
                     ) : (
                       <span>
-                        Load more ({mcqs.length} of {totalMcqsForFilter.toLocaleString()})
+                        Load more ({visibleMcqs.length} of {totalMcqsForFilter.toLocaleString()})
                       </span>
                     )}
                   </button>

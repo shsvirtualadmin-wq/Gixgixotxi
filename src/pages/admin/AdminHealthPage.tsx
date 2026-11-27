@@ -359,6 +359,13 @@ export function AdminHealthPage() {
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      activeRunIdRef.current += 1;
+      stopElapsedTimer();
+    };
+  }, [stopElapsedTimer]);
+
   const runAllChecks = useCallback(async () => {
     const runId = ++activeRunIdRef.current;
     const isStale = () => activeRunIdRef.current !== runId;

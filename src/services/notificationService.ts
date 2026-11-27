@@ -2035,15 +2035,7 @@ export function subscribeToNotificationStore(
   return () => {
     storeSubscribers.delete(onSnapshotChange);
     if (storeSubscribers.size === 0) {
-      if (activeFirestoreUnsub) {
-        activeFirestoreUnsub();
-        activeFirestoreUnsub = null;
-      }
-      if (activePollTimer) {
-        clearInterval(activePollTimer);
-        activePollTimer = null;
-      }
-      activeStore.userId = '';
+      attachUserRealtimeStore('');
     }
   };
 }

@@ -104,7 +104,7 @@ export const PlusBadge: React.FC<PlusBadgeProps> = React.memo(function PlusBadge
     Boolean(badge?.animated) &&
     animated &&
     !priority &&
-    (listMode !== undefined ? listMode : size === 'sm' || size === 'icon');
+    (listMode !== undefined ? listMode : true);
 
   const shouldPauseStaticOrDisabled =
     !badge?.animated || !animated || isReducedMotionActive();

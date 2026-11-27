@@ -132,13 +132,23 @@ export function setBoardlyUILitePreference(enabled: boolean): void {
   }
 }
 
-let pointerDelegateInstalled = false;
+let pointerDelegateRefCount = 0;
+let teardownPointerDelegate: (() => void) | null = null;
 
-function ensureGlobalGlassPressDelegate(): void {
-  if (typeof window === 'undefined' || typeof document === 'undefined' || pointerDelegateInstalled) {
-    return;
+function acquireGlobalGlassPressDelegate(): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return () => {};
   }
-  pointerDelegateInstalled = true;
+  pointerDelegateRefCount += 1;
+  if (teardownPointerDelegate) {
+    return () => {
+      pointerDelegateRefCount = Math.max(0, pointerDelegateRefCount - 1);
+      if (pointerDelegateRefCount === 0 && teardownPointerDelegate) {
+        teardownPointerDelegate();
+        teardownPointerDelegate = null;
+      }
+    };
+  }
 
   let activeEl: HTMLElement | null = null;
   let reboundTimer: number | null = null;
@@ -229,6 +239,30 @@ function ensureGlobalGlassPressDelegate(): void {
   document.addEventListener('pointerdown', handlePointerDown, { passive: true });
   document.addEventListener('pointerup', releaseActive, { passive: true });
   document.addEventListener('pointercancel', releaseActive, { passive: true });
+
+  teardownPointerDelegate = () => {
+    document.removeEventListener('pointerdown', handlePointerDown);
+    document.removeEventListener('pointerup', releaseActive);
+    document.removeEventListener('pointercancel', releaseActive);
+    if (reboundTimer !== null) {
+      window.clearTimeout(reboundTimer);
+      reboundTimer = null;
+    }
+    if (activeEl) {
+      activeEl.removeAttribute('data-pressed');
+      activeEl.removeAttribute('data-rebound');
+      clearWillChange(activeEl);
+      activeEl = null;
+    }
+  };
+
+  return () => {
+    pointerDelegateRefCount = Math.max(0, pointerDelegateRefCount - 1);
+    if (pointerDelegateRefCount === 0 && teardownPointerDelegate) {
+      teardownPointerDelegate();
+      teardownPointerDelegate = null;
+    }
+  };
 }
 
 /**
@@ -245,7 +279,7 @@ export function useBoardlyUIMode() {
     setUIModeState(current);
     setUILiteState(currentLite);
     applyBoardlyUIModeToDocument(current, currentLite);
-    ensureGlobalGlassPressDelegate();
+    const releasePressDelegate = acquireGlobalGlassPressDelegate();
 
     const handleCustomChange = (e: Event) => {
       const customEvent = e as CustomEvent<BoardlyUIMode>;
@@ -279,6 +313,7 @@ export function useBoardlyUIMode() {
     window.addEventListener(BOARDLY_UI_LITE_EVENT, handleLiteChange);
     window.addEventListener('storage', handleStorage);
     return () => {
+      releasePressDelegate();
       window.removeEventListener(BOARDLY_UI_EVENT, handleCustomChange);
       window.removeEventListener(BOARDLY_UI_LITE_EVENT, handleLiteChange);
       window.removeEventListener('storage', handleStorage);

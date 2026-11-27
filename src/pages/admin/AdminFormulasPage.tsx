@@ -136,6 +136,112 @@ const AdminFormulaMathBox: React.FC<{ latex: string }> = ({ latex }) => {
   );
 };
 
+const ADMIN_FORMULA_CHUNK_SIZE = 20;
+
+interface AdminFormulaCardProps {
+  formula: D1FormulaItemRow;
+  isFirst: boolean;
+  isLast: boolean;
+  disableReorder: boolean;
+  onToggleStatus: (formula: D1FormulaItemRow) => void;
+  onMove: (formulaId: string, direction: -1 | 1) => void;
+  onEdit: (formula: D1FormulaItemRow) => void;
+  onDelete: (formula: D1FormulaItemRow) => void;
+}
+
+const AdminFormulaCard = React.memo(function AdminFormulaCard({
+  formula,
+  isFirst,
+  isLast,
+  disableReorder,
+  onToggleStatus,
+  onMove,
+  onEdit,
+  onDelete,
+}: AdminFormulaCardProps) {
+  return (
+    <article className="cv-auto-card aqb-glass-card p-3.5">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="aqb-pill aqb-pill--admin tabular-nums">
+            #{formula.formula_no}
+          </span>
+          {formula.title && (
+            <span className="text-xs font-extrabold text-[var(--text)]">
+              {formula.title}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onToggleStatus(formula)}
+            title="Click to toggle Live / Draft"
+            className={`aqb-pill cursor-pointer ${
+              formula.status === 'live'
+                ? 'aqb-pill--live'
+                : 'aqb-pill--coming-soon'
+            }`}
+          >
+            {formula.status.toUpperCase()}
+          </button>
+          {formula.is_featured === 1 && (
+            <span className="aqb-pill aqb-pill--tag">
+              Formula of Day Pool
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            disabled={isFirst || disableReorder}
+            onClick={() => onMove(formula.id, -1)}
+            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
+            title="Move up"
+          >
+            <ArrowUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            disabled={isLast || disableReorder}
+            onClick={() => onMove(formula.id, 1)}
+            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
+            title="Move down"
+          >
+            <ArrowDown className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onEdit(formula)}
+            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
+            title="Edit formula"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(formula)}
+            className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] text-red-500"
+            title="Delete formula"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <AdminFormulaMathBox latex={formula.formula_latex} />
+
+      <div className="mt-2.5 flex flex-col gap-1.5 text-xs text-[var(--text-muted)]">
+        <p className="leading-relaxed break-words">
+          {formula.note || 'No note'}
+        </p>
+        <code className="block w-full rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2.5 py-1.5 font-mono text-[11px] leading-relaxed opacity-85 break-words whitespace-pre-wrap">
+          {formula.formula_latex}
+        </code>
+      </div>
+    </article>
+  );
+});
+
 export const AdminFormulasPage: React.FC = () => {
   // Primary tabs: Formulas | Health | Reports
   const [activeTab, setActiveTab] = useState<PrimaryTab>('formulas');
@@ -153,6 +259,11 @@ export const AdminFormulasPage: React.FC = () => {
   // Filters inside Formulas tab
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'draft'>('all');
+  const [visibleFormulaCount, setVisibleFormulaCount] = useState<number>(ADMIN_FORMULA_CHUNK_SIZE);
+
+  useEffect(() => {
+    setVisibleFormulaCount(ADMIN_FORMULA_CHUNK_SIZE);
+  }, [selectedChapterId, searchQuery, statusFilter]);
 
   // Menus
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -656,7 +767,7 @@ export const AdminFormulasPage: React.FC = () => {
     setFormulaModalOpen(true);
   };
 
-  const openEditFormulaModal = (formula: D1FormulaItemRow) => {
+  const openEditFormulaModal = useCallback((formula: D1FormulaItemRow) => {
     setEditingFormula(formula);
     setFNoInput(formula.formula_no);
     setFTitleInput(formula.title || '');
@@ -666,7 +777,7 @@ export const AdminFormulasPage: React.FC = () => {
     setFStatusInput(formula.status === 'draft' ? 'draft' : 'live');
     setFFeaturedInput(formula.is_featured === 1);
     setFormulaModalOpen(true);
-  };
+  }, []);
 
   const formulaLatexValidation = useMemo(() => {
     if (!fLatexInput.trim()) return { valid: true };
@@ -722,57 +833,66 @@ export const AdminFormulasPage: React.FC = () => {
     }
   };
 
-  const handleToggleFormulaStatus = async (formula: D1FormulaItemRow) => {
-    const nextStatus = formula.status === 'live' ? 'draft' : 'live';
-    try {
-      await updateFormulaItem(formula.id, { status: nextStatus });
-      showBanner('success', `Formula #${formula.formula_no} marked as ${nextStatus.toUpperCase()}.`);
-      if (selectedChapter) {
+  const handleToggleFormulaStatus = useCallback(
+    async (formula: D1FormulaItemRow) => {
+      const nextStatus = formula.status === 'live' ? 'draft' : 'live';
+      try {
+        await updateFormulaItem(formula.id, { status: nextStatus });
+        showBanner('success', `Formula #${formula.formula_no} marked as ${nextStatus.toUpperCase()}.`);
+        if (selectedChapter) {
+          await loadChapterFormulas(selectedChapter.id, true);
+        }
+        await loadOverview(true);
+      } catch (err: any) {
+        showBanner('error', err?.message || 'Failed to update status.');
+      }
+    },
+    [selectedChapter, loadChapterFormulas, loadOverview, showBanner]
+  );
+
+  const handleMoveFormula = useCallback(
+    async (formulaId: string, direction: -1 | 1) => {
+      if (!selectedChapter) return;
+      const index = chapterFormulas.findIndex((f) => f.id === formulaId);
+      const targetIdx = index + direction;
+      if (index < 0 || targetIdx < 0 || targetIdx >= chapterFormulas.length) return;
+      const next = [...chapterFormulas];
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIdx, 0, moved);
+      const renumbered = next.map((f, i) => ({ ...f, formula_no: i + 1, sort_order: i + 1 }));
+      setChapterFormulas(renumbered);
+      try {
+        await reorderFormulaItems(
+          selectedChapter.id,
+          renumbered.map((f) => f.id)
+        );
+        await loadChapterFormulas(selectedChapter.id, true);
+      } catch (err: any) {
+        showBanner('error', err?.message || 'Failed to reorder formulas.');
         await loadChapterFormulas(selectedChapter.id, true);
       }
-      await loadOverview(true);
-    } catch (err: any) {
-      showBanner('error', err?.message || 'Failed to update status.');
-    }
-  };
+    },
+    [selectedChapter, chapterFormulas, loadChapterFormulas, showBanner]
+  );
 
-  const handleMoveFormula = async (formulaId: string, direction: -1 | 1) => {
-    if (!selectedChapter) return;
-    const index = chapterFormulas.findIndex((f) => f.id === formulaId);
-    const targetIdx = index + direction;
-    if (index < 0 || targetIdx < 0 || targetIdx >= chapterFormulas.length) return;
-    const next = [...chapterFormulas];
-    const [moved] = next.splice(index, 1);
-    next.splice(targetIdx, 0, moved);
-    const renumbered = next.map((f, i) => ({ ...f, formula_no: i + 1, sort_order: i + 1 }));
-    setChapterFormulas(renumbered);
-    try {
-      await reorderFormulaItems(
-        selectedChapter.id,
-        renumbered.map((f) => f.id)
-      );
-      await loadChapterFormulas(selectedChapter.id, true);
-    } catch (err: any) {
-      showBanner('error', err?.message || 'Failed to reorder formulas.');
-      await loadChapterFormulas(selectedChapter.id, true);
-    }
-  };
-
-  const handleDeleteFormula = async (formula: D1FormulaItemRow) => {
-    if (!window.confirm(`Delete Formula #${formula.formula_no} from "${selectedChapter?.title}"?`)) {
-      return;
-    }
-    try {
-      await deleteFormulaItem(formula.id, selectedChapter?.id);
-      showBanner('success', `Deleted Formula #${formula.formula_no}.`);
-      if (selectedChapter) {
-        await loadChapterFormulas(selectedChapter.id, true);
+  const handleDeleteFormula = useCallback(
+    async (formula: D1FormulaItemRow) => {
+      if (!window.confirm(`Delete Formula #${formula.formula_no} from "${selectedChapter?.title}"?`)) {
+        return;
       }
-      await loadOverview(true);
-    } catch (err: any) {
-      showBanner('error', err?.message || 'Failed to delete formula.');
-    }
-  };
+      try {
+        await deleteFormulaItem(formula.id, selectedChapter?.id);
+        showBanner('success', `Deleted Formula #${formula.formula_no}.`);
+        if (selectedChapter) {
+          await loadChapterFormulas(selectedChapter.id, true);
+        }
+        await loadOverview(true);
+      } catch (err: any) {
+        showBanner('error', err?.message || 'Failed to delete formula.');
+      }
+    },
+    [selectedChapter, loadChapterFormulas, loadOverview, showBanner]
+  );
 
   // ── Bulk Import Formulas Wizard Handlers ──────────────────────────────────
   const openBulkImportModal = () => {
@@ -1513,94 +1633,34 @@ export const AdminFormulasPage: React.FC = () => {
                         </button>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-2.5">
-                        {filteredFormulas.map((formula, idx) => (
-                          <article key={formula.id} className="aqb-glass-card p-3.5">
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="aqb-pill aqb-pill--admin tabular-nums">
-                                  #{formula.formula_no}
-                                </span>
-                                {formula.title && (
-                                  <span className="text-xs font-extrabold text-[var(--text)]">
-                                    {formula.title}
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleFormulaStatus(formula)}
-                                  title="Click to toggle Live / Draft"
-                                  className={`aqb-pill cursor-pointer ${
-                                    formula.status === 'live'
-                                      ? 'aqb-pill--live'
-                                      : 'aqb-pill--coming-soon'
-                                  }`}
-                                >
-                                  {formula.status.toUpperCase()}
-                                </button>
-                                {formula.is_featured === 1 && (
-                                  <span className="aqb-pill aqb-pill--tag">
-                                    Formula of Day Pool
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  disabled={
-                                    idx === 0 || Boolean(searchQuery.trim()) || statusFilter !== 'all'
-                                  }
-                                  onClick={() => handleMoveFormula(formula.id, -1)}
-                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                                  title="Move up"
-                                >
-                                  <ArrowUp className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={
-                                    idx === filteredFormulas.length - 1 ||
-                                    Boolean(searchQuery.trim()) ||
-                                    statusFilter !== 'all'
-                                  }
-                                  onClick={() => handleMoveFormula(formula.id, 1)}
-                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] disabled:opacity-30"
-                                  title="Move down"
-                                >
-                                  <ArrowDown className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => openEditFormulaModal(formula)}
-                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px]"
-                                  title="Edit formula"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteFormula(formula)}
-                                  className="aqb-icon-btn !w-8 !h-8 !min-w-[32px] !min-h-[32px] text-red-500"
-                                  title="Delete formula"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-
-                            <AdminFormulaMathBox latex={formula.formula_latex} />
-
-                            <div className="mt-2.5 flex flex-col gap-1.5 text-xs text-[var(--text-muted)]">
-                              <p className="leading-relaxed break-words">
-                                {formula.note || 'No note'}
-                              </p>
-                              <code className="block w-full rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-2.5 py-1.5 font-mono text-[11px] leading-relaxed opacity-85 break-words whitespace-pre-wrap">
-                                {formula.formula_latex}
-                              </code>
-                            </div>
-                          </article>
-                        ))}
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-2.5">
+                          {filteredFormulas.slice(0, visibleFormulaCount).map((formula, idx) => (
+                            <AdminFormulaCard
+                              key={formula.id}
+                              formula={formula}
+                              isFirst={idx === 0}
+                              isLast={idx === filteredFormulas.length - 1}
+                              disableReorder={Boolean(searchQuery.trim()) || statusFilter !== 'all'}
+                              onToggleStatus={handleToggleFormulaStatus}
+                              onMove={handleMoveFormula}
+                              onEdit={openEditFormulaModal}
+                              onDelete={handleDeleteFormula}
+                            />
+                          ))}
+                        </div>
+                        {filteredFormulas.length > visibleFormulaCount && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisibleFormulaCount((c) => c + ADMIN_FORMULA_CHUNK_SIZE)
+                            }
+                            className="aqb-btn aqb-btn--glass w-full"
+                          >
+                            Load more ({Math.min(visibleFormulaCount, filteredFormulas.length)} of{' '}
+                            {filteredFormulas.length})
+                          </button>
+                        )}
                       </div>
                     )}
                   </>

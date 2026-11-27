@@ -25,47 +25,65 @@ function emitStoreChange(): void {
   }
 }
 
+let adFreeWindowListenersAttached = false;
+
+function handleAdFreeStorageEvent(e: StorageEvent): void {
+  if (!e.key || !e.key.startsWith(STORAGE_KEY_PREFIX)) return;
+  const uid = e.key.slice(STORAGE_KEY_PREFIX.length);
+  if (!uid) return;
+  if (e.newValue === '1') {
+    inMemoryAdFreeOverrides.set(uid, { value: true, updatedAt: Date.now() });
+  } else if (e.newValue === '0') {
+    inMemoryAdFreeOverrides.set(uid, { value: false, updatedAt: Date.now() });
+  } else {
+    inMemoryAdFreeOverrides.delete(uid);
+  }
+  emitStoreChange();
+}
+
+function handleAdFreeCustomEvent(e: Event): void {
+  const detail = (e as CustomEvent<{ uid?: string; adFreeEnabled?: boolean }>).detail;
+  if (detail?.uid && typeof detail.adFreeEnabled === 'boolean') {
+    const existing = inMemoryAdFreeOverrides.get(detail.uid);
+    if (!existing || existing.value !== detail.adFreeEnabled) {
+      inMemoryAdFreeOverrides.set(detail.uid, {
+        value: detail.adFreeEnabled,
+        updatedAt: Date.now(),
+      });
+      emitStoreChange();
+    }
+  }
+}
+
+function attachAdFreeWindowListeners(): void {
+  if (typeof window === 'undefined' || adFreeWindowListenersAttached) return;
+  adFreeWindowListenersAttached = true;
+  window.addEventListener('storage', handleAdFreeStorageEvent);
+  window.addEventListener(AD_FREE_EVENT, handleAdFreeCustomEvent);
+}
+
+function detachAdFreeWindowListeners(): void {
+  if (typeof window === 'undefined' || !adFreeWindowListenersAttached) return;
+  adFreeWindowListenersAttached = false;
+  window.removeEventListener('storage', handleAdFreeStorageEvent);
+  window.removeEventListener(AD_FREE_EVENT, handleAdFreeCustomEvent);
+}
+
 function subscribeAdFreeStore(listener: () => void): () => void {
+  if (storeListeners.size === 0) {
+    attachAdFreeWindowListeners();
+  }
   storeListeners.add(listener);
   return () => {
     storeListeners.delete(listener);
+    if (storeListeners.size === 0) {
+      detachAdFreeWindowListeners();
+    }
   };
 }
 
 function getAdFreeStoreVersion(): number {
   return storeVersion;
-}
-
-if (typeof window !== 'undefined') {
-  // Cross-tab reactivity when user changes the toggle in another tab
-  window.addEventListener('storage', (e: StorageEvent) => {
-    if (!e.key || !e.key.startsWith(STORAGE_KEY_PREFIX)) return;
-    const uid = e.key.slice(STORAGE_KEY_PREFIX.length);
-    if (!uid) return;
-    if (e.newValue === '1') {
-      inMemoryAdFreeOverrides.set(uid, { value: true, updatedAt: Date.now() });
-    } else if (e.newValue === '0') {
-      inMemoryAdFreeOverrides.set(uid, { value: false, updatedAt: Date.now() });
-    } else {
-      inMemoryAdFreeOverrides.delete(uid);
-    }
-    emitStoreChange();
-  });
-
-  // Backwards-compatible listener for custom window event
-  window.addEventListener(AD_FREE_EVENT, (e: Event) => {
-    const detail = (e as CustomEvent<{ uid?: string; adFreeEnabled?: boolean }>).detail;
-    if (detail?.uid && typeof detail.adFreeEnabled === 'boolean') {
-      const existing = inMemoryAdFreeOverrides.get(detail.uid);
-      if (!existing || existing.value !== detail.adFreeEnabled) {
-        inMemoryAdFreeOverrides.set(detail.uid, {
-          value: detail.adFreeEnabled,
-          updatedAt: Date.now(),
-        });
-        emitStoreChange();
-      }
-    }
-  });
 }
 
 /**

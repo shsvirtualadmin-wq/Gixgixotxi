@@ -32,15 +32,6 @@ import {
   invalidateSwrCache,
   consumeEarlyPostsFetch,
 } from '@/lib/swrCache';
-let seedPostsDatasetPromise: Promise<{ posts?: Record<string, any>[] } | null> | null = null;
-async function loadSeedPostsDataset(): Promise<{ posts?: Record<string, any>[] } | null> {
-  if (!seedPostsDatasetPromise) {
-    seedPostsDatasetPromise = import('../../data/cloudflare_d1_posts.json')
-      .then((mod) => (mod.default || mod) as { posts?: Record<string, any>[] })
-      .catch(() => null);
-  }
-  return seedPostsDatasetPromise;
-}
 
 import {
   POST_LIMITS,
@@ -983,69 +974,15 @@ export async function fetchCommonsPosts(options: {
       }
     }
 
-    // 3. Fallback to bundled canonical D1 seed posts if the remote endpoint returned 0 posts
-    // on a public feed request ('all' or 'trending')
-    const shouldTrySeedFallback =
-      (!data || !Array.isArray(data.posts) || data.posts.length === 0) &&
-      (!options.feedTab || options.feedTab === 'all' || options.feedTab === 'trending') &&
-      !options.searchQuery?.trim();
-
-    const seedPostsDataset = shouldTrySeedFallback ? await loadSeedPostsDataset() : null;
-    const canFallbackToSeed =
-      shouldTrySeedFallback &&
-      Array.isArray(seedPostsDataset?.posts) &&
-      seedPostsDataset.posts.length > 0;
-
-    if (canFallbackToSeed && seedPostsDataset?.posts) {
-      let seedRows = (seedPostsDataset.posts as Record<string, any>[]).filter(
-        (p) => !Number(p.is_hidden || 0)
-      );
-      if (options.subject && options.subject !== 'all') {
-        const sLow = options.subject.toLowerCase();
-        seedRows = seedRows.filter((p) => {
-          const ps = String(p.subject || '').toLowerCase();
-          return ps === sLow || ps.includes(sLow) || (sLow === 'computer' && ps.includes('computer'));
-        });
-      }
-      if (options.type && options.type !== 'all') {
-        seedRows = seedRows.filter((p) => p.type === options.type);
-      }
-      if (options.target && options.target !== 'all') {
-        const tLow = options.target.toLowerCase();
-        seedRows = seedRows.filter((p) => String(p.target || '').toLowerCase().includes(tLow));
-      }
-      if (isTrending) {
-        const now = Date.now();
-        seedRows = [...seedRows].sort((a, b) => {
-          const aCreated = Number(a.created_at || 0);
-          const bCreated = Number(b.created_at || 0);
-          const aAgeDays = Math.max(0, (now - aCreated) / (24 * 60 * 60 * 1000));
-          const bAgeDays = Math.max(0, (now - bCreated) / (24 * 60 * 60 * 1000));
-          const aScore =
-            Number(a.upvotes || 0) * 3 +
-            Number(a.comment_count || 0) * 2 +
-            Math.max(0, 14 - aAgeDays) * 0.25;
-          const bScore =
-            Number(b.upvotes || 0) * 3 +
-            Number(b.comment_count || 0) * 2 +
-            Math.max(0, 14 - bAgeDays) * 0.25;
-          if (Math.abs(bScore - aScore) > 0.01) return bScore - aScore;
-          return bCreated - aCreated;
-        });
-      }
-      const pagedSeed = seedRows.slice(offset, offset + pageSize);
-      const seedHasMore = offset + pageSize < seedRows.length;
+    // 3. API-only empty-state fallback if the remote endpoint was unreachable on a public feed
+    if (!data || !Array.isArray(data.posts)) {
       data = {
         success: true,
         backendMode: 'cloudflare-d1-r2',
-        posts: pagedSeed,
-        hasMore: seedHasMore,
-        nextOffset: seedHasMore ? offset + pageSize : null,
+        posts: [],
+        hasMore: false,
+        nextOffset: null,
       };
-    }
-
-    if (!data || !Array.isArray(data.posts)) {
-      throw new Error('Could not load community posts');
     }
 
     const rawPosts: CommonsPost[] = data.posts.map((p: any) => normalizeCloudflarePost(p));
@@ -1178,24 +1115,7 @@ export async function fetchCommonsPostById(postIdOrSlug: string): Promise<Common
           }
         }
       } catch {
-        // Fallback to seedPostsDataset below
-      }
-
-      if (!rawPost) {
-        const seedPostsDataset = await loadSeedPostsDataset();
-        if (Array.isArray(seedPostsDataset?.posts)) {
-          const cleanTarget = decodeURIComponent(postIdOrSlug).trim();
-          const seedMatch = (seedPostsDataset.posts as Record<string, any>[]).find(
-            (sp) =>
-              sp.id === cleanTarget ||
-              sp.id === extractedId ||
-              sp.slug === cleanTarget ||
-              cleanTarget.startsWith(`${sp.id}-`)
-          );
-          if (seedMatch && !Number(seedMatch.is_hidden || 0)) {
-            rawPost = seedMatch;
-          }
-        }
+        // API-only: return null on failure
       }
 
       if (!rawPost) return null;

@@ -24,6 +24,17 @@ class StoreVideoPlaybackGovernor {
   private prefersReducedMotion = false;
   private isTabVisible = true;
   private initialized = false;
+  private mql: MediaQueryList | null = null;
+  private handleReducedMotionChange = (e: MediaQueryListEvent) => {
+    this.prefersReducedMotion = e.matches;
+    this.rebalance();
+  };
+  private handleVisibilityChange = () => {
+    if (typeof document !== 'undefined') {
+      this.isTabVisible = document.visibilityState === 'visible';
+      this.rebalance();
+    }
+  };
 
   private resolveVideoEl(sub: VideoSubscriber): HTMLVideoElement | null {
     return sub.getVideoEl ? sub.getVideoEl() : (sub.videoEl ?? null);
@@ -51,26 +62,43 @@ class StoreVideoPlaybackGovernor {
 
     try {
       const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.mql = mql;
       this.prefersReducedMotion = mql.matches;
-      mql.addEventListener('change', (e) => {
-        this.prefersReducedMotion = e.matches;
-        this.rebalance();
-      });
+      mql.addEventListener('change', this.handleReducedMotionChange);
     } catch {
       // ignore
     }
 
     if (typeof document !== 'undefined') {
       this.isTabVisible = document.visibilityState === 'visible';
-      document.addEventListener('visibilitychange', () => {
-        this.isTabVisible = document.visibilityState === 'visible';
-        this.rebalance();
-      });
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+  }
+
+  private teardownListeners() {
+    if (!this.initialized) return;
+    this.initialized = false;
+    if (this.mql) {
+      try {
+        this.mql.removeEventListener('change', this.handleReducedMotionChange);
+      } catch {
+        // ignore
+      }
+      this.mql = null;
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
   }
 
   isReducedMotion(): boolean {
-    this.initListeners();
+    if (typeof window !== 'undefined') {
+      try {
+        this.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      } catch {
+        // ignore
+      }
+    }
     return this.prefersReducedMotion || getSmoothMode();
   }
 
@@ -81,7 +109,11 @@ class StoreVideoPlaybackGovernor {
     return () => {
       this.subscribers.delete(sub.id);
       this.activeIds.delete(sub.id);
-      this.rebalance();
+      if (this.subscribers.size === 0) {
+        this.teardownListeners();
+      } else {
+        this.rebalance();
+      }
     };
   }
 

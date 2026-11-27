@@ -3174,7 +3174,7 @@ html[data-tab-hidden="true"] *::after {
 :root,
 .light,
 [data-theme="light"] {
-  --glass-menu-bg: rgba(255, 255, 255, 0.70);
+  --glass-menu-bg: rgba(255, 255, 255, 0.84);
   --glass-menu-fallback: rgba(255, 255, 255, 0.92);
   --glass-menu-border: rgba(0, 0, 0, 0.06);
   --glass-menu-divider: rgba(0, 0, 0, 0.07);
@@ -3190,7 +3190,7 @@ html[data-tab-hidden="true"] *::after {
 
 .dark,
 [data-theme="dark"] {
-  --glass-menu-bg: rgba(0, 0, 0, 0.40);
+  --glass-menu-bg: rgba(14, 14, 18, 0.72);
   --glass-menu-fallback: rgba(20, 20, 22, 0.92);
   --glass-menu-border: rgba(255, 255, 255, 0.10);
   --glass-menu-divider: rgba(255, 255, 255, 0.10);
@@ -3269,8 +3269,8 @@ html[data-tab-hidden="true"] *::after {
   background: var(--glass-menu-bg) !important;
   border: 1px solid var(--glass-menu-border) !important;
   box-shadow: var(--glass-menu-shadow) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  backdrop-filter: blur(12px) !important;
   color: var(--text);
   display: flex;
   flex-direction: column;
@@ -3308,8 +3308,8 @@ html[data-tab-hidden="true"] *::after {
   background: var(--glass-menu-bg) !important;
   border: 1px solid var(--glass-menu-border) !important;
   box-shadow: var(--glass-menu-shadow) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  backdrop-filter: blur(12px) !important;
   color: var(--text);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -10348,7 +10348,11 @@ html[data-theme="light"] .pb-badge--emerald {
 html.tab-hidden .pb-badge,
 html.tab-hidden .pb-badge::before,
 html.tab-hidden .pb-badge::after,
-html.tab-hidden .pb-badge * {
+html.tab-hidden .pb-badge *,
+html[data-tab-hidden="true"] .pb-badge,
+html[data-tab-hidden="true"] .pb-badge::before,
+html[data-tab-hidden="true"] .pb-badge::after,
+html[data-tab-hidden="true"] .pb-badge * {
   animation-play-state: paused !important;
 }
 
@@ -13529,11 +13533,17 @@ input[type="search"]:active,
 }
 .plus-badge.pb.flow {
   background-size: 300% 100% !important;
-  animation: fl 4s linear infinite;
+  animation: fl 4s ease-in-out infinite;
 }
 @keyframes fl {
-  to {
-    background-position: -300% 0;
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateZ(0);
   }
 }
 .plus-badge.pb.shine::after {
@@ -13578,41 +13588,58 @@ input[type="search"]:active,
 .plus-badge.pb.scan::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 2px;
-  background: #ef4444;
-  box-shadow: 0 0 6px #ef4444;
+  inset: 0;
+  width: 100%;
+  background: linear-gradient(90deg, transparent 0 46%, rgba(239, 68, 68, 0.95) 49% 51%, transparent 54% 100%);
+  transform: translateX(-54%);
   animation: sc 2s linear infinite;
 }
 @keyframes sc {
-  to {
-    left: 100%;
+  0% {
+    transform: translateX(-54%);
+  }
+  100% {
+    transform: translateX(54%);
   }
 }
 .plus-badge.pb.bar {
-  animation: bp 1s linear infinite;
+  animation: bp 1.4s ease-in-out infinite;
 }
 @keyframes bp {
-  to {
-    background-position: var(--t, 17px) 0;
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateZ(0);
   }
 }
 .plus-badge.pb.mo {
   animation: mo 3s ease-in-out infinite;
 }
 @keyframes mo {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
   50% {
-    border-radius: 40% 60% 45% 55% / 60% 40% 60% 40%;
+    transform: scale(1.03, 0.96);
   }
 }
 .plus-badge.pb.hp {
   animation: hp 1.2s steps(1) infinite;
 }
 @keyframes hp {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
   50% {
-    filter: brightness(1.6);
+    opacity: 1;
+    transform: scale(1.025);
   }
 }
 .plus-badge.pb.fill::before {
@@ -13672,15 +13699,21 @@ input[type="search"]:active,
   }
 }
 .plus-badge.pb.ul {
-  animation: fu 3s linear infinite;
+  animation: fu 3s ease-in-out infinite;
 }
 @keyframes fu {
-  to {
-    background-position: -300% 100%;
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateZ(0);
   }
 }
 .plus-badge.pb.hue {
-  animation: hu 6s linear infinite;
+  animation: hu 4.5s ease-in-out infinite;
 }
 .plus-badge.pb.stk::after {
   content: "";
@@ -13692,8 +13725,14 @@ input[type="search"]:active,
   background: linear-gradient(135deg, var(--card) 50%, #e8e8ee 50%);
 }
 @keyframes hu {
-  to {
-    filter: hue-rotate(360deg);
+  0%,
+  100% {
+    opacity: 0.84;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
 .plus-badge.pb.ember {
@@ -13701,8 +13740,14 @@ input[type="search"]:active,
   animation: fv 3s ease-in-out infinite;
 }
 @keyframes fv {
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: translateY(0);
+  }
   50% {
-    background-position: 0 100%;
+    opacity: 1;
+    transform: translateY(-0.5px);
   }
 }
 .plus-badge.pb.halo {
@@ -13741,17 +13786,23 @@ input[type="search"]:active,
   }
 }
 .plus-badge.pb.au {
-  animation: au 7s linear infinite;
+  animation: au 5s ease-in-out infinite;
 }
 @keyframes au {
-  to {
-    background-position: -200% 0, 260% 0, -80% 0;
+  0%,
+  100% {
+    opacity: 0.84;
+    transform: translateZ(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateZ(0);
   }
 }
 .plus-badge.pb.rain::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: -14px 0 0 0;
   background: repeating-linear-gradient(90deg, rgba(74, 222, 128, 0.4) 0 1px, transparent 1px 6px);
   -webkit-mask: repeating-linear-gradient(180deg, #000 0 3px, transparent 3px 7px);
   mask: repeating-linear-gradient(180deg, #000 0 3px, transparent 3px 7px);
@@ -13760,9 +13811,11 @@ input[type="search"]:active,
   animation: rn 0.8s linear infinite;
 }
 @keyframes rn {
-  to {
-    -webkit-mask-position: 0 14px;
-    mask-position: 0 14px;
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(14px);
   }
 }
 .plus-badge.pb.sw {
@@ -13777,8 +13830,14 @@ input[type="search"]:active,
   animation: fr 1.2s ease-in-out infinite;
 }
 @keyframes fr {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: translateY(0) scale(1);
+  }
   50% {
-    background-position: 0 -4px, 3px -2px, -3px -3px;
+    opacity: 1;
+    transform: translateY(-1px) scale(1.02);
   }
 }
 .plus-badge.pb.zap {
@@ -13788,24 +13847,34 @@ input[type="search"]:active,
   0%,
   90%,
   100% {
-    filter: none;
+    opacity: 1;
+    transform: scale(1);
   }
   92% {
-    filter: brightness(2.4);
+    opacity: 0.45;
+    transform: scale(1.03);
   }
   94% {
-    filter: none;
+    opacity: 1;
+    transform: scale(1);
   }
   96% {
-    filter: brightness(2);
+    opacity: 0.6;
+    transform: scale(1.02);
   }
 }
 .plus-badge.pb.spk {
   animation: spk 2.5s ease-in-out infinite;
 }
 @keyframes spk {
+  0%,
+  100% {
+    opacity: 0.84;
+    transform: scale(1);
+  }
   50% {
-    filter: brightness(1.4) saturate(1.2);
+    opacity: 1;
+    transform: scale(1.025);
   }
 }
 .plus-badge.pb.spn i {
@@ -13833,8 +13902,14 @@ input[type="search"]:active,
   animation: sn 4s ease-in-out infinite;
 }
 @keyframes sn {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: translateY(0);
+  }
   50% {
-    background-position: 0 -3px, 0 0;
+    opacity: 1;
+    transform: translateY(-1px);
   }
 }
 .plus-badge.pb.lqc {
@@ -13842,8 +13917,14 @@ input[type="search"]:active,
   animation: lq 3s ease-in-out infinite;
 }
 @keyframes lq {
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: scale(1);
+  }
   50% {
-    background-position: 0 100%;
+    opacity: 1;
+    transform: scale(1.02, 0.98);
   }
 }
 .plus-badge.pb.fk {
@@ -13871,13 +13952,23 @@ input[type="search"]:active,
   width: 14px;
   height: 1px;
   background: linear-gradient(90deg, transparent, #fff);
-  transform: rotate(25deg);
+  transform: translate3d(0, 0, 0) rotate(25deg);
   animation: ss 3s linear infinite;
 }
 @keyframes ss {
-  to {
-    left: 120%;
-    top: 70%;
+  0% {
+    transform: translate3d(0, 0, 0) rotate(25deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(110px, 18px, 0) rotate(25deg);
+    opacity: 0;
   }
 }
 .plus-badge.pb.live i {
@@ -13902,35 +13993,44 @@ input[type="search"]:active,
   }
 }
 .plus-badge.pb.gx {
+  text-shadow: -1.5px 0 #0ff, 1.5px 0 #f0f;
   animation: gx 1.6s steps(1) infinite;
 }
 @keyframes gx {
-  0% {
-    text-shadow: -2px 0 #0ff, 2px 0 #f0f;
+  0%,
+  100% {
+    transform: none;
+    opacity: 1;
   }
   20% {
-    text-shadow: 2px 0 #0ff, -2px 0 #f0f;
     transform: translateX(1px);
+    opacity: 0.88;
   }
   40% {
-    text-shadow: -1px 1px #0ff, 1px -1px #f0f;
     transform: none;
+    opacity: 1;
   }
   60% {
-    text-shadow: -3px 0 #0ff, 3px 0 #f0f;
     transform: translateX(-1px);
+    opacity: 0.86;
   }
   80% {
-    text-shadow: 1px 0 #0ff, -1px 0 #f0f;
     transform: none;
+    opacity: 1;
   }
 }
 .plus-badge.pb.orbit {
-  animation: ob 2.6s linear infinite;
+  animation: ob 2.6s ease-in-out infinite;
 }
 @keyframes ob {
-  to {
-    --a: 360deg;
+  0%,
+  100% {
+    opacity: 0.84;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
   }
 }
 .plus-badge.pb.mq {
@@ -13945,24 +14045,31 @@ input[type="search"]:active,
   height: 12px;
   flex: none;
   background:
-    linear-gradient(#fff, #fff) 0 100% / 3px 30% no-repeat,
-    linear-gradient(#fff, #fff) 5px 100% / 3px 60% no-repeat,
-    linear-gradient(#fff, #fff) 10px 100% / 3px 90% no-repeat,
-    linear-gradient(#fff, #fff) 15px 100% / 3px 50% no-repeat;
+    linear-gradient(#fff, #fff) 0 100% / 3px 40% no-repeat,
+    linear-gradient(#fff, #fff) 5px 100% / 3px 70% no-repeat,
+    linear-gradient(#fff, #fff) 10px 100% / 3px 95% no-repeat,
+    linear-gradient(#fff, #fff) 15px 100% / 3px 60% no-repeat;
+  transform-origin: bottom;
   animation: lv 0.9s ease-in-out infinite;
 }
 @keyframes lv {
   0%,
   100% {
-    background-size: 3px 30%, 3px 60%, 3px 90%, 3px 50%;
+    transform: scaleY(0.6);
+    opacity: 0.82;
   }
   50% {
-    background-size: 3px 90%, 3px 40%, 3px 55%, 3px 100%;
+    transform: scaleY(1);
+    opacity: 1;
   }
 }
 @keyframes mq {
+  0%,
+  100% {
+    opacity: 1;
+  }
   50% {
-    border-color: #ff3d00;
+    opacity: 0.72;
   }
 }
 
@@ -13975,6 +14082,10 @@ html.tab-hidden .plus-badge.pb,
 html.tab-hidden .plus-badge.pb *,
 html.tab-hidden .plus-badge.pb::before,
 html.tab-hidden .plus-badge.pb::after,
+html[data-tab-hidden="true"] .plus-badge.pb,
+html[data-tab-hidden="true"] .plus-badge.pb *,
+html[data-tab-hidden="true"] .plus-badge.pb::before,
+html[data-tab-hidden="true"] .plus-badge.pb::after,
 html.smooth-mode .plus-badge.pb,
 html.smooth-mode .plus-badge.pb *,
 html.smooth-mode .plus-badge.pb::before,

@@ -682,26 +682,46 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
     return list;
   }, [activePosts, feedTab, isGuestOrAnon, followingIds, subjectFilter, classFilter]);
 
+  // Chunk rendered cards 20 at a time so large cached/trending/filtered lists never mount all DOM nodes at once
+  const COMMONS_RENDER_CHUNK = 20;
+  const [visiblePostCount, setVisiblePostCount] = useState<number>(COMMONS_RENDER_CHUNK);
+
+  useEffect(() => {
+    setVisiblePostCount(COMMONS_RENDER_CHUNK);
+  }, [feedTab, subjectFilter, classFilter]);
+
+  const visibleDisplayedPosts = useMemo(
+    () => displayedPosts.slice(0, visiblePostCount),
+    [displayedPosts, visiblePostCount]
+  );
+
+  const hasLocalMore = visiblePostCount < displayedPosts.length;
+  const hasAnyMore = hasLocalMore || hasMore;
+
   // Infinite scroll trigger via IntersectionObserver sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!hasMore || loadingMore || loading) return;
+    if (!hasAnyMore || loadingMore || loading) return;
     const el = sentinelRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          handleLoadMore();
+        if (!entries[0].isIntersecting) return;
+        if (hasLocalMore) {
+          setVisiblePostCount((prev) => prev + COMMONS_RENDER_CHUNK);
+        } else if (hasMore) {
+          setVisiblePostCount((prev) => prev + COMMONS_RENDER_CHUNK);
+          void handleLoadMore();
         }
       },
-      { rootMargin: '1200px 0px' }
+      { rootMargin: '800px 0px' }
     );
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, loading, handleLoadMore]);
+  }, [hasAnyMore, hasLocalMore, hasMore, loadingMore, loading, handleLoadMore]);
 
   // Mobile pull-to-refresh touch handlers (never interfere with normal downward scrolling)
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -1259,8 +1279,8 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
             </div>
           </div>
         ) : (
-          /* Real Firestore posts */
-          displayedPosts.map((post, postIdx) => (
+          /* Real Firestore posts (mounted in chunks of 20) */
+          visibleDisplayedPosts.map((post, postIdx) => (
             <Fragment key={post.id}>
               <CommonsPostCard
                 post={post}
@@ -1283,7 +1303,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
         )}
 
         {/* Infinite Scroll Sentinel */}
-        {hasMore && <div ref={sentinelRef} className="h-6 w-full" />}
+        {hasAnyMore && <div ref={sentinelRef} className="h-6 w-full" />}
 
         {loadingMore && (
           <div className="py-2">

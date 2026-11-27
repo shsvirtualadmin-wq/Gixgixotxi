@@ -241,6 +241,125 @@ type EnrichedFormulaItem = D1FormulaItemRow & {
   category_name?: string;
 };
 
+const FORMULA_CHUNK_SIZE = 20;
+
+interface FormulaCardProps {
+  formula: EnrichedFormulaItem;
+  pool: D1FormulaItemRow[];
+  chapterTitle: string;
+  chapterNo: number;
+  categoryName: string;
+  isSaved: boolean;
+  showSubjectChapterLabel?: boolean;
+  highlightQuery?: string;
+  onOpen: (
+    formula: EnrichedFormulaItem,
+    pool: D1FormulaItemRow[],
+    meta: { chapterTitle: string; chapterNo: number; categoryName: string }
+  ) => void;
+  onBookmark: (formulaId: string, e?: React.MouseEvent) => void;
+}
+
+const FormulaCard = React.memo(function FormulaCard({
+  formula,
+  pool,
+  chapterTitle,
+  chapterNo,
+  categoryName,
+  isSaved,
+  showSubjectChapterLabel,
+  highlightQuery = '',
+  onOpen,
+  onBookmark,
+}: FormulaCardProps) {
+  const handleOpen = useCallback(() => {
+    onOpen(formula, pool, { chapterTitle, chapterNo, categoryName });
+  }, [onOpen, formula, pool, chapterTitle, chapterNo, categoryName]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onOpen(formula, pool, { chapterTitle, chapterNo, categoryName });
+      }
+    },
+    [onOpen, formula, pool, chapterTitle, chapterNo, categoryName]
+  );
+
+  const handleBookmark = useCallback(
+    (e: React.MouseEvent) => {
+      onBookmark(formula.id, e);
+    },
+    [onBookmark, formula.id]
+  );
+
+  return (
+    <div
+      onClick={handleOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      className="cv-auto-card group relative flex flex-col justify-between rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-4 transition-all duration-150 hover:border-[var(--accent)] active:scale-[0.98] cursor-pointer"
+    >
+      <div>
+        {showSubjectChapterLabel && (
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+            <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-0.5">
+              {categoryName} · {formatChapterTitleWithNumber(chapterNo, chapterTitle)}
+            </span>
+          </div>
+        )}
+
+        {/* Top Row: Round Dot-Matrix Number Badge + Wrapping Title + 44px Bookmark Button */}
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="flex items-start gap-2.5 min-w-0 pt-1">
+            <span className="inline-flex h-8 min-w-[32px] shrink-0 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 font-[var(--font-dot)] text-xs font-bold text-[var(--accent)]">
+              #{formula.formula_no}
+            </span>
+            <h4 className="text-sm font-semibold leading-snug text-[var(--text)] break-words">
+              {highlightQuery ? (
+                <HighlightMatch
+                  text={formula.title || `Formula #${formula.formula_no}`}
+                  query={highlightQuery}
+                />
+              ) : (
+                formula.title || `Formula #${formula.formula_no}`
+              )}
+            </h4>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleBookmark}
+            aria-label={isSaved ? 'Remove bookmark' : 'Bookmark formula'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all duration-150 active:scale-[0.95] ${
+              isSaved
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text)]'
+            }`}
+          >
+            <Bookmark className="h-4 w-4" fill={isSaved ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+
+        {/* Wrapping / Shrink-to-Fit Formula Container */}
+        <FitFormulaMath
+          latex={formula.formula_latex}
+          variant="card"
+          className="my-3 flex min-h-[64px] items-center rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-center text-sm sm:text-base text-[var(--text)]"
+        />
+      </div>
+
+      {/* Formula Note */}
+      {formula.note && (
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)] break-words">
+          {highlightQuery ? <HighlightMatch text={formula.note} query={highlightQuery} /> : formula.note}
+        </p>
+      )}
+    </div>
+  );
+});
+
 export const FormulaVaultPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -285,6 +404,9 @@ export const FormulaVaultPage: React.FC = () => {
 
   const [openChapterId, setOpenChapterId] = useState<string | null>(null);
   const [openChapterFormulas, setOpenChapterFormulas] = useState<D1FormulaItemRow[]>([]);
+  const [chapterVisibleCount, setChapterVisibleCount] = useState<number>(FORMULA_CHUNK_SIZE);
+  const [savedVisibleCount, setSavedVisibleCount] = useState<number>(FORMULA_CHUNK_SIZE);
+  const [searchVisibleCount, setSearchVisibleCount] = useState<number>(FORMULA_CHUNK_SIZE);
   const { config: adsConfig } = useAdsConfig();
   const formulaFeedEveryN = Math.max(2, adsConfig.slots.formula_feed?.everyN || 6);
   const [loadingChapterId, setLoadingChapterId] = useState<string | null>(null);
@@ -573,6 +695,18 @@ export const FormulaVaultPage: React.FC = () => {
       mounted = false;
     };
   }, [debouncedQuery]);
+
+  useEffect(() => {
+    setChapterVisibleCount(FORMULA_CHUNK_SIZE);
+  }, [openChapterId]);
+
+  useEffect(() => {
+    setSavedVisibleCount(FORMULA_CHUNK_SIZE);
+  }, [showSavedOnly]);
+
+  useEffect(() => {
+    setSearchVisibleCount(FORMULA_CHUNK_SIZE);
+  }, [debouncedQuery, showSavedOnly]);
 
   // Load bookmarked formulas when "Saved" filter is active
   useEffect(() => {
@@ -867,23 +1001,26 @@ export const FormulaVaultPage: React.FC = () => {
     }
   };
 
-  const handleBookmarkClick = async (formulaId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!isSignedIn) {
-      showToast('Sign in to save formulas to your favourites.', 'info');
-      return;
-    }
-    try {
-      const res = await toggleFormulaBookmark(formulaId);
-      setBookmarkedIds(new Set(res.bookmarkedIds));
-      showToast(
-        res.bookmarked ? 'Saved to your favourites' : 'Removed from favourites',
-        'success'
-      );
-    } catch (err: any) {
-      showToast(err?.message || 'Unable to update bookmark', 'error');
-    }
-  };
+  const handleBookmarkClick = useCallback(
+    async (formulaId: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      if (!isSignedIn) {
+        showToast('Sign in to save formulas to your favourites.', 'info');
+        return;
+      }
+      try {
+        const res = await toggleFormulaBookmark(formulaId);
+        setBookmarkedIds(new Set(res.bookmarkedIds));
+        showToast(
+          res.bookmarked ? 'Saved to your favourites' : 'Removed from favourites',
+          'success'
+        );
+      } catch (err: any) {
+        showToast(err?.message || 'Unable to update bookmark', 'error');
+      }
+    },
+    [isSignedIn, showToast]
+  );
 
   /**
    * Generates and downloads the Formula Sheet PDF using the exact Grand Line PDF design.
@@ -974,95 +1111,29 @@ export const FormulaVaultPage: React.FC = () => {
     }
   };
 
-  /**
-   * Reusable Formula Card component matching the Apple x Nothing design language:
-   * - Round numbered badge (dot-matrix number in red)
-   * - Title wrapping up to 2 lines (never cut off to 1 line)
-   * - 44px bookmark button (stops propagation)
-   * - Centered formula box with dynamic shrink-to-fit (min 0.7) and right-edge fade scroll fallback
-   * - Note
-   */
-  const renderFormulaCard = (
-    formula: EnrichedFormulaItem,
-    pool: D1FormulaItemRow[],
-    meta: { chapterTitle: string; chapterNo: number; categoryName: string },
-    options?: { showSubjectChapterLabel?: boolean; highlightQuery?: string }
-  ) => {
-    const isSaved = bookmarkedIds.has(formula.id);
-    const hlQuery = options?.highlightQuery || '';
+  const visibleGroupedSearchResults = useMemo(() => {
+    let remaining = searchVisibleCount;
+    const sliced: typeof groupedSearchResults = [];
+    for (const group of groupedSearchResults) {
+      if (remaining <= 0) break;
+      const take = group.formulas.slice(0, remaining);
+      if (take.length > 0) {
+        sliced.push({ ...group, formulas: take });
+        remaining -= take.length;
+      }
+    }
+    return sliced;
+  }, [groupedSearchResults, searchVisibleCount]);
 
-    return (
-      <div
-        key={formula.id}
-        onClick={() => handleOpenEnlarged(formula, pool, meta)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleOpenEnlarged(formula, pool, meta);
-          }
-        }}
-        className="group relative flex flex-col justify-between rounded-[24px] border border-[var(--border)] bg-[var(--surface)] p-4 transition-all duration-150 hover:border-[var(--accent)] active:scale-[0.98] cursor-pointer"
-      >
-        <div>
-          {options?.showSubjectChapterLabel && (
-            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
-              <span className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-0.5">
-                {meta.categoryName} · {formatChapterTitleWithNumber(meta.chapterNo, meta.chapterTitle)}
-              </span>
-            </div>
-          )}
+  const visibleSavedFormulas = useMemo(
+    () => savedFormulasList.slice(0, savedVisibleCount),
+    [savedFormulasList, savedVisibleCount]
+  );
 
-          {/* Top Row: Round Dot-Matrix Number Badge + Wrapping Title + 44px Bookmark Button */}
-          <div className="flex items-start justify-between gap-2.5">
-            <div className="flex items-start gap-2.5 min-w-0 pt-1">
-              <span className="inline-flex h-8 min-w-[32px] shrink-0 items-center justify-center rounded-full border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-2 font-[var(--font-dot)] text-xs font-bold text-[var(--accent)]">
-                #{formula.formula_no}
-              </span>
-              <h4 className="text-sm font-semibold leading-snug text-[var(--text)] break-words">
-                {hlQuery ? (
-                  <HighlightMatch
-                    text={formula.title || `Formula #${formula.formula_no}`}
-                    query={hlQuery}
-                  />
-                ) : (
-                  formula.title || `Formula #${formula.formula_no}`
-                )}
-              </h4>
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => handleBookmarkClick(formula.id, e)}
-              aria-label={isSaved ? 'Remove bookmark' : 'Bookmark formula'}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-all duration-150 active:scale-[0.95] ${
-                isSaved
-                  ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text)]'
-              }`}
-            >
-              <Bookmark className="h-4 w-4" fill={isSaved ? 'currentColor' : 'none'} />
-            </button>
-          </div>
-
-          {/* Wrapping / Shrink-to-Fit Formula Container */}
-          <FitFormulaMath
-            latex={formula.formula_latex}
-            variant="card"
-            className="my-3 flex min-h-[64px] items-center rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-3 text-center text-sm sm:text-base text-[var(--text)]"
-          />
-        </div>
-
-        {/* Formula Note */}
-        {formula.note && (
-          <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)] break-words">
-            {hlQuery ? <HighlightMatch text={formula.note} query={hlQuery} /> : formula.note}
-          </p>
-        )}
-      </div>
-    );
-  };
+  const visibleOpenChapterFormulas = useMemo(
+    () => openChapterFormulas.slice(0, chapterVisibleCount),
+    [openChapterFormulas, chapterVisibleCount]
+  );
 
   if (formulaNotFound) {
     return <NotFoundPage />;
@@ -1499,7 +1570,7 @@ export const FormulaVaultPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-5">
-                    {groupedSearchResults.map((group) => (
+                    {visibleGroupedSearchResults.map((group) => (
                       <section
                         key={group.key}
                         className="rounded-[26px] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 space-y-3.5"
@@ -1527,24 +1598,35 @@ export const FormulaVaultPage: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                          {group.formulas.map((item) =>
-                            renderFormulaCard(
-                              item,
-                              filteredSearchFormulas,
-                              {
-                                chapterTitle: group.chapterTitle,
-                                chapterNo: group.chapterNo,
-                                categoryName: group.subjectName,
-                              },
-                              {
-                                showSubjectChapterLabel: true,
-                                highlightQuery: debouncedQuery,
-                              }
-                            )
-                          )}
+                          {group.formulas.map((item) => (
+                            <FormulaCard
+                              key={item.id}
+                              formula={item}
+                              pool={filteredSearchFormulas}
+                              chapterTitle={group.chapterTitle}
+                              chapterNo={group.chapterNo}
+                              categoryName={group.subjectName}
+                              isSaved={bookmarkedIds.has(item.id)}
+                              showSubjectChapterLabel
+                              highlightQuery={debouncedQuery}
+                              onOpen={handleOpenEnlarged}
+                              onBookmark={handleBookmarkClick}
+                            />
+                          ))}
                         </div>
                       </section>
                     ))}
+                    {filteredSearchFormulas.length > searchVisibleCount && (
+                      <div className="flex justify-center pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSearchVisibleCount((c) => c + FORMULA_CHUNK_SIZE)}
+                          className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-all duration-150 active:scale-[0.98]"
+                        >
+                          Load more ({Math.min(searchVisibleCount, filteredSearchFormulas.length)} of {filteredSearchFormulas.length})
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1589,18 +1671,33 @@ export const FormulaVaultPage: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                    {savedFormulasList.map((item) =>
-                      renderFormulaCard(
-                        item,
-                        savedFormulasList,
-                        {
-                          chapterTitle: item.chapter_title || 'Chapter',
-                          chapterNo: item.chapter_no || 1,
-                          categoryName: item.category_name || 'Formula Sheet',
-                        },
-                        { showSubjectChapterLabel: true }
-                      )
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                      {visibleSavedFormulas.map((item) => (
+                        <FormulaCard
+                          key={item.id}
+                          formula={item}
+                          pool={savedFormulasList}
+                          chapterTitle={item.chapter_title || 'Chapter'}
+                          chapterNo={item.chapter_no || 1}
+                          categoryName={item.category_name || 'Formula Sheet'}
+                          isSaved={bookmarkedIds.has(item.id)}
+                          showSubjectChapterLabel
+                          onOpen={handleOpenEnlarged}
+                          onBookmark={handleBookmarkClick}
+                        />
+                      ))}
+                    </div>
+                    {savedFormulasList.length > savedVisibleCount && (
+                      <div className="flex justify-center pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSavedVisibleCount((c) => c + FORMULA_CHUNK_SIZE)}
+                          className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-all duration-150 active:scale-[0.98]"
+                        >
+                          Load more ({visibleSavedFormulas.length} of {savedFormulasList.length})
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1787,26 +1884,48 @@ export const FormulaVaultPage: React.FC = () => {
                                 No formulas published in this chapter yet.
                               </div>
                             ) : (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
-                                {openChapterFormulas.map((formula, fIdx) => (
-                                  <React.Fragment key={formula.id}>
-                                    {renderFormulaCard(formula, openChapterFormulas, {
-                                      chapterTitle: chapter.title,
-                                      chapterNo: chapter.chapter_no,
-                                      categoryName:
-                                        chapterSubject?.name ||
-                                        activeCategory?.name ||
-                                        'Formula Library',
-                                    })}
-                                    {(fIdx + 1) % formulaFeedEveryN === 0 && (
-                                      <AdSlot
-                                        slotId="formula_feed"
-                                        instanceKey={`formula-${chapter.id}-${fIdx}`}
-                                        wrapperClassName="col-span-full my-5 sm:my-6"
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                                  {visibleOpenChapterFormulas.map((formula, fIdx) => (
+                                    <React.Fragment key={formula.id}>
+                                      <FormulaCard
+                                        formula={formula}
+                                        pool={openChapterFormulas}
+                                        chapterTitle={chapter.title}
+                                        chapterNo={chapter.chapter_no}
+                                        categoryName={
+                                          chapterSubject?.name ||
+                                          activeCategory?.name ||
+                                          'Formula Library'
+                                        }
+                                        isSaved={bookmarkedIds.has(formula.id)}
+                                        onOpen={handleOpenEnlarged}
+                                        onBookmark={handleBookmarkClick}
                                       />
-                                    )}
-                                  </React.Fragment>
-                                ))}
+                                      {(fIdx + 1) % formulaFeedEveryN === 0 && (
+                                        <AdSlot
+                                          slotId="formula_feed"
+                                          instanceKey={`formula-${chapter.id}-${fIdx}`}
+                                          wrapperClassName="col-span-full my-5 sm:my-6"
+                                        />
+                                      )}
+                                    </React.Fragment>
+                                  ))}
+                                </div>
+                                {openChapterFormulas.length > chapterVisibleCount && (
+                                  <div className="flex justify-center pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setChapterVisibleCount((c) => c + FORMULA_CHUNK_SIZE)
+                                      }
+                                      className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-2 text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] transition-all duration-150 active:scale-[0.98]"
+                                    >
+                                      Load more ({visibleOpenChapterFormulas.length} of{' '}
+                                      {openChapterFormulas.length})
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

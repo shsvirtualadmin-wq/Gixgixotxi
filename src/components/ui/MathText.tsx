@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type katexType from 'katex';
-import 'katex/dist/katex.min.css';
 import { convertAsciiMathToLatex, normalizeLatexThousandsCommas, cleanMcqOptionText } from '@/lib/math';
 
 type KatexModule = typeof katexType;
@@ -9,8 +8,52 @@ let katexInstance: KatexModule | null = null;
 let katexLoadPromise: Promise<KatexModule> | null = null;
 const katexListeners = new Set<() => void>();
 
+// Shared IntersectionObserver (~200px lookahead) so long lists of MathText components
+// share a single observer instance and defer KaTeX compilation until near the viewport.
+let sharedMathObserver: IntersectionObserver | null = null;
+const mathObserverCallbacks = new WeakMap<Element, () => void>();
+
+function observeMathElement(el: Element, onVisible: () => void): () => void {
+  if (typeof IntersectionObserver === 'undefined') {
+    onVisible();
+    return () => {};
+  }
+  if (!sharedMathObserver) {
+    sharedMathObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const cb = mathObserverCallbacks.get(entry.target);
+            mathObserverCallbacks.delete(entry.target);
+            sharedMathObserver?.unobserve(entry.target);
+            if (cb) cb();
+          }
+        }
+      },
+      { rootMargin: '200px 0px' }
+    );
+  }
+  mathObserverCallbacks.set(el, onVisible);
+  sharedMathObserver.observe(el);
+  return () => {
+    mathObserverCallbacks.delete(el);
+    sharedMathObserver?.unobserve(el);
+  };
+}
+
+function formatPlainPlaceholder(raw: string): string {
+  return raw
+    .replace(/\$\$([\s\S]+?)\$\$/g, '$1')
+    .replace(/\\\[([\s\S]+?)\\\]/g, '$1')
+    .replace(/\$([^$\n]+?)\$/g, '$1')
+    .replace(/\\\(([\s\S]+?)\\\)/g, '$1')
+    .replace(/\\\$/g, '$');
+}
+
 /**
- * Lazy-loads KaTeX and mhchem only when a math segment is actually rendered or validated.
+ * Lazy-loads KaTeX, its stylesheet, and mhchem only when a math segment enters near-viewport
+ * or is explicitly validated. Loading katex.min.css in parallel before resolving katexInstance
+ * guarantees formulas never flash unstyled.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function ensureKatexLoaded(): Promise<KatexModule | null> {
@@ -18,8 +61,11 @@ export function ensureKatexLoaded(): Promise<KatexModule | null> {
     return Promise.resolve(katexInstance);
   }
   if (!katexLoadPromise) {
-    katexLoadPromise = import('katex')
-      .then(async (mod) => {
+    katexLoadPromise = Promise.all([
+      import('katex'),
+      import('katex/dist/katex.min.css').catch(() => undefined),
+    ])
+      .then(async ([mod]) => {
         const resolved = (mod.default ?? mod) as KatexModule;
         try {
           await import('katex/contrib/mhchem');
@@ -354,10 +400,21 @@ export const MathText = React.memo(function MathText({
   style,
 }: MathTextProps) {
   const content = text ?? children ?? '';
+  const containerRef = useRef<HTMLDivElement & HTMLSpanElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState<boolean>(
+    () => typeof IntersectionObserver === 'undefined'
+  );
   const [katexReady, setKatexReady] = useState<boolean>(() => Boolean(katexInstance));
 
   useEffect(() => {
-    if (katexInstance || !content) return;
+    if (isNearViewport || !content) return;
+    const el = containerRef.current;
+    if (!el) return;
+    return observeMathElement(el, () => setIsNearViewport(true));
+  }, [isNearViewport, content]);
+
+  useEffect(() => {
+    if (!isNearViewport || katexInstance || !content) return;
     let mounted = true;
     const onLoaded = () => {
       if (mounted) setKatexReady(true);
@@ -368,11 +425,14 @@ export const MathText = React.memo(function MathText({
       mounted = false;
       katexListeners.delete(onLoaded);
     };
-  }, [content]);
+  }, [isNearViewport, content]);
 
   const renderedContent = useMemo(() => {
     if (!content) return null;
-    // Reference katexReady so useMemo recomputes once lazy KaTeX resolves
+    if (!isNearViewport) {
+      return formatPlainPlaceholder(content);
+    }
+    // Reference katexReady so useMemo recomputes once lazy KaTeX + CSS resolve
     void katexReady;
 
     if (!block) {
@@ -470,7 +530,7 @@ export const MathText = React.memo(function MathText({
         </div>
       );
     });
-  }, [content, block, katexReady]);
+  }, [content, block, katexReady, isNearViewport]);
 
   const baseStyle: CSSProperties = {
     color: 'inherit',
@@ -484,6 +544,7 @@ export const MathText = React.memo(function MathText({
   if (block) {
     return (
       <div
+        ref={containerRef}
         dir="ltr"
         className={`katex-root-block w-full max-w-full min-w-0 overflow-x-hidden [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
         style={baseStyle}
@@ -495,6 +556,7 @@ export const MathText = React.memo(function MathText({
 
   return (
     <span
+      ref={containerRef}
       dir="ltr"
       className={`katex-root-inline max-w-full min-w-0 [overflow-wrap:anywhere] [word-break:break-word] ${className}`}
       style={baseStyle}

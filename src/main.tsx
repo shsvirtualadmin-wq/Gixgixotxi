@@ -71,30 +71,6 @@ function renderFatalFallbackIfRootUnmounted(errorMessage?: string) {
 }
 
 if (typeof window !== 'undefined') {
-  // Clean up any stale service workers and old caches once on startup so stale index.html/chunks are never served
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-      .getRegistrations()
-      .then((registrations) => {
-        for (const registration of registrations) {
-          registration.unregister().catch(() => {});
-        }
-      })
-      .catch(() => {});
-  }
-  if ('caches' in window) {
-    caches
-      .keys()
-      .then((keys) => {
-        for (const key of keys) {
-          if (key.startsWith('boardly-')) {
-            caches.delete(key).catch(() => {});
-          }
-        }
-      })
-      .catch(() => {});
-  }
-
   // Handle Vite module preload errors (e.g. stale hashed chunk after deploy)
   window.addEventListener('vite:preloadError', (event) => {
     console.error('[Boardly] vite:preloadError:', event);

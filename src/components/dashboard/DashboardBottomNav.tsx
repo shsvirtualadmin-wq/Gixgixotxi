@@ -364,16 +364,25 @@ function DashboardBottomNavComponent() {
   const [isStretching, setIsStretching] = useState<boolean>(false);
   const [dragHighlightId, setDragHighlightId] = useState<BottomNavTabId | null>(null);
   const stretchTimerRef = useRef<number | null>(null);
+  const stretchRafRef = useRef<number | null>(null);
   const prevTabIdRef = useRef<BottomNavTabId>(activeTabId);
 
   const triggerBubbleStretch = useCallback(() => {
     if (prefersReducedMotion()) return;
-    if (stretchTimerRef.current !== null && typeof window !== 'undefined') {
-      window.clearTimeout(stretchTimerRef.current);
+    if (typeof window !== 'undefined') {
+      if (stretchTimerRef.current !== null) {
+        window.clearTimeout(stretchTimerRef.current);
+        stretchTimerRef.current = null;
+      }
+      if (stretchRafRef.current !== null) {
+        window.cancelAnimationFrame(stretchRafRef.current);
+        stretchRafRef.current = null;
+      }
     }
     setIsStretching(false);
     if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => {
+      stretchRafRef.current = window.requestAnimationFrame(() => {
+        stretchRafRef.current = null;
         setIsStretching(true);
         stretchTimerRef.current = window.setTimeout(() => {
           setIsStretching(false);
@@ -385,8 +394,15 @@ function DashboardBottomNavComponent() {
 
   useEffect(() => {
     return () => {
-      if (stretchTimerRef.current !== null && typeof window !== 'undefined') {
-        window.clearTimeout(stretchTimerRef.current);
+      if (typeof window !== 'undefined') {
+        if (stretchRafRef.current !== null) {
+          window.cancelAnimationFrame(stretchRafRef.current);
+          stretchRafRef.current = null;
+        }
+        if (stretchTimerRef.current !== null) {
+          window.clearTimeout(stretchTimerRef.current);
+          stretchTimerRef.current = null;
+        }
       }
     };
   }, []);

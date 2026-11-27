@@ -21,28 +21,7 @@ function formatClock(now: Date): string {
   return `${hrs}:${mins}:${secs}`;
 }
 
-const CoPilotLiveClock = memo(function CoPilotLiveClock({ active }: { active: boolean }) {
-  const [clockText, setClockText] = useState<string>(() => formatClock(new Date()));
-
-  useEffect(() => {
-    if (!active) return;
-    setClockText(formatClock(new Date()));
-    const id = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setClockText(formatClock(new Date()));
-    }, 1000);
-    const onVisibility = () => {
-      if (typeof document !== 'undefined' && !document.hidden) {
-        setClockText(formatClock(new Date()));
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility, { passive: true });
-    return () => {
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [active]);
-
+const CoPilotLiveClock = memo(function CoPilotLiveClock({ clockText }: { clockText: string }) {
   return (
     <span
       className="text-[10.5px] sm:text-[11px] font-bold tabular-nums shrink-0"
@@ -167,32 +146,74 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
     return () => clearTimeout(timer);
   }, [typedLen, activeMessage, smoothMode]);
 
-  // Rotate message every 9s (paused while offscreen or tab hidden)
-  useEffect(() => {
-    if (messages.length <= 1 || !inViewport) return;
-    const rotateTimer = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setMsgIndex((prev) => (prev + 1) % messages.length);
-    }, 9000);
-    return () => clearInterval(rotateTimer);
-  }, [messages.length, inViewport]);
+  const [clockText, setClockText] = useState<string>(() => formatClock(new Date()));
+  const tickCountRef = useRef(0);
 
-  // Periodic natural eye blink (transform/opacity only; paused while offscreen or tab hidden)
+  // Single consolidated 1s timer driving clock, 9s message rotation, and ~4s eye blink.
+  // Completely pauses (clears interval) when off-screen or when document.visibilityState === 'hidden'.
   useEffect(() => {
-    if (smoothMode || !inViewport) return;
+    if (!inViewport) return;
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     let blinkTimeout: ReturnType<typeof setTimeout> | null = null;
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setIsBlinking(true);
-      blinkTimeout = setTimeout(() => {
-        setIsBlinking(false);
-      }, 150);
-    }, 3600);
-    return () => {
-      clearInterval(interval);
-      if (blinkTimeout) clearTimeout(blinkTimeout);
+
+    const clearTimers = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      if (blinkTimeout !== null) {
+        clearTimeout(blinkTimeout);
+        blinkTimeout = null;
+      }
     };
-  }, [smoothMode, inViewport]);
+
+    const startTimerIfVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        clearTimers();
+        return;
+      }
+      setClockText(formatClock(new Date()));
+      if (intervalId !== null) return;
+      intervalId = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          clearTimers();
+          return;
+        }
+        tickCountRef.current += 1;
+        const tick = tickCountRef.current;
+        setClockText(formatClock(new Date()));
+
+        if (messages.length > 1 && tick % 9 === 0) {
+          setMsgIndex((prev) => (prev + 1) % messages.length);
+        }
+
+        if (!smoothMode && tick % 4 === 0) {
+          setIsBlinking(true);
+          if (blinkTimeout !== null) clearTimeout(blinkTimeout);
+          blinkTimeout = setTimeout(() => {
+            setIsBlinking(false);
+            blinkTimeout = null;
+          }, 150);
+        }
+      }, 1000);
+    };
+
+    startTimerIfVisible();
+    const onVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        clearTimers();
+      } else {
+        startTimerIfVisible();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange, { passive: true });
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearTimers();
+    };
+  }, [inViewport, messages.length, smoothMode]);
 
   // Tap skips typing if currently typing, or rotates immediately to next message
   const handleCardTap = useCallback(() => {
@@ -340,7 +361,7 @@ export const BoardlyCoPilotCard = memo(function BoardlyCoPilotCard({
             </span>
           </div>
 
-          <CoPilotLiveClock active={inViewport} />
+          <CoPilotLiveClock clockText={clockText} />
         </div>
 
         <p

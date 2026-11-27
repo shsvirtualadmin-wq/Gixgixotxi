@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import katex from 'katex';
+import { ensureKatexLoaded } from '@/components/ui/MathText';
 import {
   Check,
   Copy,
@@ -42,6 +43,11 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
   const [cdnKatexReady, setCdnKatexReady] = useState<boolean>(() =>
     typeof window !== 'undefined' && Boolean((window as any).katex?.renderToString)
   );
+
+  // Ensure lazy KaTeX CSS + mhchem are loaded so AI formulas never flash unstyled
+  useEffect(() => {
+    void ensureKatexLoaded();
+  }, []);
 
   // Re-render once CDN KaTeX + mhchem finishes deferred load so \ce{...} renders cleanly
   useEffect(() => {
