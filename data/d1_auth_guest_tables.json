@@ -1220,6 +1220,9 @@
       "last_active_at": 1795536758331
     },
     {
+      "status": "abandoned",
+      "abandoned_at": 1795754823090,
+      "purge_after": 1796359623090,
       "uid": "guest_1795754823016_06e562a832",
       "username": "bilalkhan99",
       "username_lower": "bilalkhan99__abandoned_guest_1795754823016_06e562a832",
@@ -1230,9 +1233,6 @@
       "email": "",
       "plan": "free",
       "role": "student",
-      "status": "abandoned",
-      "abandoned_at": 1795754823090,
-      "purge_after": 1796359623090,
       "upgraded_to_uid": null,
       "upgraded_at": null,
       "target_university": "NUST",
