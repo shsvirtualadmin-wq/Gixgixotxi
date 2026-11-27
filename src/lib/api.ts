@@ -15,11 +15,72 @@ export interface ApiError extends Error {
 
 export type ToastKind = 'error' | 'success' | 'info';
 
+export interface ApiToastOptions {
+  tag?: string;
+  durationMs?: number;
+}
+
+/**
+ * Dismisses matching toasts from the global toast container immediately.
+ */
+export function dismissApiToast(options?: {
+  tag?: string;
+  kind?: ToastKind;
+  message?: string;
+}): void {
+  if (typeof document === 'undefined') return;
+  const container = document.getElementById('boardly-api-toast-container');
+  if (!container) return;
+
+  const toasts = Array.from(container.children) as HTMLElement[];
+  for (const el of toasts) {
+    const tagMatch = !options?.tag || el.dataset.toastTag === options.tag;
+    const kindMatch = !options?.kind || el.dataset.toastKind === options.kind;
+    const msgMatch =
+      !options?.message ||
+      (el.dataset.toastMessage || '').toLowerCase() === options.message.trim().toLowerCase();
+    if (tagMatch && kindMatch && msgMatch) {
+      const prevTimer = Number(el.dataset.timerId || '0');
+      if (prevTimer) window.clearTimeout(prevTimer);
+      el.remove();
+    }
+  }
+}
+
+/**
+ * Removes any stale generic error toast ("Something went wrong. Please try again.")
+ * when underlying reads succeed on retry or across page transitions.
+ */
+export function clearGenericErrorToasts(): void {
+  if (typeof document === 'undefined') return;
+  const container = document.getElementById('boardly-api-toast-container');
+  if (!container) return;
+
+  const genericNormalized = FRIENDLY_ERROR_MESSAGE.trim().toLowerCase().replace(/\.+$/, '');
+  const toasts = Array.from(container.children) as HTMLElement[];
+  for (const el of toasts) {
+    const isGenericFlag = el.dataset.toastGeneric === 'true';
+    const msgNorm = (el.dataset.toastMessage || '').trim().toLowerCase().replace(/\.+$/, '');
+    if (
+      el.dataset.toastKind === 'error' &&
+      (isGenericFlag || msgNorm === genericNormalized)
+    ) {
+      const prevTimer = Number(el.dataset.timerId || '0');
+      if (prevTimer) window.clearTimeout(prevTimer);
+      el.remove();
+    }
+  }
+}
+
 /**
  * Lightweight, zero-dependency DOM toast notification so API messages
  * are shown clearly without leaking raw infrastructure or database errors.
  */
-export function showApiToast(message: string, kind: ToastKind = 'error'): void {
+export function showApiToast(
+  message: string,
+  kind: ToastKind = 'error',
+  options?: ApiToastOptions
+): void {
   if (typeof document === 'undefined' || !message) return;
 
   const trimmed = message.trim();
@@ -28,6 +89,11 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
       ? FRIENDLY_ERROR_MESSAGE
       : trimmed;
   if (!normalizedMessage) return;
+
+  const durationMs =
+    typeof options?.durationMs === 'number' && options.durationMs > 0
+      ? options.durationMs
+      : 4000;
 
   let container = document.getElementById('boardly-api-toast-container');
   if (!container) {
@@ -38,23 +104,36 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
     document.body.appendChild(container);
   }
 
-  // Dedupe: if an identical toast message is already visible, reset its timer instead of stacking a second one
+  // Dedupe: if an identical toast message is already visible, update tag and reset timer
   const toastKey = `${kind}:${normalizedMessage.toLowerCase()}`;
   const existingToast = container.querySelector(
     `[data-toast-key="${CSS.escape(toastKey)}"]`
   ) as HTMLElement | null;
   if (existingToast) {
+    if (options?.tag) existingToast.dataset.toastTag = options.tag;
     const prevTimer = Number(existingToast.dataset.timerId || '0');
     if (prevTimer) window.clearTimeout(prevTimer);
     const nextTimer = window.setTimeout(() => {
       if (existingToast.parentNode) existingToast.remove();
-    }, 4000);
+    }, durationMs);
     existingToast.dataset.timerId = String(nextTimer);
     return;
   }
 
   const toast = document.createElement('div');
   toast.setAttribute('data-toast-key', toastKey);
+  toast.dataset.toastKind = kind;
+  toast.dataset.toastMessage = normalizedMessage;
+  if (
+    kind === 'error' &&
+    normalizedMessage.trim().toLowerCase().replace(/\.+$/, '') ===
+      FRIENDLY_ERROR_MESSAGE.trim().toLowerCase().replace(/\.+$/, '')
+  ) {
+    toast.dataset.toastGeneric = 'true';
+  }
+  if (options?.tag) {
+    toast.dataset.toastTag = options.tag;
+  }
   const borderClass =
     kind === 'error'
       ? 'border-[#D71921]/60 bg-[#140c0d] text-red-200'
@@ -73,6 +152,8 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
   closeBtn.className = 'text-current opacity-70 hover:opacity-100 font-bold text-xs px-1 cursor-pointer';
   closeBtn.textContent = '✕';
   closeBtn.onclick = () => {
+    const prevTimer = Number(toast.dataset.timerId || '0');
+    if (prevTimer) window.clearTimeout(prevTimer);
     toast.remove();
   };
 
@@ -84,7 +165,7 @@ export function showApiToast(message: string, kind: ToastKind = 'error'): void {
     if (toast.parentNode) {
       toast.remove();
     }
-  }, 4000);
+  }, durationMs);
   toast.dataset.timerId = String(timerId);
 }
 
@@ -251,6 +332,7 @@ export async function apiRequest<T = any>(
   const url = resolveApiPath(path);
   const method = String(rest.method || 'GET').toUpperCase();
   const maxAttempts = method === 'GET' ? 2 : 1;
+  const toastTag = `api:${method}:${url}`;
 
   let response!: Response;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -281,6 +363,14 @@ export async function apiRequest<T = any>(
         body: serializedBody,
         signal: controller.signal,
       });
+      const isTransientHttp =
+        response.status === 408 ||
+        response.status === 429 ||
+        (response.status >= 500 && response.status <= 599);
+      if (attempt < maxAttempts && isTransientHttp && !externalSignal?.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        continue;
+      }
       break;
     } catch (networkErr: any) {
       const isExternalAbort = Boolean(externalSignal?.aborted);
@@ -317,7 +407,7 @@ export async function apiRequest<T = any>(
       wrappedErr.code = isAbort ? 'REQUEST_TIMEOUT' : networkErr?.code || 'NETWORK_ERROR';
       wrappedErr.rawMessage = rawMsg;
       (wrappedErr as ApiError & { url?: string }).url = url;
-      if (!silentErrorToast) showApiToast(safeMsg, 'error');
+      if (!silentErrorToast) showApiToast(safeMsg, 'error', { tag: toastTag });
       throw wrappedErr;
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
@@ -409,10 +499,14 @@ export async function apiRequest<T = any>(
       !isGuestExpiredOrInvalid &&
       serverCode !== 'EMAIL_VERIFICATION_REQUIRED'
     ) {
-      showApiToast(safeUserMessage, 'error');
+      showApiToast(safeUserMessage, 'error', { tag: toastTag });
     }
     throw err;
   }
+
+  // Clear any prior error toast for this endpoint or stale generic error toast on successful recovery
+  dismissApiToast({ tag: toastTag });
+  clearGenericErrorToasts();
 
   return data as T;
 }

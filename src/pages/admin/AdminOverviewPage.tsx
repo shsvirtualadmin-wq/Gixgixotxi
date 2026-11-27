@@ -22,28 +22,27 @@ import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
-  getCachedAdminStats,
-  getCachedAdminUsersState,
+  getCachedOverviewUsersAndPlansSnapshot,
+  getCachedOverviewAttemptsCard,
+  getCachedOverviewApplications,
+  getCachedOverviewPaymentsCard,
+  getCachedOverviewReviewsCard,
   getUserDisplayName,
   seedBalancedMCQPool,
   fetchAuditLogs,
-  fetchOverviewUsersCard,
-  fetchOverviewQuestionsCard,
+  fetchOverviewUsersAndPlansSnapshot,
   fetchOverviewAttemptsCard,
   fetchOverviewApplicationsCard,
-  getCachedOverviewApplications,
   fetchOverviewPaymentsCard,
   fetchOverviewReviewsCard,
-  fetchOverviewSubjectsCard,
-  fetchPlanAnalyticsStats,
-  getCachedPlanAnalyticsStats,
-  type PlanAnalyticsStats,
+  type OverviewUsersAndPlansSnapshot,
   AdminStatCardError,
   CORE_SUBJECTS,
 } from '@/services/adminService';
 import { perfMarkEnd } from '@/lib/perfMetrics';
 import { getCachedAdminOverview } from '@/services/adminTabCache';
 import {
+  fetchLiveQuestionBankStats,
   getCachedLiveQuestionBankStats,
   normalizeLiveSubjectCounts,
   type LiveSubjectCountEntry,
@@ -58,9 +57,9 @@ import {
   type WingmateFeedItem,
   type WingmatesCounters,
 } from '@/services/rewardsService';
-import { showApiToast } from '@/lib/api';
+import { clearGenericErrorToasts, dismissApiToast, showApiToast } from '@/lib/api';
 import type { RewardsMode } from '@/lib/rewardsEngine';
-import type { AuditLog, UserProfile } from '@/types';
+import type { AuditLog } from '@/types';
 
 type RadarFilterId = 'all' | 'active' | 'at_risk' | 'inactive';
 
@@ -99,91 +98,96 @@ function parseCardError(
   fallbackSource: string
 ): { source: string; status: string | number; message: string } {
   if (err instanceof AdminStatCardError) {
+    const safeStatus =
+      err.status === 200 || err.status === '200' ? 'STAT_UNAVAILABLE' : err.status;
     return {
       source: err.source,
-      status: err.status,
+      status: safeStatus,
       message: err.message,
     };
   }
-  const e = err as { code?: string; status?: number; message?: string; collection?: string };
+  const e = err as { code?: string; status?: number | string; message?: string; collection?: string };
   const source = e?.collection ? `firestore:${e.collection}` : fallbackSource;
-  const status = e?.status ?? e?.code ?? 'ERROR';
+  const rawStatus = e?.status ?? e?.code ?? 'ERROR';
+  const status =
+    rawStatus === 200 || rawStatus === '200'
+      ? e?.code && e.code !== '200'
+        ? e.code
+        : 'STAT_UNAVAILABLE'
+      : rawStatus;
   const message = e?.message || `Failed to load ${source}`;
   return { source, status, message };
+}
+
+function isTransientCardError(parsed: { status: string | number; message: string }): boolean {
+  const statusStr = String(parsed.status || '').toLowerCase();
+  const msgStr = String(parsed.message || '').toLowerCase();
+  if (statusStr.includes('resource_exhausted') || msgStr.includes('quota')) return false;
+  if (statusStr.includes('permission') || statusStr.includes('unauthenticated')) return false;
+  return (
+    statusStr.includes('deadline') ||
+    statusStr.includes('timeout') ||
+    statusStr.includes('unavailable') ||
+    statusStr.includes('503') ||
+    statusStr.includes('504') ||
+    msgStr.includes('timed out') ||
+    msgStr.includes('timeout') ||
+    msgStr.includes('network')
+  );
 }
 
 export function AdminOverviewPage() {
   const { user, isAdmin, isSuperAdmin, profileLoading } = useAuth();
   const initialOverview = getCachedAdminOverview();
-  const initialStats = initialOverview?.stats ?? getCachedAdminStats();
+  const initialUsersAndPlans = getCachedOverviewUsersAndPlansSnapshot();
+  const initialLiveBank = getCachedLiveQuestionBankStats();
+  const initialAttempts = getCachedOverviewAttemptsCard();
+  const initialAppsSummary = getCachedOverviewApplications();
+  const initialPayments = getCachedOverviewPaymentsCard();
+  const initialReviews = getCachedOverviewReviewsCard();
 
-  // Independent state per stat card — never returns 0 or a default on failure
-  const [usersCard, setUsersCard] = useState<
-    CardState<{
-      totalUsers: number;
-      studentCount: number | null;
-      captainCount: number | null;
-      freeCount: number | null;
-      proCount: number | null;
-      plusCount: number | null;
-      expiringSoonCount: number | null;
-      guestCount: number | null;
-      previewUsers: UserProfile[];
-    }>
+  // Unified atomic snapshot for Registered users + Boardly Plans Snapshot + Users directory preview
+  const [usersAndPlansCard, setUsersAndPlansCard] = useState<
+    CardState<OverviewUsersAndPlansSnapshot>
   >(() => ({
-    loading: !initialStats,
-    data: initialStats
-      ? {
-          totalUsers: initialStats.totalUsers,
-          studentCount: initialStats.studentCount ?? null,
-          captainCount: initialStats.captainCount ?? null,
-          freeCount: initialStats.freeCount ?? null,
-          proCount: initialStats.proCount ?? null,
-          plusCount: initialStats.plusCount ?? null,
-          expiringSoonCount: initialStats.expiringSoonCount ?? null,
-          guestCount: initialStats.guestCount ?? null,
-          previewUsers: getCachedAdminUsersState()?.users ?? [],
-        }
-      : null,
+    loading: !initialUsersAndPlans,
+    data: initialUsersAndPlans,
     error: null,
   }));
-  const [planAnalytics, setPlanAnalytics] = useState<PlanAnalyticsStats | null>(() =>
-    getCachedPlanAnalyticsStats()
-  );
 
-  const initialLiveBank = getCachedLiveQuestionBankStats();
-
-  const [questionsCard, setQuestionsCard] = useState<
+  // Unified atomic snapshot for Questions in pool + Questions by subject (one GET /api/mcqs/health source)
+  const [questionBankCard, setQuestionBankCard] = useState<
     CardState<{
       totalQuestions: number;
-      totalUniversities?: number;
-      liveUniversities?: number;
+      totalUniversities: number;
+      liveUniversities: number;
+      subjectCounts: Record<string, number>;
+      subjects: LiveSubjectCountEntry[];
     }>
-  >(() => ({
-    loading: !initialLiveBank && !initialStats,
-    data: initialLiveBank
-      ? {
+  >(() => {
+    if (initialLiveBank) {
+      const normalized = normalizeLiveSubjectCounts(initialLiveBank.bySubject);
+      return {
+        loading: false,
+        data: {
           totalQuestions: initialLiveBank.totalMcqs,
           totalUniversities: initialLiveBank.totalUniversities,
           liveUniversities: initialLiveBank.liveUniversities,
-        }
-      : initialStats
-      ? {
-          totalQuestions: initialStats.totalQuestions,
-          totalUniversities: initialStats.totalUniversities,
-          liveUniversities: initialStats.liveUniversities,
-        }
-      : null,
-    error: null,
-  }));
+          subjectCounts: normalized.subjectCounts,
+          subjects: normalized.entries,
+        },
+        error: null,
+      };
+    }
+    return { loading: true, data: null, error: null };
+  });
 
   const [attemptsCard, setAttemptsCard] = useState<CardState<{ totalAttempts: number }>>(() => ({
-    loading: !initialStats,
-    data: initialStats ? { totalAttempts: initialStats.totalAttempts } : null,
+    loading: !initialAttempts,
+    data: initialAttempts,
     error: null,
   }));
 
-  const initialAppsSummary = getCachedOverviewApplications();
   const [applicationsCard, setApplicationsCard] = useState<
     CardState<{ pendingCaptains: number; pendingCrew: number; totalPending: number }>
   >(() => ({
@@ -193,59 +197,31 @@ export function AdminOverviewPage() {
   }));
 
   const [paymentsCard, setPaymentsCard] = useState<CardState<{ pendingPayments: number }>>(() => ({
-    loading: !initialStats,
-    data: initialStats ? { pendingPayments: initialStats.pendingPayments } : null,
+    loading: !initialPayments,
+    data: initialPayments,
     error: null,
   }));
 
   const [reviewsCard, setReviewsCard] = useState<CardState<{ pendingReviews: number }>>(() => ({
-    loading: !initialStats,
-    data: initialStats ? { pendingReviews: initialStats.pendingReviews } : null,
+    loading: !initialReviews,
+    data: initialReviews,
     error: null,
   }));
 
-  const [subjectsCard, setSubjectsCard] = useState<
-    CardState<{
-      subjectCounts: Record<string, number>;
-      subjects: LiveSubjectCountEntry[];
-      totalQuestions?: number;
-    }>
-  >(() => {
-    if (initialLiveBank) {
-      const normalized = normalizeLiveSubjectCounts(initialLiveBank.bySubject);
-      return {
-        loading: false,
-        data: {
-          subjectCounts: normalized.subjectCounts,
-          subjects: normalized.entries,
-          totalQuestions: initialLiveBank.totalMcqs,
-        },
-        error: null,
-      };
-    }
-    if (initialStats) {
-      const normalized = initialStats.subjectBreakdown
-        ? {
-            subjectCounts: initialStats.subjectCounts || {},
-            entries: initialStats.subjectBreakdown,
-          }
-        : normalizeLiveSubjectCounts(initialStats.subjectCounts);
-      return {
-        loading: false,
-        data: {
-          subjectCounts: normalized.subjectCounts,
-          subjects: normalized.entries,
-          totalQuestions: initialStats.totalQuestions,
-        },
-        error: null,
-      };
-    }
-    return { loading: true, data: null, error: null };
-  });
-
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [bannerError, setBannerError] = useState<AdminDiagnosticError | null>(null);
-  const [recentLogs, setRecentLogs] = useState<AuditLog[]>(() => initialOverview?.recentLogs ?? []);
+  const [cardErrors, setCardErrors] = useState<Record<string, AdminDiagnosticError>>({});
+  const bannerError: AdminDiagnosticError | null = Object.values(cardErrors)[0] ?? null;
+  const [recentLogsCard, setRecentLogsCard] = useState<CardState<AuditLog[]>>(() => {
+    const cachedLogs =
+      initialOverview && Array.isArray(initialOverview.recentLogs) && initialOverview.recentLogs.length > 0
+        ? initialOverview.recentLogs
+        : null;
+    return {
+      loading: !cachedLogs,
+      data: cachedLogs,
+      error: null,
+    };
+  });
 
   // Seeder state & confirmation dialog
   const [isConfirmSeedOpen, setIsConfirmSeedOpen] = useState(false);
@@ -267,13 +243,9 @@ export function AdminOverviewPage() {
   );
   const [checkingRewardsHealth, setCheckingRewardsHealth] = useState(false);
 
-  // Wingmates Radar live feed state
+  // Wingmates Radar live feed state — counters stay null while pending/failed (never fake 0s)
   const [radarItems, setRadarItems] = useState<WingmateFeedItem[]>([]);
-  const [radarCounters, setRadarCounters] = useState<WingmatesCounters>({
-    practicingNow: 0,
-    streakAtRisk: 0,
-    inactive2PlusDays: 0,
-  });
+  const [radarCounters, setRadarCounters] = useState<WingmatesCounters | null>(null);
   const [radarLoading, setRadarLoading] = useState<boolean>(true);
   const [radarError, setRadarError] = useState<string | null>(null);
   const [radarFilter, setRadarFilter] = useState<RadarFilterId>('all');
@@ -282,193 +254,316 @@ export function AdminOverviewPage() {
   const [liveClockMs, setLiveClockMs] = useState<number>(() => Date.now());
 
   const isMountedRef = useRef(true);
+  const requestIdsRef = useRef<Record<string, number>>({});
+  const nextRequestId = useCallback((key: string): number => {
+    const next = (requestIdsRef.current[key] ?? 0) + 1;
+    requestIdsRef.current[key] = next;
+    return next;
+  }, []);
+  const isLatestRequest = useCallback(
+    (key: string, reqId: number): boolean =>
+      isMountedRef.current && requestIdsRef.current[key] === reqId,
+    []
+  );
+
   useEffect(() => {
     isMountedRef.current = true;
+    clearGenericErrorToasts();
     const id = window.setInterval(() => {
       setLiveClockMs(Date.now());
     }, 15_000);
     return () => {
       isMountedRef.current = false;
       window.clearInterval(id);
+      clearGenericErrorToasts();
     };
   }, []);
 
+  const clearCardFailure = useCallback((cardKey: string) => {
+    setCardErrors((prev) => {
+      if (!(cardKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[cardKey];
+      return next;
+    });
+    dismissApiToast({ tag: `admin-overview:${cardKey}` });
+    clearGenericErrorToasts();
+  }, []);
+
   const reportCardFailure = useCallback(
-    (err: unknown, fallbackSource: string) => {
+    (cardKey: string, err: unknown, fallbackSource: string) => {
       const parsed = parseCardError(err, fallbackSource);
-      const toastMsg = `${parsed.source} (${parsed.status}): ${parsed.message}`;
-      showApiToast(toastMsg, 'error');
-      setBannerError({
-        code: String(parsed.status),
-        message: parsed.message,
-        collection: parsed.source,
-        operation: 'AdminOverviewCardLoad',
-      });
+      setCardErrors((prev) => ({
+        ...prev,
+        [cardKey]: {
+          code: String(parsed.status),
+          message: parsed.message,
+          collection: parsed.source,
+          operation: 'AdminOverviewCardLoad',
+        },
+      }));
       return parsed;
     },
     []
   );
 
   useEffect(() => {
-    if (usersCard.data && typeof usersCard.data.totalUsers === 'number') {
-      perfMarkEnd('admin_student_count', { totalUsers: usersCard.data.totalUsers });
+    if (
+      usersAndPlansCard.data &&
+      typeof usersAndPlansCard.data.users.totalUsers === 'number'
+    ) {
+      perfMarkEnd('admin_student_count', {
+        totalUsers: usersAndPlansCard.data.users.totalUsers,
+      });
     }
-  }, [usersCard.data]);
+  }, [usersAndPlansCard.data]);
 
-  const loadUsersCard = useCallback(
+  const loadUsersAndPlansCard = useCallback(
     async (force = false) => {
-      setUsersCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      const reqId = nextRequestId('usersAndPlans');
+      setUsersAndPlansCard((prev) => ({
+        ...prev,
+        loading: !prev.data || force,
+        error: null,
+      }));
       try {
-        const data = await fetchOverviewUsersCard({ force });
-        if (!isMountedRef.current) return;
-        setUsersCard({ loading: false, data, error: null });
+        const snapshot = await fetchOverviewUsersAndPlansSnapshot({ force });
+        if (!isLatestRequest('usersAndPlans', reqId)) return;
+        setUsersAndPlansCard({ loading: false, data: snapshot, error: null });
+        clearCardFailure('users');
+        if (snapshot.plansError) {
+          reportCardFailure(
+            'plans',
+            new AdminStatCardError(
+              snapshot.plansError.source,
+              snapshot.plansError.status,
+              snapshot.plansError.message
+            ),
+            snapshot.plansError.source
+          );
+        } else {
+          clearCardFailure('plans');
+        }
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'firestore:users | GET /api/admin/stats');
-        setUsersCard({ loading: false, data: null, error: parsed });
+        if (!isLatestRequest('usersAndPlans', reqId)) return;
+        const parsed = reportCardFailure('users', err, 'firestore:users');
+        clearCardFailure('plans');
+        setUsersAndPlansCard({ loading: false, data: null, error: parsed });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
-  const loadQuestionsCard = useCallback(
+  const loadQuestionBankCard = useCallback(
     async (force = false) => {
-      setQuestionsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      const reqId = nextRequestId('questionBank');
+      setQuestionBankCard((prev) => ({
+        ...prev,
+        loading: !prev.data || force,
+        error: null,
+      }));
       try {
-        const data = await fetchOverviewQuestionsCard({ force });
-        if (!isMountedRef.current) return;
-        setQuestionsCard({ loading: false, data, error: null });
+        const bank = await fetchLiveQuestionBankStats({ force, strict: true });
+        if (!isLatestRequest('questionBank', reqId)) return;
+        const normalized = normalizeLiveSubjectCounts(bank.bySubject);
+        setQuestionBankCard({
+          loading: false,
+          data: {
+            totalQuestions: bank.totalMcqs,
+            totalUniversities: bank.totalUniversities,
+            liveUniversities: bank.liveUniversities,
+            subjectCounts: normalized.subjectCounts,
+            subjects: normalized.entries,
+          },
+          error: null,
+        });
+        clearCardFailure('questions');
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'GET /api/mcqs/health');
-        setQuestionsCard({ loading: false, data: null, error: parsed });
+        if (!isLatestRequest('questionBank', reqId)) return;
+        const parsed = reportCardFailure('questions', err, 'GET /api/mcqs/health');
+        setQuestionBankCard({ loading: false, data: null, error: parsed });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadAttemptsCard = useCallback(
-    async (force = false) => {
+    async (force = false, allowAutoRetry = true) => {
+      const reqId = nextRequestId('attempts');
       setAttemptsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
         const data = await fetchOverviewAttemptsCard({ force });
-        if (!isMountedRef.current) return;
+        if (!isLatestRequest('attempts', reqId)) return;
         setAttemptsCard({ loading: false, data, error: null });
+        clearCardFailure('attempts');
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'firestore:attempts | GET /api/admin/stats');
-        setAttemptsCard({ loading: false, data: null, error: parsed });
+        if (!isLatestRequest('attempts', reqId)) return;
+        const parsed = parseCardError(err, 'firestore:attempts');
+        if (allowAutoRetry && isTransientCardError(parsed)) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          if (!isLatestRequest('attempts', reqId)) return;
+          try {
+            const retryData = await fetchOverviewAttemptsCard({ force: true });
+            if (!isLatestRequest('attempts', reqId)) return;
+            setAttemptsCard({ loading: false, data: retryData, error: null });
+            clearCardFailure('attempts');
+            return;
+          } catch (retryErr) {
+            if (!isLatestRequest('attempts', reqId)) return;
+            const retryParsed = reportCardFailure('attempts', retryErr, 'firestore:attempts');
+            setAttemptsCard({ loading: false, data: null, error: retryParsed });
+            return;
+          }
+        }
+        const reported = reportCardFailure('attempts', err, 'firestore:attempts');
+        setAttemptsCard({ loading: false, data: null, error: reported });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadApplicationsCard = useCallback(
     async (force = false) => {
+      const reqId = nextRequestId('applications');
       setApplicationsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
         const data = await fetchOverviewApplicationsCard({ force });
-        if (!isMountedRef.current) return;
+        if (!isLatestRequest('applications', reqId)) return;
         setApplicationsCard({ loading: false, data, error: null });
+        clearCardFailure('applications');
       } catch (err) {
-        if (!isMountedRef.current) return;
+        if (!isLatestRequest('applications', reqId)) return;
         const parsed = reportCardFailure(
+          'applications',
           err,
-          'firestore:captainApplications,crewApplications | GET /api/admin/stats'
+          'firestore:captainApplications,crewApplications'
         );
         setApplicationsCard({ loading: false, data: null, error: parsed });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadPaymentsCard = useCallback(
     async (force = false) => {
+      const reqId = nextRequestId('payments');
       setPaymentsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
         const data = await fetchOverviewPaymentsCard({ force });
-        if (!isMountedRef.current) return;
+        if (!isLatestRequest('payments', reqId)) return;
         setPaymentsCard({ loading: false, data, error: null });
+        clearCardFailure('payments');
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'firestore:paymentRequests | GET /api/admin/stats');
+        if (!isLatestRequest('payments', reqId)) return;
+        const parsed = reportCardFailure('payments', err, 'firestore:paymentRequests');
         setPaymentsCard({ loading: false, data: null, error: parsed });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const loadReviewsCard = useCallback(
-    async (force = false) => {
+    async (force = false, allowAutoRetry = true) => {
+      const reqId = nextRequestId('reviews');
       setReviewsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
         const data = await fetchOverviewReviewsCard({ force });
-        if (!isMountedRef.current) return;
+        if (!isLatestRequest('reviews', reqId)) return;
         setReviewsCard({ loading: false, data, error: null });
+        clearCardFailure('reviews');
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'firestore:reviews | GET /api/admin/stats');
-        setReviewsCard({ loading: false, data: null, error: parsed });
+        if (!isLatestRequest('reviews', reqId)) return;
+        const parsed = parseCardError(err, 'firestore:reviews');
+        if (allowAutoRetry && isTransientCardError(parsed)) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          if (!isLatestRequest('reviews', reqId)) return;
+          try {
+            const retryData = await fetchOverviewReviewsCard({ force: true });
+            if (!isLatestRequest('reviews', reqId)) return;
+            setReviewsCard({ loading: false, data: retryData, error: null });
+            clearCardFailure('reviews');
+            return;
+          } catch (retryErr) {
+            if (!isLatestRequest('reviews', reqId)) return;
+            const retryParsed = reportCardFailure('reviews', retryErr, 'firestore:reviews');
+            setReviewsCard({ loading: false, data: null, error: retryParsed });
+            return;
+          }
+        }
+        const reported = reportCardFailure('reviews', err, 'firestore:reviews');
+        setReviewsCard({ loading: false, data: null, error: reported });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
-  const loadSubjectsCard = useCallback(
+  const loadRecentLogs = useCallback(
     async (force = false) => {
-      setSubjectsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
+      const reqId = nextRequestId('auditLogs');
+      setRecentLogsCard((prev) => ({ ...prev, loading: !prev.data || force, error: null }));
       try {
-        const data = await fetchOverviewSubjectsCard({ force });
-        if (!isMountedRef.current) return;
-        setSubjectsCard({ loading: false, data, error: null });
+        const logs = await fetchAuditLogs(5);
+        if (!isLatestRequest('auditLogs', reqId)) return;
+        setRecentLogsCard({
+          loading: false,
+          data: Array.isArray(logs) ? logs : [],
+          error: null,
+        });
+        clearCardFailure('auditLogs');
       } catch (err) {
-        if (!isMountedRef.current) return;
-        const parsed = reportCardFailure(err, 'GET /api/mcqs/health');
-        setSubjectsCard({ loading: false, data: null, error: parsed });
+        if (!isLatestRequest('auditLogs', reqId)) return;
+        const parsed = reportCardFailure(
+          'auditLogs',
+          err,
+          'firestore:auditLogs | GET /api/admin/grand-line-audit-logs'
+        );
+        setRecentLogsCard({ loading: false, data: null, error: parsed });
       }
     },
-    [reportCardFailure]
+    [clearCardFailure, isLatestRequest, nextRequestId, reportCardFailure]
   );
 
   const handleRunRewardsHealthCheck = useCallback(async () => {
     setCheckingRewardsHealth(true);
     try {
       const h = await fetchRewardsHealth();
-      if (isMountedRef.current) setRewardsHealth(h);
+      if (isMountedRef.current) {
+        setRewardsHealth(h);
+        clearCardFailure('rewardsHealth');
+      }
     } catch (err) {
-      reportCardFailure(err, 'GET /api/rewards/health');
+      reportCardFailure('rewardsHealth', err, 'GET /api/rewards/health');
     } finally {
       if (isMountedRef.current) setCheckingRewardsHealth(false);
     }
-  }, [reportCardFailure]);
+  }, [clearCardFailure, reportCardFailure]);
 
   const loadWingmatesRadar = useCallback(async () => {
+    const reqId = nextRequestId('wingmatesRadar');
     setRadarLoading(true);
     setRadarError(null);
     try {
       const res = await fetchAdminWingmatesRadar();
-      if (!isMountedRef.current) return;
-      if (res.ok) {
+      if (!isLatestRequest('wingmatesRadar', reqId)) return;
+      if (res.ok && res.counters) {
         setRadarItems(res.items || []);
-        setRadarCounters(
-          res.counters || {
-            practicingNow: 0,
-            streakAtRisk: 0,
-            inactive2PlusDays: 0,
-          }
-        );
+        setRadarCounters(res.counters);
       } else {
+        setRadarItems([]);
+        setRadarCounters(null);
         setRadarError(res.error || 'Unable to load Wingmates Radar.');
       }
     } catch (err: any) {
-      if (!isMountedRef.current) return;
+      if (!isLatestRequest('wingmatesRadar', reqId)) return;
+      setRadarItems([]);
+      setRadarCounters(null);
       setRadarError(err?.message || 'Unable to load Wingmates Radar.');
     } finally {
-      if (isMountedRef.current) {
+      if (isLatestRequest('wingmatesRadar', reqId)) {
         setRadarLoading(false);
       }
     }
-  }, []);
+  }, [isLatestRequest, nextRequestId]);
 
   const handleSendRadarReminder = async (item: WingmateFeedItem) => {
     if (remindingUid) return;
@@ -496,53 +591,42 @@ export function AdminOverviewPage() {
       if (force) {
         setIsRefreshing(true);
       }
-      setBannerError(null);
+      setCardErrors({});
+      clearGenericErrorToasts();
 
-      // Fire every stat card independently in parallel so a single failure never blocks or zeros out others
+      // Fire each independent data source once in parallel (users+plans share one atomic snapshot; questions+subjects share one health snapshot)
       const tasks: Promise<unknown>[] = [
-        loadUsersCard(force),
-        fetchPlanAnalyticsStats({ force })
-          .then((analytics) => {
-            if (isMountedRef.current) setPlanAnalytics(analytics);
-          })
-          .catch(() => {}),
-        loadQuestionsCard(force),
+        loadUsersAndPlansCard(force),
+        loadQuestionBankCard(force),
         loadAttemptsCard(force),
         loadApplicationsCard(force),
         loadPaymentsCard(force),
         loadReviewsCard(force),
-        loadSubjectsCard(force),
         loadWingmatesRadar(),
       ];
 
       if (isSuperAdmin) {
         tasks.push(
-          fetchAuditLogs(5)
-            .then((logs) => {
-              if (isMountedRef.current && Array.isArray(logs)) {
-                setRecentLogs(logs);
-              }
-            })
-            .catch((err) => {
-              reportCardFailure(err, 'firestore:auditLogs | GET /api/admin/grand-line-audit-logs');
-            }),
+          loadRecentLogs(force),
           fetchRewardsState(user.uid)
             .then((st) => {
               if (isMountedRef.current && st?.mode) {
                 setRewardsMode(st.mode);
+                clearCardFailure('rewardsState');
               }
             })
             .catch((err) => {
-              reportCardFailure(err, 'GET /api/rewards/state');
+              reportCardFailure('rewardsState', err, 'GET /api/rewards/state');
             }),
           fetchRewardsHealth()
             .then((rh) => {
               if (isMountedRef.current && rh) {
                 setRewardsHealth(rh);
+                clearCardFailure('rewardsHealth');
               }
             })
             .catch((err) => {
-              reportCardFailure(err, 'GET /api/rewards/health');
+              reportCardFailure('rewardsHealth', err, 'GET /api/rewards/health');
             })
         );
       }
@@ -556,14 +640,15 @@ export function AdminOverviewPage() {
       user,
       isAdmin,
       isSuperAdmin,
-      loadUsersCard,
-      loadQuestionsCard,
+      loadUsersAndPlansCard,
+      loadQuestionBankCard,
       loadAttemptsCard,
       loadApplicationsCard,
       loadPaymentsCard,
       loadReviewsCard,
-      loadSubjectsCard,
       loadWingmatesRadar,
+      loadRecentLogs,
+      clearCardFailure,
       reportCardFailure,
     ]
   );
@@ -653,7 +738,7 @@ export function AdminOverviewPage() {
           fetchAuditLogs(5).catch(() => null),
           fetchRewardsHealth().catch(() => null),
         ]);
-        if (logs) setRecentLogs(logs);
+        if (logs) setRecentLogsCard({ loading: false, data: logs, error: null });
         if (rHealth) setRewardsHealth(rHealth);
       } else {
         setRewardsModeError(res.error || 'Failed to update Rewards mode.');
@@ -668,21 +753,19 @@ export function AdminOverviewPage() {
 
   const renderCardMetric = (
     card: CardState<any>,
-    valueAccessor: (d: any) => number,
+    valueAccessor: (d: any) => number | null | undefined,
     retryFn: () => void,
     testId?: string
   ) => {
     if (card.loading && !card.data) {
       return (
-        <div className="my-2 flex items-center gap-2">
-          <span className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--muted)] leading-none">
-            —
-          </span>
-          <span className="h-7 w-20 rounded-lg bg-[var(--surface-hover)] animate-pulse" />
+        <div className="my-2 flex items-center" aria-label="Loading metric">
+          <span className="h-9 sm:h-10 w-24 rounded-xl bg-[var(--surface-hover)] animate-pulse" />
         </div>
       );
     }
-    if (card.error || !card.data) {
+    const num = card.data ? valueAccessor(card.data) : null;
+    if (card.error || !card.data || typeof num !== 'number' || !Number.isFinite(num)) {
       return (
         <div className="my-2 flex flex-col gap-1" data-testid={testId ? `${testId}-error` : undefined}>
           <div className="inline-flex items-center gap-1.5 text-[var(--red)] font-heading font-bold text-[13px]">
@@ -690,7 +773,8 @@ export function AdminOverviewPage() {
             <span>Error ({card.error?.status || 'FAILED'})</span>
           </div>
           <p className="text-[11px] font-mono text-[var(--muted)] line-clamp-2">
-            {card.error?.source}: {card.error?.message || 'Failed to load metric'}
+            {card.error?.source ? `${card.error.source}: ` : ''}
+            {card.error?.message || 'Failed to load metric'}
           </p>
           <button
             type="button"
@@ -702,13 +786,12 @@ export function AdminOverviewPage() {
         </div>
       );
     }
-    const num = valueAccessor(card.data);
     return (
       <p
         data-testid={testId}
         className="tabular-nums text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2"
       >
-        {Number(num).toLocaleString()}
+        {num.toLocaleString()}
       </p>
     );
   };
@@ -756,28 +839,55 @@ export function AdminOverviewPage() {
             <Users size={16} className="text-[var(--text)] shrink-0" />
           </div>
           {renderCardMetric(
-            usersCard,
-            (d) => d.totalUsers,
-            () => void loadUsersCard(true),
+            usersAndPlansCard,
+            (d: OverviewUsersAndPlansSnapshot) => d.users.totalUsers,
+            () => void loadUsersAndPlansCard(true),
             'admin-overview-total-users'
           )}
-          {usersCard.data && !usersCard.error ? (
-            <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
-              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Free: {usersCard.data.freeCount ?? '—'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-[#D71921]/10 border border-[#D71921]/30 text-[#D71921]">
-                Pro: {usersCard.data.proCount ?? '—'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-bold">
-                Plus: {usersCard.data.plusCount ?? '—'}
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                Guests: {usersCard.data.guestCount ?? '—'}
-              </span>
+          {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+            <div className="flex flex-wrap items-center gap-1.5 mb-2" aria-label="Loading user breakdown">
+              <span className="h-5 w-14 rounded bg-[var(--surface-hover)] animate-pulse" />
+              <span className="h-5 w-12 rounded bg-[var(--surface-hover)] animate-pulse" />
+              <span className="h-5 w-12 rounded bg-[var(--surface-hover)] animate-pulse" />
             </div>
-          ) : usersCard.loading ? (
-            <div className="h-4 w-32 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
+          ) : usersAndPlansCard.data && !usersAndPlansCard.error ? (
+            (() => {
+              const u = usersAndPlansCard.data.users;
+              const freeVal = u.freeCount;
+              const proVal = u.proCount;
+              const plusVal = u.plusCount;
+              const guestVal = u.guestCount;
+              const hasAnyPlanChip =
+                typeof freeVal === 'number' ||
+                typeof proVal === 'number' ||
+                typeof plusVal === 'number' ||
+                typeof guestVal === 'number';
+              if (!hasAnyPlanChip) return null;
+              return (
+                <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
+                  {typeof freeVal === 'number' && (
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                      Free: {freeVal.toLocaleString()}
+                    </span>
+                  )}
+                  {typeof proVal === 'number' && (
+                    <span className="px-1.5 py-0.5 rounded bg-[#D71921]/10 border border-[#D71921]/30 text-[#D71921]">
+                      Pro: {proVal.toLocaleString()}
+                    </span>
+                  )}
+                  {typeof plusVal === 'number' && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-bold">
+                      Plus: {plusVal.toLocaleString()}
+                    </span>
+                  )}
+                  {typeof guestVal === 'number' && (
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
+                      Guests: {guestVal.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              );
+            })()
           ) : null}
           {isSuperAdmin ? (
             <Link
@@ -803,16 +913,19 @@ export function AdminOverviewPage() {
             <Database size={16} className="text-[var(--text)] shrink-0" />
           </div>
           {renderCardMetric(
-            questionsCard,
+            questionBankCard,
             (d) => d.totalQuestions,
-            () => void loadQuestionsCard(true),
+            () => void loadQuestionBankCard(true),
             'admin-overview-total-questions'
           )}
-          {questionsCard.data &&
-          !questionsCard.error &&
-          typeof questionsCard.data.totalUniversities === 'number' ? (
+          {questionBankCard.loading && !questionBankCard.data ? (
+            <div className="h-3.5 w-36 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
+          ) : questionBankCard.data &&
+            !questionBankCard.error &&
+            typeof questionBankCard.data.totalUniversities === 'number' &&
+            typeof questionBankCard.data.liveUniversities === 'number' ? (
             <div className="text-[11px] font-mono text-[var(--muted)] mb-2">
-              {questionsCard.data.liveUniversities ?? 0} of {questionsCard.data.totalUniversities}{' '}
+              {questionBankCard.data.liveUniversities} of {questionBankCard.data.totalUniversities}{' '}
               universities live
             </div>
           ) : null}
@@ -934,52 +1047,96 @@ export function AdminOverviewPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
-            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Active Free</div>
-            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
-              {(usersCard.data?.freeCount ?? planAnalytics?.freeCount ?? '—').toLocaleString()}
-            </div>
+        {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+          <div
+            data-testid="plans-snapshot-loading"
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs"
+            aria-label="Loading plan analytics"
+          >
+            {[
+              { label: 'Active Free', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
+              { label: 'Active Pro', border: 'border-[#D71921]/30', labelClass: 'text-[#D71921]' },
+              { label: 'Active Plus', border: 'border-amber-500/40', labelClass: 'text-amber-600 dark:text-amber-400' },
+              { label: 'Expiring ≤7d', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
+              { label: 'Pro / Plus PKR', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
+              { label: 'Pro → Plus', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
+            ].map((tile) => (
+              <div key={tile.label} className={`p-3 rounded-2xl bg-[var(--card-2)] border ${tile.border}`}>
+                <div className={`font-mono text-[10px] uppercase ${tile.labelClass}`}>{tile.label}</div>
+                <div className="h-7 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-1" />
+              </div>
+            ))}
           </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[#D71921]/30">
-            <div className="font-mono text-[10px] uppercase text-[#D71921]">Active Pro</div>
-            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
-              {(usersCard.data?.proCount ?? planAnalytics?.proCount ?? '—').toLocaleString()}
+        ) : (() => {
+          const plansErr = usersAndPlansCard.error ?? usersAndPlansCard.data?.plansError ?? null;
+          const plans = usersAndPlansCard.data?.plans ?? null;
+          if (plansErr || !plans) {
+            return (
+              <div
+                data-testid="plans-snapshot-error"
+                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span className="truncate">
+                    {plansErr
+                      ? `${plansErr.source} (${plansErr.status}): ${plansErr.message}`
+                      : 'Plan analytics unavailable.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadUsersAndPlansCard(true)}
+                  className="underline font-bold shrink-0 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            );
+          }
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+                <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Active Free</div>
+                <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
+                  {plans.freeCount.toLocaleString()}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[#D71921]/30">
+                <div className="font-mono text-[10px] uppercase text-[#D71921]">Active Pro</div>
+                <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
+                  {plans.proCount.toLocaleString()}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-amber-500/40">
+                <div className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
+                  Active Plus
+                </div>
+                <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
+                  {plans.plusCount.toLocaleString()}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+                <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Expiring ≤7d</div>
+                <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
+                  {plans.expiringSoonCount.toLocaleString()}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+                <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro / Plus PKR</div>
+                <div className="font-mono text-[12px] font-bold text-[var(--text)] mt-1.5 tabular-nums">
+                  {`${plans.proRevenuePkr.toLocaleString()} / ${plans.plusRevenuePkr.toLocaleString()}`}
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+                <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro → Plus</div>
+                <div className="font-dot text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-1 tabular-nums">
+                  {plans.proToPlusConversions.toLocaleString()}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-amber-500/40">
-            <div className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
-              Active Plus
-            </div>
-            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
-              {(usersCard.data?.plusCount ?? planAnalytics?.plusCount ?? '—').toLocaleString()}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
-            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Expiring ≤7d</div>
-            <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1">
-              {(
-                usersCard.data?.expiringSoonCount ??
-                planAnalytics?.expiringSoonCount ??
-                '—'
-              ).toLocaleString()}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
-            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro / Plus PKR</div>
-            <div className="font-mono text-[12px] font-bold text-[var(--text)] mt-1.5">
-              {planAnalytics
-                ? `${planAnalytics.proRevenuePkr.toLocaleString()} / ${planAnalytics.plusRevenuePkr.toLocaleString()}`
-                : '—'}
-            </div>
-          </div>
-          <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
-            <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro → Plus</div>
-            <div className="font-dot text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">
-              {planAnalytics ? planAnalytics.proToPlusConversions.toLocaleString() : '—'}
-            </div>
-          </div>
-        </div>
+          );
+        })()}
       </section>
 
       {/* ─── WINGMATES RADAR (ALL USERS LIVE FEED + FILTERS + SEND REMINDER) ─── */}
@@ -1068,68 +1225,64 @@ export function AdminOverviewPage() {
           className="grid grid-cols-3 gap-2.5"
           data-testid="wingmates-radar-counters"
         >
-          <div
-            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
-            style={{
-              backgroundColor: 'var(--pill-chip-bg)',
-              borderColor: 'var(--pill-chip-border)',
-            }}
-          >
-            <span
-              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
-              style={{ color: 'var(--text-muted)' }}
+          {(
+            [
+              {
+                label: 'Practicing now',
+                value: radarCounters?.practicingNow,
+                color: 'var(--rw-green)',
+              },
+              {
+                label: 'Streak at risk',
+                value: radarCounters?.streakAtRisk,
+                color: 'var(--rw-gold)',
+              },
+              {
+                label: 'Inactive 2+ days',
+                value: radarCounters?.inactive2PlusDays,
+                color: 'var(--rw-red)',
+              },
+            ] as const
+          ).map((counter) => (
+            <div
+              key={counter.label}
+              className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
+              style={{
+                backgroundColor: 'var(--pill-chip-bg)',
+                borderColor: 'var(--pill-chip-border)',
+              }}
             >
-              Practicing now
-            </span>
-            <span
-              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
-              style={{ color: 'var(--rw-green)' }}
-            >
-              {radarCounters.practicingNow}
-            </span>
-          </div>
-
-          <div
-            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
-            style={{
-              backgroundColor: 'var(--pill-chip-bg)',
-              borderColor: 'var(--pill-chip-border)',
-            }}
-          >
-            <span
-              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Streak at risk
-            </span>
-            <span
-              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
-              style={{ color: 'var(--rw-gold)' }}
-            >
-              {radarCounters.streakAtRisk}
-            </span>
-          </div>
-
-          <div
-            className="rounded-[20px] border px-3.5 py-2.5 flex flex-col justify-between"
-            style={{
-              backgroundColor: 'var(--pill-chip-bg)',
-              borderColor: 'var(--pill-chip-border)',
-            }}
-          >
-            <span
-              className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Inactive 2+ days
-            </span>
-            <span
-              className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
-              style={{ color: 'var(--rw-red)' }}
-            >
-              {radarCounters.inactive2PlusDays}
-            </span>
-          </div>
+              <span
+                className="font-mono text-[10px] font-bold uppercase tracking-wider truncate"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {counter.label}
+              </span>
+              {radarLoading && !radarCounters ? (
+                <div
+                  className="h-6 w-12 rounded-md animate-pulse mt-1"
+                  style={{ backgroundColor: 'var(--pill-card-bg)' }}
+                />
+              ) : radarError ||
+                !radarCounters ||
+                typeof counter.value !== 'number' ||
+                !Number.isFinite(counter.value) ? (
+                <span
+                  className="font-mono text-[11px] font-bold mt-1"
+                  style={{ color: 'var(--rw-red)' }}
+                >
+                  Unavailable
+                </span>
+              ) : (
+                <span
+                  className="font-dot text-lg sm:text-xl font-black tabular-nums mt-0.5"
+                  style={{ color: counter.color }}
+                >
+                  {counter.value.toLocaleString()}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
 
         {/* Feed States */}
@@ -1335,14 +1488,20 @@ export function AdminOverviewPage() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Users size={16} className="text-red-500 shrink-0" />
-              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
-                Users directory (
-                {usersCard.loading && !usersCard.data
-                  ? '—'
-                  : usersCard.error || !usersCard.data
-                  ? 'Error'
-                  : usersCard.data.totalUsers.toLocaleString()}
-                )
+              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-1.5">
+                <span>Users directory</span>
+                {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
+                  <span
+                    className="inline-block h-4 w-10 rounded-md bg-[var(--surface-hover)] animate-pulse"
+                    aria-label="Loading user count"
+                  />
+                ) : usersAndPlansCard.error || !usersAndPlansCard.data ? (
+                  <span className="text-xs font-mono text-[var(--red)]">(Error)</span>
+                ) : (
+                  <span className="tabular-nums">
+                    ({usersAndPlansCard.data.users.totalUsers.toLocaleString()})
+                  </span>
+                )}
               </h2>
             </div>
             <Link
@@ -1354,7 +1513,7 @@ export function AdminOverviewPage() {
             </Link>
           </div>
 
-          {usersCard.loading && !usersCard.data ? (
+          {usersAndPlansCard.loading && !usersAndPlansCard.data ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {Array.from({ length: 6 }).map((_, idx) => (
                 <div
@@ -1369,20 +1528,32 @@ export function AdminOverviewPage() {
                 </div>
               ))}
             </div>
-          ) : usersCard.error || !usersCard.data ? (
+          ) : usersAndPlansCard.error || !usersAndPlansCard.data ? (
             <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
               <span>
-                {usersCard.error?.source} ({usersCard.error?.status}): {usersCard.error?.message}
+                {usersAndPlansCard.error?.source} ({usersAndPlansCard.error?.status}):{' '}
+                {usersAndPlansCard.error?.message}
               </span>
               <button
                 type="button"
-                onClick={() => void loadUsersCard(true)}
+                onClick={() => void loadUsersAndPlansCard(true)}
                 className="underline font-bold ml-3 cursor-pointer"
               >
                 Retry
               </button>
             </div>
-          ) : usersCard.data.previewUsers.length === 0 ? (
+          ) : usersAndPlansCard.data.users.previewUsers === null ? (
+            <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+              <span>Could not load users directory preview.</span>
+              <button
+                type="button"
+                onClick={() => void loadUsersAndPlansCard(true)}
+                className="underline font-bold ml-3 cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          ) : usersAndPlansCard.data.users.previewUsers.length === 0 ? (
             <p className="text-xs font-mono text-[var(--muted)] py-2">
               No users found in directory.
             </p>
@@ -1391,7 +1562,7 @@ export function AdminOverviewPage() {
               data-testid="admin-overview-users-list"
               className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
             >
-              {usersCard.data.previewUsers.slice(0, 6).map((u) => {
+              {usersAndPlansCard.data.users.previewUsers.slice(0, 6).map((u) => {
                 const badge = u.twoFactorStatus?.badgeLabel || 'Off';
                 return (
                   <Link
@@ -1434,74 +1605,87 @@ export function AdminOverviewPage() {
             Questions by subject
           </h2>
           <div className="flex items-center gap-2">
-            <span className="font-heading text-[12px] text-[var(--muted)]">
-              {subjectsCard.data && typeof subjectsCard.data.totalQuestions === 'number'
-                ? `Live counts · ${subjectsCard.data.totalQuestions.toLocaleString()} MCQs`
-                : 'Live counts'}
-            </span>
+            {questionBankCard.loading && !questionBankCard.data ? (
+              <span className="h-3.5 w-28 rounded bg-[var(--surface-hover)] animate-pulse" />
+            ) : questionBankCard.data && typeof questionBankCard.data.totalQuestions === 'number' ? (
+              <span className="font-heading text-[12px] text-[var(--muted)]">
+                Live counts · {questionBankCard.data.totalQuestions.toLocaleString()} MCQs
+              </span>
+            ) : null}
             <button
               type="button"
-              onClick={() => void loadSubjectsCard(true)}
-              disabled={subjectsCard.loading}
+              onClick={() => void loadQuestionBankCard(true)}
+              disabled={questionBankCard.loading}
               className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
             >
-              <RefreshCw size={13} className={subjectsCard.loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} className={questionBankCard.loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
 
-        {subjectsCard.error ? (
+        {questionBankCard.error || (!questionBankCard.loading && !questionBankCard.data) ? (
           <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
             <span>
-              {subjectsCard.error.source} ({subjectsCard.error.status}): {subjectsCard.error.message}
+              {questionBankCard.error
+                ? `${questionBankCard.error.source} (${questionBankCard.error.status}): ${questionBankCard.error.message}`
+                : 'Subject breakdown unavailable.'}
             </span>
             <button
               type="button"
-              onClick={() => void loadSubjectsCard(true)}
+              onClick={() => void loadQuestionBankCard(true)}
               className="underline font-bold ml-3 cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : questionBankCard.loading && !questionBankCard.data ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
+            {CORE_SUBJECTS.map((subj) => (
+              <div
+                key={subj}
+                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+              >
+                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
+                  {subj}
+                </span>
+                <span className="h-6 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-2" />
+              </div>
+            ))}
+          </div>
+        ) : questionBankCard.data && questionBankCard.data.subjects.length === 0 ? (
+          <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)] text-xs font-mono flex items-center justify-between">
+            <span>
+              {questionBankCard.data.totalQuestions > 0
+                ? 'Subject breakdown unavailable for this question bank snapshot.'
+                : 'No questions recorded by subject yet.'}
+            </span>
+            <button
+              type="button"
+              onClick={() => void loadQuestionBankCard(true)}
+              className="underline font-bold ml-3 text-[var(--text)] cursor-pointer"
             >
               Retry
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
-            {subjectsCard.loading && !subjectsCard.data
-              ? CORE_SUBJECTS.map((subj) => (
-                  <div
-                    key={subj}
-                    className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-                  >
-                    <span className="font-heading text-[12px] text-[var(--muted)] truncate">
-                      {subj}
-                    </span>
-                    <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                      —
-                    </span>
-                  </div>
-                ))
-              : (subjectsCard.data?.subjects && subjectsCard.data.subjects.length > 0
-                  ? subjectsCard.data.subjects
-                  : CORE_SUBJECTS.map((subj) => ({
-                      subject: subj,
-                      count: subjectsCard.data?.subjectCounts?.[subj] ?? 0,
-                    }))
-                ).map((entry) => (
-                  <div
-                    key={entry.subject}
-                    className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-                  >
-                    <span
-                      title={entry.subject}
-                      className="font-heading text-[12px] text-[var(--muted)] truncate"
-                    >
-                      {entry.subject}
-                    </span>
-                    <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                      {entry.count.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+            {(questionBankCard.data?.subjects ?? []).map((entry) => (
+              <div
+                key={entry.subject}
+                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+              >
+                <span
+                  title={entry.subject}
+                  className="font-heading text-[12px] text-[var(--muted)] truncate"
+                >
+                  {entry.subject}
+                </span>
+                <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
+                  {entry.count.toLocaleString()}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1769,13 +1953,42 @@ export function AdminOverviewPage() {
               </Link>
             </div>
 
-            {recentLogs.length === 0 ? (
+            {recentLogsCard.loading && !recentLogsCard.data ? (
+              <div className="space-y-2" aria-label="Loading audit logs">
+                {[0, 1, 2].map((idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 animate-pulse"
+                  >
+                    <div className="flex items-center gap-2.5 flex-1">
+                      <span className="h-5 w-24 rounded-full bg-[var(--surface-hover)]" />
+                      <span className="h-4 w-40 rounded bg-[var(--surface-hover)]" />
+                    </div>
+                    <span className="h-3.5 w-16 rounded bg-[var(--surface-hover)]" />
+                  </div>
+                ))}
+              </div>
+            ) : recentLogsCard.error && !recentLogsCard.data ? (
+              <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+                <span>
+                  {recentLogsCard.error.source} ({recentLogsCard.error.status}):{' '}
+                  {recentLogsCard.error.message}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void loadRecentLogs(true)}
+                  className="underline font-bold ml-3 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : !recentLogsCard.data || recentLogsCard.data.length === 0 ? (
               <p className="font-heading text-[13px] text-[var(--muted)] py-4 text-center">
                 No admin actions yet
               </p>
             ) : (
               <div className="space-y-2">
-                {recentLogs.map((log, i) => (
+                {recentLogsCard.data.map((log, i) => (
                   <div
                     key={log.id || i}
                     className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 text-[13px] font-heading"

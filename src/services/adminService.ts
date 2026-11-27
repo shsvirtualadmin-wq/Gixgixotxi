@@ -124,6 +124,10 @@ import {
   normalizeLiveSubjectCounts,
   type LiveSubjectCountEntry,
 } from './universityMcqService';
+import {
+  countCollectionViaFirestoreRest,
+  type FirestoreRestFilter,
+} from './firestoreRestCount';
 
 // ─── DIAGNOSTIC FIRESTORE & ENDPOINT ERRORS ──────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -145,11 +149,13 @@ export class AdminStatCardError extends Error {
   status: number | string;
 
   constructor(source: string, status: number | string, detail?: string) {
+    const normalizedStatus =
+      status === 200 || status === '200' || status === '' ? 'STAT_UNAVAILABLE' : status;
     const cleanDetail = detail ? ` — ${detail}` : '';
-    super(`${source} [${status}]${cleanDetail}`);
+    super(`${source} [${normalizedStatus}]${cleanDetail}`);
     this.name = 'AdminStatCardError';
     this.source = source;
-    this.status = status;
+    this.status = normalizedStatus;
   }
 }
 
@@ -369,9 +375,7 @@ export interface CachedAdminUsersDirectory {
 
 const ADMIN_SWR_FRESH_MS = 45_000;
 const ADMIN_SESSION_MAX_AGE_MS = 5 * 60_000;
-const ADMIN_STATS_SESSION_KEY = 'boardly_admin_stats_swr_v2';
-const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v1';
-const ADMIN_PLAN_ANALYTICS_SESSION_KEY = 'boardly_admin_plan_analytics_swr_v2';
+const ADMIN_USERS_P1_SESSION_KEY = 'boardly_admin_users_p1_swr_v2';
 
 function readAdminSessionCache<T>(key: string): { at: number; data: T } | null {
   if (typeof window === 'undefined') return null;
@@ -440,6 +444,7 @@ let inFlightAdminStatsPromise: Promise<AdminStats> | null = null;
 let cachedAdminUsersDirectory: CachedAdminUsersDirectory | null = null;
 let inFlightUsersFirstPagePromise: Promise<PaginatedUsersResult> | null = null;
 let cachedUsersCollectionCount: { count: number; fetchedAt: number } | null = null;
+let inFlightUsersCollectionCount: Promise<number> | null = null;
 
 interface CachedUserActivityRecord {
   fetchedAt: number;
@@ -572,13 +577,7 @@ async function enrichUsersWithRealActivity(
 }
 
 export function getCachedAdminStats(): AdminStats | null {
-  if (cachedAdminStats) return cachedAdminStats;
-  const restored = readAdminSessionCache<AdminStats>(ADMIN_STATS_SESSION_KEY);
-  if (restored) {
-    cachedAdminStats = restored.data;
-    return cachedAdminStats;
-  }
-  return null;
+  return cachedAdminStats;
 }
 
 export function getCachedAdminUsersState(): CachedAdminUsersDirectory | null {
@@ -666,9 +665,13 @@ function computeUserDirectoryBreakdown(
 
 function syncCachedStatsWithUsersDirectory(dir: CachedAdminUsersDirectory) {
   if (!cachedAdminStats) return;
+  const authoritativeTotal =
+    typeof dir.firestoreTotalCount === 'number' && Number.isFinite(dir.firestoreTotalCount)
+      ? dir.firestoreTotalCount
+      : cachedAdminStats.totalUsers;
   cachedAdminStats = {
     ...cachedAdminStats,
-    totalUsers: Math.max(cachedAdminStats.totalUsers, dir.totalCount),
+    totalUsers: authoritativeTotal,
     studentCount: dir.studentCount,
     captainCount: dir.captainCount,
     freeCount: dir.freeCount ?? cachedAdminStats.freeCount,
@@ -693,12 +696,14 @@ export function updateCachedAdminUser2fa(uid: string, status: Partial<UserTwoFac
   const nextAll = patchList(cachedAdminUsersDirectory.allDirectoryUsers);
   const nextUsers = patchList(cachedAdminUsersDirectory.users);
   const breakdown = computeUserDirectoryBreakdown(nextAll, nextMap);
+  const preservedTotal = Math.max(cachedAdminUsersDirectory.totalCount, breakdown.totalCount);
   cachedAdminUsersDirectory = {
     ...cachedAdminUsersDirectory,
     users: nextUsers,
     allDirectoryUsers: nextAll,
     user2faMap: nextMap,
     ...breakdown,
+    totalCount: preservedTotal,
   };
   syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
 }
@@ -710,33 +715,63 @@ export function patchCachedAdminUser(uid: string, patch: Partial<UserProfile>) {
   const nextAll = patchList(cachedAdminUsersDirectory.allDirectoryUsers);
   const nextUsers = patchList(cachedAdminUsersDirectory.users);
   const breakdown = computeUserDirectoryBreakdown(nextAll, cachedAdminUsersDirectory.user2faMap);
+  const preservedTotal = Math.max(cachedAdminUsersDirectory.totalCount, breakdown.totalCount);
   cachedAdminUsersDirectory = {
     ...cachedAdminUsersDirectory,
     users: nextUsers,
     allDirectoryUsers: nextAll,
     ...breakdown,
+    totalCount: preservedTotal,
   };
   syncCachedStatsWithUsersDirectory(cachedAdminUsersDirectory);
 }
 
 export function removeCachedAdminUser(uid: string) {
   if (!cachedAdminUsersDirectory) return;
+  const hadUser = cachedAdminUsersDirectory.allDirectoryUsers.some((u) => u.uid === uid);
   const nextAll = cachedAdminUsersDirectory.allDirectoryUsers.filter((u) => u.uid !== uid);
   const nextUsers = cachedAdminUsersDirectory.users.filter((u) => u.uid !== uid);
   const nextMap = { ...cachedAdminUsersDirectory.user2faMap };
   delete nextMap[uid];
   const breakdown = computeUserDirectoryBreakdown(nextAll, nextMap);
+  const nextTotal = Math.max(
+    breakdown.totalCount,
+    hadUser ? cachedAdminUsersDirectory.totalCount - 1 : cachedAdminUsersDirectory.totalCount
+  );
   cachedAdminUsersDirectory = {
     ...cachedAdminUsersDirectory,
     users: nextUsers,
     allDirectoryUsers: nextAll,
     user2faMap: nextMap,
     ...breakdown,
+    totalCount: nextTotal,
   };
+  if (cachedUsersCollectionCount && hadUser) {
+    cachedUsersCollectionCount = {
+      count: Math.max(0, cachedUsersCollectionCount.count - 1),
+      fetchedAt: Date.now(),
+    };
+  }
+  if (cachedOverviewUsersCard && hadUser) {
+    cachedOverviewUsersCard = {
+      at: Date.now(),
+      data: {
+        ...cachedOverviewUsersCard.data,
+        totalUsers: Math.max(0, cachedOverviewUsersCard.data.totalUsers - 1),
+        previewUsers: cachedOverviewUsersCard.data.previewUsers
+          ? cachedOverviewUsersCard.data.previewUsers.filter((u) => u.uid !== uid)
+          : null,
+      },
+    };
+  }
+  if (cachedOverviewUsersAndPlans && hadUser) {
+    cachedOverviewUsersAndPlans = null;
+    cachedPlanAnalytics = null;
+  }
   if (cachedAdminStats) {
     cachedAdminStats = {
       ...cachedAdminStats,
-      totalUsers: breakdown.totalCount,
+      totalUsers: nextTotal,
       studentCount: breakdown.studentCount,
       captainCount: breakdown.captainCount,
       proCount: breakdown.proCount,
@@ -854,6 +889,15 @@ export async function fetchAdminJsonWithRetry<T = any>(
           ? `${rawErr} (reason: ${reason})`
           : String(rawErr);
       return { ok: false, status: res.status, data, errorMessage: serverMsg };
+    }
+    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+    if (data === null && !contentType.includes('application/json')) {
+      return {
+        ok: false,
+        status: 502,
+        data: null,
+        errorMessage: `Unexpected non-JSON response from ${url}`,
+      };
     }
     return { ok: true, status: res.status, data };
   } catch (err: any) {
@@ -1066,16 +1110,174 @@ export async function fetchServerAdminStatsSnapshot(force = false): Promise<{
   return fetchPromise;
 }
 
+function isTransientFirestoreError(err: any): boolean {
+  const code = String(err?.code || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
+  if (code.includes('resource-exhausted') || msg.includes('quota')) {
+    return false;
+  }
+  return (
+    code.includes('deadline-exceeded') ||
+    code.includes('deadline_exceeded') ||
+    code.includes('unavailable') ||
+    code.includes('aborted') ||
+    code.includes('internal') ||
+    code.includes('unknown') ||
+    code.includes('cancelled') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('network') ||
+    msg.includes('transport')
+  );
+}
+
+async function getDocsWithTimeoutAndRetry(
+  q: Parameters<typeof getDocs>[0],
+  label: string,
+  timeoutMs = 8000
+): Promise<Awaited<ReturnType<typeof getDocs>>> {
+  const runOnce = async (ms: number) =>
+    Promise.race([
+      getDocs(q),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          const tErr: any = new Error(`Timed out reading ${label}`);
+          tErr.code = 'DEADLINE_EXCEEDED';
+          reject(tErr);
+        }, ms)
+      ),
+    ]);
+
+  try {
+    return await runOnce(timeoutMs);
+  } catch (err: any) {
+    const code = String(err?.code || '').toLowerCase();
+    if (code === 'permission-denied' || code === 'unauthenticated') {
+      await ensureAdminAuthToken(true);
+      return runOnce(timeoutMs + 2000);
+    }
+    if (isTransientFirestoreError(err)) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return runOnce(timeoutMs + 2500);
+    }
+    throw err;
+  }
+}
+
+async function countCollectionPaginated(
+  colRef: ReturnType<typeof collection>,
+  options: {
+    whereClauses?: QueryConstraint[];
+    pageSize?: number;
+    maxPages?: number;
+    perPageTimeoutMs?: number;
+    collectionLabel: string;
+    filterDoc?: (data: Record<string, unknown>) => boolean;
+    useDocumentIdOrder?: boolean;
+  }
+): Promise<number> {
+  const {
+    whereClauses = [],
+    pageSize = 200,
+    maxPages = 15,
+    perPageTimeoutMs = 8000,
+    collectionLabel,
+    filterDoc,
+    useDocumentIdOrder = whereClauses.length === 0,
+  } = options;
+
+  let total = 0;
+  let cursor: QueryDocumentSnapshot<DocumentData> | null = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const constraints: QueryConstraint[] = [...whereClauses];
+    if (useDocumentIdOrder) {
+      constraints.push(orderBy(documentId()));
+    }
+    if (cursor) {
+      constraints.push(startAfter(cursor));
+    }
+    constraints.push(limit(pageSize));
+
+    const snap = await getDocsWithTimeoutAndRetry(
+      query(colRef, ...constraints),
+      collectionLabel,
+      perPageTimeoutMs
+    );
+
+    if (filterDoc) {
+      for (const d of snap.docs) {
+        if (filterDoc((d.data() || {}) as Record<string, unknown>)) {
+          total += 1;
+        }
+      }
+    } else {
+      total += snap.size;
+    }
+
+    if (snap.size < pageSize) {
+      break;
+    }
+    cursor = snap.docs[snap.docs.length - 1] || null;
+    if (!cursor) break;
+  }
+
+  return total;
+}
+
 async function strictCountOrThrow(
   targetQuery: Parameters<typeof getCountFromServer>[0],
   collectionLabel: string,
   serverStatKey?: string,
-  forceServer = false
+  forceServer = false,
+  options?: {
+    paginatedFallback?: () => Promise<number>;
+    serverStatAliases?: string[];
+    restConfig?: {
+      collectionId: string;
+      filter?: FirestoreRestFilter;
+      pageSize?: number;
+      maxPages?: number;
+      timeoutMs?: number;
+    };
+  }
 ): Promise<number> {
   await ensureAdminAuthToken(false);
   let firestoreErr: any = null;
 
-  const tryFirestoreCount = async (refresh: boolean): Promise<number | null> => {
+  // Tier 1: Direct Firestore REST v1 aggregation + keys-only paginated query.
+  // Bypasses the Web SDK's single experimentalForceLongPolling stream & IndexedDB locks.
+  if (options?.restConfig && auth?.currentUser && typeof globalThis.fetch === 'function') {
+    try {
+      const restRes = await countCollectionViaFirestoreRest({
+        collectionId: options.restConfig.collectionId,
+        filter: options.restConfig.filter,
+        pageSize: options.restConfig.pageSize ?? 250,
+        maxPages: options.restConfig.maxPages ?? 25,
+        timeoutMs: options.restConfig.timeoutMs ?? 7000,
+        getToken: async (forceRefresh) => {
+          const tok = await ensureAdminAuthToken(Boolean(forceRefresh));
+          return tok || null;
+        },
+      });
+      if (typeof restRes.count === 'number' && Number.isFinite(restRes.count)) {
+        return restRes.count;
+      }
+    } catch (restErr: any) {
+      firestoreErr = restErr;
+      const code = String(restErr?.code || '').toUpperCase();
+      if (code === 'RESOURCE_EXHAUSTED') {
+        throw new AdminStatCardError(
+          collectionLabel,
+          'RESOURCE_EXHAUSTED',
+          restErr?.message || `Quota reached reading ${collectionLabel}`
+        );
+      }
+    }
+  }
+
+  // Tier 2: Firestore Web SDK server aggregation with timeout + retry
+  const tryFirestoreCount = async (refresh: boolean, timeoutMs: number): Promise<number | null> => {
     if (refresh && auth?.currentUser) {
       await ensureAdminAuthToken(true);
     }
@@ -1086,51 +1288,90 @@ async function strictCountOrThrow(
           const tErr: any = new Error(`Timed out reading ${collectionLabel}`);
           tErr.code = 'DEADLINE_EXCEEDED';
           reject(tErr);
-        }, 1500)
+        }, timeoutMs)
       ),
     ]);
     if (snap && typeof snap.data === 'function') {
-      return snap.data().count;
+      const count = snap.data().count;
+      if (typeof count === 'number' && Number.isFinite(count)) {
+        return count;
+      }
     }
     return null;
   };
 
   try {
-    const c = await tryFirestoreCount(false);
-    if (typeof c === 'number') return c;
+    const c = await tryFirestoreCount(false, 7000);
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+    const emptyErr: any = new Error(`Empty count response from ${collectionLabel}`);
+    emptyErr.code = 'EMPTY_COUNT';
+    firestoreErr = emptyErr;
   } catch (err1: any) {
     firestoreErr = err1;
-    const code = String(err1?.code || '');
-    // Only retry with forced token refresh on auth/permission failures, never on slow timeouts
+    const code = String(err1?.code || '').toLowerCase();
     if (code === 'permission-denied' || code === 'unauthenticated') {
       try {
-        const c2 = await tryFirestoreCount(true);
-        if (typeof c2 === 'number') return c2;
+        const c2 = await tryFirestoreCount(true, 8000);
+        if (typeof c2 === 'number' && Number.isFinite(c2)) return c2;
+      } catch (err2) {
+        firestoreErr = err2;
+      }
+    } else if (isTransientFirestoreError(err1)) {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const c2 = await tryFirestoreCount(false, 9000);
+        if (typeof c2 === 'number' && Number.isFinite(c2)) return c2;
       } catch (err2) {
         firestoreErr = err2;
       }
     }
   }
 
+  // Tier 3: Bounded paginated Web SDK getDocs fallback
+  if (options?.paginatedFallback) {
+    try {
+      const paginatedCount = await options.paginatedFallback();
+      if (typeof paginatedCount === 'number' && Number.isFinite(paginatedCount)) {
+        return paginatedCount;
+      }
+    } catch (paginatedErr: any) {
+      console.warn(
+        `[AdminService] paginated fallback warning for ${collectionLabel}:`,
+        paginatedErr?.message || paginatedErr
+      );
+      if (!firestoreErr) {
+        firestoreErr = paginatedErr;
+      }
+    }
+  }
+
   if (serverStatKey) {
     const srv = await fetchServerAdminStatsSnapshot(forceServer);
-    if (srv.ok && srv.stats && typeof srv.stats[serverStatKey] === 'number') {
-      return Number(srv.stats[serverStatKey]);
+    const candidateKeys = [serverStatKey, ...(options?.serverStatAliases || [])];
+    if (srv.ok && srv.stats) {
+      for (const key of candidateKeys) {
+        const val = srv.stats[key];
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          return Number(val);
+        }
+      }
     }
-    const status = srv.status || firestoreErr?.code || 'ERROR';
+    const rawSrvStatus = srv.status && srv.status !== 200 ? srv.status : null;
+    const status = firestoreErr?.code || rawSrvStatus || 'STAT_UNAVAILABLE';
     const msg =
-      srv.errorMessage ||
       firestoreErr?.message ||
-      `Failed to load metric from ${collectionLabel} and GET /api/admin/stats`;
+      srv.errorMessage ||
+      `Failed to load metric from ${collectionLabel}`;
     throw new AdminStatCardError(`${collectionLabel} | GET /api/admin/stats`, status, msg);
   }
 
-  const code = firestoreErr?.code || 'FIRESTORE_ERROR';
+  const rawCode = firestoreErr?.code;
+  const code = rawCode && rawCode !== 200 && rawCode !== '200' ? rawCode : 'FIRESTORE_ERROR';
   const msg = firestoreErr?.message || `Failed to count ${collectionLabel}`;
   throw new AdminStatCardError(collectionLabel, code, msg);
 }
 
-let inFlightOverviewUsersCard: Promise<{
+export interface OverviewUsersCardData {
   totalUsers: number;
   studentCount: number | null;
   captainCount: number | null;
@@ -1139,28 +1380,27 @@ let inFlightOverviewUsersCard: Promise<{
   plusCount: number | null;
   expiringSoonCount: number | null;
   guestCount: number | null;
-  previewUsers: UserProfile[];
-}> | null = null;
-let cachedOverviewUsersCard: {
-  at: number;
-  data: {
-    totalUsers: number;
-    studentCount: number | null;
-    captainCount: number | null;
-    freeCount: number | null;
-    proCount: number | null;
-    plusCount: number | null;
-    expiringSoonCount: number | null;
-    guestCount: number | null;
-    previewUsers: UserProfile[];
-  };
-} | null = null;
+  previewUsers: UserProfile[] | null;
+}
+
+export interface OverviewUsersAndPlansSnapshot {
+  users: OverviewUsersCardData;
+  plans: PlanAnalyticsStats | null;
+  plansError: { source: string; status: string | number; message: string } | null;
+  fetchedAt: number;
+}
+
+let inFlightOverviewUsersAndPlans: Promise<OverviewUsersAndPlansSnapshot> | null = null;
+let cachedOverviewUsersAndPlans: { at: number; data: OverviewUsersAndPlansSnapshot } | null = null;
+let inFlightOverviewUsersCard: Promise<OverviewUsersCardData> | null = null;
+let cachedOverviewUsersCard: { at: number; data: OverviewUsersCardData } | null = null;
 let inFlightOverviewQuestionsCard: Promise<{
   totalQuestions: number;
   totalUniversities: number;
   liveUniversities: number;
 }> | null = null;
 let inFlightOverviewAttemptsCard: Promise<{ totalAttempts: number }> | null = null;
+let cachedOverviewAttemptsCard: { at: number; data: { totalAttempts: number } } | null = null;
 let cachedOverviewApplicationsCard: {
   at: number;
   data: { pendingCaptains: number; pendingCrew: number; totalPending: number };
@@ -1171,9 +1411,45 @@ let inFlightOverviewApplicationsCard: Promise<{
   pendingCrew: number;
   totalPending: number;
 }> | null = null;
+let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
+let cachedOverviewPaymentsCard: { at: number; data: { pendingPayments: number } } | null = null;
+let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
+let cachedOverviewReviewsCard: { at: number; data: { pendingReviews: number } } | null = null;
+let inFlightOverviewSubjectsCard: Promise<{
+  subjectCounts: Record<string, number>;
+  subjects: LiveSubjectCountEntry[];
+  totalQuestions: number;
+}> | null = null;
 
 export function getApplicationsCacheVersion(): number {
   return applicationsCacheVersion;
+}
+
+export function getCachedOverviewUsersAndPlansSnapshot(): OverviewUsersAndPlansSnapshot | null {
+  if (
+    cachedOverviewUsersAndPlans &&
+    Date.now() - cachedOverviewUsersAndPlans.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewUsersAndPlans.data;
+  }
+  return null;
+}
+
+export function getCachedOverviewUsersCard(): OverviewUsersCardData | null {
+  if (cachedOverviewUsersCard && Date.now() - cachedOverviewUsersCard.at < ADMIN_SWR_FRESH_MS) {
+    return cachedOverviewUsersCard.data;
+  }
+  return null;
+}
+
+export function getCachedOverviewAttemptsCard(): { totalAttempts: number } | null {
+  if (
+    cachedOverviewAttemptsCard &&
+    Date.now() - cachedOverviewAttemptsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewAttemptsCard.data;
+  }
+  return null;
 }
 
 export function getCachedOverviewApplications(): {
@@ -1181,19 +1457,87 @@ export function getCachedOverviewApplications(): {
   pendingCrew: number;
   totalPending: number;
 } | null {
-  return cachedOverviewApplicationsCard?.data ?? null;
+  if (
+    cachedOverviewApplicationsCard &&
+    Date.now() - cachedOverviewApplicationsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewApplicationsCard.data;
+  }
+  return null;
 }
-let inFlightOverviewPaymentsCard: Promise<{ pendingPayments: number }> | null = null;
-let inFlightOverviewReviewsCard: Promise<{ pendingReviews: number }> | null = null;
-let inFlightOverviewSubjectsCard: Promise<{
-  subjectCounts: Record<string, number>;
-  subjects: LiveSubjectCountEntry[];
-  totalQuestions: number;
-}> | null = null;
+
+export function getCachedOverviewPaymentsCard(): { pendingPayments: number } | null {
+  if (
+    cachedOverviewPaymentsCard &&
+    Date.now() - cachedOverviewPaymentsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewPaymentsCard.data;
+  }
+  return null;
+}
+
+export function getCachedOverviewReviewsCard(): { pendingReviews: number } | null {
+  if (
+    cachedOverviewReviewsCard &&
+    Date.now() - cachedOverviewReviewsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewReviewsCard.data;
+  }
+  return null;
+}
+
+/**
+ * Single authoritative, deduplicated count of registered users in Firestore (`users` collection).
+ * Shared across Admin Overview ("Registered users"), Boardly Plans Snapshot, and Users Directory.
+ * Never returns 0 on error — throws AdminStatCardError so callers never render a fake zero.
+ */
+export async function fetchFirestoreUsersTotalCount(force = false): Promise<number> {
+  if (
+    !force &&
+    cachedUsersCollectionCount &&
+    Date.now() - cachedUsersCollectionCount.fetchedAt < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedUsersCollectionCount.count;
+  }
+  if (!force && inFlightUsersCollectionCount) {
+    return inFlightUsersCollectionCount;
+  }
+  const run = async (): Promise<number> => {
+    const usersCol = collection(db, 'users');
+    const count = await strictCountOrThrow(
+      usersCol,
+      'firestore:users',
+      undefined,
+      force,
+      {
+        restConfig: {
+          collectionId: 'users',
+          pageSize: 300,
+          maxPages: 30,
+          timeoutMs: 7000,
+        },
+        paginatedFallback: () =>
+          countCollectionPaginated(usersCol, {
+            pageSize: 100,
+            maxPages: 25,
+            perPageTimeoutMs: 7000,
+            collectionLabel: 'firestore:users',
+            useDocumentIdOrder: true,
+          }),
+      }
+    );
+    cachedUsersCollectionCount = { count, fetchedAt: Date.now() };
+    return count;
+  };
+  inFlightUsersCollectionCount = run().finally(() => {
+    inFlightUsersCollectionCount = null;
+  });
+  return inFlightUsersCollectionCount;
+}
 
 async function safeCountQuery(
   targetQuery: Parameters<typeof getCountFromServer>[0],
-  timeoutMs = 1500
+  timeoutMs = 5000
 ): Promise<number | null> {
   try {
     const snap = await Promise.race([
@@ -1206,140 +1550,206 @@ async function safeCountQuery(
   }
 }
 
-export async function fetchOverviewUsersCard(options?: { force?: boolean }): Promise<{
-  totalUsers: number;
-  studentCount: number | null;
-  captainCount: number | null;
-  freeCount: number | null;
-  proCount: number | null;
-  plusCount: number | null;
-  expiringSoonCount: number | null;
-  guestCount: number | null;
-  previewUsers: UserProfile[];
-}> {
+async function fetchOverviewPreviewUsers(
+  totalUsers: number,
+  force: boolean
+): Promise<UserProfile[] | null> {
+  const cachedDir = getCachedAdminUsersState();
   if (
-    !options?.force &&
+    !force &&
+    cachedDir &&
+    !cachedDir.fromSessionStorage &&
+    cachedDir.users.length > 0 &&
+    Date.now() - cachedDir.loadedAt < ADMIN_SWR_FRESH_MS
+  ) {
+    const registeredPreview = cachedDir.users.filter(
+      (u) => !u.isGuest && u.accountType !== 'guest' && !u.uid.startsWith('bot_') && (u as any).role !== 'bot'
+    );
+    if (registeredPreview.length > 0) {
+      return registeredPreview.slice(0, 6);
+    }
+  }
+
+  try {
+    await ensureAdminAuthToken(false);
+    const usersCol = collection(db, 'users');
+    let snap = await getDocsWithTimeoutAndRetry(
+      query(usersCol, orderBy('createdAt', 'desc'), limit(6)),
+      'firestore:users (preview)',
+      8000
+    );
+    if (snap.empty && totalUsers > 0) {
+      snap = await getDocsWithTimeoutAndRetry(
+        query(usersCol, limit(6)),
+        'firestore:users (preview fallback)',
+        8000
+      );
+    }
+
+    const rawUsers = snap.docs
+      .map((d) => ({ uid: d.id, ...d.data() } as UserProfile))
+      .filter((u) => !u.uid.startsWith('bot_') && (u as any).role !== 'bot');
+
+    if (rawUsers.length === 0) {
+      return totalUsers === 0 ? [] : null;
+    }
+
+    let map2fa: Record<string, UserTwoFactorSummary> = { ...(cachedDir?.user2faMap || {}) };
+    if (Object.keys(map2fa).length === 0) {
+      const twoFaRes = await fetchAdminJsonWithRetry<{
+        statusByUid?: Record<string, Partial<UserTwoFactorSummary>>;
+        users2fa?: Record<string, Partial<UserTwoFactorSummary>>;
+        users?: Record<string, Partial<UserTwoFactorSummary>>;
+      }>('/api/auth/admin/2fa-status', undefined, 5000).catch(() => null);
+      const rawMap =
+        twoFaRes?.ok && twoFaRes.data
+          ? twoFaRes.data.statusByUid || twoFaRes.data.users2fa || twoFaRes.data.users
+          : null;
+      if (rawMap && typeof rawMap === 'object') {
+        for (const [uid, summary] of Object.entries(rawMap)) {
+          map2fa[uid] = normalizeTwoFactorSummary(summary);
+        }
+      }
+    }
+
+    return rawUsers.map((u) => ({
+      ...u,
+      twoFactorStatus: map2fa[u.uid] || u.twoFactorStatus || { ...DEFAULT_OFF_2FA_SUMMARY },
+    }));
+  } catch (err) {
+    console.warn('[AdminService] fetchOverviewPreviewUsers warning:', err);
+    return null;
+  }
+}
+
+/**
+ * Single atomic source of truth for Admin Overview's user-based widgets:
+ * - "Registered users" card (totalUsers + Free/Pro/Plus/Guests chips)
+ * - "Boardly Plans Snapshot" (Active Free/Pro/Plus, Expiring <=7d, Pro/Plus PKR, Pro -> Plus)
+ * - "Users directory" preview card (count + 6 latest registered users)
+ *
+ * Guarantees all three sections read from the exact same `firestore:users` count and
+ * paid-subscription snapshot, never showing mismatched counts or fake 0s on failure.
+ */
+export async function fetchOverviewUsersAndPlansSnapshot(options?: {
+  force?: boolean;
+}): Promise<OverviewUsersAndPlansSnapshot> {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
+    cachedOverviewUsersAndPlans &&
+    Date.now() - cachedOverviewUsersAndPlans.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewUsersAndPlans.data;
+  }
+  if (!force && inFlightOverviewUsersAndPlans) {
+    return inFlightOverviewUsersAndPlans;
+  }
+
+  const run = async (): Promise<OverviewUsersAndPlansSnapshot> => {
+    const usersCol = collection(db, 'users');
+
+    // 1. Authoritative total registered users count from firestore:users (throws on failure)
+    const totalUsers = await fetchFirestoreUsersTotalCount(force);
+
+    // 2. Fetch plans breakdown, preview users, guest count, and captain count in parallel
+    //    using the exact same `totalUsers` value so every Overview widget agrees atomically.
+    const [plansRes, previewUsers, guestsRes, captainCountRes] = await Promise.all([
+      computePlanAnalyticsWithTotal(totalUsers).then(
+        (data) => ({ ok: true as const, data }),
+        (err: any) => ({
+          ok: false as const,
+          error:
+            err instanceof AdminStatCardError
+              ? { source: err.source, status: err.status, message: err.message }
+              : {
+                  source: 'firestore:users,paymentRequests,planActivations',
+                  status: err?.code || err?.status || 500,
+                  message: err?.message || 'Failed to load plan analytics',
+                },
+        })
+      ),
+      fetchOverviewPreviewUsers(totalUsers, force),
+      fetchAdminJsonWithRetry<{ ok?: boolean; guests?: any[] }>('/api/auth/guests', undefined, 6000)
+        .then((res) =>
+          res.ok && Array.isArray(res.data?.guests)
+            ? res.data.guests.filter((g: any) => !g.upgradedToUid).length
+            : null
+        )
+        .catch(() => null),
+      safeCountQuery(query(usersCol, where('role', '==', 'captain')), 5000),
+    ]);
+
+    const plans = plansRes.ok ? plansRes.data : null;
+    const plansError = plansRes.ok ? null : plansRes.error;
+
+    const usersData: OverviewUsersCardData = {
+      totalUsers,
+      studentCount:
+        captainCountRes !== null ? Math.max(0, totalUsers - captainCountRes) : null,
+      captainCount: captainCountRes,
+      freeCount: plans ? plans.freeCount : null,
+      proCount: plans ? plans.proCount : null,
+      plusCount: plans ? plans.plusCount : null,
+      expiringSoonCount: plans ? plans.expiringSoonCount : null,
+      guestCount: guestsRes,
+      previewUsers,
+    };
+
+    const nowMs = Date.now();
+    const snapshot: OverviewUsersAndPlansSnapshot = {
+      users: usersData,
+      plans,
+      plansError,
+      fetchedAt: nowMs,
+    };
+
+    cachedOverviewUsersCard = { at: nowMs, data: usersData };
+    if (plans) {
+      cachedPlanAnalytics = { at: nowMs, data: plans };
+    }
+    cachedOverviewUsersAndPlans = { at: nowMs, data: snapshot };
+
+    if (cachedAdminStats) {
+      cachedAdminStats = {
+        ...cachedAdminStats,
+        totalUsers: usersData.totalUsers,
+        studentCount: usersData.studentCount ?? cachedAdminStats.studentCount,
+        captainCount: usersData.captainCount ?? cachedAdminStats.captainCount,
+        freeCount: usersData.freeCount ?? cachedAdminStats.freeCount,
+        proCount: usersData.proCount ?? cachedAdminStats.proCount,
+        plusCount: usersData.plusCount ?? cachedAdminStats.plusCount,
+        expiringSoonCount: usersData.expiringSoonCount ?? cachedAdminStats.expiringSoonCount,
+        guestCount: usersData.guestCount ?? cachedAdminStats.guestCount,
+      };
+    }
+
+    return snapshot;
+  };
+
+  inFlightOverviewUsersAndPlans = run().finally(() => {
+    inFlightOverviewUsersAndPlans = null;
+  });
+  return inFlightOverviewUsersAndPlans;
+}
+
+export async function fetchOverviewUsersCard(options?: {
+  force?: boolean;
+}): Promise<OverviewUsersCardData> {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
     cachedOverviewUsersCard &&
     Date.now() - cachedOverviewUsersCard.at < ADMIN_SWR_FRESH_MS
   ) {
     return cachedOverviewUsersCard.data;
   }
-  if (!options?.force && inFlightOverviewUsersCard) {
+  if (!force && inFlightOverviewUsersCard) {
     return inFlightOverviewUsersCard;
   }
-  const run = async () => {
-    const usersCol = collection(db, 'users');
-    // Use lightweight count aggregation queries + server stats summary in parallel — NEVER download the user list here
-    const [usersCountResult, proCountRes, plusCountRes, captainCountRes, srvSnapshot] =
-      await Promise.allSettled([
-        strictCountOrThrow(usersCol, 'firestore:users', 'totalUsers', Boolean(options?.force)),
-        safeCountQuery(query(usersCol, where('plan', '==', 'pro'))),
-        safeCountQuery(query(usersCol, where('plan', '==', 'plus'))),
-        safeCountQuery(query(usersCol, where('role', '==', 'captain'))),
-        fetchServerAdminStatsSnapshot(Boolean(options?.force)),
-      ]);
-
-    const srv = srvSnapshot.status === 'fulfilled' ? srvSnapshot.value : null;
-    const countVal = usersCountResult.status === 'fulfilled' ? usersCountResult.value : null;
-    const proAgg = proCountRes.status === 'fulfilled' ? proCountRes.value : null;
-    const plusAgg = plusCountRes.status === 'fulfilled' ? plusCountRes.value : null;
-    const captainAgg = captainCountRes.status === 'fulfilled' ? captainCountRes.value : null;
-
-    if (countVal === null && (!srv || !srv.ok || !srv.stats)) {
-      const errReason: any =
-        usersCountResult.status === 'rejected' ? usersCountResult.reason : null;
-      if (errReason instanceof AdminStatCardError) throw errReason;
-      throw new AdminStatCardError(
-        'firestore:users | GET /api/admin/stats',
-        srv?.status || errReason?.code || 500,
-        srv?.errorMessage || errReason?.message || 'Failed to load registered users'
-      );
-    }
-
-    const directoryState = getCachedAdminUsersState();
-    const totalUsers = Math.max(
-      countVal ?? 0,
-      directoryState?.totalCount ?? 0,
-      Number(srv?.stats?.totalUsers ?? 0)
-    );
-
-    const resolveKnownCount = (
-      aggVal: number | null,
-      srvVal: unknown,
-      dirVal: number | undefined
-    ): number | null => {
-      if (typeof srvVal === 'number' && Number.isFinite(srvVal)) return srvVal;
-      if (typeof aggVal === 'number' && Number.isFinite(aggVal)) return aggVal;
-      if (typeof dirVal === 'number') return dirVal;
-      return null;
-    };
-
-    const proCount = resolveKnownCount(proAgg, srv?.stats?.proCount, directoryState?.proCount);
-    const plusCount = resolveKnownCount(plusAgg, srv?.stats?.plusCount, directoryState?.plusCount);
-    const captainCount = resolveKnownCount(
-      captainAgg,
-      srv?.stats?.captainCount,
-      directoryState?.captainCount
-    );
-    const guestCount = resolveKnownCount(null, srv?.stats?.guestCount, directoryState?.guestCount);
-    const derivedFree =
-      typeof srv?.stats?.freeCount === 'number' && Number.isFinite(srv.stats.freeCount)
-        ? Number(srv.stats.freeCount)
-        : proCount !== null && plusCount !== null
-        ? Math.max(0, totalUsers - proCount - plusCount - (guestCount ?? 0))
-        : directoryState?.freeCount ?? null;
-
-    const data = {
-      totalUsers,
-      studentCount: resolveKnownCount(
-        captainCount !== null ? Math.max(0, totalUsers - captainCount) : null,
-        srv?.stats?.studentCount,
-        directoryState?.studentCount
-      ),
-      captainCount,
-      freeCount: derivedFree,
-      proCount,
-      plusCount,
-      expiringSoonCount: resolveKnownCount(
-        null,
-        srv?.stats?.expiringSoonCount,
-        directoryState?.expiringSoonCount
-      ),
-      guestCount,
-      previewUsers: directoryState?.users ?? [],
-    };
-
-    cachedOverviewUsersCard = { at: Date.now(), data };
-    cachedAdminStats = {
-      ...(cachedAdminStats || {
-        totalUsers: 0,
-        totalQuestions: 0,
-        totalAttempts: 0,
-        pendingCaptains: cachedOverviewApplicationsCard?.data.pendingCaptains ?? 0,
-        pendingCrew: cachedOverviewApplicationsCard?.data.pendingCrew ?? 0,
-        pendingPayments: 0,
-        pendingReviews: 0,
-        subjectCounts: {},
-      }),
-      pendingCaptains:
-        cachedOverviewApplicationsCard?.data.pendingCaptains ??
-        cachedAdminStats?.pendingCaptains ??
-        0,
-      pendingCrew:
-        cachedOverviewApplicationsCard?.data.pendingCrew ??
-        cachedAdminStats?.pendingCrew ??
-        0,
-      totalUsers: data.totalUsers,
-      studentCount: data.studentCount ?? undefined,
-      captainCount: data.captainCount ?? undefined,
-      freeCount: data.freeCount ?? undefined,
-      proCount: data.proCount ?? undefined,
-      plusCount: data.plusCount ?? undefined,
-      expiringSoonCount: data.expiringSoonCount ?? undefined,
-      guestCount: data.guestCount ?? undefined,
-    };
-    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
-    return data;
+  const run = async (): Promise<OverviewUsersCardData> => {
+    const snapshot = await fetchOverviewUsersAndPlansSnapshot({ force });
+    return snapshot.users;
   };
   inFlightOverviewUsersCard = run().finally(() => {
     inFlightOverviewUsersCard = null;
@@ -1384,17 +1794,44 @@ export async function fetchOverviewQuestionsCard(options?: { force?: boolean }):
 export async function fetchOverviewAttemptsCard(options?: { force?: boolean }): Promise<{
   totalAttempts: number;
 }> {
-  if (!options?.force && inFlightOverviewAttemptsCard) {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
+    cachedOverviewAttemptsCard &&
+    Date.now() - cachedOverviewAttemptsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewAttemptsCard.data;
+  }
+  if (!force && inFlightOverviewAttemptsCard) {
     return inFlightOverviewAttemptsCard;
   }
   const run = async () => {
+    const attemptsCol = collection(db, 'attempts');
     const totalAttempts = await strictCountOrThrow(
-      collection(db, 'attempts'),
+      attemptsCol,
       'firestore:attempts',
-      'totalAttempts',
-      Boolean(options?.force)
+      undefined,
+      force,
+      {
+        restConfig: {
+          collectionId: 'attempts',
+          pageSize: 300,
+          maxPages: 30,
+          timeoutMs: 7000,
+        },
+        paginatedFallback: () =>
+          countCollectionPaginated(attemptsCol, {
+            pageSize: 50,
+            maxPages: 25,
+            perPageTimeoutMs: 7000,
+            collectionLabel: 'firestore:attempts',
+            useDocumentIdOrder: true,
+          }),
+      }
     );
-    return { totalAttempts };
+    const data = { totalAttempts };
+    cachedOverviewAttemptsCard = { at: Date.now(), data };
+    return data;
   };
   inFlightOverviewAttemptsCard = run().finally(() => {
     inFlightOverviewAttemptsCard = null;
@@ -1409,13 +1846,6 @@ function invalidateApplicationsOverviewCache(): void {
   if (cachedAdminStats) {
     cachedAdminStats = null;
   }
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem(ADMIN_STATS_SESSION_KEY);
-    }
-  } catch {
-    // ignore storage errors
-  }
 }
 
 export interface AdminApplicationsSnapshot {
@@ -1428,35 +1858,48 @@ export interface AdminApplicationsSnapshot {
 
 /**
  * Single shared source of truth for both /admin Overview ("Pending applications" card)
- * and /admin/applications. Reads captainApplications and crewApplications independently
- * so one failing collection never zeroes out the other, normalizes mixed status casing,
- * and keeps the Overview cache synchronized.
+ * and /admin/applications. Reads captainApplications and crewApplications with timeout
+ * and retry, requiring both queues to succeed so a partial failure never renders a fake 0.
  */
 export async function fetchAllApplications(): Promise<AdminApplicationsSnapshot> {
   await ensureAdminAuthToken(false);
 
   const [captainRes, crewRes] = await Promise.allSettled([
-    getDocs(query(collection(db, 'captainApplications'), limit(200))),
-    getDocs(query(collection(db, 'crewApplications'), limit(200))),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'captainApplications'), limit(200)),
+      'firestore:captainApplications',
+      8000
+    ),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'crewApplications'), limit(200)),
+      'firestore:crewApplications',
+      8000
+    ),
   ]);
 
-  if (captainRes.status === 'rejected' && crewRes.status === 'rejected') {
-    throw captainRes.reason || crewRes.reason;
+  if (captainRes.status === 'rejected' || crewRes.status === 'rejected') {
+    const err: any =
+      captainRes.status === 'rejected' ? captainRes.reason : (crewRes as PromiseRejectedResult).reason;
+    const failedSource =
+      captainRes.status === 'rejected' && crewRes.status === 'rejected'
+        ? 'firestore:captainApplications,crewApplications'
+        : captainRes.status === 'rejected'
+        ? 'firestore:captainApplications'
+        : 'firestore:crewApplications';
+    throw new AdminStatCardError(
+      failedSource,
+      err?.code || err?.status || 500,
+      err?.message || `Failed to load ${failedSource}`
+    );
   }
 
-  const captains =
-    captainRes.status === 'fulfilled'
-      ? captainRes.value.docs
-          .map((d) => normalizeCaptainApplicationDoc(d.id, d.data() as Record<string, unknown>))
-          .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt))
-      : [];
+  const captains = captainRes.value.docs
+    .map((d) => normalizeCaptainApplicationDoc(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt));
 
-  const crew =
-    crewRes.status === 'fulfilled'
-      ? crewRes.value.docs
-          .map((d) => normalizeCrewApplicationDoc(d.id, d.data() as Record<string, unknown>))
-          .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt))
-      : [];
+  const crew = crewRes.value.docs
+    .map((d) => normalizeCrewApplicationDoc(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => extractTimestampMs(b.createdAt) - extractTimestampMs(a.createdAt));
 
   const pendingCaptains = countPendingApplications(captains);
   const pendingCrew = countPendingApplications(crew);
@@ -1471,7 +1914,6 @@ export async function fetchAllApplications(): Promise<AdminApplicationsSnapshot>
       pendingCaptains,
       pendingCrew,
     };
-    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, cachedAdminStats);
   }
 
   return {
@@ -1488,7 +1930,15 @@ export async function fetchOverviewApplicationsCard(options?: { force?: boolean 
   pendingCrew: number;
   totalPending: number;
 }> {
-  if (!options?.force && inFlightOverviewApplicationsCard) {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
+    cachedOverviewApplicationsCard &&
+    Date.now() - cachedOverviewApplicationsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewApplicationsCard.data;
+  }
+  if (!force && inFlightOverviewApplicationsCard) {
     return inFlightOverviewApplicationsCard;
   }
   const run = async () => {
@@ -1508,17 +1958,46 @@ export async function fetchOverviewApplicationsCard(options?: { force?: boolean 
 export async function fetchOverviewPaymentsCard(options?: { force?: boolean }): Promise<{
   pendingPayments: number;
 }> {
-  if (!options?.force && inFlightOverviewPaymentsCard) {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
+    cachedOverviewPaymentsCard &&
+    Date.now() - cachedOverviewPaymentsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewPaymentsCard.data;
+  }
+  if (!force && inFlightOverviewPaymentsCard) {
     return inFlightOverviewPaymentsCard;
   }
   const run = async () => {
+    const paymentsCol = collection(db, 'paymentRequests');
     const pendingPayments = await strictCountOrThrow(
-      query(collection(db, 'paymentRequests'), where('status', '==', 'pending')),
+      query(paymentsCol, where('status', '==', 'pending')),
       'firestore:paymentRequests',
-      'pendingPayments',
-      Boolean(options?.force)
+      undefined,
+      force,
+      {
+        restConfig: {
+          collectionId: 'paymentRequests',
+          filter: { fieldPath: 'status', stringValue: 'pending' },
+          pageSize: 200,
+          maxPages: 15,
+          timeoutMs: 7000,
+        },
+        paginatedFallback: () =>
+          countCollectionPaginated(paymentsCol, {
+            whereClauses: [where('status', '==', 'pending')],
+            pageSize: 60,
+            maxPages: 12,
+            perPageTimeoutMs: 7000,
+            collectionLabel: 'firestore:paymentRequests',
+            useDocumentIdOrder: false,
+          }),
+      }
     );
-    return { pendingPayments };
+    const data = { pendingPayments };
+    cachedOverviewPaymentsCard = { at: Date.now(), data };
+    return data;
   };
   inFlightOverviewPaymentsCard = run().finally(() => {
     inFlightOverviewPaymentsCard = null;
@@ -1529,17 +2008,59 @@ export async function fetchOverviewPaymentsCard(options?: { force?: boolean }): 
 export async function fetchOverviewReviewsCard(options?: { force?: boolean }): Promise<{
   pendingReviews: number;
 }> {
-  if (!options?.force && inFlightOverviewReviewsCard) {
+  const force = Boolean(options?.force);
+  if (
+    !force &&
+    cachedOverviewReviewsCard &&
+    Date.now() - cachedOverviewReviewsCard.at < ADMIN_SWR_FRESH_MS
+  ) {
+    return cachedOverviewReviewsCard.data;
+  }
+  if (!force && inFlightOverviewReviewsCard) {
     return inFlightOverviewReviewsCard;
   }
   const run = async () => {
+    const reviewsCol = collection(db, 'reviews');
     const pendingReviews = await strictCountOrThrow(
-      query(collection(db, 'reviews'), where('status', '==', 'pending')),
+      query(reviewsCol, where('status', '==', 'pending')),
       'firestore:reviews',
-      'pendingReviews',
-      Boolean(options?.force)
+      undefined,
+      force,
+      {
+        restConfig: {
+          collectionId: 'reviews',
+          filter: { fieldPath: 'status', stringValue: 'pending' },
+          pageSize: 200,
+          maxPages: 15,
+          timeoutMs: 7000,
+        },
+        paginatedFallback: async () => {
+          try {
+            return await countCollectionPaginated(reviewsCol, {
+              whereClauses: [where('status', '==', 'pending')],
+              pageSize: 60,
+              maxPages: 12,
+              perPageTimeoutMs: 7000,
+              collectionLabel: 'firestore:reviews',
+              useDocumentIdOrder: false,
+            });
+          } catch {
+            // Secondary bounded fallback if status filter index is unavailable or slow
+            return countCollectionPaginated(reviewsCol, {
+              pageSize: 80,
+              maxPages: 8,
+              perPageTimeoutMs: 7000,
+              collectionLabel: 'firestore:reviews',
+              useDocumentIdOrder: true,
+              filterDoc: (d) => String(d.status || '').trim().toLowerCase() === 'pending',
+            });
+          }
+        },
+      }
     );
-    return { pendingReviews };
+    const data = { pendingReviews };
+    cachedOverviewReviewsCard = { at: Date.now(), data };
+    return data;
   };
   inFlightOverviewReviewsCard = run().finally(() => {
     inFlightOverviewReviewsCard = null;
@@ -1603,7 +2124,10 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
       totalUsers: usersCard.totalUsers,
       studentCount: usersCard.studentCount,
       captainCount: usersCard.captainCount,
+      freeCount: usersCard.freeCount,
       proCount: usersCard.proCount,
+      plusCount: usersCard.plusCount,
+      expiringSoonCount: usersCard.expiringSoonCount,
       guestCount: usersCard.guestCount,
       adminCount: getCachedAdminUsersState()?.adminCount,
       twoFactorEnabledCount: getCachedAdminUsersState()?.twoFactorEnabledCount,
@@ -1623,7 +2147,6 @@ export async function fetchAdminStats(options?: { force?: boolean }): Promise<Ad
     };
 
     cachedAdminStats = result;
-    writeAdminSessionCache(ADMIN_STATS_SESSION_KEY, result);
     return result;
   };
 
@@ -1734,20 +2257,10 @@ export async function fetchUsersPaginated(options?: {
     queryConstraints.push(limit(count + 1));
 
     const fetchFirestoreTotalCount = async (): Promise<number | null> => {
-      if (
-        !options?.force &&
-        cachedUsersCollectionCount &&
-        Date.now() - cachedUsersCollectionCount.fetchedAt < 60_000
-      ) {
-        return cachedUsersCollectionCount.count;
-      }
       try {
-        const countSnap = await withTimeout(getCountFromServer(ref), 4000, 'users-total-count');
-        const total = Number(countSnap.data().count || 0);
-        cachedUsersCollectionCount = { count: total, fetchedAt: Date.now() };
-        return total;
+        return await fetchFirestoreUsersTotalCount(Boolean(options?.force));
       } catch (err) {
-        console.warn('[AdminService] getCountFromServer(users) warning:', err);
+        console.warn('[AdminService] fetchFirestoreUsersTotalCount warning:', err);
         return cachedUsersCollectionCount?.count ?? null;
       }
     };
@@ -3211,136 +3724,151 @@ let cachedPlanAnalytics: { at: number; data: PlanAnalyticsStats } | null = null;
 let inFlightPlanAnalytics: Promise<PlanAnalyticsStats> | null = null;
 
 export function getCachedPlanAnalyticsStats(): PlanAnalyticsStats | null {
-  if (cachedPlanAnalytics) return cachedPlanAnalytics.data;
-  const restored = readAdminSessionCache<PlanAnalyticsStats>(ADMIN_PLAN_ANALYTICS_SESSION_KEY);
-  if (restored) {
-    cachedPlanAnalytics = restored;
-    return restored.data;
+  if (cachedPlanAnalytics && Date.now() - cachedPlanAnalytics.at < ADMIN_SWR_FRESH_MS) {
+    return cachedPlanAnalytics.data;
   }
   return null;
+}
+
+async function computePlanAnalyticsWithTotal(totalUsers: number): Promise<PlanAnalyticsStats> {
+  await ensureAdminAuthToken(false);
+
+  // Fetch config/plans + paymentRequests + planActivations + paid users with timeout & retry.
+  // Never silently coerce a failed collection read into [] / 0.
+  const [
+    plansConfigRes,
+    paymentsRes,
+    activationsRes,
+    paidUsersByPlanRes,
+    plusUsersByFlagRes,
+    proUsersByFlagRes,
+  ] = await Promise.allSettled([
+    fetchPlansConfigOnce(),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'paymentRequests'), limit(500)),
+      'firestore:paymentRequests',
+      8000
+    ),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'planActivations'), limit(500)),
+      'firestore:planActivations',
+      8000
+    ),
+    getDocsWithTimeoutAndRetry(
+      query(
+        collection(db, 'users'),
+        where('plan', 'in', [
+          'pro',
+          'pro_monthly',
+          'pro_annual',
+          'plus',
+          'plus_monthly',
+          'plus_annual',
+        ]),
+        limit(500)
+      ),
+      'firestore:users (paid plans)',
+      8000
+    ),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'users'), where('isPlus', '==', true), limit(200)),
+      'firestore:users (isPlus)',
+      8000
+    ),
+    getDocsWithTimeoutAndRetry(
+      query(collection(db, 'users'), where('isPro', '==', true), limit(200)),
+      'firestore:users (isPro)',
+      8000
+    ),
+  ]);
+
+  if (
+    paidUsersByPlanRes.status === 'rejected' ||
+    plusUsersByFlagRes.status === 'rejected' ||
+    proUsersByFlagRes.status === 'rejected'
+  ) {
+    const err: any =
+      (paidUsersByPlanRes.status === 'rejected' && paidUsersByPlanRes.reason) ||
+      (plusUsersByFlagRes.status === 'rejected' && plusUsersByFlagRes.reason) ||
+      (proUsersByFlagRes.status === 'rejected' && proUsersByFlagRes.reason);
+    throw new AdminStatCardError(
+      'firestore:users (paid plans)',
+      err?.code || 500,
+      err?.message || 'Failed to load active Pro/Plus subscribers'
+    );
+  }
+
+  if (paymentsRes.status === 'rejected') {
+    const err: any = paymentsRes.reason;
+    throw new AdminStatCardError(
+      'firestore:paymentRequests',
+      err?.code || 500,
+      err?.message || 'Failed to load payment revenue records'
+    );
+  }
+
+  if (activationsRes.status === 'rejected') {
+    const err: any = activationsRes.reason;
+    throw new AdminStatCardError(
+      'firestore:planActivations',
+      err?.code || 500,
+      err?.message || 'Failed to load plan activation records'
+    );
+  }
+
+  const plansConfig = plansConfigRes.status === 'fulfilled' ? plansConfigRes.value : null;
+  const paymentRequests = paymentsRes.value.docs.map((d) => ({
+    id: d.id,
+    data: d.data() as Record<string, any>,
+  }));
+  const planActivations = activationsRes.value.docs.map((d) => ({
+    id: d.id,
+    data: d.data() as Record<string, any>,
+  }));
+
+  const paidUsersMap = new Map<string, { id: string; data: Record<string, any> }>();
+  for (const snap of [paidUsersByPlanRes.value, plusUsersByFlagRes.value, proUsersByFlagRes.value]) {
+    for (const d of snap.docs) {
+      if (!paidUsersMap.has(d.id)) {
+        paidUsersMap.set(d.id, { id: d.id, data: d.data() as Record<string, any> });
+      }
+    }
+  }
+
+  const computed = computePlanAnalyticsSnapshot({
+    plansConfig,
+    paymentRequests,
+    planActivations,
+    paidUsers: Array.from(paidUsersMap.values()),
+  });
+
+  const result: PlanAnalyticsStats = {
+    ...computed,
+    freeCount: Math.max(0, totalUsers - computed.proCount - computed.plusCount),
+  };
+
+  cachedPlanAnalytics = { at: Date.now(), data: result };
+  return result;
 }
 
 export async function fetchPlanAnalyticsStats(options?: {
   force?: boolean;
 }): Promise<PlanAnalyticsStats> {
+  const force = Boolean(options?.force);
   if (
-    !options?.force &&
+    !force &&
     cachedPlanAnalytics &&
     Date.now() - cachedPlanAnalytics.at < ADMIN_SWR_FRESH_MS
   ) {
     return cachedPlanAnalytics.data;
   }
-  if (!options?.force && inFlightPlanAnalytics) {
+  if (!force && inFlightPlanAnalytics) {
     return inFlightPlanAnalytics;
   }
 
   const run = async (): Promise<PlanAnalyticsStats> => {
-    const dir = getCachedAdminUsersState();
-    const cachedStats = getCachedAdminStats();
-
-    // Run live config/plans + server stats + paymentRequests + planActivations + paid users in parallel (read-only)
-    const [
-      srvRes,
-      plansConfig,
-      paymentsSnap,
-      activationsSnap,
-      paidUsersByPlanSnap,
-      plusUsersByFlagSnap,
-    ] = await Promise.all([
-      fetchServerAdminStatsSnapshot(Boolean(options?.force)).catch(() => null),
-      fetchPlansConfigOnce().catch(() => null),
-      getDocs(query(collection(db, 'paymentRequests'), limit(500))).catch((err) => {
-        console.warn('[AdminService] fetchPlanAnalyticsStats paymentRequests notice:', err);
-        return null;
-      }),
-      getDocs(query(collection(db, 'planActivations'), limit(500))).catch((err) => {
-        console.warn('[AdminService] fetchPlanAnalyticsStats planActivations notice:', err);
-        return null;
-      }),
-      getDocs(
-        query(
-          collection(db, 'users'),
-          where('plan', 'in', [
-            'pro',
-            'pro_monthly',
-            'pro_annual',
-            'plus',
-            'plus_monthly',
-            'plus_annual',
-          ]),
-          limit(500)
-        )
-      ).catch((err) => {
-        console.warn('[AdminService] fetchPlanAnalyticsStats paidUsers notice:', err);
-        return null;
-      }),
-      getDocs(query(collection(db, 'users'), where('isPlus', '==', true), limit(200))).catch(
-        () => null
-      ),
-    ]);
-
-    const srvStats = srvRes?.ok ? srvRes.stats : null;
-    const freeCount =
-      typeof srvStats?.freeCount === 'number'
-        ? srvStats.freeCount
-        : cachedStats?.freeCount ?? dir?.freeCount ?? 0;
-    const proCount =
-      typeof srvStats?.proCount === 'number'
-        ? srvStats.proCount
-        : cachedStats?.proCount ?? dir?.proCount ?? null;
-    const plusCount =
-      typeof srvStats?.plusCount === 'number'
-        ? srvStats.plusCount
-        : cachedStats?.plusCount ?? dir?.plusCount ?? null;
-    const expiringSoonCount =
-      typeof srvStats?.expiringSoonCount === 'number'
-        ? srvStats.expiringSoonCount
-        : cachedStats?.expiringSoonCount ?? dir?.expiringSoonCount ?? null;
-
-    const paymentRequests = paymentsSnap
-      ? paymentsSnap.docs.map((d) => ({
-          id: d.id,
-          data: d.data() as Record<string, any>,
-        }))
-      : [];
-
-    const planActivations = activationsSnap
-      ? activationsSnap.docs.map((d) => ({
-          id: d.id,
-          data: d.data() as Record<string, any>,
-        }))
-      : [];
-
-    const paidUsersMap = new Map<string, { id: string; data: Record<string, any> }>();
-    if (paidUsersByPlanSnap) {
-      for (const d of paidUsersByPlanSnap.docs) {
-        paidUsersMap.set(d.id, { id: d.id, data: d.data() as Record<string, any> });
-      }
-    }
-    if (plusUsersByFlagSnap) {
-      for (const d of plusUsersByFlagSnap.docs) {
-        if (!paidUsersMap.has(d.id)) {
-          paidUsersMap.set(d.id, { id: d.id, data: d.data() as Record<string, any> });
-        }
-      }
-    }
-
-    const result: PlanAnalyticsStats = computePlanAnalyticsSnapshot({
-      plansConfig,
-      paymentRequests,
-      planActivations,
-      paidUsers: Array.from(paidUsersMap.values()),
-      baseCounts: {
-        freeCount,
-        proCount,
-        plusCount,
-        expiringSoonCount,
-      },
-    });
-
-    cachedPlanAnalytics = { at: Date.now(), data: result };
-    writeAdminSessionCache(ADMIN_PLAN_ANALYTICS_SESSION_KEY, result);
-    return result;
+    const totalUsers = await fetchFirestoreUsersTotalCount(force);
+    return computePlanAnalyticsWithTotal(totalUsers);
   };
 
   inFlightPlanAnalytics = run().finally(() => {

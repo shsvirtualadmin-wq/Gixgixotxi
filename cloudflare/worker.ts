@@ -5409,9 +5409,10 @@ ${urls
 
         // GET /api/mcqs/health
         if (mcqSub === '/health' && req.method === 'GET') {
-          await recalculateAllD1UniCounts();
-          const [uniRes, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
+          await recalculateAllD1UniCounts().catch(() => {});
+          const [uniRes, totalRow, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
             env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
+            env.DB.prepare('SELECT COUNT(*) as cnt FROM mcqs').first<{ cnt: number }>(),
             env.DB.prepare('SELECT subject, COUNT(*) as cnt FROM mcqs GROUP BY subject').all<{ subject: string; cnt: number }>(),
             env.DB.prepare('SELECT difficulty, COUNT(*) as cnt FROM mcqs GROUP BY difficulty').all<{ difficulty: string; cnt: number }>(),
             env.DB.prepare("SELECT COUNT(*) as cnt FROM mcqs WHERE TRIM(COALESCE(explanation, '')) = ''").first<{ cnt: number }>(),
@@ -5422,13 +5423,16 @@ ${urls
 
           const universities = uniRes.results || [];
           const bySubject: Record<string, number> = {};
-          let totalMcqs = 0;
+          let subjectSum = 0;
           for (const r of subRes.results || []) {
             const subjKey = String(r.subject ?? '').trim() || 'General';
             const cnt = Number(r.cnt || 0);
             bySubject[subjKey] = (bySubject[subjKey] || 0) + cnt;
-            totalMcqs += cnt;
+            subjectSum += cnt;
           }
+          const uniSum = universities.reduce((acc, u) => acc + Number(u.mcq_count || 0), 0);
+          const directTotal = Number(totalRow?.cnt || 0);
+          const totalMcqs = Math.max(directTotal, subjectSum, uniSum);
           const byDifficulty: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
           for (const r of diffRes.results || []) {
             byDifficulty[String(r.difficulty || 'medium').toLowerCase()] = Number(r.cnt || 0);
@@ -5475,7 +5479,10 @@ ${urls
               universities,
             },
             200,
-            cors
+            {
+              ...cors,
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+            }
           );
         }
 

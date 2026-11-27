@@ -207,30 +207,82 @@ async function getD1RequestHeaders(): Promise<Record<string, string>> {
 }
 
 async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
-  const baseHeaders = await getD1RequestHeaders();
-  const headers: Record<string, string> = {
-    ...baseHeaders,
-    ...((init?.headers as Record<string, string>) || {}),
-  };
-  const res = await fetch(url, {
-    ...init,
-    credentials: 'include',
-    headers,
-  });
-  const text = await res.text().catch(() => '');
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    throw new Error(`Invalid JSON response from ${url} (${res.status})`);
+  const method = String(init?.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const maxAttempts = isGet ? 2 : 1;
+  const timeoutMs = 12_000;
+
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const baseHeaders = await getD1RequestHeaders();
+    const headers: Record<string, string> = {
+      ...baseHeaders,
+      ...((init?.headers as Record<string, string>) || {}),
+    };
+
+    const controller = new AbortController();
+    const externalSignal = init?.signal;
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        ...init,
+        credentials: 'include',
+        ...(isGet ? { cache: 'no-store' as RequestCache } : {}),
+        headers,
+        signal: controller.signal,
+      });
+      const text = await res.text().catch(() => '');
+      let data: any = null;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(`Invalid JSON response from ${url} (${res.status})`);
+      }
+      if (!res.ok) {
+        const err: any = new Error(data?.error || data?.message || `Request failed (${res.status})`);
+        err.status = res.status;
+        if (isGet && attempt < maxAttempts && (res.status >= 500 || res.status === 429 || res.status === 408)) {
+          lastErr = err;
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          continue;
+        }
+        throw err;
+      }
+      if (!data || typeof data !== 'object') {
+        throw new Error(`Empty response from ${url}`);
+      }
+      return data as T;
+    } catch (err: any) {
+      lastErr = err;
+      const isExternalAbort = Boolean(externalSignal?.aborted);
+      if (isGet && attempt < maxAttempts && !isExternalAbort) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        continue;
+      }
+      if (err?.name === 'AbortError' && !isExternalAbort) {
+        const timeoutErr: any = new Error(`Request timed out calling ${url}`);
+        timeoutErr.status = 408;
+        throw timeoutErr;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
+    }
   }
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || `Request failed (${res.status})`);
-  }
-  if (!data || typeof data !== 'object') {
-    throw new Error(`Empty response from ${url}`);
-  }
-  return data as T;
+
+  throw lastErr instanceof Error ? lastErr : new Error(`Request failed calling ${url}`);
 }
 
 // ============================================================================
@@ -1073,6 +1125,7 @@ export async function verifyMcqAnswers(
 // ============================================================================
 
 const LIVE_BANK_STATS_TTL_MS = 30_000;
+const LIVE_BANK_STATS_SESSION_KEY = 'boardly_live_bank_stats_swr_v1';
 let liveBankStatsMemoryCache: { data: BankHealthData; expiresAt: number } | null = null;
 let liveBankStatsInFlight: Promise<BankHealthData> | null = null;
 
@@ -1235,12 +1288,22 @@ export function normalizeLiveSubjectCounts(
 }
 
 export function getCachedLiveQuestionBankStats(): BankHealthData | null {
-  return liveBankStatsMemoryCache?.data ?? null;
+  if (liveBankStatsMemoryCache?.data && Date.now() < liveBankStatsMemoryCache.expiresAt) {
+    return liveBankStatsMemoryCache.data;
+  }
+  return null;
 }
 
 export function invalidateLiveQuestionBankStatsCache(): void {
   liveBankStatsMemoryCache = null;
   liveBankStatsInFlight = null;
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    try {
+      window.sessionStorage.removeItem(LIVE_BANK_STATS_SESSION_KEY);
+    } catch {
+      // Ignore storage errors
+    }
+  }
 }
 
 /**
@@ -1267,7 +1330,7 @@ export async function fetchLiveQuestionBankStats(options?: {
 
   const run = (async (): Promise<BankHealthData> => {
     const endpoint = force ? `/api/mcqs/health?_t=${Date.now()}` : '/api/mcqs/health';
-    const raw = await apiRequest<any>(endpoint);
+    const raw = await apiRequest<any>(endpoint, { cache: 'no-store' });
     if (!raw || raw.ok === false || raw.success === false) {
       throw new Error(raw?.error || raw?.message || 'GET /api/mcqs/health returned an error');
     }
@@ -1289,12 +1352,23 @@ export async function fetchLiveQuestionBankStats(options?: {
       raw.bySubject && typeof raw.bySubject === 'object' ? raw.bySubject : {}
     );
     const uniSum = uniList.reduce((acc: number, u: any) => acc + Number(u?.mcq_count || 0), 0);
+    const hasRawTotal =
+      raw.totalMcqs !== undefined &&
+      raw.totalMcqs !== null &&
+      Number.isFinite(Number(raw.totalMcqs)) &&
+      Number(raw.totalMcqs) >= 0;
+    const rawTotal = hasRawTotal ? Number(raw.totalMcqs) : null;
     const totalMcqs =
-      raw.totalMcqs !== undefined && raw.totalMcqs !== null && Number.isFinite(Number(raw.totalMcqs))
-        ? Number(raw.totalMcqs)
-        : normalizedSubjects.sum > 0
-        ? normalizedSubjects.sum
-        : uniSum;
+      rawTotal !== null
+        ? Math.max(rawTotal, normalizedSubjects.sum, uniSum)
+        : Math.max(normalizedSubjects.sum, uniSum);
+
+    if (strict && !hasRawTotal && normalizedSubjects.sum === 0 && uniSum === 0) {
+      throw new Error('GET /api/mcqs/health returned an incomplete payload');
+    }
+    if (strict && totalMcqs === 0 && totalUniversities === 0) {
+      throw new Error('GET /api/mcqs/health returned an empty bank response');
+    }
 
     const lastImportAt =
       extractLastImportTimestamp(raw.lastImportAt) ??

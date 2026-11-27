@@ -457,9 +457,11 @@ function AppInner() {
             <Route path="profile/layout" element={<Navigate to="/profile" replace />} />
             <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
             <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
+            <Route path="settings/bookmarks" element={<Navigate to="/bookmarks" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/:subPage" element={<SettingsPage />} />
             <Route path="bookmarks" element={<BookmarksPage />} />
+            <Route path="bookmarks/*" element={<BookmarksPage />} />
             <Route path="menu" element={<Navigate to="/settings" replace />} />
             <Route path="contact" element={<Navigate to="/contact" replace />} />
             <Route path="*" element={<NotFoundPage />} />
@@ -476,6 +478,7 @@ function AppInner() {
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/saved" element={<CommonsFeedPage />} />
           <Route path="/bookmarks" element={<BookmarksPage />} />
+          <Route path="/bookmarks/*" element={<BookmarksPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/:subPage" element={<SettingsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
@@ -487,6 +490,7 @@ function AppInner() {
         </Route>
 
         {/* Legacy profile/settings/menu redirects */}
+        <Route path="/settings/bookmarks" element={<Navigate to="/bookmarks" replace />} />
         <Route path="/settings/profile-layout" element={<Navigate to="/profile" replace />} />
         <Route path="/settings/layout" element={<Navigate to="/profile" replace />} />
         <Route path="/profile/layout" element={<Navigate to="/profile" replace />} />

@@ -797,7 +797,7 @@ export async function getMyTestAttempts(): Promise<AmbassadorTestAttempt[]> {
 export async function getTestResultsForCaptain(testId: string): Promise<AmbassadorTestAttempt[]> {
   const data = await api.get<{ results: any[] }>(
     `/api/tests/${encodeURIComponent(testId)}/results`,
-    { requireAuth: true }
+    { requireAuth: true, silentErrorToast: true }
   );
   return (data.results || []).map(normalizeAttemptRow);
 }

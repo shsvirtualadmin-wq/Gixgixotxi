@@ -52,6 +52,140 @@ export function persistPostLoginRedirect(target: string): void {
   }
 }
 
+export function readPostLoginRedirect(): string | null {
+  try {
+    if (typeof sessionStorage === 'undefined') return null;
+    return sanitizeRedirectTarget(sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function clearPostLoginRedirect(): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+    }
+  } catch {
+    // Ignore storage access errors
+  }
+}
+
+export interface PostAuthDestinationInput {
+  isAddAccountFlow?: boolean;
+  redirectParam?: string | null;
+  storedRedirect?: string | null;
+  pendingCrewCode?: string | null;
+  needsOnboarding?: boolean;
+  roleDefaultUrl: string;
+}
+
+export interface PostAuthDestinationResult {
+  destination: string;
+  shouldClearStoredRedirect: boolean;
+}
+
+/**
+ * Single source of truth for post-login / post-signup / post-verification routing.
+ * Always preserves an explicit requested in-app route (including query & hash)
+ * and keeps `boardly_post_login_redirect` intact if the user must complete onboarding first.
+ */
+export function resolvePostAuthDestination(
+  input: PostAuthDestinationInput
+): PostAuthDestinationResult {
+  const {
+    isAddAccountFlow = false,
+    redirectParam = null,
+    storedRedirect = null,
+    pendingCrewCode = null,
+    needsOnboarding = false,
+    roleDefaultUrl,
+  } = input;
+
+  const safeRedirectParam = isAddAccountFlow ? null : sanitizeRedirectTarget(redirectParam);
+  const safeStoredRedirect = isAddAccountFlow ? null : sanitizeRedirectTarget(storedRedirect);
+  const intendedTarget = safeRedirectParam || safeStoredRedirect;
+
+  if (needsOnboarding) {
+    return {
+      destination: intendedTarget
+        ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
+        : '/onboarding',
+      // Keep stored redirect intact until onboarding completes
+      shouldClearStoredRedirect: false,
+    };
+  }
+
+  if (intendedTarget) {
+    return {
+      destination: intendedTarget,
+      shouldClearStoredRedirect: true,
+    };
+  }
+
+  const cleanCrewCode = !isAddAccountFlow && pendingCrewCode ? pendingCrewCode.trim() : '';
+  if (cleanCrewCode) {
+    return {
+      destination: `/join/${encodeURIComponent(cleanCrewCode)}`,
+      shouldClearStoredRedirect: true,
+    };
+  }
+
+  return {
+    destination: sanitizeRedirectTarget(roleDefaultUrl) || '/dashboard',
+    shouldClearStoredRedirect: true,
+  };
+}
+
+export type PublicLayoutDecision =
+  | { action: 'render_public_layout' }
+  | { action: 'render_app_layout' }
+  | { action: 'loading_authenticated_home' }
+  | { action: 'redirect'; target: string; clearPendingRedirect: boolean };
+
+export interface PublicLayoutAccessInput {
+  pathname: string;
+  sessionStatus: 'loading' | 'authenticated' | 'unauthenticated';
+  isOptimisticallyAuthenticated: boolean;
+  pendingRedirect?: string | null;
+}
+
+/**
+ * Pure route layout evaluator for `PublicLayout` (shared routes like `/`, `/leaderboard`, `/privacy`, etc.).
+ * - Non-root routes NEVER redirect to `/dashboard/commons` or `/`.
+ * - Signed-in reloads on shared routes stay in AppLayout without flashing public chrome or remounting.
+ * - Authenticated visits to `/` honor a valid pending redirect target before defaulting to `/dashboard/commons`.
+ */
+export function evaluatePublicLayoutAccess(
+  input: PublicLayoutAccessInput
+): PublicLayoutDecision {
+  const { pathname, sessionStatus, isOptimisticallyAuthenticated, pendingRedirect } = input;
+  const isHomePage = pathname === '/' || pathname === '';
+
+  if (isHomePage) {
+    if (sessionStatus === 'authenticated') {
+      const safePending = sanitizeRedirectTarget(pendingRedirect);
+      if (safePending && safePending !== '/') {
+        return { action: 'redirect', target: safePending, clearPendingRedirect: true };
+      }
+      return { action: 'redirect', target: '/dashboard/commons', clearPendingRedirect: false };
+    }
+    if (sessionStatus === 'loading' && isOptimisticallyAuthenticated) {
+      return { action: 'loading_authenticated_home' };
+    }
+    return { action: 'render_public_layout' };
+  }
+
+  if (
+    sessionStatus === 'authenticated' ||
+    (sessionStatus === 'loading' && isOptimisticallyAuthenticated)
+  ) {
+    return { action: 'render_app_layout' };
+  }
+
+  return { action: 'render_public_layout' };
+}
+
 export type AdminRouteDecision =
   | { action: 'loading' }
   | { action: 'allow' }

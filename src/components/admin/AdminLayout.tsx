@@ -47,7 +47,7 @@ import {
   scheduleIdleAdminPrefetchAll,
   prefetchAdminRouteOnInteraction,
 } from '@/services/adminTabCache';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, clearGenericErrorToasts } from '@/lib/api';
 import type { PermissionKey } from '@/constants/permissions';
 
 const AdminKobanNavIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
@@ -131,6 +131,7 @@ export function AdminLayout() {
   useEffect(() => {
     setIsMoreOpen(false);
     safetyCleanupScrollLocks();
+    clearGenericErrorToasts();
     window.scrollTo(0, 0);
   }, [location.pathname]);
 

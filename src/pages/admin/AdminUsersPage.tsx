@@ -1876,8 +1876,18 @@ export function AdminUsersPage() {
           }`}
         >
           <UsersIcon size={14} />
-          <span data-testid="admin-users-tab-count">
-            All Users ({isInitialLoading ? '—' : effectiveTotalN.toLocaleString()})
+          <span data-testid="admin-users-tab-count" className="inline-flex items-center gap-1">
+            <span>All Users</span>
+            {isInitialLoading ? (
+              <span
+                className="inline-block h-3.5 w-8 rounded bg-current/20 animate-pulse"
+                aria-label="Loading total users"
+              />
+            ) : loadState === 'error' && allUsers.length === 0 ? (
+              <span>(Error)</span>
+            ) : (
+              <span className="tabular-nums">({effectiveTotalN.toLocaleString()})</span>
+            )}
           </span>
         </button>
 

@@ -11,11 +11,23 @@ import {
   shouldAutoRedirectFromAuthScreen,
 } from '@/utils/savedAccounts';
 
+import {
+  clearPostLoginRedirect,
+  persistPostLoginRedirect,
+  readPostLoginRedirect,
+  resolvePostAuthDestination,
+  sanitizeRedirectTarget,
+} from '@/utils/routeGuards';
+
 export function SignupPage() {
   const {
     user,
     profile,
+    isGuest,
     profileLoading,
+    tokenClaims,
+    isAdmin,
+    isSuperAdmin,
     isSessionVerified,
     otpVerificationState,
     getRoleRedirectUrl,
@@ -37,12 +49,14 @@ export function SignupPage() {
     try {
       const searchParams = new URLSearchParams(location.search);
       if (isAddAccountFlow) {
-        sessionStorage.removeItem('boardly_post_login_redirect');
+        clearPostLoginRedirect();
         return;
       }
-      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
-      if (redirectParam && redirectParam.startsWith('/')) {
-        sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
+      const redirectParam = sanitizeRedirectTarget(
+        searchParams.get('redirect') || searchParams.get('returnTo')
+      );
+      if (redirectParam) {
+        persistPostLoginRedirect(redirectParam);
       }
     } catch {
       // Ignore storage errors
@@ -66,24 +80,43 @@ export function SignupPage() {
     const searchParams = new URLSearchParams(location.search);
     const redirectParam = isAddAccountFlow
       ? null
-      : searchParams.get('redirect') || searchParams.get('returnTo');
-    const storedRedirect = isAddAccountFlow
+      : sanitizeRedirectTarget(searchParams.get('redirect') || searchParams.get('returnTo'));
+    const storedRedirect = isAddAccountFlow ? null : readPostLoginRedirect();
+    const pendingCrew = isAddAccountFlow
       ? null
-      : sessionStorage.getItem('boardly_post_login_redirect');
-    const intendedTarget =
-      (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
-      (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
+      : sessionStorage.getItem('pending_join_crew_code');
+    const intendedTarget = redirectParam || storedRedirect;
 
-    let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-    if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
-      dest = intendedTarget
-        ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
-        : '/onboarding';
-    } else if (intendedTarget) {
-      dest = intendedTarget;
-      sessionStorage.removeItem('boardly_post_login_redirect');
-    } else {
-      sessionStorage.removeItem('boardly_post_login_redirect');
+    if (!intendedTarget && !isGuest && !tokenClaims?.verified) {
+      return;
+    }
+
+    const effectiveRole = isSuperAdmin
+      ? 'super_admin'
+      : isAdmin
+      ? 'admin'
+      : profile?.role || 'student';
+
+    const needsOnboarding = Boolean(
+      profile &&
+        !profile.isGuest &&
+        !profile.onboardingCompleted &&
+        effectiveRole === 'student' &&
+        !isAdmin &&
+        !isSuperAdmin
+    );
+
+    const { destination: dest, shouldClearStoredRedirect } = resolvePostAuthDestination({
+      isAddAccountFlow,
+      redirectParam,
+      storedRedirect,
+      pendingCrewCode: pendingCrew,
+      needsOnboarding,
+      roleDefaultUrl: profile ? getRoleRedirectUrl(effectiveRole) : '/dashboard',
+    });
+
+    if (shouldClearStoredRedirect) {
+      clearPostLoginRedirect();
     }
     navigate(dest, { replace: true });
   }, [
@@ -92,7 +125,11 @@ export function SignupPage() {
     submittedTargetUid,
     user,
     profile,
+    isGuest,
     profileLoading,
+    tokenClaims?.verified,
+    isAdmin,
+    isSuperAdmin,
     isSessionVerified,
     location.search,
     navigate,
@@ -101,8 +138,8 @@ export function SignupPage() {
 
   const handleCancelAddAccount = () => {
     const searchParams = new URLSearchParams(location.search);
-    const fromParam = searchParams.get('from');
-    if (fromParam && fromParam.startsWith('/') && !fromParam.startsWith('/login')) {
+    const fromParam = sanitizeRedirectTarget(searchParams.get('from'));
+    if (fromParam) {
       navigate(fromParam, { replace: true });
       return;
     }
@@ -133,6 +170,7 @@ export function SignupPage() {
           isAddAccountFlow={isAddAccountFlow}
           initialEmail={prefillEmail}
           initialUid={initialUidRef.current}
+          disableAutoRedirect={true}
           onAuthSubmitSuccess={(targetUid) => {
             setSubmittedTargetUid(targetUid ?? null);
             setHasCompletedNewAuthSubmit(true);

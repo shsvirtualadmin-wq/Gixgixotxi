@@ -1003,44 +1003,59 @@ export async function triggerWingmateAction(
 
 export interface AdminWingmatesRadarResponse {
   ok: boolean;
-  counters: WingmatesCounters;
+  counters: WingmatesCounters | null;
   items: WingmateFeedItem[];
   error?: string;
 }
 
 export async function fetchAdminWingmatesRadar(): Promise<AdminWingmatesRadarResponse> {
-  try {
+  const attemptLoad = async (): Promise<AdminWingmatesRadarResponse> => {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/rewards/wingmates/radar', {
-      method: 'GET',
-      headers,
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data || data.ok === false) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const res = await fetch('/api/rewards/wingmates/radar', {
+        method: 'GET',
+        cache: 'no-store',
+        headers,
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok === false || !data.counters) {
+        return {
+          ok: false,
+          counters: null,
+          items: [],
+          error: data?.error || `HTTP ${res.status}: Unable to load Wingmates Radar.`,
+        };
+      }
+      return {
+        ok: true,
+        counters: data.counters,
+        items: Array.isArray(data.items) ? data.items : [],
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    const first = await attemptLoad();
+    if (first.ok) return first;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return await attemptLoad();
+  } catch (err: any) {
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return await attemptLoad();
+    } catch (retryErr: any) {
       return {
         ok: false,
-        counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0, totalUsers: 0 },
+        counters: null,
         items: [],
-        error: data?.error || `HTTP ${res.status}: Unable to load Wingmates Radar.`,
+        error: retryErr?.message || err?.message || 'Unable to load Wingmates Radar.',
       };
     }
-    return {
-      ok: true,
-      counters: data.counters || {
-        practicingNow: 0,
-        streakAtRisk: 0,
-        inactive2PlusDays: 0,
-        totalUsers: 0,
-      },
-      items: Array.isArray(data.items) ? data.items : [],
-    };
-  } catch (err: any) {
-    return {
-      ok: false,
-      counters: { practicingNow: 0, streakAtRisk: 0, inactive2PlusDays: 0, totalUsers: 0 },
-      items: [],
-      error: err?.message || 'Unable to load Wingmates Radar.',
-    };
   }
 }
 

@@ -29,6 +29,12 @@ import {
 } from '@/utils/savedAccounts';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { perfMarkStart } from '@/lib/perfMetrics';
+import {
+  clearPostLoginRedirect,
+  readPostLoginRedirect,
+  resolvePostAuthDestination,
+  sanitizeRedirectTarget,
+} from '@/utils/routeGuards';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup' | 'guest';
@@ -36,6 +42,7 @@ interface AuthCardProps {
   addAccountReason?: 'session_expired' | null;
   initialEmail?: string;
   initialUid?: string | null;
+  disableAutoRedirect?: boolean;
   onAuthSubmitSuccess?: (targetUid?: string | null) => void;
   onCancelAddAccount?: () => void;
 }
@@ -56,6 +63,7 @@ export function AuthCard({
   addAccountReason: addAccountReasonProp,
   initialEmail = '',
   initialUid = null,
+  disableAutoRedirect = false,
   onAuthSubmitSuccess,
   onCancelAddAccount,
 }: AuthCardProps) {
@@ -292,26 +300,25 @@ export function AuthCard({
   const getDestinationUrl = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
-    const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
+    const storedRedirect = readPostLoginRedirect();
     const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
+    const needsOnboarding = Boolean(
+      profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student'
+    );
 
-    if (!isAddAccountFlow) {
-      if (redirectParam && redirectParam.startsWith('/')) {
-        sessionStorage.removeItem('boardly_post_login_redirect');
-        return redirectParam;
-      }
-      if (storedRedirect && storedRedirect.startsWith('/')) {
-        sessionStorage.removeItem('boardly_post_login_redirect');
-        return storedRedirect;
-      }
-      if (pendingCrew) {
-        return `/join/${pendingCrew}`;
-      }
+    const { destination, shouldClearStoredRedirect } = resolvePostAuthDestination({
+      isAddAccountFlow,
+      redirectParam,
+      storedRedirect,
+      pendingCrewCode: pendingCrew,
+      needsOnboarding,
+      roleDefaultUrl: profile ? getRoleRedirectUrl(profile.role) : '/dashboard',
+    });
+
+    if (shouldClearStoredRedirect) {
+      clearPostLoginRedirect();
     }
-    if (profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student') {
-      return '/onboarding';
-    }
-    return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+    return destination;
   }, [profile, getRoleRedirectUrl, isAddAccountFlow]);
 
   const handleStartGuestMode = useCallback(() => {
@@ -350,9 +357,11 @@ export function AuthCard({
       setSubmittedTargetUid(nextUid);
       setHasSubmittedNewAuth(true);
       onAuthSubmitSuccess?.(nextUid);
-      const dest = isAddAccountFlow ? '/dashboard' : getDestinationUrl();
-      logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
-      navigate(dest, { replace: true });
+      if (!disableAutoRedirect) {
+        const dest = isAddAccountFlow ? '/dashboard' : getDestinationUrl();
+        logRedirect('/login', dest, 'AuthCard.tsx (Guest account created)');
+        navigate(dest, { replace: true });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t('auth.errGuestSession');
       setGuestCheckState({
@@ -368,6 +377,7 @@ export function AuthCard({
   // Navigate ONLY after session has completed 6-digit verification (or Google / Guest sign-in)
   // AND never auto-bounce an existing logged-in user (admin or student) during Add Account flow
   useEffect(() => {
+    if (disableAutoRedirect) return;
     const canRedirect = shouldAutoRedirectFromAuthScreen({
       isAddAccountFlow,
       hasCompletedNewAuthSubmit: hasSubmittedNewAuth,
@@ -384,6 +394,7 @@ export function AuthCard({
       navigate(dest, { replace: true });
     }
   }, [
+    disableAutoRedirect,
     isAddAccountFlow,
     hasSubmittedNewAuth,
     submittedTargetUid,
@@ -927,7 +938,15 @@ export function AuthCard({
                         const res = await switchToSavedAccount(acc);
                         setSavedAccounts(getSavedAccounts());
                         if (res.ok) {
-                          navigate(res.redirectTo || '/dashboard', { replace: true });
+                          const sp = new URLSearchParams(window.location.search);
+                          const explicitTarget = isAddAccountFlow
+                            ? null
+                            : sanitizeRedirectTarget(sp.get('redirect') || sp.get('returnTo')) ||
+                              readPostLoginRedirect();
+                          clearPostLoginRedirect();
+                          navigate(explicitTarget || res.redirectTo || '/dashboard', {
+                            replace: true,
+                          });
                           return;
                         }
                         if (res.email) setEmail(res.email);

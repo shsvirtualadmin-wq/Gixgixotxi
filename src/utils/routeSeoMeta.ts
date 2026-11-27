@@ -521,6 +521,11 @@ export function resolveStaticOrPatternRouteMeta(
       description:
         'Access your bookmarked Formula Vault equations and saved Boardly Commons study posts in one place.',
     },
+    '/dashboard/bookmarks': {
+      title: 'Bookmarks — Saved Formulas & Posts | Boardly',
+      description:
+        'Access your bookmarked Formula Vault equations and saved Boardly Commons study posts in one place.',
+    },
   };
 
   if (staticPages[cleanPath]) {

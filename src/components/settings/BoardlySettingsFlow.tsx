@@ -6,6 +6,7 @@ import {
   Award,
   BarChart3,
   Bell,
+  Bookmark,
   BookOpen,
   ChevronRight,
   Coins,
@@ -1746,6 +1747,14 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
         icon={<BookOpen />}
         label={t('nav.formulas')}
         onClick={() => navigateTo('/formulas')}
+      />
+    ),
+    matchesSearch('Bookmarks', 'bookmarks', 'saved', 'saved posts', 'saved formulas', 'favorites') && (
+      <SettingsRow
+        key="bookmarks"
+        icon={<Bookmark />}
+        label="Bookmarks"
+        onClick={() => navigateTo('/bookmarks')}
       />
     ),
     matchesSearch(t('nav.grandLine'), 'grand line mock tests', 'mock tests', 'exams', 'mcqs') && (

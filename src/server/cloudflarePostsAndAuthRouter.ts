@@ -6905,6 +6905,7 @@ ${postSitemaps}
       }
     }
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     return res.status(200).json({
       ok: true,
       success: true,
@@ -7911,6 +7912,33 @@ ${postSitemaps}
       superAdmin: Boolean(user.superAdmin),
       customRole: roleRow.custom_role,
       isPostingBanned: Boolean(roleRow.is_posting_banned),
+    });
+  });
+
+  app.get('/api/admin/stats', async (req: Request, res: Response) => {
+    const user = await verifyFirebaseJwtZeroFirestore(req);
+    if (!user) return res.status(401).json({ ok: false, error: 'Authentication required.', code: 'UNAUTHENTICATED' });
+    const store = loadD1Store() as any;
+    const isAdminCaller = Boolean(user.admin || user.superAdmin);
+    if (!isAdminCaller) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Forbidden: admin or superAdmin role required.',
+        code: 'FORBIDDEN',
+      });
+    }
+    const d1AttemptsCount = Array.isArray(store.testAttempts) ? store.testAttempts.length : 0;
+    const d1QuestionsCount = Array.isArray(store.questions) ? store.questions.length : 0;
+    const d1CrewsCount = Array.isArray(store.studyCircles) ? store.studyCircles.length : 0;
+    return res.status(200).json({
+      ok: true,
+      callerUid: user.uid,
+      role: user.superAdmin ? 'super_admin' : 'admin',
+      stats: {
+        d1QuestionsCount,
+        d1AttemptsCount,
+        d1CrewsCount,
+      },
     });
   });
 
@@ -12956,12 +12984,16 @@ ${postSitemaps}
 const AUTHENTICATED_APP_ROUTE_PREFIXES = [
   '/dashboard',
   '/admin',
+  '/superadmin',
   '/store',
   '/rewards',
   '/wallet',
   '/checkout',
   '/settings',
+  '/bookmarks',
   '/saved',
+  '/locker',
+  '/certificates',
   '/notifications',
   '/messages',
   '/results',

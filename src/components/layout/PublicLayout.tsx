@@ -1,12 +1,17 @@
-import { lazy } from 'react';
+import { lazy, useEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { getSessionStatus } from '@/utils/homeUrl';
+import { getSessionStatus, isUserAuthenticated } from '@/utils/homeUrl';
+import {
+  clearPostLoginRedirect,
+  evaluatePublicLayoutAccess,
+  readPostLoginRedirect,
+} from '@/utils/routeGuards';
 import { BackgroundCanvas } from '../BackgroundCanvas';
 import { Navbar } from './Navbar';
 import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
-import { BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
+import { BoardlyLoader, BoardlySuspenseBoundary } from '../ui/BoardlyLoader';
 import { RotatingBoardlyAd } from '@/components/BoardlyAd';
 
 const LazyAppLayout = lazy(() =>
@@ -15,27 +20,54 @@ const LazyAppLayout = lazy(() =>
 
 /**
  * PublicLayout:
- * - Resolves session state first: while session is still loading, renders neither layout
- *   so the red marketing footer never flashes for signed-in users.
- * - Signed-in users: delegates to AppLayout (app header, bottom nav where applicable, NO footer),
- *   and redirects '/' to '/dashboard/commons'.
- * - Signed-out visitors: renders the public header (Navbar on '/', PublicPageHeader on subpages)
+ * - Resolves session state without flashing the landing page or public chrome for signed-in users.
+ * - Signed-in users on non-root shared routes (/leaderboard, /privacy, etc.) stay on their exact route
+ *   inside AppLayout without ever bouncing through '/' or '/dashboard/commons'.
+ * - Signed-in users on '/' honor any pending post-login redirect before falling back to '/dashboard/commons'.
+ * - Signed-out visitors render the public header (Navbar on '/', PublicPageHeader on subpages)
  *   and the red Boardly Footer.
  */
 export function PublicLayout() {
   const { user, profileLoading, authStatus } = useAuth();
   const location = useLocation();
   const sessionStatus = getSessionStatus(user, profileLoading, authStatus);
+  const isOptimisticallyAuthenticated = isUserAuthenticated(user, profileLoading, authStatus);
 
   const pathname = location.pathname;
   const isHomePage = pathname === '/';
   const isLoadingSession = sessionStatus === 'loading';
+  const pendingRedirect = isHomePage ? readPostLoginRedirect() : null;
 
-  // Signed-in session -> AppLayout without the footer
-  if (sessionStatus === 'authenticated') {
-    if (isHomePage) {
-      return <Navigate to="/dashboard/commons" replace />;
+  const layoutDecision = evaluatePublicLayoutAccess({
+    pathname,
+    sessionStatus,
+    isOptimisticallyAuthenticated,
+    pendingRedirect,
+  });
+
+  useEffect(() => {
+    if (layoutDecision.action === 'redirect' && layoutDecision.clearPendingRedirect) {
+      clearPostLoginRedirect();
     }
+  }, [layoutDecision]);
+
+  if (layoutDecision.action === 'redirect') {
+    return <Navigate to={layoutDecision.target} replace />;
+  }
+
+  if (layoutDecision.action === 'loading_authenticated_home') {
+    return (
+      <div
+        className="relative min-h-screen flex flex-col"
+        style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+      >
+        <BackgroundCanvas />
+        <BoardlyLoader variant="page" />
+      </div>
+    );
+  }
+
+  if (layoutDecision.action === 'render_app_layout') {
     return (
       <BoardlySuspenseBoundary variant="page">
         <LazyAppLayout />
@@ -43,7 +75,7 @@ export function PublicLayout() {
     );
   }
 
-  // Signed-out session (or session still resolving) -> PublicLayout
+  // Signed-out session (or cold unauthenticated session still resolving) -> PublicLayout
   // While session is loading, omit the red marketing Footer so it never flashes for signed-in users,
   // while still rendering the actual route content / skeleton so the screen is NEVER black.
   const isStoreMainPage =

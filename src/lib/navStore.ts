@@ -29,6 +29,10 @@ export function resolveTabIdFromPathname(
     p === '/menu' ||
     p === '/dashboard/menu' ||
     p.startsWith('/settings') ||
+    p === '/bookmarks' ||
+    p.startsWith('/bookmarks/') ||
+    p === '/dashboard/bookmarks' ||
+    p.startsWith('/dashboard/bookmarks/') ||
     p.startsWith('/store') ||
     p.startsWith('/dashboard/store') ||
     p.startsWith('/dashboard/notifications') ||

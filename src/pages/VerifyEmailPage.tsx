@@ -5,6 +5,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { OtpVerificationCard } from '@/components/auth/OtpVerificationCard';
 import { LineLoader } from '@/components/ui/LineLoader';
+import {
+  clearPostLoginRedirect,
+  readPostLoginRedirect,
+  resolvePostAuthDestination,
+  sanitizeRedirectTarget,
+} from '@/utils/routeGuards';
 
 export function VerifyEmailPage() {
   const {
@@ -58,21 +64,22 @@ export function VerifyEmailPage() {
   // Redirect once verified
   useEffect(() => {
     if (user && !profileLoading && isSessionVerified) {
-      const redirectParam = searchParams.get('redirect') || searchParams.get('returnTo');
-      const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
-      const intendedTarget =
-        (redirectParam && redirectParam.startsWith('/') ? redirectParam : null) ||
-        (storedRedirect && storedRedirect.startsWith('/') ? storedRedirect : null);
-
-      if (profile && !profile.onboardingCompleted && profile.role === 'student') {
-        navigate(
-          intendedTarget ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}` : '/onboarding',
-          { replace: true }
-        );
-        return;
+      const redirectParam = sanitizeRedirectTarget(
+        searchParams.get('redirect') || searchParams.get('returnTo')
+      );
+      const storedRedirect = readPostLoginRedirect();
+      const needsOnboarding = Boolean(
+        profile && !profile.isGuest && !profile.onboardingCompleted && profile.role === 'student'
+      );
+      const { destination: dest, shouldClearStoredRedirect } = resolvePostAuthDestination({
+        redirectParam,
+        storedRedirect,
+        needsOnboarding,
+        roleDefaultUrl: profile ? getRoleRedirectUrl(profile.role) : '/dashboard',
+      });
+      if (shouldClearStoredRedirect) {
+        clearPostLoginRedirect();
       }
-      sessionStorage.removeItem('boardly_post_login_redirect');
-      const dest = intendedTarget || (profile ? getRoleRedirectUrl(profile.role) : '/dashboard');
       navigate(dest, { replace: true });
     }
   }, [user, profile, profileLoading, isSessionVerified, navigate, getRoleRedirectUrl, searchParams]);

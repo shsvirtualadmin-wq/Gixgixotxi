@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link, Navigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link, Navigate } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
 import { OnboardingShell } from '@/components/onboarding/OnboardingShell';
@@ -7,16 +7,34 @@ import { StepSubjects } from '@/components/onboarding/StepSubjects';
 import { StepSummary } from '@/components/onboarding/StepSummary';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { logRedirect } from '@/utils/debugTracker';
+import {
+  clearPostLoginRedirect,
+  persistPostLoginRedirect,
+  readPostLoginRedirect,
+  sanitizeRedirectTarget,
+} from '@/utils/routeGuards';
 import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 
 export function OnboardingPage() {
   const { user, profile, loading: profileLoading, error: profileError, retryFetch } = useUserProfile();
-  const { isSessionVerified, otpVerificationState } = useAuth();
+  const { isSessionVerified, otpVerificationState, authStatus } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1);
   const [subjects, setSubjects] = useState<string[]>([]);
   const [hasPrefilled, setHasPrefilled] = useState(false);
   const [timeoutExceeded, setTimeoutExceeded] = useState(false);
+
+  const searchParams = new URLSearchParams(location.search);
+  const redirectParam = sanitizeRedirectTarget(
+    searchParams.get('redirect') || searchParams.get('returnTo')
+  );
+
+  useEffect(() => {
+    if (redirectParam) {
+      persistPostLoginRedirect(redirectParam);
+    }
+  }, [redirectParam]);
 
   // Pre-fill subjects from profile when available
   useEffect(() => {
@@ -37,28 +55,38 @@ export function OnboardingPage() {
     return () => clearTimeout(timer);
   }, [profileLoading]);
 
-  // Unauthenticated redirect to login
+  // Unauthenticated redirect to login (wait for authStatus to settle so reloads don't bounce)
   useEffect(() => {
-    if (!profileLoading && !user) {
-      logRedirect('/onboarding', '/login', 'OnboardingPage (unauthenticated user)');
-      navigate('/login', { replace: true });
+    if (authStatus === 'loading' || profileLoading) return;
+    if (!user) {
+      const target = redirectParam || readPostLoginRedirect();
+      const loginUrl = target ? `/login?redirect=${encodeURIComponent(target)}` : '/login';
+      logRedirect('/onboarding', loginUrl, 'OnboardingPage (unauthenticated user)');
+      navigate(loginUrl, { replace: true });
     }
-  }, [user, profileLoading, navigate]);
+  }, [authStatus, user, profileLoading, navigate, redirectParam]);
 
-  if (user && otpVerificationState.status === 'checking') {
+  if (
+    authStatus === 'loading' ||
+    (user && (otpVerificationState.status === 'idle' || otpVerificationState.status === 'checking'))
+  ) {
     return <LineLoader context="onboarding" variant="page" />;
   }
 
   if (user && !isSessionVerified) {
-    return <Navigate to="/verify-email" replace />;
+    const target = redirectParam || readPostLoginRedirect();
+    const verifyUrl = target
+      ? `/verify-email?redirect=${encodeURIComponent(target)}`
+      : '/verify-email';
+    return <Navigate to={verifyUrl} replace />;
   }
 
   const handleComplete = () => {
-    const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
-    if (storedRedirect && storedRedirect.startsWith('/')) {
-      sessionStorage.removeItem('boardly_post_login_redirect');
-      logRedirect('/onboarding', storedRedirect, 'OnboardingPage (Save successful -> return to target)');
-      navigate(storedRedirect, { replace: true });
+    const target = redirectParam || readPostLoginRedirect();
+    clearPostLoginRedirect();
+    if (target) {
+      logRedirect('/onboarding', target, 'OnboardingPage (Save successful -> return to target)');
+      navigate(target, { replace: true });
       return;
     }
     logRedirect('/onboarding', '/dashboard', 'OnboardingPage (Save successful)');

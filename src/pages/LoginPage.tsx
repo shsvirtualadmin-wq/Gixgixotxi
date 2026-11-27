@@ -14,7 +14,13 @@ import {
 } from '@/utils/savedAccounts';
 
 import { perfMarkEnd } from '@/lib/perfMetrics';
-import { sanitizeRedirectTarget } from '@/utils/routeGuards';
+import {
+  clearPostLoginRedirect,
+  persistPostLoginRedirect,
+  readPostLoginRedirect,
+  resolvePostAuthDestination,
+  sanitizeRedirectTarget,
+} from '@/utils/routeGuards';
 
 function preloadTargetChunksForDest(dest: string): Promise<unknown> {
   if (dest.startsWith('/superadmin')) {
@@ -80,14 +86,14 @@ export function LoginPage() {
       const searchParams = new URLSearchParams(location.search);
       if (isAddAccountFlow) {
         // Never carry over an old admin/page redirect URL into an Add Account flow
-        sessionStorage.removeItem('boardly_post_login_redirect');
+        clearPostLoginRedirect();
         return;
       }
       const redirectParam = sanitizeRedirectTarget(
         searchParams.get('redirect') || searchParams.get('returnTo')
       );
       if (redirectParam) {
-        sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
+        persistPostLoginRedirect(redirectParam);
       }
     } catch {
       // Ignore storage errors
@@ -113,9 +119,7 @@ export function LoginPage() {
     const redirectParam = isAddAccountFlow
       ? null
       : sanitizeRedirectTarget(searchParams.get('redirect') || searchParams.get('returnTo'));
-    const storedRedirect = isAddAccountFlow
-      ? null
-      : sanitizeRedirectTarget(sessionStorage.getItem('boardly_post_login_redirect'));
+    const storedRedirect = isAddAccountFlow ? null : readPostLoginRedirect();
     const pendingCrew = isAddAccountFlow
       ? null
       : sessionStorage.getItem('pending_join_crew_code');
@@ -132,37 +136,38 @@ export function LoginPage() {
       ? 'admin'
       : profile?.role || 'student';
 
-    let dest = profile ? getRoleRedirectUrl(effectiveRole) : '/dashboard';
-    if (
+    const needsOnboarding = Boolean(
       profile &&
-      !profile.isGuest &&
-      !profile.onboardingCompleted &&
-      effectiveRole === 'student' &&
-      !isAdmin &&
-      !isSuperAdmin
-    ) {
-      dest = intendedTarget
-        ? `/onboarding?redirect=${encodeURIComponent(intendedTarget)}`
-        : '/onboarding';
-    } else if (intendedTarget) {
-      dest = intendedTarget;
-      sessionStorage.removeItem('boardly_post_login_redirect');
-    } else if (pendingCrew) {
-      dest = `/join/${pendingCrew}`;
-      sessionStorage.removeItem('boardly_post_login_redirect');
-    } else {
-      sessionStorage.removeItem('boardly_post_login_redirect');
-    }
+        !profile.isGuest &&
+        !profile.onboardingCompleted &&
+        effectiveRole === 'student' &&
+        !isAdmin &&
+        !isSuperAdmin
+    );
 
-    hasRedirectedRef.current = true;
+    const { destination: dest, shouldClearStoredRedirect } = resolvePostAuthDestination({
+      isAddAccountFlow,
+      redirectParam,
+      storedRedirect,
+      pendingCrewCode: pendingCrew,
+      needsOnboarding,
+      roleDefaultUrl: profile ? getRoleRedirectUrl(effectiveRole) : '/dashboard',
+    });
+
     let cancelled = false;
 
-    // Ensure the target shell + page chunks are already loaded before navigating so React Router never shows a second Suspense loading screen
+    // Ensure the target shell + page chunks are already loaded before navigating so React Router never shows a second Suspense loading screen.
+    // Commit hasRedirectedRef and clear stored redirect ONLY when the navigation actually executes (never before async resolution,
+    // otherwise a dependency update during preload cancels the effect and permanently strands the user on /login).
     void Promise.race([
       preloadTargetChunksForDest(dest),
-      new Promise((resolve) => window.setTimeout(resolve, 600)),
+      new Promise((resolve) => window.setTimeout(resolve, 300)),
     ]).finally(() => {
-      if (cancelled) return;
+      if (cancelled || hasRedirectedRef.current) return;
+      hasRedirectedRef.current = true;
+      if (shouldClearStoredRedirect) {
+        clearPostLoginRedirect();
+      }
       logRedirect('/login', dest, 'LoginPage.tsx (authenticated & verified)');
       perfMarkEnd('login_to_dashboard', { dest, role: effectiveRole });
       navigate(dest, { replace: true });
@@ -227,6 +232,7 @@ export function LoginPage() {
           addAccountReason={addAccountReason}
           initialEmail={prefillEmail}
           initialUid={initialUidRef.current}
+          disableAutoRedirect={true}
           onAuthSubmitSuccess={(targetUid) => {
             setSubmittedTargetUid(targetUid ?? null);
             setHasCompletedNewAuthSubmit(true);

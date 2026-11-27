@@ -1,4 +1,4 @@
-import { useOutlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useOutlet, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { isUserAuthenticated } from '@/utils/homeUrl';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
@@ -41,7 +41,6 @@ export function DashboardShell() {
     otpVerificationState,
     isSigningOut,
   } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
   const isAuthenticated = isUserAuthenticated(user, profileLoading, authStatus);
   const [guestNoteDismissed, setGuestNoteDismissed] = useState(false);
@@ -141,21 +140,16 @@ export function DashboardShell() {
     if (signingOutNow) {
       return;
     }
-    if (routeDecision.action === 'redirect_public') {
-      navigate(`${routeDecision.target}${location.search}${location.hash}`, { replace: true });
-      return;
-    }
-    if (routeDecision.action === 'redirect_login') {
+    if (
+      routeDecision.action === 'redirect_login' ||
+      routeDecision.action === 'redirect_verify_email'
+    ) {
       const target = buildFullPath(location.pathname, location.search, location.hash);
       persistPostLoginRedirect(target);
-      navigate(buildLoginRedirectUrl(location.pathname, location.search, location.hash), {
-        replace: true,
-      });
     }
   }, [
     signingOutNow,
-    routeDecision,
-    navigate,
+    routeDecision.action,
     location.pathname,
     location.search,
     location.hash,
@@ -173,7 +167,7 @@ export function DashboardShell() {
     persistPostLoginRedirect(target);
     const dest =
       routeDecision.action === 'redirect_verify_email'
-        ? '/verify-email'
+        ? `/verify-email?redirect=${encodeURIComponent(target)}`
         : buildLoginRedirectUrl(location.pathname, location.search, location.hash);
     return <Navigate to={dest} replace />;
   }

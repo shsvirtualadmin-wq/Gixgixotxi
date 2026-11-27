@@ -23,6 +23,11 @@ export function isUserAuthenticated(
     return true;
   }
 
+  // If auth state has finished resolving as unauthenticated, never let a stale localStorage flag override it
+  if (authStatus === 'unauthenticated') {
+    return false;
+  }
+
   if (user && (typeof user.uid === 'string' ? user.uid.length > 0 : true)) {
     return true;
   }
@@ -45,8 +50,8 @@ export function isUserAuthenticated(
     }
   }
 
-  // If auth state has finished loading and user is explicitly null, user is logged out
-  if (authStatus === 'unauthenticated' || (user === null && profileLoading === false)) {
+  // If user is explicitly null and profile is not loading (legacy callers without authStatus), user is logged out
+  if (user === null && profileLoading === false) {
     return false;
   }
 

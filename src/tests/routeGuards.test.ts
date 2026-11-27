@@ -4,7 +4,9 @@ import {
   buildLoginRedirectUrl,
   evaluateAdminRouteAccess,
   evaluateDashboardRouteAccess,
+  evaluatePublicLayoutAccess,
   evaluateRoleGuardAccess,
+  resolvePostAuthDestination,
   sanitizeRedirectTarget,
 } from '../utils/routeGuards';
 
@@ -12,8 +14,10 @@ function runTests() {
   // 1. Redirect target sanitization & full URL preservation
   assert.equal(sanitizeRedirectTarget('/admin'), '/admin');
   assert.equal(sanitizeRedirectTarget('/superadmin?page=2#users'), '/superadmin?page=2#users');
-  assert.equal(sanitizeRedirectTarget('/settings/privacy'), '/settings/privacy');
+  assert.equal(sanitizeRedirectTarget('/dashboard'), '/dashboard');
+  assert.equal(sanitizeRedirectTarget('/leaderboard'), '/leaderboard');
   assert.equal(sanitizeRedirectTarget('/privacy'), '/privacy');
+  assert.equal(sanitizeRedirectTarget('/settings/privacy'), '/settings/privacy');
   assert.equal(sanitizeRedirectTarget('/bookmarks'), '/bookmarks');
   assert.equal(sanitizeRedirectTarget('//evil.example/phish'), null);
   assert.equal(sanitizeRedirectTarget('https://evil.example'), null);
@@ -154,7 +158,23 @@ function runTests() {
     { action: 'redirect_login' }
   );
 
-  // 3. Direct entry / refresh on /settings and /bookmarks (DashboardShell)
+  // 3. Direct entry / refresh on /dashboard, /settings, and /bookmarks (DashboardShell)
+  assert.deepEqual(
+    evaluateDashboardRouteAccess({
+      authStatus: 'loading',
+      isAuthenticated: true,
+      profileLoading: false,
+      hasUser: false,
+      isGuest: false,
+      otpStatus: 'idle',
+      isSessionVerified: false,
+      isSigningOut: false,
+      publicEquivalent: null,
+    }),
+    { action: 'loading' },
+    'Reloading /dashboard, /settings, or /bookmarks while auth hydrates must stay in loading'
+  );
+
   for (const otpStatus of ['idle', 'checking'] as const) {
     assert.deepEqual(
       evaluateDashboardRouteAccess({
@@ -169,11 +189,11 @@ function runTests() {
         publicEquivalent: null,
       }),
       { action: 'loading' },
-      `Refreshing /settings or /bookmarks with otpStatus=${otpStatus} must NOT bounce to /login`
+      `Refreshing /dashboard, /settings, or /bookmarks with otpStatus=${otpStatus} must NOT bounce to /login`
     );
   }
 
-  // Verified signed-in user on /settings or /bookmarks -> allow
+  // Verified signed-in user on /dashboard, /settings, or /bookmarks -> allow
   assert.deepEqual(
     evaluateDashboardRouteAccess({
       authStatus: 'authenticated',
@@ -189,7 +209,7 @@ function runTests() {
     { action: 'allow' }
   );
 
-  // Unauthenticated user on /settings -> redirect_login
+  // Unauthenticated user on /dashboard, /settings, or /bookmarks -> redirect_login
   assert.deepEqual(
     evaluateDashboardRouteAccess({
       authStatus: 'unauthenticated',
@@ -222,7 +242,96 @@ function runTests() {
     { action: 'redirect_verify_email' }
   );
 
-  // 4. RoleGuard hydration safety (/dashboard/captain)
+  // 4. Shared routes under PublicLayout (/leaderboard, /privacy) never bounce through / or /dashboard/commons
+  for (const route of ['/leaderboard', '/privacy']) {
+    assert.deepEqual(
+      evaluatePublicLayoutAccess({
+        pathname: route,
+        sessionStatus: 'loading',
+        isOptimisticallyAuthenticated: true,
+        pendingRedirect: null,
+      }),
+      { action: 'render_app_layout' },
+      `Reloading ${route} while optimistically authenticated must stay in AppLayout without flashing public layout`
+    );
+    assert.deepEqual(
+      evaluatePublicLayoutAccess({
+        pathname: route,
+        sessionStatus: 'authenticated',
+        isOptimisticallyAuthenticated: true,
+        pendingRedirect: '/dashboard',
+      }),
+      { action: 'render_app_layout' },
+      `Authenticated ${route} must stay on ${route} and never redirect to /dashboard/commons`
+    );
+    assert.deepEqual(
+      evaluatePublicLayoutAccess({
+        pathname: route,
+        sessionStatus: 'unauthenticated',
+        isOptimisticallyAuthenticated: false,
+        pendingRedirect: null,
+      }),
+      { action: 'render_public_layout' }
+    );
+  }
+
+  // Root '/' behavior: never flash landing page for signed-in reload; honor pending redirect before /dashboard/commons
+  assert.deepEqual(
+    evaluatePublicLayoutAccess({
+      pathname: '/',
+      sessionStatus: 'loading',
+      isOptimisticallyAuthenticated: true,
+      pendingRedirect: null,
+    }),
+    { action: 'loading_authenticated_home' }
+  );
+  assert.deepEqual(
+    evaluatePublicLayoutAccess({
+      pathname: '/',
+      sessionStatus: 'authenticated',
+      isOptimisticallyAuthenticated: true,
+      pendingRedirect: '/bookmarks',
+    }),
+    { action: 'redirect', target: '/bookmarks', clearPendingRedirect: true }
+  );
+  assert.deepEqual(
+    evaluatePublicLayoutAccess({
+      pathname: '/',
+      sessionStatus: 'authenticated',
+      isOptimisticallyAuthenticated: true,
+      pendingRedirect: null,
+    }),
+    { action: 'redirect', target: '/dashboard/commons', clearPendingRedirect: false }
+  );
+
+  // 5. Post-login destination resolution preserves exact requested routes
+  for (const target of ['/dashboard', '/leaderboard', '/privacy', '/settings', '/bookmarks']) {
+    assert.deepEqual(
+      resolvePostAuthDestination({
+        redirectParam: target,
+        storedRedirect: null,
+        needsOnboarding: false,
+        roleDefaultUrl: '/dashboard',
+      }),
+      { destination: target, shouldClearStoredRedirect: true },
+      `Post-login redirect must return directly to ${target}`
+    );
+  }
+  assert.deepEqual(
+    resolvePostAuthDestination({
+      redirectParam: '/bookmarks?tab=formulas',
+      storedRedirect: null,
+      needsOnboarding: true,
+      roleDefaultUrl: '/dashboard',
+    }),
+    {
+      destination: `/onboarding?redirect=${encodeURIComponent('/bookmarks?tab=formulas')}`,
+      shouldClearStoredRedirect: false,
+    },
+    'Onboarding detour must keep redirect target intact'
+  );
+
+  // 6. RoleGuard hydration safety (/dashboard/captain)
   assert.deepEqual(
     evaluateRoleGuardAccess({
       requiredRole: 'captain',
@@ -256,3 +365,4 @@ function runTests() {
 }
 
 runTests();
+
