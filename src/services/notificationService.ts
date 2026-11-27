@@ -27,6 +27,10 @@ import {
 } from '@/constants/superAdmin';
 import { DEFAULT_WELCOME_ANNOUNCEMENT, BOARDLY_BOT_ACCOUNTS } from '@/config/botsConfig';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
+import {
+  deduplicateNotifications,
+  resolveNotificationDisplayCategory,
+} from '@/utils/notificationGrouping';
 
 export type NotificationType =
   | 'following_post'
@@ -576,23 +580,10 @@ export function isPostNotificationItem(
 }
 
 function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
-  const rawList: AppNotification[] = [];
+  const sanitizedUserList: AppNotification[] = [];
 
-  state.d1Notifications.forEach((n, id) => {
-    const isRead = Boolean(n.read) || state.optimisticReadIds.has(id);
-    rawList.push({ ...n, id, read: isRead });
-  });
-
-  state.firestoreNotifications.forEach((n, id) => {
-    const isRead = Boolean(n.read) || state.optimisticReadIds.has(id);
-    rawList.push({ ...n, id, read: isRead });
-  });
-
-  const semanticMap = new Map<string, AppNotification>();
-  const postIdToKey = new Map<string, string>();
-  dedupIdAliases.clear();
-
-  for (const raw of rawList) {
+  const collectUserNotification = (raw: AppNotification, id: string) => {
+    const isRead = Boolean(raw.read) || state.optimisticReadIds.has(id);
     const sanitizedTitle = sanitizeNotificationText(raw.title, raw.authorName);
     const sanitizedMessage = sanitizeNotificationText(raw.message, raw.authorName);
     const resolvedType = normalizeNotificationType(
@@ -606,6 +597,8 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
 
     const n: AppNotification = {
       ...raw,
+      id,
+      read: isRead,
       type: resolvedType,
       title: sanitizedTitle,
       message: sanitizedMessage,
@@ -620,87 +613,25 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
         authorUid === state.userId ||
         !state.followingIds.has(authorUid)
       ) {
-        continue;
+        return;
       }
     }
 
-    let semKey = getSemanticDedupKey(n);
-    if (n.postId && postIdToKey.has(n.postId)) {
-      semKey = postIdToKey.get(n.postId)!;
-    } else if (n.postId) {
-      postIdToKey.set(n.postId, semKey);
-    }
+    sanitizedUserList.push(n);
+  };
 
-    const existing = semanticMap.get(semKey);
-    if (!existing) {
-      const aliasSet = new Set<string>([n.id]);
-      if (n.postId && state.userId) {
-        aliasSet.add(`post_${n.postId}_follower_${state.userId}`);
-      }
-      const isRead =
-        Boolean(n.read) ||
-        Array.from(aliasSet).some((aid) => state.optimisticReadIds.has(aid));
-      semanticMap.set(semKey, { ...n, read: isRead });
-      dedupIdAliases.set(n.id, aliasSet);
-    } else {
-      const aliasSet = dedupIdAliases.get(existing.id) || new Set<string>([existing.id]);
-      aliasSet.add(n.id);
-      if (n.postId && state.userId) {
-        aliasSet.add(`post_${n.postId}_follower_${state.userId}`);
-      }
-      const combinedRead =
-        Boolean(existing.read) ||
-        Boolean(n.read) ||
-        Array.from(aliasSet).some((aid) => state.optimisticReadIds.has(aid));
+  state.d1Notifications.forEach((n, id) => collectUserNotification(n, id));
+  state.firestoreNotifications.forEach((n, id) => collectUserNotification(n, id));
 
-      const existingMs = toMillis(existing.createdAt);
-      const incomingMs = toMillis(n.createdAt);
-      const bestCreatedAt =
-        existingMs >= incomingMs && existingMs > 0
-          ? existing.createdAt
-          : incomingMs > 0
-          ? n.createdAt
-          : existing.createdAt || n.createdAt;
+  const resolveCategory = (item: AppNotification) =>
+    resolveNotificationDisplayCategory(item, normalizeNotificationType);
 
-      // Prefer deterministic ID as the primary ID when available
-      const preferIncomingId =
-        !existing.id.startsWith('post_') &&
-        !existing.id.startsWith('follow_') &&
-        (n.id.startsWith('post_') || n.id.startsWith('follow_'));
-      const primaryId = preferIncomingId ? n.id : existing.id;
-
-      const merged: AppNotification = {
-        ...existing,
-        ...n,
-        id: primaryId,
-        type: existing.type !== 'system' ? existing.type : n.type,
-        title: existing.title.length >= n.title.length ? existing.title : n.title,
-        message: existing.message.length >= n.message.length ? existing.message : n.message,
-        createdAt: bestCreatedAt,
-        read: combinedRead,
-        authorId: existing.authorId || n.authorId || existing.actorId || n.actorId || existing.followerId || n.followerId,
-        actorId: existing.actorId || n.actorId || existing.authorId || n.authorId,
-        followerId: existing.followerId || n.followerId || existing.authorId || n.authorId,
-        authorName: existing.authorName || n.authorName,
-        authorAvatar: existing.authorAvatar || n.authorAvatar || null,
-        authorFrame: existing.authorFrame || n.authorFrame || null,
-        postId: existing.postId || n.postId,
-        postSlug: existing.postSlug || n.postSlug,
-        postType: existing.postType || n.postType,
-        rawType: existing.rawType || n.rawType,
-        conversationId: existing.conversationId || n.conversationId,
-        requestId: existing.requestId || n.requestId,
-        senderId: existing.senderId || n.senderId,
-      };
-      semanticMap.set(semKey, merged);
-      dedupIdAliases.set(primaryId, aliasSet);
-    }
-  }
-
-  // Sort user notifications strictly by real createdAt timestamp (newest first)
-  const userNotifications = Array.from(semanticMap.values()).sort(
-    (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
-  );
+  const userDedup = deduplicateNotifications(sanitizedUserList, {
+    userId: state.userId,
+    optimisticReadIds: state.optimisticReadIds,
+    toMillisFn: toMillis,
+    resolveCategory,
+  });
 
   // Deduplicate announcements by ID and sanitize text
   const seenAnnIds = new Set<string>();
@@ -725,10 +656,34 @@ function buildSnapshot(state: InternalStoreState): NotificationStoreSnapshot {
     });
   }
 
-  // Sort all notifications strictly by their real createdAt timestamp (newest first)
-  const combined = [...announcementNotifications, ...userNotifications].sort(
-    (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
+  // Deduplicate across announcements + user notifications so identical content never appears twice in All
+  const combinedDedup = deduplicateNotifications(
+    [...announcementNotifications, ...userDedup.items],
+    {
+      userId: state.userId,
+      optimisticReadIds: state.optimisticReadIds,
+      toMillisFn: toMillis,
+      resolveCategory,
+    }
   );
+
+  dedupIdAliases.clear();
+  userDedup.aliasMap.forEach((aliases, primaryId) => {
+    dedupIdAliases.set(primaryId, new Set(aliases));
+  });
+  combinedDedup.aliasMap.forEach((aliases, primaryId) => {
+    const existing = dedupIdAliases.get(primaryId) || new Set<string>();
+    aliases.forEach((aid) => existing.add(aid));
+    // Also flatten aliases of any merged IDs so marking one read marks all backing docs
+    aliases.forEach((aid) => {
+      const sub = userDedup.aliasMap.get(aid);
+      if (sub) sub.forEach((s) => existing.add(s));
+    });
+    dedupIdAliases.set(primaryId, existing);
+  });
+
+  const combined = combinedDedup.items;
+  const userNotifications = userDedup.items;
 
   // SINGLE SOURCE OF TRUTH: unreadCount is strictly the number of notifications where read === false
   const unreadCount = combined.filter((n) => !n.read).length;

@@ -761,6 +761,7 @@ export const ur: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'اس وقت کوئی اعلان نہیں ہے',
   'notifications.emptyFollowing': 'فالو کردہ افراد کی کوئی اپ ڈیٹ نہیں',
   'notifications.emptyRewards': 'ابھی کوئی انعام کی اطلاع نہیں',
+  'notifications.emptySystem': 'ابھی کوئی سسٹم اطلاع نہیں',
   'notifications.expand': 'کھولیں',
   'notifications.filtersAria': 'اطلاعات کے فلٹرز',
   'notifications.groupEarlier': 'پہلے',

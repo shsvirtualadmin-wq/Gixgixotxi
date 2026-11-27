@@ -761,6 +761,7 @@ export const zh: TranslationDictionary = {
   'notifications.emptyAnnouncements': '暂无公告',
   'notifications.emptyFollowing': '你关注的人暂无动态',
   'notifications.emptyRewards': '暂无奖励提醒',
+  'notifications.emptySystem': '暂无系统通知',
   'notifications.expand': '展开',
   'notifications.filtersAria': '通知筛选',
   'notifications.groupEarlier': '更早',

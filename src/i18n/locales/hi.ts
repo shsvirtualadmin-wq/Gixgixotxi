@@ -761,6 +761,7 @@ export const hi: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'अभी कोई घोषणा नहीं है',
   'notifications.emptyFollowing': 'जिन्हें आप फॉलो करते हैं उनका कोई अपडेट नहीं',
   'notifications.emptyRewards': 'अभी कोई रिवॉर्ड अलर्ट नहीं है',
+  'notifications.emptySystem': 'अभी कोई सिस्टम सूचना नहीं है',
   'notifications.expand': 'विस्तार करें',
   'notifications.filtersAria': 'सूचना फ़िल्टर',
   'notifications.groupEarlier': 'पहले',

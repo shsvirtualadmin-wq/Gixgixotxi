@@ -762,6 +762,7 @@ export const en: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'No announcements right now',
   'notifications.emptyFollowing': 'No updates from people you follow',
   'notifications.emptyRewards': 'No reward alerts yet',
+  'notifications.emptySystem': 'No system notifications yet',
   'notifications.expand': 'Expand',
   'notifications.filtersAria': 'Notification filters',
   'notifications.groupEarlier': 'Earlier',

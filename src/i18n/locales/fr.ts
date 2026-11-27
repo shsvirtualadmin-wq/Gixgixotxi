@@ -761,6 +761,7 @@ export const fr: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'Aucune annonce pour le moment',
   'notifications.emptyFollowing': 'Aucune actualité de vos abonnements',
   'notifications.emptyRewards': 'Aucune alerte de récompense',
+  'notifications.emptySystem': 'Aucune notification système pour le moment',
   'notifications.expand': 'Déplier',
   'notifications.filtersAria': 'Filtres de notifications',
   'notifications.groupEarlier': 'Plus ancien',

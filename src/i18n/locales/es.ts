@@ -761,6 +761,7 @@ export const es: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'No hay anuncios por ahora',
   'notifications.emptyFollowing': 'Sin novedades de quienes sigues',
   'notifications.emptyRewards': 'Aún no hay avisos de recompensas',
+  'notifications.emptySystem': 'Aún no hay notificaciones del sistema',
   'notifications.expand': 'Ampliar',
   'notifications.filtersAria': 'Filtros de notificaciones',
   'notifications.groupEarlier': 'Anteriores',

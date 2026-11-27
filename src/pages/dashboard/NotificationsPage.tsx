@@ -57,10 +57,18 @@ import {
 } from '@/utils/dateFormat';
 import type { DocumentSnapshot } from 'firebase/firestore';
 import { useLanguage } from '@/contexts/LanguageContext';
+import {
+  deduplicateNotifications,
+  computeNotificationFilterCounts,
+  filterNotificationsByTab,
+  resolveNotificationDisplayCategory,
+  type NotificationDisplayCategory,
+  type NotificationFilterTab,
+} from '@/utils/notificationGrouping';
 
-type FilterType = 'all' | 'following' | 'announcements' | 'rewards';
+type FilterType = NotificationFilterTab;
 type DateGroupKey = 'Today' | 'Yesterday' | 'This week' | 'Earlier';
-type DisplayCategory = 'follower' | 'post' | 'announcement' | 'reward' | 'crew' | 'system';
+type DisplayCategory = NotificationDisplayCategory;
 
 const INITIAL_VISIBLE_COUNT = 20;
 const BATCH_INCREMENT = 20;
@@ -102,28 +110,7 @@ function resolveDateGroup(notif: AppNotification): DateGroupKey {
 }
 
 function resolveDisplayCategory(notif: AppNotification): DisplayCategory {
-  if (notif.isAnnouncement || notif.type === 'announcement') {
-    return 'announcement';
-  }
-  const normalized = normalizeNotificationType(
-    notif.type,
-    notif.isAnnouncement,
-    notif.title,
-    notif.message,
-    notif.link,
-    notif.postId
-  );
-  if (normalized === 'new_follower' || normalized === 'follow') return 'follower';
-  if (normalized === 'reward') return 'reward';
-  if (normalized === 'crew') return 'crew';
-  if (
-    normalized === 'following_post' ||
-    normalized === 'comment' ||
-    normalized === 'like'
-  ) {
-    return 'post';
-  }
-  return 'system';
+  return resolveNotificationDisplayCategory(notif, normalizeNotificationType);
 }
 
 interface CachedPostAuthorMeta {
@@ -437,50 +424,31 @@ export function NotificationsPage() {
     [storeSnapshot.followingLoaded, storeSnapshot.followingIds, user?.uid]
   );
 
-  // Combine store notifications + extra paginated items, filter post notifications by currentUser.following, deduplicate (including announcements by announcementId or title+minute), and sort newest-first by real createdAt
-  const allNotifications = useMemo<AppNotification[]>(() => {
-    const byId = new Map<string, AppNotification>();
-    const seenAnnouncementKeys = new Set<string>();
-    const getAnnouncementDedupeKey = (item: AppNotification): string | null => {
-      if (resolveDisplayCategory(item) !== 'announcement') return null;
-      const annId = String((item as any).announcementId || '').trim();
-      if (annId) return `ann_id:${annId}`;
-      const normTitle = String(item.title || '')
-        .trim()
-        .toLowerCase();
-      const normMsg = String(item.message || item.body || '')
-        .trim()
-        .toLowerCase()
-        .slice(0, 80);
-      return `ann_text:${normTitle}::${normMsg}`;
-    };
-
-    const shouldInclude = (item: AppNotification): boolean => {
-      if (dismissedIds.has(item.id)) return false;
-      const cat = resolveDisplayCategory(item);
-      if (cat === 'post') {
-        return isNotificationFromFollowedAuthor(item);
-      }
-      return true;
-    };
+  // Combine store notifications + extra paginated items, filter post notifications by currentUser.following,
+  // semantically deduplicate identical notifications, and sort newest-first by real createdAt
+  const { items: allNotifications, aliasMap: notificationAliasMap } = useMemo(() => {
+    const eligible: AppNotification[] = [];
 
     for (const item of [...storeSnapshot.notifications, ...extraNotifications]) {
-      if (byId.has(item.id) || !shouldInclude(item)) continue;
-      const annKey = getAnnouncementDedupeKey(item);
-      if (annKey) {
-        if (seenAnnouncementKeys.has(annKey)) continue;
-        seenAnnouncementKeys.add(annKey);
+      if (!item || !item.id || dismissedIds.has(item.id)) continue;
+      const cat = resolveDisplayCategory(item);
+      if (cat === 'post' && !isNotificationFromFollowedAuthor(item)) {
+        continue;
       }
-      byId.set(item.id, item);
+      eligible.push(item);
     }
-    return Array.from(byId.values()).sort(
-      (a, b) => toMillis(b.createdAt) - toMillis(a.createdAt)
-    );
+
+    return deduplicateNotifications(eligible, {
+      userId: user?.uid,
+      toMillisFn: toMillis,
+      resolveCategory: resolveDisplayCategory,
+    });
   }, [
     storeSnapshot.notifications,
     extraNotifications,
     dismissedIds,
     isNotificationFromFollowedAuthor,
+    user?.uid,
   ]);
 
   // Per-UID cached actor profiles for follower and post notifications
@@ -615,27 +583,10 @@ export function NotificationsPage() {
     };
   }, [allNotifications]);
 
-  const filteredNotifications = useMemo(() => {
-    if (filter === 'all') return allNotifications;
-    if (filter === 'announcements') {
-      return allNotifications.filter(
-        (n) => resolveDisplayCategory(n) === 'announcement'
-      );
-    }
-    if (filter === 'following') {
-      return allNotifications.filter((n) => {
-        const cat = resolveDisplayCategory(n);
-        return (cat === 'follower' || cat === 'post') && isNotificationFromFollowedAuthor(n);
-      });
-    }
-    if (filter === 'rewards') {
-      return allNotifications.filter((n) => {
-        const cat = resolveDisplayCategory(n);
-        return cat === 'reward' || cat === 'crew';
-      });
-    }
-    return allNotifications;
-  }, [allNotifications, filter, isNotificationFromFollowedAuthor]);
+  const filteredNotifications = useMemo(
+    () => filterNotificationsByTab(allNotifications, filter, resolveDisplayCategory),
+    [allNotifications, filter]
+  );
 
   const displayedNotifications = useMemo(
     () => filteredNotifications.slice(0, visibleCount),
@@ -703,35 +654,18 @@ export function NotificationsPage() {
     [allNotifications]
   );
 
-  const counts = useMemo(() => {
-    let announcementsCount = 0;
-    let followingCount = 0;
-    let rewardsCount = 0;
-
-    for (const n of allNotifications) {
-      const cat = resolveDisplayCategory(n);
-      if (cat === 'announcement') announcementsCount++;
-      else if ((cat === 'follower' || cat === 'post') && isNotificationFromFollowedAuthor(n)) {
-        followingCount++;
-      } else if (cat === 'reward' || cat === 'crew') {
-        rewardsCount++;
-      }
-    }
-
-    return {
-      all: allNotifications.length,
-      following: followingCount,
-      announcements: announcementsCount,
-      rewards: rewardsCount,
-    };
-  }, [allNotifications, isNotificationFromFollowedAuthor]);
+  const counts = useMemo(
+    () => computeNotificationFilterCounts(allNotifications, resolveDisplayCategory),
+    [allNotifications]
+  );
 
   const handleMarkOneRead = useCallback(
     async (notif: AppNotification) => {
       if (notif.read || !user?.uid) return;
 
+      const aliases = notificationAliasMap.get(notif.id) || new Set<string>([notif.id]);
       setExtraNotifications((prev) =>
-        prev.map((n) => (n.id === notif.id ? { ...n, read: true } : n))
+        prev.map((n) => (aliases.has(n.id) ? { ...n, read: true } : n))
       );
 
       try {
@@ -744,7 +678,7 @@ export function NotificationsPage() {
         // Optimistic update already applied
       }
     },
-    [user?.uid]
+    [user?.uid, notificationAliasMap]
   );
 
   const handleNotificationTap = useCallback(
@@ -855,15 +789,16 @@ export function NotificationsPage() {
         if (!notif.read) {
           void handleMarkOneRead(notif);
         } else if (!isPinnedNotification(notif)) {
+          const aliases = notificationAliasMap.get(notif.id) || new Set<string>([notif.id]);
           setDismissedIds((prev) => {
             const next = new Set(prev);
-            next.add(notif.id);
+            aliases.forEach((aid) => next.add(aid));
             return next;
           });
         }
       }
     },
-    [handleMarkOneRead]
+    [handleMarkOneRead, notificationAliasMap]
   );
 
   const isLoading = storeSnapshot.loading && !storeSnapshot.initialized;
@@ -873,6 +808,7 @@ export function NotificationsPage() {
     following: null,
     announcements: null,
     rewards: null,
+    system: null,
   });
   const [sliderRect, setSliderRect] = useState<{ left: number; width: number }>({
     left: 4,
@@ -903,7 +839,15 @@ export function NotificationsPage() {
     updateSlider();
     window.addEventListener('resize', updateSlider);
     return () => window.removeEventListener('resize', updateSlider);
-  }, [filter, counts.all, counts.following, counts.announcements, counts.rewards, resolvedLanguage]);
+  }, [
+    filter,
+    counts.all,
+    counts.following,
+    counts.announcements,
+    counts.rewards,
+    counts.system,
+    resolvedLanguage,
+  ]);
 
   const dateGroupLabels: Record<DateGroupKey, string> = {
     Today: t('notifications.groupToday'),
@@ -983,6 +927,7 @@ export function NotificationsPage() {
               { id: 'following', label: t('notifications.tabFollowing'), count: counts.following },
               { id: 'announcements', label: t('notifications.tabAnnouncements'), count: counts.announcements },
               { id: 'rewards', label: t('nav.rewards'), count: counts.rewards },
+              { id: 'system', label: t('notifications.tagSystem'), count: counts.system },
             ] as const
           ).map((tab) => {
             const active = filter === tab.id;
@@ -1068,6 +1013,8 @@ export function NotificationsPage() {
                 ? t('notifications.emptyAnnouncements')
                 : filter === 'rewards'
                 ? t('notifications.emptyRewards')
+                : filter === 'system'
+                ? t('notifications.emptySystem')
                 : t('notifications.emptyAll')}
             </p>
           </div>

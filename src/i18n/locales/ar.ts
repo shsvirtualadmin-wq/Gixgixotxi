@@ -761,6 +761,7 @@ export const ar: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'لا توجد إعلانات حالياً',
   'notifications.emptyFollowing': 'لا توجد تحديثات ممن تتابعهم',
   'notifications.emptyRewards': 'لا توجد تنبيهات مكافآت بعد',
+  'notifications.emptySystem': 'لا توجد إشعارات نظام بعد',
   'notifications.expand': 'توسيع',
   'notifications.filtersAria': 'فلاتر الإشعارات',
   'notifications.groupEarlier': 'سابقاً',

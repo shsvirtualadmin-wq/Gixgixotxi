@@ -761,6 +761,7 @@ export const urLatn: TranslationDictionary = {
   'notifications.emptyAnnouncements': 'Abhi koi announcement nahi hai',
   'notifications.emptyFollowing': 'Jin logon ko aap follow karte hain unki koi update nahi',
   'notifications.emptyRewards': 'Abhi koi reward alert nahi',
+  'notifications.emptySystem': 'Abhi koi system notification nahi',
   'notifications.expand': 'Kholein',
   'notifications.filtersAria': 'Notification filters',
   'notifications.groupEarlier': 'Pehle ke',
