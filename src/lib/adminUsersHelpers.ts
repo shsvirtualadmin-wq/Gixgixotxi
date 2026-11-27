@@ -78,6 +78,44 @@ export function computeUsersPagination(input: UsersPaginationInput): UsersPagina
   };
 }
 
+export interface AuthoritativeUsersTotalInput {
+  totalDirectoryCount: number | null;
+  loadedCount: number;
+  loading: boolean;
+  loadState: 'loading' | 'loaded' | 'error';
+}
+
+export interface AuthoritativeUsersTotalState {
+  status: 'loading' | 'ready' | 'error';
+  count: number | null;
+}
+
+/**
+ * Resolves the single authoritative total user count for the Super Admin Users page.
+ * Never returns 0 or a partial loaded count while the authoritative directory count is
+ * still pending or failed to load.
+ */
+export function resolveAuthoritativeUsersTotal(
+  input: AuthoritativeUsersTotalInput
+): AuthoritativeUsersTotalState {
+  const verifiedTotal =
+    typeof input.totalDirectoryCount === 'number' &&
+    Number.isFinite(input.totalDirectoryCount) &&
+    input.totalDirectoryCount >= 0
+      ? Math.floor(input.totalDirectoryCount)
+      : null;
+
+  if (verifiedTotal !== null) {
+    return { status: 'ready', count: verifiedTotal };
+  }
+
+  if (input.loadState === 'error' && !input.loading) {
+    return { status: 'error', count: null };
+  }
+
+  return { status: 'loading', count: null };
+}
+
 export interface D1UserActivitySummary {
   solved: number;
   testAttemptsSolved: number;
@@ -90,6 +128,12 @@ export interface D1UserActivitySummary {
 export interface FirestoreAttemptActivityItem {
   solved: number;
   pktDate: string | null;
+}
+
+export interface DailySubcollectionActivityItem {
+  pktDate: string | null;
+  solved: number;
+  hasActivity?: boolean;
 }
 
 function toNonNegativeInt(val: unknown): number | null {
@@ -169,10 +213,13 @@ function shiftPktDateKey(dateKey: string, deltaDays: number): string {
 /**
  * Computes current active study streak in PKT (Asia/Karachi, UTC+5) matching streakEngine.ts:
  * streak is active if the user practiced today or yesterday (PKT), counting consecutive days backwards.
+ * When `freezeActive` is enabled (matching `users/{uid}.streakFreezeActive` / `streaks/{uid}.freezeActive`),
+ * a single missed day is bridged without breaking the chain.
  */
 export function computeConsecutivePktStreak(
   pktDates: Iterable<string>,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  options?: { freezeActive?: boolean }
 ): number {
   const validDates = new Set<string>();
   for (const raw of pktDates) {
@@ -182,22 +229,37 @@ export function computeConsecutivePktStreak(
   }
   if (validDates.size === 0) return 0;
 
+  const freezeActive = Boolean(options?.freezeActive);
   const todayPkt = epochMsToPktDateKey(nowMs);
   const yesterdayPkt = shiftPktDateKey(todayPkt, -1);
 
+  let freezeUsed = false;
   let cursor: string | null = null;
   if (validDates.has(todayPkt)) {
     cursor = todayPkt;
   } else if (validDates.has(yesterdayPkt)) {
     cursor = yesterdayPkt;
+  } else if (freezeActive) {
+    freezeUsed = true;
+    cursor = shiftPktDateKey(yesterdayPkt, -1);
+    if (!validDates.has(cursor)) {
+      return 0;
+    }
   } else {
     return 0;
   }
 
   let streak = 0;
-  while (cursor && validDates.has(cursor)) {
-    streak += 1;
-    cursor = shiftPktDateKey(cursor, -1);
+  while (cursor) {
+    if (validDates.has(cursor)) {
+      streak += 1;
+      cursor = shiftPktDateKey(cursor, -1);
+    } else if (freezeActive && !freezeUsed) {
+      freezeUsed = true;
+      cursor = shiftPktDateKey(cursor, -1);
+    } else {
+      break;
+    }
   }
   return streak;
 }
@@ -213,6 +275,9 @@ export function extractProfileSolvedCount(
   const publicStats = (
     raw.publicStats && typeof raw.publicStats === 'object' ? raw.publicStats : null
   ) as Record<string, unknown> | null;
+  const practiceStats = (
+    raw.practiceStats && typeof raw.practiceStats === 'object' ? raw.practiceStats : null
+  ) as Record<string, unknown> | null;
 
   const candidates = [
     raw.totalQuestionsSolved,
@@ -220,13 +285,23 @@ export function extractProfileSolvedCount(
     raw.mcqsSolved,
     raw.questionsAnswered,
     raw.total_questions_solved,
+    raw.solvedCount,
+    raw.totalSolved,
     stats?.mcqs,
+    stats?.mcqsSolved,
     stats?.questionsAnswered,
     stats?.totalQuestionsSolved,
     stats?.questionsSolved,
+    stats?.solved,
     publicStats?.totalQuestionsSolved,
     publicStats?.questionsSolved,
+    publicStats?.questionsAnswered,
     publicStats?.mcqs,
+    publicStats?.mcqsSolved,
+    publicStats?.solved,
+    practiceStats?.totalQuestionsSolved,
+    practiceStats?.questionsSolved,
+    practiceStats?.mcqsSolved,
   ];
 
   let best: number | null = null;
@@ -254,13 +329,18 @@ export function extractProfileStreakCount(
   const candidates = [
     raw.streak,
     raw.currentStreak,
+    raw.current_streak,
     raw.streakDays,
+    raw.streak_days,
     raw.dailyStreak,
+    raw.streakCount,
     stats?.streakDays,
     stats?.streak,
     stats?.currentStreak,
+    stats?.current_streak,
     publicStats?.streak,
     publicStats?.currentStreak,
+    publicStats?.current_streak,
     publicStats?.streakDays,
   ];
 
@@ -272,6 +352,56 @@ export function extractProfileStreakCount(
     }
   }
   return best;
+}
+
+export function extractStreakDocMetrics(
+  streakDoc: Record<string, unknown> | null | undefined
+): {
+  storedStreak: number;
+  freezeActive: boolean;
+  activeDates: string[];
+  historySolved: number;
+} {
+  if (!streakDoc || typeof streakDoc !== 'object') {
+    return { storedStreak: 0, freezeActive: false, activeDates: [], historySolved: 0 };
+  }
+
+  const storedStreak = extractProfileStreakCount(streakDoc) ?? 0;
+  const freezeActive = Boolean(streakDoc.freezeActive ?? streakDoc.streakFreezeActive);
+  const dates = new Set<string>();
+  let historySolved = 0;
+
+  const lastActive = toPktDateKey(streakDoc.lastActivePKT ?? streakDoc.lastActiveDate);
+  if (lastActive) {
+    dates.add(lastActive);
+  }
+
+  const historyList = Array.isArray(streakDoc.history28)
+    ? streakDoc.history28
+    : Array.isArray(streakDoc.last7Days)
+    ? streakDoc.last7Days
+    : [];
+
+  for (const entry of historyList) {
+    if (!entry || typeof entry !== 'object') continue;
+    const item = entry as Record<string, unknown>;
+    const dateKey = toPktDateKey(item.date ?? item.pktDate);
+    const mcqs = toNonNegativeInt(item.mcqsSolved ?? item.questionsSolved) ?? 0;
+    const practiced = Boolean(item.practiced || item.hasActivity || mcqs > 0);
+    if (practiced && dateKey) {
+      dates.add(dateKey);
+    }
+    if (mcqs > 0) {
+      historySolved += mcqs;
+    }
+  }
+
+  return {
+    storedStreak,
+    freezeActive,
+    activeDates: Array.from(dates),
+    historySolved,
+  };
 }
 
 export function extractAttemptSolvedCount(
@@ -333,12 +463,15 @@ export function extractAttemptSolvedCount(
 export function mergeUserActivityMetrics(params: {
   user: Record<string, unknown>;
   publicProfile?: Record<string, unknown> | null;
+  streakDoc?: Record<string, unknown> | null;
   d1Activity?: Partial<D1UserActivitySummary> | null;
   firestoreAttempts?: FirestoreAttemptActivityItem[];
+  subcollectionActivity?: DailySubcollectionActivityItem[];
   nowMs?: number;
 }): { totalQuestionsSolved: number; streak: number } {
   const profileSolved = extractProfileSolvedCount(params.user) ?? 0;
   const publicSolved = extractProfileSolvedCount(params.publicProfile) ?? 0;
+  const streakDocMetrics = extractStreakDocMetrics(params.streakDoc);
 
   const fsAttempts = Array.isArray(params.firestoreAttempts) ? params.firestoreAttempts : [];
   let firestoreAttemptsSolved = 0;
@@ -349,6 +482,37 @@ export function mergeUserActivityMetrics(params: {
     if (att.pktDate) {
       activeDates.add(att.pktDate);
     }
+  }
+
+  for (const d of streakDocMetrics.activeDates) {
+    activeDates.add(d);
+  }
+
+  const userLastActive = toPktDateKey(
+    params.user.lastActiveDate ?? params.user.lastActivePKT ?? params.user.lastPracticeAt
+  );
+  if (userLastActive) {
+    activeDates.add(userLastActive);
+  }
+
+  const subItems = Array.isArray(params.subcollectionActivity) ? params.subcollectionActivity : [];
+  let subcollectionSolved = 0;
+  const subSolvedByDate = new Map<string, number>();
+  for (const item of subItems) {
+    const solved = Math.max(0, Math.floor(Number(item.solved || 0)));
+    if (item.pktDate) {
+      if (solved > 0 || item.hasActivity) {
+        activeDates.add(item.pktDate);
+      }
+      // Deduplicate overlapping `activity/{date}` and `usage/{date}` docs for the same PKT date
+      const prev = subSolvedByDate.get(item.pktDate) ?? 0;
+      subSolvedByDate.set(item.pktDate, Math.max(prev, solved));
+    } else if (solved > 0) {
+      subcollectionSolved += solved;
+    }
+  }
+  for (const daySolved of subSolvedByDate.values()) {
+    subcollectionSolved += daySolved;
   }
 
   const d1 = params.d1Activity || null;
@@ -364,25 +528,38 @@ export function mergeUserActivityMetrics(params: {
   }
 
   // Firestore `attempts` (practice tests) and D1 `test_attempts` (Grand Line tests) are disjoint,
-  // while `daily_starter_usage` overlaps with practice attempts. Take the highest non-double-counted sum.
+  // while `daily_starter_usage` and `users/{uid}/activity` overlap with practice attempts.
+  // Take the highest non-double-counted sum across all authoritative student sources.
   const combinedDisjointAttempts = firestoreAttemptsSolved + d1GrandLineSolved;
   const totalQuestionsSolved = Math.max(
     profileSolved,
     publicSolved,
+    streakDocMetrics.historySolved,
     firestoreAttemptsSolved,
+    subcollectionSolved,
     d1DailyUsageSolved,
     d1GuestSolved,
     d1TotalSolved,
     combinedDisjointAttempts
   );
 
-  // Streak: compute from all active PKT session dates and preserve any higher stored streak.
-  const computedStreak = computeConsecutivePktStreak(activeDates, params.nowMs);
+  // Streak: compute from all active PKT session dates with the same Streak Freeze logic
+  // as `streakEngine.ts`, and preserve any higher stored streak from users/publicProfiles/streaks/D1.
+  const freezeActive = Boolean(
+    params.user.streakFreezeActive || streakDocMetrics.freezeActive
+  );
+  const computedStreak = computeConsecutivePktStreak(activeDates, params.nowMs, { freezeActive });
   const profileStreak = extractProfileStreakCount(params.user) ?? 0;
   const publicStreak = extractProfileStreakCount(params.publicProfile) ?? 0;
   const d1Streak = Math.max(0, Math.floor(Number(d1?.streak || 0)));
 
-  const streak = Math.max(computedStreak, profileStreak, publicStreak, d1Streak);
+  const streak = Math.max(
+    computedStreak,
+    profileStreak,
+    publicStreak,
+    streakDocMetrics.storedStreak,
+    d1Streak
+  );
 
   return {
     totalQuestionsSolved,

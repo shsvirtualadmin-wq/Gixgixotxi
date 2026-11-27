@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -63,6 +63,10 @@ import {
 import { clearCachedAuthAndAdminStorage } from '@/components/dashboard/HamburgerMenuSheet';
 import { getDisplayName } from '@/utils/displayName';
 import { readSwrCache, writeSwrCache } from '@/utils/userStateSource';
+import {
+  computeConsistentSessionCounts,
+  reconcileSecuritySummaryWithSessions,
+} from '@/utils/securitySessionCounts';
 
 export type SecuritySubView =
   | 'overview'
@@ -227,6 +231,27 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const [confirmSession, setConfirmSession] = useState<ActiveSessionItem | null>(null);
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
   const [sessionBusy, setSessionBusy] = useState(false);
+
+  const sessionCounts = useMemo(
+    () =>
+      computeConsistentSessionCounts(
+        sessions,
+        sessionsLoadedOnce,
+        summary?.activeSessionsCount
+      ),
+    [sessions, sessionsLoadedOnce, summary?.activeSessionsCount]
+  );
+
+  const effectiveSummary = useMemo(
+    () => reconcileSecuritySummaryWithSessions(summary, sessions, sessionsLoadedOnce),
+    [summary, sessions, sessionsLoadedOnce]
+  );
+
+  useEffect(() => {
+    if (effectiveSummary) {
+      onSummaryChange?.(effectiveSummary);
+    }
+  }, [effectiveSummary, onSummaryChange]);
 
   // Trusted devices sub-view state (SWR cached)
   const [trustedDevices, setTrustedDevices] = useState<TrustedDeviceItem[]>(
@@ -553,7 +578,11 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
         await signOutUser();
         return;
       }
-      setSessions((prev) => prev.filter((s) => s.id !== confirmSession.id));
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== confirmSession.id);
+        if (uid) writeSwrCache(`sec:sessions:${uid}`, next);
+        return next;
+      });
       showToast('Session signed out.');
       void loadSummary();
     } catch (err: any) {
@@ -888,8 +917,12 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
           </SettingsGroup>
         ) : (
           <SettingsGroup
-            label="Signed-in devices"
-            helperText="Logging out a session immediately revokes its access to Boardly APIs."
+            label={`Signed-in devices (${sessionCounts.totalActiveSessions})`}
+            helperText={
+              sessionCounts.otherActiveSessions > 0
+                ? `${sessionCounts.totalActiveSessions} active sessions (${sessionCounts.otherActiveSessions} other). Logging out a session immediately revokes its access to Boardly APIs.`
+                : '1 active session (this device only). Logging out a session immediately revokes its access to Boardly APIs.'
+            }
           >
             {sessions.map((s) => (
               <SettingsRow
@@ -1261,7 +1294,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
   const hasPasswordProvider = Boolean(
     user?.providerData?.some((p) => p.providerId === 'password')
   );
-  const twoFa = summary?.twoFactor;
+  const twoFa = effectiveSummary?.twoFactor;
 
   return (
     <SettingsPage title={t('settings.security')} onBack={onBack} scrollContainer={scrollContainer}>
@@ -1297,10 +1330,10 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
           {/* 1. Security recommendations (visual layout only) */}
           {summaryLoading ? (
             <SkeletonRowsCard rows={2} />
-          ) : summary && summary.recommendations.length > 0 ? (
+          ) : effectiveSummary && effectiveSummary.recommendations.length > 0 ? (
             <SettingsGroup label="Security recommendations" radius="compact">
-              {summary.recommendations.map((rec, idx) => {
-                const isLastRec = idx === summary.recommendations.length - 1;
+              {effectiveSummary.recommendations.map((rec, idx) => {
+                const isLastRec = idx === effectiveSummary.recommendations.length - 1;
                 return (
                   <div key={rec.id} className="relative">
                     <button
@@ -1369,7 +1402,7 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
                 );
               })}
             </SettingsGroup>
-          ) : summary ? (
+          ) : effectiveSummary ? (
             <SettingsGroup label="Security recommendations" radius="compact">
               <SettingsRow
                 icon={<CheckCircle2 />}
@@ -1386,16 +1419,16 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               icon={<KeyRound />}
               label="Passkeys & security keys"
               value={
-                !summary
+                !effectiveSummary
                   ? summaryRowSpinner
                     ? undefined
                     : '—'
-                  : (summary.passkeysCount || 0) === 0
+                  : (effectiveSummary.passkeysCount || 0) === 0
                     ? t('common.open')
-                    : `${summary.passkeysCount}`
+                    : `${effectiveSummary.passkeysCount}`
               }
-              actionValue={Boolean(summary) && (summary?.passkeysCount || 0) === 0}
-              loading={!summary && summaryRowSpinner}
+              actionValue={Boolean(effectiveSummary) && (effectiveSummary?.passkeysCount || 0) === 0}
+              loading={!effectiveSummary && summaryRowSpinner}
               onClick={() => setSubView('passkeys')}
             />
             {hasPasswordProvider && (
@@ -1448,26 +1481,26 @@ export const SecurityCenterPages: React.FC<SecurityCenterPagesProps> = ({
               icon={<Laptop />}
               label={t('settings.activeSessions')}
               value={
-                !summary
+                !effectiveSummary && !sessionsLoadedOnce
                   ? summaryRowSpinner
                     ? undefined
                     : '—'
-                  : String(summary.activeSessionsCount ?? 1)
+                  : String(sessionCounts.totalActiveSessions)
               }
-              loading={!summary && summaryRowSpinner}
+              loading={!effectiveSummary && !sessionsLoadedOnce && summaryRowSpinner}
               onClick={() => setSubView('sessions')}
             />
             <SettingsRow
               icon={<ShieldCheck />}
               label="Trusted devices"
               value={
-                !summary
+                !effectiveSummary
                   ? summaryRowSpinner
                     ? undefined
                     : '—'
-                  : String(summary.trustedDevicesCount ?? 0)
+                  : String(effectiveSummary.trustedDevicesCount ?? 0)
               }
-              loading={!summary && summaryRowSpinner}
+              loading={!effectiveSummary && summaryRowSpinner}
               onClick={() => setSubView('trusted-devices')}
             />
           </SettingsGroup>

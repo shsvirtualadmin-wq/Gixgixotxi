@@ -53,6 +53,7 @@ export interface SecuritySummary {
   };
   passkeysCount: number;
   activeSessionsCount: number;
+  otherActiveSessionsCount?: number;
   trustedDevicesCount: number;
   unknownSessionsCount: number;
   recommendations: SecurityRecommendation[];

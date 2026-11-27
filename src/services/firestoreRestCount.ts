@@ -531,3 +531,281 @@ export async function countCollectionViaFirestoreRest(
     throw paginatedErr || listErr || aggError;
   }
 }
+
+/**
+ * Decodes a single Firestore REST v1 typed value into a plain JavaScript value.
+ */
+export function decodeFirestoreRestValue(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Record<string, any>;
+  if ('nullValue' in v) return null;
+  if ('stringValue' in v) return String(v.stringValue);
+  if ('booleanValue' in v) return Boolean(v.booleanValue);
+  if ('integerValue' in v) {
+    const n = Number(v.integerValue);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if ('doubleValue' in v) {
+    const n = Number(v.doubleValue);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if ('timestampValue' in v) return String(v.timestampValue);
+  if ('referenceValue' in v) return String(v.referenceValue);
+  if ('bytesValue' in v) return String(v.bytesValue);
+  if ('geoPointValue' in v && v.geoPointValue && typeof v.geoPointValue === 'object') {
+    return {
+      latitude: Number(v.geoPointValue.latitude || 0),
+      longitude: Number(v.geoPointValue.longitude || 0),
+    };
+  }
+  if ('arrayValue' in v) {
+    const values = Array.isArray(v.arrayValue?.values) ? v.arrayValue.values : [];
+    return values.map((item: unknown) => decodeFirestoreRestValue(item));
+  }
+  if ('mapValue' in v) {
+    const fields =
+      v.mapValue?.fields && typeof v.mapValue.fields === 'object' ? v.mapValue.fields : {};
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(fields)) {
+      out[key] = decodeFirestoreRestValue(val);
+    }
+    return out;
+  }
+  return null;
+}
+
+/**
+ * Decodes a Firestore REST v1 Document object into `{ id, data }`.
+ */
+export function decodeFirestoreRestDocument(
+  rawDoc: unknown
+): { id: string; data: Record<string, unknown> } | null {
+  if (!rawDoc || typeof rawDoc !== 'object') return null;
+  const docObj = rawDoc as Record<string, any>;
+  const name = typeof docObj.name === 'string' ? docObj.name.trim() : '';
+  if (!name) return null;
+  const segments = name.split('/').filter(Boolean);
+  const id = segments[segments.length - 1];
+  if (!id) return null;
+
+  const fields = docObj.fields && typeof docObj.fields === 'object' ? docObj.fields : {};
+  const data: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(fields)) {
+    data[key] = decodeFirestoreRestValue(val);
+  }
+  return { id, data };
+}
+
+export interface FirestoreRestListDocsOptions {
+  /** Top-level collection ID (e.g. "users") or subcollection path (e.g. "users/<uid>/activity"). */
+  collectionPath: string;
+  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  maskFieldPaths?: string[];
+  pageSize?: number;
+  maxPages?: number;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+  projectId?: string;
+  databaseId?: string;
+}
+
+export interface FirestoreRestListDocsResult {
+  docs: Array<{ id: string; data: Record<string, unknown> }>;
+  complete: boolean;
+}
+
+/**
+ * Lists documents from a Firestore collection (or subcollection) over Firestore REST v1
+ * with optional `mask.fieldPaths` to keep payloads lightweight.
+ * Never omits documents that lack a sort field (unlike `orderBy('createdAt')`).
+ */
+export async function listCollectionDocsViaFirestoreRest(
+  options: FirestoreRestListDocsOptions
+): Promise<FirestoreRestListDocsResult> {
+  const {
+    collectionPath,
+    getToken,
+    maskFieldPaths,
+    pageSize = 300,
+    maxPages = 15,
+    timeoutMs = 8000,
+    fetchImpl = globalThis.fetch,
+    projectId = TARGET_PROJECT_ID,
+    databaseId = TARGET_DATABASE_ID,
+  } = options;
+
+  if (typeof fetchImpl !== 'function') {
+    const err: any = new Error('Fetch is unavailable for Firestore REST list');
+    err.code = 'FETCH_UNAVAILABLE';
+    throw err;
+  }
+
+  const encodedPath = collectionPath
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => encodeURIComponent(s))
+    .join('/');
+
+  if (!encodedPath) {
+    return { docs: [], complete: true };
+  }
+
+  const baseUrl = buildFirestoreRestDocsUrl(projectId, databaseId);
+  const docs: Array<{ id: string; data: Record<string, unknown> }> = [];
+  let pageToken: string | null = null;
+  let complete = false;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const qs = new URLSearchParams();
+    qs.set('pageSize', String(Math.min(Math.max(1, pageSize), 300)));
+    if (Array.isArray(maskFieldPaths)) {
+      for (const fp of maskFieldPaths) {
+        if (fp && fp.trim()) {
+          qs.append('mask.fieldPaths', fp.trim());
+        }
+      }
+    }
+    if (pageToken) {
+      qs.set('pageToken', pageToken);
+    }
+
+    const payload = await fetchJsonWithTimeoutAndRetry(
+      `${baseUrl}/${encodedPath}?${qs.toString()}`,
+      null,
+      getToken,
+      timeoutMs,
+      `firestore:${collectionPath}`,
+      fetchImpl,
+      { method: 'GET', maxAttempts: 2 }
+    );
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      const malformedErr: any = new Error(
+        `Malformed list response from firestore:${collectionPath}`
+      );
+      malformedErr.code = 'MALFORMED_LIST_RESPONSE';
+      throw malformedErr;
+    }
+
+    if ((payload as any).error) {
+      const errObj = (payload as any).error;
+      const apiErr: any = new Error(
+        typeof errObj?.message === 'string' && errObj.message.trim()
+          ? errObj.message.trim()
+          : `Firestore REST list error on firestore:${collectionPath}`
+      );
+      apiErr.code = normalizeRestErrorCode(
+        Number(errObj?.code || 500),
+        typeof errObj?.status === 'string' ? errObj.status : undefined
+      );
+      throw apiErr;
+    }
+
+    const rawDocs = Array.isArray((payload as any).documents) ? (payload as any).documents : [];
+    for (const rawDoc of rawDocs) {
+      const decoded = decodeFirestoreRestDocument(rawDoc);
+      if (decoded) {
+        docs.push(decoded);
+      }
+    }
+
+    const nextToken =
+      typeof (payload as any).nextPageToken === 'string' && (payload as any).nextPageToken.trim()
+        ? (payload as any).nextPageToken.trim()
+        : null;
+    if (!nextToken || rawDocs.length === 0) {
+      complete = true;
+      break;
+    }
+    pageToken = nextToken;
+  }
+
+  return { docs, complete };
+}
+
+export interface FirestoreRestBatchGetOptions {
+  collectionId: string;
+  docIds: string[];
+  getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  maskFieldPaths?: string[];
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+  projectId?: string;
+  databaseId?: string;
+}
+
+/**
+ * Fetches specific documents by ID in chunks of up to 100 via Firestore REST v1 `:batchGet`.
+ * Returns a Map of found docId -> decoded document data.
+ */
+export async function batchGetDocsViaFirestoreRest(
+  options: FirestoreRestBatchGetOptions
+): Promise<Map<string, Record<string, unknown>>> {
+  const {
+    collectionId,
+    docIds,
+    getToken,
+    maskFieldPaths,
+    timeoutMs = 7500,
+    fetchImpl = globalThis.fetch,
+    projectId = TARGET_PROJECT_ID,
+    databaseId = TARGET_DATABASE_ID,
+  } = options;
+
+  const result = new Map<string, Record<string, unknown>>();
+  const uniqueIds = Array.from(new Set(docIds.map((id) => String(id || '').trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) return result;
+
+  if (typeof fetchImpl !== 'function') {
+    const err: any = new Error('Fetch is unavailable for Firestore REST batchGet');
+    err.code = 'FETCH_UNAVAILABLE';
+    throw err;
+  }
+
+  const baseUrl = buildFirestoreRestDocsUrl(projectId, databaseId);
+  const docPrefix = `projects/${projectId}/databases/${databaseId}/documents/${collectionId}`;
+  const CHUNK_SIZE = 100;
+
+  for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
+    const body: Record<string, unknown> = {
+      documents: chunk.map((id) => `${docPrefix}/${id}`),
+    };
+    if (Array.isArray(maskFieldPaths) && maskFieldPaths.length > 0) {
+      body.mask = { fieldPaths: maskFieldPaths };
+    }
+
+    const rows = await fetchJsonWithTimeoutAndRetry(
+      `${baseUrl}:batchGet`,
+      body,
+      getToken,
+      timeoutMs,
+      `firestore:${collectionId}:batchGet`,
+      fetchImpl,
+      { method: 'POST', maxAttempts: 2 }
+    );
+
+    if (!Array.isArray(rows)) {
+      const malformedErr: any = new Error(
+        `Malformed batchGet response from firestore:${collectionId}`
+      );
+      malformedErr.code = 'MALFORMED_BATCH_GET_RESPONSE';
+      throw malformedErr;
+    }
+
+    throwIfRowContainsError(rows, collectionId);
+
+    for (const row of rows) {
+      if (row && typeof row === 'object' && row.found) {
+        const decoded = decodeFirestoreRestDocument(row.found);
+        if (decoded) {
+          result.set(decoded.id, decoded.data);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+

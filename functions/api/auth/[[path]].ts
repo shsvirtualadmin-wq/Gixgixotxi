@@ -8889,13 +8889,8 @@ export async function handleAuthApiRequest(
       (d) => Number(d.revoked) === 0 && Number(d.expires_at) > nowMs
     ).length;
 
-    const thirtyDaysAgo = nowMs - 30 * 24 * 60 * 60 * 1000;
-    const unknownSessions = activeSessions.filter(
-      (s) =>
-        s.id !== currentSessionId &&
-        Number(s.last_seen_at) >= thirtyDaysAgo &&
-        (!currentSessionId || s.ip_hash !== ipHash)
-    );
+    const currentSessionCount = activeSessionsCount > 0 ? 1 : 0;
+    const otherActiveSessionsCount = Math.max(0, activeSessionsCount - currentSessionCount);
 
     const recommendations: Array<{
       id: 'no_passkey' | 'two_factor_off' | 'unknown_session';
@@ -8923,11 +8918,11 @@ export async function handleAuthApiRequest(
         targetSection: 'mfa',
       });
     }
-    if (unknownSessions.length > 0) {
+    if (otherActiveSessionsCount > 0) {
       recommendations.push({
         id: 'unknown_session',
-        title: `Review ${unknownSessions.length} other active ${unknownSessions.length === 1 ? 'session' : 'sessions'}`,
-        subtitle: 'Sign out devices you do not recognize from the last 30 days.',
+        title: `Review ${otherActiveSessionsCount} other active ${otherActiveSessionsCount === 1 ? 'session' : 'sessions'}`,
+        subtitle: 'Sign out devices you do not recognize.',
         actionLabel: 'Review',
         targetSection: 'sessions',
       });
@@ -8942,8 +8937,9 @@ export async function handleAuthApiRequest(
       },
       passkeysCount,
       activeSessionsCount,
+      otherActiveSessionsCount,
       trustedDevicesCount,
-      unknownSessionsCount: unknownSessions.length,
+      unknownSessionsCount: otherActiveSessionsCount,
       recommendations,
       hasRecommendations: recommendations.length > 0,
     });
