@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en" style="background:#050507;color:#f3f4f8;">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Boardly — 30s Vertical Ad (9:16)</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        min-height: 100%;
+        width: 100%;
+        background: radial-gradient(circle at 50% 24%, rgba(232, 53, 59, 0.22), transparent 56%), #050507;
+        color: #f3f4f8;
+        font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+      }
+      body {
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 16px;
+        gap: 16px;
+      }
+      .stage {
+        position: relative;
+        width: min(390px, 92vw);
+        aspect-ratio: 9 / 16;
+        border-radius: 26px;
+        overflow: hidden;
+        background: #050507;
+        border: 1px solid rgba(232, 53, 59, 0.42);
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.85), 0 0 64px rgba(232, 53, 59, 0.22);
+      }
+      video {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+        background: #050507;
+      }
+      .sound-pill {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        z-index: 10;
+        border: 1px solid rgba(245, 184, 65, 0.55);
+        background: rgba(10, 11, 16, 0.82);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 8px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+      }
+      .error-box {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 12;
+        background: rgba(5, 5, 7, 0.92);
+        padding: 24px;
+        text-align: center;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+      }
+      .error-box.visible { display: flex; }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 18px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        transition: transform 150ms ease, opacity 150ms ease;
+      }
+      .btn:hover { transform: translateY(-1px); opacity: 0.94; }
+      .btn-primary {
+        background: linear-gradient(135deg, #E8353B, #c7252b);
+        color: #fff;
+        box-shadow: 0 8px 24px rgba(232, 53, 59, 0.35);
+      }
+      .btn-gold {
+        background: rgba(245, 184, 65, 0.16);
+        color: #F5B841;
+        border: 1px solid rgba(245, 184, 65, 0.45);
+      }
+      .btn-ghost {
+        background: rgba(255, 255, 255, 0.07);
+        color: #e2e5ef;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+      }
+      .meta {
+        font-size: 12px;
+        color: #8f96aa;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <video
+        id="adVideo"
+        src="/boardly-ad.mp4"
+        poster="/boardly-ad-poster.jpg"
+        autoplay
+        muted
+        loop
+        playsinline
+        controls
+        preload="auto"
+      ></video>
+      <button id="soundBtn" type="button" class="sound-pill">Tap for Sound</button>
+      <div id="errorBox" class="error-box">
+        <strong style="font-size:15px;">Video preview couldn't load inline</strong>
+        <p style="font-size:13px;color:#a0a6ba;max-width:260px;">Tap below to reload or download the full 1080×1920 MP4 directly.</p>
+        <button id="retryBtn" type="button" class="btn btn-primary">Retry Video</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="playSoundBtn" type="button" class="btn btn-gold">Play with Sound</button>
+      <a class="btn btn-primary" href="/boardly-ad.mp4" download="boardly-ad-30s-9x16.mp4">Download MP4 (1080×1920)</a>
+      <a class="btn btn-ghost" href="/">Back to Boardly</a>
+    </div>
+    <div class="meta">1080×1920 · 9:16 Vertical · 30s · 30fps · H.264 + AAC Stereo</div>
+    <script>
+      (function () {
+        var video = document.getElementById('adVideo');
+        var soundBtn = document.getElementById('soundBtn');
+        var playSoundBtn = document.getElementById('playSoundBtn');
+        var errorBox = document.getElementById('errorBox');
+        var retryBtn = document.getElementById('retryBtn');
+        if (!video) return;
+
+        function syncSoundUi() {
+          var muted = video.muted;
+          if (soundBtn) soundBtn.textContent = muted ? 'Tap for Sound' : 'Sound On';
+          if (playSoundBtn) playSoundBtn.textContent = muted ? 'Play with Sound' : 'Mute Audio';
+        }
+
+        function toggleSound() {
+          video.muted = !video.muted;
+          video.volume = 1;
+          var p = video.play();
+          if (p && typeof p.catch === 'function') p.catch(function () {});
+          syncSoundUi();
+        }
+
+        if (soundBtn) soundBtn.addEventListener('click', toggleSound);
+        if (playSoundBtn) playSoundBtn.addEventListener('click', toggleSound);
+        video.addEventListener('volumechange', syncSoundUi);
+        video.addEventListener('error', function () {
+          if (errorBox) errorBox.classList.add('visible');
+        });
+        video.addEventListener('loadeddata', function () {
+          if (errorBox) errorBox.classList.remove('visible');
+        });
+        if (retryBtn) {
+          retryBtn.addEventListener('click', function () {
+            if (errorBox) errorBox.classList.remove('visible');
+            video.src = '/boardly-ad.mp4?t=' + Date.now();
+            video.load();
+            var p = video.play();
+            if (p && typeof p.catch === 'function') p.catch(function () {});
+          });
+        }
+        var startPlay = video.play();
+        if (startPlay && typeof startPlay.catch === 'function') startPlay.catch(function () {});
+        syncSoundUi();
+      })();
+    </script>
+  </body>
+</html>

@@ -33,6 +33,10 @@ import {
 } from '@/components/admin/AdminGlassPrimitives';
 import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 import { pluralize } from '@/utils/adminLabels';
+import {
+  fetchAishaAdminStats,
+  type AishaAdminStats,
+} from '@/services/aiMentorsService';
 
 export function AdminPlansPage() {
   const { user } = useAuth();
@@ -52,6 +56,13 @@ export function AdminPlansPage() {
     String(DEFAULT_PLANS_CONFIG.annualDiscountPercent)
   );
 
+  const [aishaAnimationsEnabled, setAishaAnimationsEnabled] = useState<boolean>(
+    DEFAULT_PLANS_CONFIG.aishaAnimationsEnabled ?? true
+  );
+  const [togglingAisha, setTogglingAisha] = useState(false);
+  const [aishaStats, setAishaStats] = useState<AishaAdminStats | null>(null);
+  const [loadingAishaStats, setLoadingAishaStats] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,8 +79,57 @@ export function AdminPlansPage() {
       setPlusPriceKobans(String(config.plus.priceKobansMonthly));
       setPlusCredits(String(config.plus.aiCreditsPerDay));
       setAnnualDiscountPct(String(config.annualDiscountPercent));
+      setAishaAnimationsEnabled(config.aishaAnimationsEnabled !== false);
     }
   }, [config, dirty]);
+
+  const refreshAishaStats = async () => {
+    setLoadingAishaStats(true);
+    try {
+      const stats = await fetchAishaAdminStats();
+      if (stats) setAishaStats(stats);
+    } finally {
+      setLoadingAishaStats(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAishaStats();
+  }, []);
+
+  const handleToggleAishaAnimations = async () => {
+    if (togglingAisha) return;
+    const nextEnabled = !aishaAnimationsEnabled;
+    setAishaAnimationsEnabled(nextEnabled);
+    setTogglingAisha(true);
+    setError(null);
+    try {
+      const nextConfig: PlansConfigDoc = {
+        free: { aiCreditsPerDay: config.free.aiCreditsPerDay },
+        pro: { ...config.pro },
+        plus: { ...config.plus },
+        annualDiscountPercent: config.annualDiscountPercent,
+        kobansPerPkr: config.kobansPerPkr || DEFAULT_PLANS_CONFIG.kobansPerPkr,
+        aishaAnimationsEnabled: nextEnabled,
+        updatedBy: user?.email || 'superadmin',
+      };
+      await savePlansConfig(nextConfig, user?.email || 'superadmin');
+      await logAdminAction(user?.email || 'superadmin', 'toggle_aisha_animations', {
+        aishaAnimationsEnabled: nextEnabled,
+      }).catch(() => {});
+      setNotice(
+        nextEnabled
+          ? 'Aisha animations turned ON. Visual physics whiteboards are live.'
+          : 'Aisha animations turned OFF instantly. Aisha will answer in text mode.'
+      );
+      void refreshAishaStats();
+    } catch (err: unknown) {
+      setAishaAnimationsEnabled(!nextEnabled);
+      setError(err instanceof Error ? err.message : 'Failed to update Aisha animations switch.');
+    } finally {
+      setTogglingAisha(false);
+    }
+  };
 
   const parsed = useMemo(() => {
     const fCred = Math.max(0, Math.round(Number(freeCredits) || 0));
@@ -151,6 +211,7 @@ export function AdminPlansPage() {
       },
       annualDiscountPercent: parsed.annualDiscountPct,
       kobansPerPkr: config.kobansPerPkr || DEFAULT_PLANS_CONFIG.kobansPerPkr,
+      aishaAnimationsEnabled,
       updatedBy: user?.email || 'superadmin',
     };
 
@@ -513,6 +574,85 @@ export function AdminPlansPage() {
               </strong>
               .
             </p>
+          </div>
+        </GlassCard>
+
+        {/* Aisha Animations Instant Switch + Today's Usage & Cost Control */}
+        <GlassCard variant="glass" padding="md" className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading font-bold text-sm text-[var(--text)]">
+                  Aisha animations
+                </h2>
+                <Pill tone={aishaAnimationsEnabled ? 'accent' : 'neutral'}>
+                  {aishaAnimationsEnabled ? 'ON' : 'OFF'}
+                </Pill>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Controls Aisha&apos;s animated physics whiteboard mode (2/4/8/12 cr · 1 cr cached · daily cap 5 Free / 50 Paid). Turning off switches Aisha to text mode instantly.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={aishaAnimationsEnabled}
+                aria-label="Aisha animations"
+                disabled={togglingAisha}
+                onClick={() => void handleToggleAishaAnimations()}
+                className="relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50"
+                style={{
+                  backgroundColor: aishaAnimationsEnabled ? '#E8353B' : 'var(--card-2)',
+                  borderColor: aishaAnimationsEnabled ? '#E8353B' : 'var(--border)',
+                }}
+              >
+                <span
+                  className="inline-block h-6 w-6 rounded-full bg-white shadow-sm transition-transform"
+                  style={{
+                    transform: aishaAnimationsEnabled ? 'translateX(26px)' : 'translateX(3px)',
+                  }}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void refreshAishaStats()}
+                disabled={loadingAishaStats}
+                aria-label="Refresh today's Aisha stats"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[var(--muted)] cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={loadingAishaStats ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-[var(--border)]">
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Today&apos;s Visuals</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats ? aishaStats.totalVisualAnswers : 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Cache Hits</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats ? aishaStats.cacheHits : 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Today&apos;s Tokens</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats ? aishaStats.totalTokens.toLocaleString() : '0'}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Est. Cost (USD)</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                ${aishaStats ? aishaStats.estimatedCostUsd.toFixed(4) : '0.0000'}
+              </div>
+            </div>
           </div>
         </GlassCard>
 

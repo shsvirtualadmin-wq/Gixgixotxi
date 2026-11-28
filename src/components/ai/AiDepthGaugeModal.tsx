@@ -2,8 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Lock, X } from 'lucide-react';
 import {
   AI_DEPTHS,
+  AISHA_MENTOR_ID,
+  getDepthBaseCostForMentor,
   getDepthConfig,
   type AiDepthId,
+  type AiMentorId,
 } from '@/utils/aiMentorsLogic';
 import { useAiDepthMotion } from '@/utils/aiDepthMotionFlag';
 import {
@@ -15,6 +18,8 @@ import {
 interface AiDepthGaugeModalProps {
   open: boolean;
   selectedDepth: AiDepthId;
+  mentorId?: AiMentorId;
+  aishaVisualEnabled?: boolean;
   deepMaxUnlocked: boolean;
   accentColor: string;
   onSelectDepth: (depth: AiDepthId) => void;
@@ -36,6 +41,8 @@ function triggerMaxHapticIfSupported(motionEnabled: boolean): void {
 export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
   open,
   selectedDepth,
+  mentorId = 0,
+  aishaVisualEnabled = true,
   deepMaxUnlocked,
   accentColor,
   onSelectDepth,
@@ -62,6 +69,10 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
   if (!open) return null;
 
   const activeCfg = getDepthConfig(selectedDepth);
+  const isAishaVisual = mentorId === AISHA_MENTOR_ID && aishaVisualEnabled;
+  const activeBaseCost = getDepthBaseCostForMentor(mentorId, selectedDepth, {
+    visualMode: isAishaVisual,
+  });
 
   const commitDepth = (depthId: AiDepthId) => {
     setSelectionSeq((n) => n + 1);
@@ -203,11 +214,12 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
                 color: accentColor,
               }}
             >
-              {activeCfg.baseCost} credit{activeCfg.baseCost === 1 ? '' : 's'} base
+              {activeBaseCost} credit{activeBaseCost === 1 ? '' : 's'}{isAishaVisual ? ' animated' : ' base'}
             </span>
           </div>
           <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
             {activeCfg.subtitle}
+            {isAishaVisual ? ' · Cached scenes: 1 cr' : ''}
           </p>
         </div>
 
@@ -216,6 +228,9 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
           {AI_DEPTHS.map((d) => {
             const isSelected = d.id === selectedDepth;
             const isLocked = !d.freeAllowed && !deepMaxUnlocked;
+            const depthCost = getDepthBaseCostForMentor(mentorId, d.id, {
+              visualMode: isAishaVisual,
+            });
             return (
               <button
                 key={d.id}
@@ -238,7 +253,7 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
                   className="text-[11px]"
                   style={{ color: isSelected ? 'rgba(255,255,255,0.85)' : 'var(--text-muted)' }}
                 >
-                  {d.baseCost} cr
+                  {depthCost} cr
                 </span>
               </button>
             );

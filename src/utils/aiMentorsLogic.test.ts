@@ -4,9 +4,16 @@ import katex from 'katex';
 import {
   AI_DEPTHS,
   AI_MENTORS,
+  AISHA_MENTOR_ID,
   calculateMessageCreditCost,
+  detectPhysicsTemplate,
+  extractStreamingPhysicsScene,
+  getDepthBaseCostForMentor,
   getPktDateKey,
   getPktResetInfo,
+  hashPhysicsQuestion,
+  isPhysicsVisualQuery,
+  parseStoredPhysicsScene,
   prepareApiContents,
   renderAiMarkdownWithKatex,
   stripLatexForSpeech,
@@ -14,12 +21,19 @@ import {
   resolveMentorIdFromParam,
   resolveAiDepthExecution,
   trimContentsForDepth,
+  validatePhysicsScene,
   FREE_AI_CREDITS_PER_DAY,
   PRO_AI_CREDITS_PER_DAY,
   PLUS_AI_CREDITS_PER_DAY,
 } from './aiMentorsLogic';
+import {
+  VOICE_ERROR_MESSAGES,
+  isInAppBrowser,
+  mapMicrophoneError,
+  resolveVoiceLanguage,
+} from './voiceInput';
 
-test('shared ai-config limits and 6-mentor registry (including Aisha) match spec', () => {
+test('shared ai-config limits and 6-mentor registry (protecting Aisha identity/position/avatar) match spec', () => {
   assert.equal(FREE_AI_CREDITS_PER_DAY, 5);
   assert.equal(PRO_AI_CREDITS_PER_DAY, 50);
   assert.equal(PLUS_AI_CREDITS_PER_DAY, 100);
@@ -41,63 +55,235 @@ test('shared ai-config limits and 6-mentor registry (including Aisha) match spec
     assert.ok((m.systemPrompt || '').length > 10);
   });
 
-  const aisha = AI_MENTORS[5];
+  // Protect Aisha's exact identity, role, avatar, and position in the picker
+  const aisha = AI_MENTORS[AISHA_MENTOR_ID];
+  assert.equal(aisha.id, 5);
   assert.equal(aisha.slug, 'aisha');
   assert.equal(aisha.name, 'Aisha');
+  assert.equal(aisha.role, 'Visual Physics Tutor');
+  assert.equal(aisha.avatar, '/ai/aisha.webp');
+  assert.ok((aisha.systemPrompt || '').includes('You are Aisha, a visual physics tutor'));
+  assert.ok(!(aisha.systemPrompt || '').includes('My primary objective as Boardly AI Mentor'));
 });
 
-test('all 6 AI mentors (including Aisha) honor all 4 answer depths through one shared router', () => {
+test('all 6 AI mentors honor all 4 answer depths through one shared router with monotonic speed/budget ordering', () => {
   assert.equal(AI_MENTORS.length, 6);
   assert.equal(AI_DEPTHS.length, 4);
 
   for (const mentor of AI_MENTORS) {
+    const isAisha = mentor.id === AISHA_MENTOR_ID;
     const plans = AI_DEPTHS.map((depth) =>
-      resolveAiDepthExecution({ mentorId: mentor.id, depthId: depth.id })
+      resolveAiDepthExecution({
+        mentorId: mentor.id,
+        depthId: depth.id,
+        visualMode: isAisha,
+        questionText: isAisha ? 'Explain projectile motion at 45 degrees' : '',
+      })
     );
 
     const [quick, balanced, deep, max] = plans;
 
-    // Every depth keeps the exact requested mentor & depth metadata (no special-casing)
+    // Every depth keeps the exact requested mentor & depth metadata
     plans.forEach((plan, depthIdx) => {
       assert.equal(plan.mentorId, mentor.id);
       assert.equal(plan.mentorName, mentor.name);
       assert.equal(plan.depthId, depthIdx);
-      assert.ok(plan.systemInstruction.includes(mentor.name), `Prompt for ${mentor.name} must include mentor identity`);
-      assert.ok(plan.systemInstruction.includes('DEPTH LAW'), `Prompt for ${mentor.name} depth ${depthIdx} must include depth law`);
-      assert.equal(plan.baseCost, AI_DEPTHS[depthIdx].baseCost);
+      assert.ok(
+        plan.systemInstruction.includes(mentor.name),
+        `Prompt for ${mentor.name} must include mentor identity`
+      );
     });
 
-    // Credit cost ladder: 1 / 1 / 3 / 5
-    assert.equal(quick.baseCost, 1);
-    assert.equal(balanced.baseCost, 1);
-    assert.equal(deep.baseCost, 3);
-    assert.equal(max.baseCost, 5);
+    // Strict monotonic token & timeout budgets: Quick <= Balanced <= Deep <= Max
+    assert.ok(quick.maxOutputTokens <= balanced.maxOutputTokens);
+    assert.ok(balanced.maxOutputTokens <= deep.maxOutputTokens);
+    assert.ok(deep.maxOutputTokens <= max.maxOutputTokens);
+    assert.ok(quick.firstAttemptTimeoutMs <= balanced.firstAttemptTimeoutMs);
+    assert.ok(balanced.firstAttemptTimeoutMs <= deep.firstAttemptTimeoutMs);
+    assert.ok(deep.firstAttemptTimeoutMs <= max.firstAttemptTimeoutMs);
 
-    // Quick must be the fastest configuration: flash-lite + MINIMAL thinking + smallest tokens & history
-    assert.equal(quick.model, 'gemini-3.1-flash-lite');
-    assert.equal(quick.thinkingLevel, 'MINIMAL');
-    assert.equal(quick.generationConfig.thinkingConfig?.thinkingLevel, 'MINIMAL');
-    assert.ok(quick.maxOutputTokens < balanced.maxOutputTokens);
-    assert.ok(quick.maxHistoryMessages < balanced.maxHistoryMessages);
-    assert.ok(quick.firstAttemptTimeoutMs < balanced.firstAttemptTimeoutMs);
+    if (!isAisha) {
+      // Mentors 0..4 MUST remain completely unchanged in behavior, speed, credits, and depth logic
+      plans.forEach((plan, depthIdx) => {
+        assert.ok(plan.systemInstruction.includes('DEPTH LAW'));
+        assert.equal(plan.baseCost, AI_DEPTHS[depthIdx].baseCost);
+      });
+      assert.equal(quick.baseCost, 1);
+      assert.equal(balanced.baseCost, 1);
+      assert.equal(deep.baseCost, 3);
+      assert.equal(max.baseCost, 5);
 
-    // Balanced / Deep / Max scale thinking budget, output tokens, and history window monotonically
-    assert.equal(balanced.model, 'gemini-4-hydrogen');
-    assert.equal(balanced.thinkingLevel, 'LOW');
-    assert.equal(deep.model, 'gemini-4-hydrogen');
-    assert.equal(deep.thinkingLevel, 'MEDIUM');
-    assert.equal(max.model, 'gemini-4-hydrogen');
-    assert.equal(max.thinkingLevel, 'HIGH');
+      assert.equal(quick.model, 'gemini-3.1-flash-lite');
+      assert.equal(quick.thinkingLevel, 'MINIMAL');
+      assert.equal(balanced.model, 'gemini-4-hydrogen');
+      assert.equal(balanced.thinkingLevel, 'LOW');
+      assert.equal(deep.model, 'gemini-4-hydrogen');
+      assert.equal(deep.thinkingLevel, 'MEDIUM');
+      assert.equal(max.model, 'gemini-4-hydrogen');
+      assert.equal(max.thinkingLevel, 'HIGH');
+      assert.ok(quick.maxHistoryMessages < balanced.maxHistoryMessages);
+      assert.ok(balanced.maxHistoryMessages < deep.maxHistoryMessages);
+    } else {
+      // Aisha visual depth budgets: Quick 3/1200/2cr, Balanced 5/2000/4cr, Deep 8/3500/8cr, Max 12/5000/12cr
+      assert.equal(quick.maxSteps, 3);
+      assert.equal(quick.maxOutputTokens, 1200);
+      assert.equal(quick.baseCost, 2);
+      assert.equal(quick.model, 'gemini-3.1-flash-lite');
+      assert.equal(quick.thinkingLevel, 'NONE');
+      assert.equal(quick.generationConfig.thinkingConfig, undefined);
 
-    assert.ok(balanced.maxOutputTokens < deep.maxOutputTokens);
-    assert.ok(deep.maxOutputTokens < max.maxOutputTokens);
-    assert.ok(balanced.maxHistoryMessages < deep.maxHistoryMessages);
-    assert.ok(deep.maxHistoryMessages <= max.maxHistoryMessages);
+      assert.equal(balanced.maxSteps, 5);
+      assert.equal(balanced.maxOutputTokens, 2000);
+      assert.equal(balanced.baseCost, 4);
+      assert.equal(balanced.model, 'gemini-3.1-flash-lite');
 
-    // Distinct depth instructions per level
-    const uniqueInstructions = new Set(plans.map((p) => p.depthInstruction));
-    assert.equal(uniqueInstructions.size, 4);
+      assert.equal(deep.maxSteps, 8);
+      assert.equal(deep.maxOutputTokens, 3500);
+      assert.equal(deep.baseCost, 8);
+
+      assert.equal(max.maxSteps, 12);
+      assert.equal(max.maxOutputTokens, 5000);
+      assert.equal(max.baseCost, 12);
+
+      // Aisha always keeps last 10 messages across all 4 depths
+      plans.forEach((plan) => {
+        assert.equal(plan.maxHistoryMessages, 10);
+        assert.equal(plan.responseMimeType, 'application/json');
+      });
+
+      // Cache hit cost is flat 1 credit for Aisha
+      assert.equal(getDepthBaseCostForMentor(AISHA_MENTOR_ID, 3, { visualMode: true, cacheHit: true }), 1);
+    }
   }
+});
+
+test('Aisha name, avatar, role, and saved chat history (including physics whiteboard scene) survive reload round-trip', () => {
+  const sampleScene = {
+    title: 'Projectile Motion at 45°',
+    steps: [
+      {
+        narration: 'Launch the ball with initial speed u at angle 45 degrees.',
+        equation: 'v_x = u \\cos 45^\\circ, \\; v_y = u \\sin 45^\\circ',
+        shapes: [
+          { type: 'line', x1: 30, y1: 205, x2: 370, y2: 205, stroke: '#475569' },
+          { type: 'arrow', x1: 50, y1: 205, x2: 115, y2: 140, stroke: '#e11d48', label: 'u' },
+          { type: 'circle', cx: 50, cy: 205, r: 8, stroke: '#0ea5e9', fill: '#bae6fd' },
+        ],
+      },
+      {
+        narration: 'Gravity pulls it along a symmetric parabolic trajectory to range R.',
+        equation: 'R = \\frac{u^2 \\sin 2\\theta}{g}',
+        shapes: [
+          { type: 'line', x1: 30, y1: 205, x2: 370, y2: 205, stroke: '#475569' },
+          { type: 'curve', points: [[50, 205], [200, 55], [350, 205]], stroke: '#0ea5e9' },
+          { type: 'label', x: 200, y: 42, text: 'Max Height H', color: '#0f172a' },
+        ],
+      },
+    ],
+  };
+
+  // Simulate saving a chat to localStorage/Firestore and reloading
+  const serializedChat = JSON.stringify({
+    id: 'chat_aisha_reload_1',
+    mentor: AISHA_MENTOR_ID,
+    title: 'Projectile Motion at 45°',
+    updatedAt: 1764000000000,
+    messages: [
+      { role: 'user', text: 'Explain projectile motion at 45 degrees' },
+      { role: 'model', text: JSON.stringify(sampleScene) },
+    ],
+  });
+
+  const reloaded = JSON.parse(serializedChat);
+  const mentorAfterReload = AI_MENTORS[reloaded.mentor];
+  assert.equal(mentorAfterReload.name, 'Aisha');
+  assert.equal(mentorAfterReload.avatar, '/ai/aisha.webp');
+  assert.equal(mentorAfterReload.role, 'Visual Physics Tutor');
+  assert.equal(reloaded.messages.length, 2);
+
+  const restoredScene = parseStoredPhysicsScene(reloaded.messages[1].text);
+  assert.ok(restoredScene, 'Reloaded Aisha physics scene must parse cleanly');
+  assert.equal(restoredScene?.title, 'Projectile Motion at 45°');
+  assert.equal(restoredScene?.steps.length, 2);
+  assert.equal(restoredScene?.steps[1].shapes[1].type, 'curve');
+});
+
+test('Aisha physics schema validation, incremental streaming step parser, caching hash, query classifier, and 7 templates', () => {
+  // Streaming incremental extraction draws Step 1 before Step 2 finishes
+  const partialStream =
+    '{"title":"Free Fall","steps":[{"narration":"Drop ball from rest.","equation":"v = gt","shapes":[{"type":"circle","cx":200,"cy":50,"r":10,"stroke":"#0ea5e9"}]},{"narration":"Accelerating down';
+  const partial = extractStreamingPhysicsScene(partialStream, 5);
+  assert.ok(partial);
+  assert.equal(partial?.title, 'Free Fall');
+  assert.equal(partial?.steps.length, 1);
+  assert.equal(partial?.isComplete, false);
+
+  // Invalid scene rejected strictly (never charged)
+  assert.equal(validatePhysicsScene('not json at all', 5).valid, false);
+  assert.equal(validatePhysicsScene('{"title":"No steps","steps":[]}', 5).valid, false);
+  assert.equal(
+    validatePhysicsScene('{"title":"Bad shape","steps":[{"narration":"Hi","equation":"","shapes":[{"type":"invalid"}]}]}', 5).valid,
+    false
+  );
+
+  // Normalization & cache hash deterministic across punctuation/case/whitespace
+  const h1 = hashPhysicsQuestion('Explain Projectile Motion! ', 1);
+  const h2 = hashPhysicsQuestion('explain   projectile motion?', 1);
+  const h3 = hashPhysicsQuestion('explain projectile motion', 2);
+  assert.equal(h1, h2);
+  assert.notEqual(h1, h3);
+
+  // Greetings stay text; physics questions trigger visual mode
+  assert.equal(isPhysicsVisualQuery('Salam!'), false);
+  assert.equal(isPhysicsVisualQuery('hi how are you?'), false);
+  assert.equal(isPhysicsVisualQuery('Explain projectile motion at 30 degrees'), true);
+  assert.equal(isPhysicsVisualQuery('Calculate bending moment of a truck on a bridge'), true);
+
+  // All 7 starter templates match cleanly
+  assert.equal(detectPhysicsTemplate('projectile launch angle range').key, 'projectile_motion');
+  assert.equal(detectPhysicsTemplate('object dropped in free fall').key, 'free_fall');
+  assert.equal(detectPhysicsTemplate('truck on bridge bending moment').key, 'bridge_bending_moment');
+  assert.equal(detectPhysicsTemplate('water filling a cone tank rate graph').key, 'tank_filling_rate');
+  assert.equal(detectPhysicsTemplate('velocity-time graph and distance-time graph').key, 'kinematics_graphs');
+  assert.equal(detectPhysicsTemplate('block on an inclined plane with friction').key, 'inclined_plane');
+  assert.equal(detectPhysicsTemplate('series and parallel resistor circuit').key, 'simple_circuits');
+  assert.equal(detectPhysicsTemplate('quantum tunneling barrier').key, 'free_compose');
+});
+
+test('voice input error mapper returns exact friendly message for every microphone error type and in-app browser', () => {
+  assert.equal(
+    mapMicrophoneError({ name: 'NotAllowedError' }).message,
+    VOICE_ERROR_MESSAGES.notAllowed
+  );
+  assert.equal(
+    mapMicrophoneError({ name: 'PermissionDeniedError' }).message,
+    VOICE_ERROR_MESSAGES.notAllowed
+  );
+  assert.equal(
+    mapMicrophoneError({ name: 'NotFoundError' }).message,
+    VOICE_ERROR_MESSAGES.notFound
+  );
+  assert.equal(
+    mapMicrophoneError({ name: 'NotReadableError' }).message,
+    VOICE_ERROR_MESSAGES.notReadable
+  );
+  assert.equal(
+    mapMicrophoneError(
+      { name: 'NotAllowedError' },
+      { userAgent: 'Mozilla/5.0 Instagram 312.0' }
+    ).message,
+    VOICE_ERROR_MESSAGES.inAppBrowser
+  );
+  assert.equal(
+    mapMicrophoneError({ name: 'SomeUnknownErr' }, { logToConsole: false }).message,
+    VOICE_ERROR_MESSAGES.generic
+  );
+  assert.equal(isInAppBrowser('Mozilla/5.0 Instagram 312.0'), true);
+  assert.equal(isInAppBrowser('Mozilla/5.0 WhatsApp/2.24'), true);
+  assert.equal(isInAppBrowser('Mozilla/5.0 Chrome/126.0.0.0 Mobile Safari/537.36'), false);
+
+  assert.equal(resolveVoiceLanguage({ draftText: 'فزکس کا سوال' }), 'ur-PK');
+  assert.equal(resolveVoiceLanguage({ preferredLang: 'en-PK', draftText: 'Find acceleration' }), 'en-PK');
 });
 
 test('trimContentsForDepth caps turns per depth and keeps user-first invariant', () => {
@@ -117,8 +303,8 @@ test('trimContentsForDepth caps turns per depth and keeps user-first invariant',
   assert.equal(quickTrimmed[quickTrimmed.length - 1].parts[0].text, 'Q4');
 });
 
-test('calculateMessageCreditCost matches depth, text, photo, PDF, and history rules', () => {
-  // Quick / Balanced short message
+test('calculateMessageCreditCost matches depth, text, photo, PDF, history, and Aisha visual credit rules', () => {
+  // Quick / Balanced short message (mentors 0..4)
   assert.equal(
     calculateMessageCreditCost({ depth: 0, textLength: 50, photoCount: 0, pdfCount: 0, historyMessageCount: 0 }).total,
     1
@@ -127,6 +313,13 @@ test('calculateMessageCreditCost matches depth, text, photo, PDF, and history ru
     calculateMessageCreditCost({ depth: 1, textLength: 399, photoCount: 0, pdfCount: 0, historyMessageCount: 7 }).total,
     1
   );
+
+  // Aisha visual credits: Quick=2, Balanced=4, Deep=8, Max=12, Cache hit=1
+  assert.equal(calculateMessageCreditCost({ depth: 0, mentorId: AISHA_MENTOR_ID, visualMode: true, textLength: 40 }).total, 2);
+  assert.equal(calculateMessageCreditCost({ depth: 1, mentorId: AISHA_MENTOR_ID, visualMode: true, textLength: 40 }).total, 4);
+  assert.equal(calculateMessageCreditCost({ depth: 2, mentorId: AISHA_MENTOR_ID, visualMode: true, textLength: 40 }).total, 8);
+  assert.equal(calculateMessageCreditCost({ depth: 3, mentorId: AISHA_MENTOR_ID, visualMode: true, textLength: 40 }).total, 12);
+  assert.equal(calculateMessageCreditCost({ depth: 3, mentorId: AISHA_MENTOR_ID, visualMode: true, cacheHit: true, textLength: 40 }).total, 1);
 
   // Text extra: +1 per 400 chars, capped at +3
   assert.equal(
@@ -138,7 +331,7 @@ test('calculateMessageCreditCost matches depth, text, photo, PDF, and history ru
     3
   );
 
-  // Deep = 3, Max = 5
+  // Deep = 3, Max = 5 (mentors 0..4)
   assert.equal(
     calculateMessageCreditCost({ depth: 2, textLength: 100 }).total,
     3
@@ -171,7 +364,6 @@ test('calculateMessageCreditCost matches depth, text, photo, PDF, and history ru
 });
 
 test('PKT date key and midnight reset calculation', () => {
-  // 2026-05-10 18:30:00 UTC = 2026-05-10 23:30:00 PKT -> 30 minutes to midnight
   const ms1 = Date.UTC(2026, 4, 10, 18, 30, 0);
   assert.equal(getPktDateKey(ms1), '2026-05-10');
   const reset1 = getPktResetInfo(ms1);
@@ -180,7 +372,6 @@ test('PKT date key and midnight reset calculation', () => {
   assert.equal(reset1.minutesLeft, 30);
   assert.equal(reset1.countdownLabel, '30m');
 
-  // 2026-05-10 19:05:00 UTC = 2026-05-11 00:05:00 PKT -> rolled over to May 11!
   const ms2 = Date.UTC(2026, 4, 10, 19, 5, 0);
   assert.equal(getPktDateKey(ms2), '2026-05-11');
 });

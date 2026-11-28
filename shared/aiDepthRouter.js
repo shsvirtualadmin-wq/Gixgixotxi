@@ -1,7 +1,10 @@
 import aiConfig from '../ai-config.json';
+import { buildAishaVisualSchemaInstruction } from './aishaSceneSchema.js';
+
+export const AISHA_MENTOR_ID = 5;
 
 /**
- * Static cache-friendly prefix shared across all 6 mentors and 4 depths.
+ * Static cache-friendly prefix shared across mentors 0..4.
  * Placing this invariant block first maximizes Gemini implicit prompt prefix caching.
  */
 export const BASE_AI_SYSTEM_PROMPT = `You are a Boardly AI Mentor for Pakistani students (Matric, FSc, O/A Levels, MDCAT, NUST NET, FAST, GIKI, ECAT, LUMS, UET).
@@ -48,7 +51,7 @@ export function parseStrictMentorId(raw) {
 
 /**
  * Returns whether the target Gemini model accepts `generationConfig.thinkingConfig`.
- * - `gemini-3.1-flash-lite` supports MINIMAL, LOW, MEDIUM, HIGH (fastest with MINIMAL).
+ * - `gemini-3.1-flash-lite` supports MINIMAL, LOW, MEDIUM, HIGH (or no thinking when NONE).
  * - `gemini-4-hydrogen` supports LOW, MEDIUM, HIGH, XHIGH (does NOT support MINIMAL).
  * - `gemini-3-flash-preview` supports MINIMAL, LOW, MEDIUM, HIGH.
  */
@@ -59,6 +62,7 @@ export function modelSupportsThinkingConfig(modelName) {
 
 export function resolveThinkingLevelForModel(modelName, rawLevel) {
   const upper = String(rawLevel || 'LOW').toUpperCase();
+  if (upper === 'NONE' || upper === 'OFF') return 'NONE';
   const lower = String(modelName || '').toLowerCase();
   const isGemini4 = /^gemini-4-/i.test(lower);
   // gemini-4-hydrogen does NOT accept MINIMAL (returns HTTP 400); clamp to LOW on Gemini 4
@@ -75,9 +79,18 @@ export function buildModelGenerationConfig(modelName, depthPlan, includeThinking
   const generationConfig = {
     maxOutputTokens: Number(depthPlan.maxOutputTokens || 1536),
   };
-  if (includeThinkingConfig && depthPlan.thinkingLevel && modelSupportsThinkingConfig(modelName)) {
+  if (depthPlan.responseMimeType) {
+    generationConfig.responseMimeType = depthPlan.responseMimeType;
+  }
+  const resolvedLevel = resolveThinkingLevelForModel(modelName, depthPlan.thinkingLevel);
+  if (
+    includeThinkingConfig &&
+    resolvedLevel &&
+    resolvedLevel !== 'NONE' &&
+    modelSupportsThinkingConfig(modelName)
+  ) {
     generationConfig.thinkingConfig = {
-      thinkingLevel: resolveThinkingLevelForModel(modelName, depthPlan.thinkingLevel),
+      thinkingLevel: resolvedLevel,
     };
   }
   return generationConfig;
@@ -98,22 +111,45 @@ export function trimContentsForDepth(contents, maxHistoryMessages) {
 }
 
 /**
+ * Returns the base credit cost for any mentor at any depth from the unified registry.
+ * - Noor, Zain, Sehar, Hamza, Mahnoor: 1 / 1 / 3 / 5
+ * - Aisha (Visual Physics Tutor): 2 / 4 / 8 / 12 (or 1 on cache hit)
+ */
+export function getDepthBaseCostForMentor(mentorId, depthId, options = {}) {
+  const safeMentorId = parseStrictMentorId(mentorId);
+  const safeDepthId = parseStrictDepthId(depthId);
+  const depth = aiConfig.DEPTHS[safeDepthId >= 0 ? safeDepthId : 1] || aiConfig.DEPTHS[1];
+
+  if (safeMentorId === AISHA_MENTOR_ID && options?.visualMode !== false) {
+    if (options?.cacheHit) {
+      return Number(aiConfig.AISHA_VISUAL_CONFIG?.cacheHitCost ?? 1);
+    }
+    const aishaDepth = aiConfig.AISHA_VISUAL_CONFIG?.depths?.[safeDepthId >= 0 ? safeDepthId : 1];
+    if (aishaDepth && Number.isFinite(Number(aishaDepth.baseCost))) {
+      return Number(aishaDepth.baseCost);
+    }
+  }
+  return Number(depth.baseCost);
+}
+
+/**
  * SINGLE SHARED DEPTH ROUTER used by ALL 6 AI mentors (Noor, Zain, Sehar, Hamza, Mahnoor, Aisha)
- * across both client and server. No mentor special-casing.
+ * across both client and server.
  *
- * Determines:
- * - model & ordered fallback candidates (Quick -> gemini-3.1-flash-lite first; Balanced/Deep/Max -> gemini-4-hydrogen)
- * - thinkingLevel (MINIMAL / LOW / MEDIUM / HIGH)
- * - maxOutputTokens & targetVisibleTokens
- * - maxHistoryMessages (trims history per depth for faster TTFT on Quick/Balanced)
- * - credit baseCost & freeAllowed gate
- * - cache-friendly systemInstruction (static prefix + mentor registry prompt + strict depth law)
+ * - Mentors 0..4 keep their exact models, thinking levels, credit costs (1/1/3/5), and prompts.
+ * - Aisha (id 5) uses her dedicated warm Visual Physics Tutor prompt (preventing canned
+ *   "Boardly AI Mentor" refusals), always keeps the last 10 messages, applies her per-depth
+ *   step/token/credit config (2/4/8/12, 1 on cache hit), and switches cleanly between
+ *   strict JSON whiteboard mode and warm text mode.
  */
 export function resolveAiDepthExecution({
   mentorId,
   depthId,
   env = null,
   isModelInCooldown = null,
+  visualMode = false,
+  questionText = '',
+  avoidPreviousRefusal = '',
 } = {}) {
   const parsedMentor = parseStrictMentorId(mentorId);
   const safeMentorId = parsedMentor >= 0 ? parsedMentor : 0;
@@ -122,19 +158,52 @@ export function resolveAiDepthExecution({
 
   const mentor = aiConfig.MENTORS[safeMentorId] || aiConfig.MENTORS[0];
   const depth = aiConfig.DEPTHS[safeDepthId] || aiConfig.DEPTHS[1];
+  const isAisha = mentor.id === AISHA_MENTOR_ID;
+  const aishaDepthCfg = isAisha
+    ? aiConfig.AISHA_VISUAL_CONFIG?.depths?.[safeDepthId] || null
+    : null;
 
   const envFastModel = env?.GEMINI_FAST_MODEL ? String(env.GEMINI_FAST_MODEL).trim() : '';
   const envDefaultModel = env?.GEMINI_MODEL ? String(env.GEMINI_MODEL).trim() : '';
   const envFallbackModel = env?.GEMINI_FALLBACK_MODEL ? String(env.GEMINI_FALLBACK_MODEL).trim() : '';
 
-  const primaryModel =
-    safeDepthId === 0
-      ? envFastModel || depth.model || aiConfig.FAST_MODEL || 'gemini-3.1-flash-lite'
-      : envDefaultModel || depth.model || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen';
+  let primaryModel;
+  let depthFallbacks;
+  let rawThinkingLevel;
+  let maxOutputTokens;
+  let maxHistoryMessages;
+  let firstAttemptTimeoutMs;
+  let maxSteps = 0;
+  let baseCost;
 
-  const depthFallbacks = Array.isArray(depth.fallbackModels) ? depth.fallbackModels : [];
+  if (isAisha && aishaDepthCfg) {
+    primaryModel =
+      safeDepthId <= 1
+        ? envFastModel || aishaDepthCfg.model || aiConfig.FAST_MODEL || 'gemini-3.1-flash-lite'
+        : envDefaultModel || aishaDepthCfg.model || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen';
+    depthFallbacks = Array.isArray(aishaDepthCfg.fallbackModels) ? aishaDepthCfg.fallbackModels : [];
+    rawThinkingLevel = String(aishaDepthCfg.thinkingLevel || 'NONE').toUpperCase();
+    maxOutputTokens = Number(aishaDepthCfg.maxOutputTokens || 1200);
+    maxHistoryMessages = Number(aishaDepthCfg.maxHistoryMessages || 10);
+    firstAttemptTimeoutMs = Number(aishaDepthCfg.firstAttemptTimeoutMs || 6000);
+    maxSteps = Number(aishaDepthCfg.maxSteps || 5);
+    baseCost = visualMode
+      ? Number(aishaDepthCfg.baseCost)
+      : Number(depth.baseCost);
+  } else {
+    primaryModel =
+      safeDepthId === 0
+        ? envFastModel || depth.model || aiConfig.FAST_MODEL || 'gemini-3.1-flash-lite'
+        : envDefaultModel || depth.model || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen';
+    depthFallbacks = Array.isArray(depth.fallbackModels) ? depth.fallbackModels : [];
+    rawThinkingLevel = String(depth.thinkingLevel || 'LOW').toUpperCase();
+    maxOutputTokens = Number(depth.maxOutputTokens || 1536);
+    maxHistoryMessages = Number(depth.maxHistoryMessages || aiConfig.COST_RULES.maxMessagesClient || 10);
+    firstAttemptTimeoutMs = safeDepthId === 0 ? 5500 : safeDepthId === 1 ? 7500 : 12000;
+    baseCost = Number(depth.baseCost);
+  }
+
   const globalFallbacks = Array.isArray(aiConfig.FALLBACK_MODELS) ? aiConfig.FALLBACK_MODELS : [];
-
   const rawCandidates = [
     primaryModel,
     ...depthFallbacks,
@@ -162,12 +231,39 @@ export function resolveAiDepthExecution({
     `Mentor: ${mentor.name} (${mentor.role}) — ${mentor.description}`;
   const depthInstruction = String(depth.instruction || '');
 
-  // Static prefix first -> mentor block -> strict depth law at end
-  const systemInstruction = `${BASE_AI_SYSTEM_PROMPT}\n${mentorPrompt}\n\n${depthInstruction}`;
+  let systemInstruction;
+  let responseMimeType = null;
 
-  const thinkingLevel = resolveThinkingLevelForModel(primaryModel, depth.thinkingLevel);
-  const maxOutputTokens = Number(depth.maxOutputTokens || 1536);
-  const maxHistoryMessages = Number(depth.maxHistoryMessages || aiConfig.COST_RULES.maxMessagesClient || 10);
+  if (isAisha) {
+    const antiRepeatLine = avoidPreviousRefusal
+      ? `\n- Never repeat your previous reply word-for-word (avoid: "${String(avoidPreviousRefusal).slice(0, 120)}").`
+      : '';
+    if (visualMode) {
+      responseMimeType = 'application/json';
+      const schemaRules = buildAishaVisualSchemaInstruction({
+        maxSteps: maxSteps || 5,
+        question: questionText,
+      });
+      systemInstruction = `${mentorPrompt}\n${schemaRules}${antiRepeatLine}`;
+    } else {
+      const aishaTextDepthNote =
+        safeDepthId === 0
+          ? 'Keep physics answers crisp (3–5 short lines with the formula & final answer). For greetings or off-topic chat, reply warmly in 1 short line and invite a physics question.'
+          : safeDepthId === 1
+          ? 'Give a warm, clear step-by-step physics explanation (~140–240 words). For greetings or off-topic chat, reply warmly in 1 short line and invite a physics question.'
+          : safeDepthId === 2
+          ? 'Give a thorough step-by-step physics explanation with formulas, worked values, and intuition (~350–550 words). For greetings or off-topic chat, reply warmly in 1 short line and invite a physics question.'
+          : 'Give a complete first-principles physics derivation, worked steps, verification, and exam tip (~700–1100 words). For greetings or off-topic chat, reply warmly in 1 short line and invite a physics question.';
+      systemInstruction =
+        `${mentorPrompt}\nUse LaTeX $...$ / $$...$$ for physics equations.\n` +
+        `DEPTH (${depth.label}): ${aishaTextDepthNote}${antiRepeatLine}`;
+    }
+  } else {
+    // Static prefix first -> mentor block -> strict depth law at end (unchanged for mentors 0..4)
+    systemInstruction = `${BASE_AI_SYSTEM_PROMPT}\n${mentorPrompt}\n\n${depthInstruction}`;
+  }
+
+  const thinkingLevel = resolveThinkingLevelForModel(primaryModel, rawThinkingLevel);
 
   return {
     mentorId: mentor.id,
@@ -177,21 +273,25 @@ export function resolveAiDepthExecution({
     depthId: depth.id,
     depthKey: depth.key,
     depthLabel: depth.label,
-    baseCost: Number(depth.baseCost),
+    baseCost,
     freeAllowed: Boolean(depth.freeAllowed),
     model: primaryModel,
     modelCandidates,
     thinkingLevel,
-    rawThinkingLevel: String(depth.thinkingLevel || 'LOW').toUpperCase(),
+    rawThinkingLevel,
     maxOutputTokens,
     targetVisibleTokens: Number(depth.targetVisibleTokens || maxOutputTokens),
     maxHistoryMessages,
-    firstAttemptTimeoutMs: safeDepthId === 0 ? 5500 : safeDepthId === 1 ? 7500 : 12000,
+    firstAttemptTimeoutMs,
+    maxSteps,
+    visualMode: Boolean(isAisha && visualMode),
+    responseMimeType,
     depthInstruction,
     systemInstruction,
     generationConfig: buildModelGenerationConfig(primaryModel, {
       maxOutputTokens,
-      thinkingLevel: depth.thinkingLevel,
+      thinkingLevel: rawThinkingLevel,
+      responseMimeType,
     }),
   };
 }

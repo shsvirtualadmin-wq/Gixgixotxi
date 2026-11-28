@@ -1,20 +1,49 @@
 import aiConfig from '../../ai-config.json';
 import {
+  AISHA_MENTOR_ID,
   BASE_AI_SYSTEM_PROMPT,
+  getDepthBaseCostForMentor,
   resolveAiDepthExecution,
   trimContentsForDepth,
   parseStrictDepthId,
   parseStrictMentorId,
   type AiDepthExecutionPlan,
 } from '../../shared/aiDepthRouter.js';
+import {
+  detectPhysicsTemplate,
+  extractStreamingPhysicsScene,
+  hashPhysicsQuestion,
+  isPhysicsVisualQuery,
+  normalizePhysicsQuestion,
+  parseStoredPhysicsScene,
+  validatePhysicsScene,
+  type PhysicsScene,
+  type PhysicsSceneStep,
+  type PhysicsShape,
+  type StreamingPhysicsScene,
+} from '../../shared/aishaSceneSchema.js';
 
 export {
+  AISHA_MENTOR_ID,
   BASE_AI_SYSTEM_PROMPT,
+  getDepthBaseCostForMentor,
   resolveAiDepthExecution,
   trimContentsForDepth,
   parseStrictDepthId,
   parseStrictMentorId,
+  detectPhysicsTemplate,
+  extractStreamingPhysicsScene,
+  hashPhysicsQuestion,
+  isPhysicsVisualQuery,
+  normalizePhysicsQuestion,
+  parseStoredPhysicsScene,
+  validatePhysicsScene,
   type AiDepthExecutionPlan,
+  type PhysicsScene,
+  type PhysicsSceneStep,
+  type PhysicsShape,
+  type PhysicsShape as PhysicsSceneShape,
+  type StreamingPhysicsScene,
 };
 
 export type AiDepthId = 0 | 1 | 2 | 3;
@@ -29,7 +58,19 @@ export interface AiDepthConfig {
   baseCost: number;
   model: string;
   fallbackModels?: string[];
-  thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
+  thinkingLevel:
+    | 'none'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh'
+    | 'NONE'
+    | 'MINIMAL'
+    | 'LOW'
+    | 'MEDIUM'
+    | 'HIGH'
+    | 'XHIGH';
   maxOutputTokens: number;
   targetVisibleTokens?: number;
   maxHistoryMessages?: number;
@@ -59,6 +100,7 @@ export interface AiMentorConfig {
 export const AI_CONFIG = aiConfig;
 export const AI_DEPTHS = aiConfig.DEPTHS as AiDepthConfig[];
 export const AI_MENTORS = aiConfig.MENTORS as AiMentorConfig[];
+export const AISHA_VISUAL_CONFIG = (aiConfig as any).AISHA_VISUAL_CONFIG;
 export const FREE_AI_CREDITS_PER_DAY = aiConfig.FREE_CREDITS_PER_DAY;
 export const PRO_AI_CREDITS_PER_DAY = aiConfig.PRO_CREDITS_PER_DAY;
 export const PLUS_AI_CREDITS_PER_DAY =
@@ -95,6 +137,9 @@ export interface CreditCostInput {
   photoCount?: number;
   pdfCount?: number;
   historyMessageCount?: number;
+  mentorId?: number;
+  visualMode?: boolean;
+  cacheHit?: boolean;
 }
 
 export interface CreditCostBreakdown {
@@ -123,14 +168,33 @@ export function resolveMentorIdFromParam(param?: string | null): AiMentorId {
 }
 
 export function calculateMessageCreditCost(input: CreditCostInput): CreditCostBreakdown {
-  const depthCfg = getDepthConfig(input.depth);
   const rules = AI_COST_RULES;
   const textLen = Math.max(0, Math.floor(Number(input.textLength) || 0));
   const photos = Math.max(0, Math.floor(Number(input.photoCount) || 0));
   const pdfs = Math.max(0, Math.floor(Number(input.pdfCount) || 0));
   const historyLen = Math.max(0, Math.floor(Number(input.historyMessageCount) || 0));
 
-  const baseCost = depthCfg.baseCost;
+  const isAishaVisual = input.mentorId === AISHA_MENTOR_ID && input.visualMode !== false;
+  const baseCost =
+    typeof input.mentorId === 'number'
+      ? getDepthBaseCostForMentor(input.mentorId, input.depth, {
+          visualMode: input.visualMode !== false,
+          cacheHit: Boolean(input.cacheHit),
+        })
+      : getDepthConfig(input.depth).baseCost;
+
+  // Aisha cached visual scenes always cost a flat 1 credit
+  if (isAishaVisual && input.cacheHit) {
+    return {
+      baseCost: 1,
+      textExtra: 0,
+      photoExtra: 0,
+      pdfExtra: 0,
+      historyExtra: 0,
+      total: 1,
+    };
+  }
+
   const textExtra = Math.min(
     rules.maxTextExtraCredits,
     Math.floor(textLen / rules.charsPerExtraCredit)

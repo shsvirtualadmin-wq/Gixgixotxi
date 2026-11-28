@@ -17,13 +17,20 @@
 
 import aiConfig from '../../ai-config.json';
 import {
+  AISHA_MENTOR_ID,
   buildModelGenerationConfig,
+  getDepthBaseCostForMentor,
   modelSupportsThinkingConfig,
   parseStrictDepthId,
   parseStrictMentorId,
   resolveAiDepthExecution,
   trimContentsForDepth,
 } from '../../shared/aiDepthRouter.js';
+import {
+  hashPhysicsQuestion,
+  isPhysicsVisualQuery,
+  validatePhysicsScene,
+} from '../../shared/aishaSceneSchema.js';
 
 const DEFAULT_FIREBASE_PROJECT_ID = 'gen-lang-client-0365509316';
 const DEFAULT_FIRESTORE_DATABASE_ID =
@@ -35,6 +42,126 @@ const FIRESTORE_OAUTH_SCOPE = 'https://www.googleapis.com/auth/datastore';
 // to eliminate redundant Firestore RTT on consecutive messages in a conversation.
 const DAILY_USAGE_CACHE_TTL_MS = 20_000;
 const dailyUsageCache = new Map();
+
+// ─── Aisha Visual Physics Scene Cache, Daily Caps & Cost Telemetry ────────────
+const AISHA_SCENE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const AISHA_SCENE_CACHE_MAX = 400;
+const aishaSceneCache = new Map(); // hash -> { sceneJson, scene, depthKey, createdAt }
+const aishaDailyAnimatedUsage = new Map(); // `${uid}:${dateKey}` -> count
+const aishaLastRefusalByUser = new Map(); // uid -> last refusal string
+
+let aishaDailyStats = null;
+
+function ensureAishaDailyStats(dateKey) {
+  if (!aishaDailyStats || aishaDailyStats.dateKey !== dateKey) {
+    aishaDailyStats = {
+      dateKey,
+      totalVisualAnswers: 0,
+      cacheHits: 0,
+      textFallbacks: 0,
+      totalTokens: 0,
+      estimatedCostUsd: 0,
+      byDepth: { quick: 0, balanced: 0, deep: 0, max: 0 },
+      recentEntries: [],
+    };
+  }
+  return aishaDailyStats;
+}
+
+function estimateGeminiCostUsd(modelName, inputTokens = 0, outputTokens = 0) {
+  const lower = String(modelName || '').toLowerCase();
+  // Conservative blended per-1M token USD pricing estimates
+  const isLite = lower.includes('lite');
+  const inputRatePerM = isLite ? 0.1 : 0.3;
+  const outputRatePerM = isLite ? 0.4 : 1.2;
+  const cost = (inputTokens * inputRatePerM + outputTokens * outputRatePerM) / 1_000_000;
+  return Number(cost.toFixed(6));
+}
+
+function recordAishaVisualTelemetry({
+  dateKey,
+  depthKey,
+  tokens = 0,
+  costUsd = 0,
+  cacheHit = false,
+  textFallback = false,
+}) {
+  const stats = ensureAishaDailyStats(dateKey);
+  if (textFallback) {
+    stats.textFallbacks += 1;
+  } else {
+    stats.totalVisualAnswers += 1;
+    if (cacheHit) stats.cacheHits += 1;
+    if (depthKey && Object.prototype.hasOwnProperty.call(stats.byDepth, depthKey)) {
+      stats.byDepth[depthKey] += 1;
+    }
+  }
+  stats.totalTokens += Math.max(0, Math.round(tokens));
+  stats.estimatedCostUsd = Number((stats.estimatedCostUsd + Math.max(0, costUsd)).toFixed(6));
+  stats.recentEntries.unshift({
+    ts: new Date().toISOString(),
+    depth: depthKey || 'balanced',
+    tokens: Math.max(0, Math.round(tokens)),
+    costUsd: Number(Math.max(0, costUsd).toFixed(6)),
+    cacheHit: Boolean(cacheHit),
+  });
+  if (stats.recentEntries.length > 30) {
+    stats.recentEntries.length = 30;
+  }
+  console.log(
+    `[Aisha Visual Telemetry] date=${dateKey} depth=${depthKey} tokens=${Math.round(tokens)} costUsd=${costUsd.toFixed(6)} cacheHit=${cacheHit} textFallback=${textFallback}`
+  );
+}
+
+function getCachedAishaScene(hash) {
+  if (!hash) return null;
+  const entry = aishaSceneCache.get(hash);
+  if (!entry) return null;
+  if (Date.now() - entry.createdAt > AISHA_SCENE_CACHE_TTL_MS) {
+    aishaSceneCache.delete(hash);
+    return null;
+  }
+  return entry;
+}
+
+function setCachedAishaScene(hash, scene, depthKey) {
+  if (!hash || !scene) return;
+  if (aishaSceneCache.size >= AISHA_SCENE_CACHE_MAX) {
+    const oldestKey = aishaSceneCache.keys().next().value;
+    if (oldestKey) aishaSceneCache.delete(oldestKey);
+  }
+  aishaSceneCache.set(hash, {
+    sceneJson: JSON.stringify(scene),
+    scene,
+    depthKey,
+    createdAt: Date.now(),
+  });
+}
+
+function getLatestUserTextFromContents(contents) {
+  if (!Array.isArray(contents) || contents.length === 0) return '';
+  for (let i = contents.length - 1; i >= 0; i--) {
+    const msg = contents[i];
+    if (msg?.role !== 'user' || !Array.isArray(msg.parts)) continue;
+    const text = msg.parts
+      .filter((p) => typeof p?.text === 'string')
+      .map((p) => p.text)
+      .join(' ')
+      .trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+function looksLikeRefusalText(text) {
+  const s = String(text || '').toLowerCase();
+  return (
+    s.includes('physics tutor') ||
+    s.includes('physics question') ||
+    s.includes('can only help') ||
+    s.includes('my focus is physics')
+  );
+}
 
 // ─── CORS & JSON Helpers ──────────────────────────────────────────────────────
 
@@ -418,6 +545,7 @@ async function atomicIncrementFirestoreCredits({
   accessToken,
   docPath,
   delta,
+  aishaAnimatedDelta = 0,
   dailyLimit,
   dateKey,
   requestId,
@@ -426,6 +554,19 @@ async function atomicIncrementFirestoreCredits({
     projectId
   )}/databases/${encodeURIComponent(databaseId)}/documents:commit`;
   const fullDocName = `projects/${projectId}/databases/${databaseId}/documents/${docPath}`;
+
+  const fieldTransforms = [
+    {
+      fieldPath: 'creditsUsed',
+      increment: { integerValue: String(Math.trunc(delta)) },
+    },
+  ];
+  if (aishaAnimatedDelta > 0) {
+    fieldTransforms.push({
+      fieldPath: 'aishaAnimatedCount',
+      increment: { integerValue: String(Math.trunc(aishaAnimatedDelta)) },
+    });
+  }
 
   const writes = [
     {
@@ -445,12 +586,7 @@ async function atomicIncrementFirestoreCredits({
     {
       transform: {
         document: fullDocName,
-        fieldTransforms: [
-          {
-            fieldPath: 'creditsUsed',
-            increment: { integerValue: String(Math.trunc(delta)) },
-          },
-        ],
+        fieldTransforms,
       },
     },
   ];
@@ -516,12 +652,13 @@ function getFallbackPlansCredits() {
     free: Number(aiConfig.FREE_CREDITS_PER_DAY || 5),
     pro: Number(aiConfig.PRO_CREDITS_PER_DAY || 50),
     plus: Number(aiConfig.PLUS_CREDITS_PER_DAY || 100),
+    aishaAnimationsEnabled: true,
   };
 }
 
-async function fetchPlansCreditsConfig(baseUrl, accessToken) {
+async function fetchPlansCreditsConfig(baseUrl, accessToken, bypassCache = false) {
   const now = Date.now();
-  if (cachedPlansCredits && cachedPlansCredits.expiresAt > now) {
+  if (!bypassCache && cachedPlansCredits && cachedPlansCredits.expiresAt > now) {
     return cachedPlansCredits.credits;
   }
   const fallback = getFallbackPlansCredits();
@@ -531,8 +668,12 @@ async function fetchPlansCreditsConfig(baseUrl, accessToken) {
       free: Math.max(1, Number(doc?.free?.aiCreditsPerDay || fallback.free)),
       pro: Math.max(1, Number(doc?.pro?.aiCreditsPerDay || fallback.pro)),
       plus: Math.max(1, Number(doc?.plus?.aiCreditsPerDay || fallback.plus)),
+      aishaAnimationsEnabled:
+        typeof doc?.aishaAnimationsEnabled === 'boolean'
+          ? doc.aishaAnimationsEnabled
+          : true,
     };
-    cachedPlansCredits = { credits, expiresAt: now + 60_000 };
+    cachedPlansCredits = { credits, expiresAt: now + 30_000 };
     return credits;
   } catch {
     return fallback;
@@ -755,9 +896,17 @@ async function resolveUserPlanFromFirestore(baseUrl, accessToken, authUser, skip
   return planInfo;
 }
 
-function computeServerMessageCost(depth, contents) {
-  const depthCfg = aiConfig.DEPTHS[depth] || aiConfig.DEPTHS[1];
+function computeServerMessageCost(depth, contents, options = {}) {
   const rules = aiConfig.COST_RULES;
+  const baseCost = getDepthBaseCostForMentor(options?.mentorId ?? 0, depth, {
+    visualMode: Boolean(options?.visualMode),
+    cacheHit: Boolean(options?.cacheHit),
+  });
+
+  // Cached Aisha scenes always cost flat 1 credit (no history/text penalty)
+  if (options?.mentorId === AISHA_MENTOR_ID && options?.visualMode && options?.cacheHit) {
+    return baseCost;
+  }
 
   // Measure the newest user message's text + attachments + total history count
   const lastUserMsg = [...contents].reverse().find((m) => m.role === 'user') || contents[contents.length - 1];
@@ -791,7 +940,7 @@ function computeServerMessageCost(depth, contents) {
     Math.floor(historyMessagesBeforeLatest / rules.messagesPerExtraCredit)
   );
 
-  return depthCfg.baseCost + textExtra + photoExtra + pdfExtra + historyExtra;
+  return baseCost + textExtra + photoExtra + pdfExtra + historyExtra;
 }
 
 function validateAndSanitizeContents(rawContents) {
@@ -955,6 +1104,111 @@ export async function handleAiMentorsRequest(request, env) {
     return jsonResponse({ error: 'Invalid JSON request body.' }, 400);
   }
   const body = bodyParsed.body;
+  const { dateKey, resetAt } = getPktDateAndReset();
+
+  // ── GET /api/ai?adminStats=1 -> Admin Aisha Visual Telemetry & Live Switch ──
+  if (request.method === 'GET') {
+    const reqUrl = new URL(request.url);
+    if (reqUrl.searchParams.get('adminStats') === '1') {
+      if (!authUser.isAdmin && !authUser.isSuperAdmin) {
+        return jsonResponse({ error: 'Admin access required.' }, 403);
+      }
+      let liveAishaEnabled = true;
+      if (sa) {
+        const saTokenRes = await saTokenPromise;
+        if (typeof saTokenRes === 'string') {
+          const cfg = await fetchPlansCreditsConfig(
+            firestoreDocBaseUrl(projectId, databaseId),
+            saTokenRes,
+            true
+          );
+          liveAishaEnabled = cfg.aishaAnimationsEnabled !== false;
+        }
+      }
+      const stats = ensureAishaDailyStats(dateKey);
+      return jsonResponse({
+        ...stats,
+        aishaAnimationsEnabled: liveAishaEnabled,
+      });
+    }
+  }
+
+  // ── POST /api/ai { action: 'transcribe' } -> MediaRecorder Audio Fallback ──
+  if (request.method === 'POST' && body?.action === 'transcribe') {
+    const apiKeyForAudio = resolveGeminiApiKey(env);
+    if (!apiKeyForAudio) {
+      return jsonResponse(
+        { error: 'Voice transcription is unavailable right now.', code: 'MISSING_GEMINI_API_KEY' },
+        503
+      );
+    }
+    const audioBase64 = String(body?.audioBase64 || '').trim();
+    const rawMime = String(body?.mimeType || 'audio/webm').split(';')[0].trim().toLowerCase();
+    const allowedAudio = new Set([
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg',
+      'audio/mpeg',
+      'audio/wav',
+      'audio/aac',
+      'audio/x-m4a',
+    ]);
+    if (!audioBase64 || !allowedAudio.has(rawMime)) {
+      return jsonResponse({ error: 'Invalid voice audio payload.' }, 400);
+    }
+    const approxBytes = Math.ceil((audioBase64.length * 3) / 4);
+    if (approxBytes > 2 * 1024 * 1024) {
+      return jsonResponse({ error: 'Voice clip is too long. Please keep recordings under 45 seconds.' }, 400);
+    }
+    const langHint = String(body?.lang || 'en-PK');
+    const transcribePrompt =
+      langHint.toLowerCase().startsWith('ur')
+        ? 'Transcribe this student voice clip cleanly. Preserve Urdu, Roman Urdu, English, and physics/math terms. Return ONLY the transcript text.'
+        : 'Transcribe this student voice clip cleanly in English (or Roman Urdu if spoken). Preserve math and physics terms. Return ONLY the transcript text.';
+
+    const audioModels = ['gemini-3.5-transcribe', 'gemini-3.1-flash-lite'];
+    for (const audioModel of audioModels) {
+      try {
+        const res = await fetchWithTimeout(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            audioModel
+          )}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKeyForAudio,
+              'User-Agent': 'aistudio-build',
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    { inlineData: { mimeType: rawMime, data: audioBase64 } },
+                    { text: transcribePrompt },
+                  ],
+                },
+              ],
+            }),
+          },
+          18_000
+        );
+        if (!res.ok) continue;
+        const data = await res.json();
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const transcript = parts
+          .filter((p) => p && typeof p.text === 'string')
+          .map((p) => p.text)
+          .join(' ')
+          .trim();
+        return jsonResponse({ transcript, model: audioModel });
+      } catch {
+        continue;
+      }
+    }
+    return jsonResponse({ error: 'Could not transcribe voice clip right now.' }, 502);
+  }
 
   // Validate POST payload synchronously BEFORE any Firestore reads
   let mentorId = 0;
@@ -964,6 +1218,9 @@ export async function handleAiMentorsRequest(request, env) {
   let validatedContents = null;
   let requestId = '';
   let wantStream = true;
+  let latestUserText = '';
+  let sceneCacheHash = '';
+  let cachedSceneEntry = null;
 
   if (request.method === 'POST') {
     const apiKeyCheck = resolveGeminiApiKey(env);
@@ -991,19 +1248,18 @@ export async function handleAiMentorsRequest(request, env) {
     }
     depthCfg = aiConfig.DEPTHS[depthId];
 
-    // Single shared depth execution plan used identically by all 6 AI mentors
-    executionPlan = resolveAiDepthExecution({
-      mentorId,
-      depthId,
-      env,
-      isModelInCooldown: (m) => isModelInCooldown(m),
-    });
-
     const validated = validateAndSanitizeContents(body?.contents);
     if (validated.error || !validated.contents) {
       return jsonResponse({ error: validated.error || 'Invalid conversation payload.' }, 400);
     }
     validatedContents = validated.contents;
+    latestUserText = getLatestUserTextFromContents(validatedContents);
+
+    // Parallel / synchronous cache lookup for Aisha physics scenes (<0.02ms)
+    if (mentorId === AISHA_MENTOR_ID && latestUserText) {
+      sceneCacheHash = hashPhysicsQuestion(latestUserText, depthId);
+      cachedSceneEntry = getCachedAishaScene(sceneCacheHash);
+    }
 
     requestId =
       typeof body?.requestId === 'string' && body.requestId.trim().length >= 8
@@ -1014,17 +1270,26 @@ export async function handleAiMentorsRequest(request, env) {
     wantStream = body?.stream !== false && (body?.stream === true || acceptHeader.includes('text/event-stream'));
   }
 
-  const { dateKey, resetAt } = getPktDateAndReset();
   let accessToken = null;
   let baseUrl = '';
   let usageDocPath = '';
   let planInfo;
   let creditsUsed = 0;
+  let aishaAnimatedUsed = 0;
 
   // 2. Superadmin Unlimited path: verified cryptographically from signed Firebase ID token.
   //    Still follows exact same DEPTH LAWS, simply skips credit deduction & Firestore overhead.
   if (authUser.isSuperAdmin) {
-    const fallbackCredits = getFallbackPlansCredits();
+    let superAdminPlanCredits = getFallbackPlansCredits();
+    if (sa && mentorId === AISHA_MENTOR_ID) {
+      const saTokenRes = await saTokenPromise;
+      if (typeof saTokenRes === 'string') {
+        superAdminPlanCredits = await fetchPlansCreditsConfig(
+          firestoreDocBaseUrl(projectId, databaseId),
+          saTokenRes
+        );
+      }
+    }
     planInfo = {
       plan: 'plus',
       isPro: true,
@@ -1034,8 +1299,8 @@ export async function handleAiMentorsRequest(request, env) {
       isUnlimited: true,
       deepMaxUnlocked: true,
       source: 'superadmin',
-      dailyLimit: fallbackCredits.plus,
-      planCredits: fallbackCredits,
+      dailyLimit: superAdminPlanCredits.plus,
+      planCredits: superAdminPlanCredits,
     };
   } else {
     if (!sa) {
@@ -1069,14 +1334,22 @@ export async function handleAiMentorsRequest(request, env) {
       const [resolvedPlan, existingUsage] = await Promise.all([
         resolveUserPlanFromFirestore(baseUrl, accessToken, authUser, request.method === 'GET'),
         usageHit
-          ? Promise.resolve({ creditsUsed: cachedUsage.creditsUsed })
+          ? Promise.resolve({
+              creditsUsed: cachedUsage.creditsUsed,
+              aishaAnimatedCount: cachedUsage.aishaAnimatedCount || 0,
+            })
           : getFirestoreDoc(baseUrl, accessToken, usageDocPath).catch(() => null),
       ]);
       planInfo = resolvedPlan;
       creditsUsed = Math.max(0, Number(existingUsage?.creditsUsed || 0));
+      aishaAnimatedUsed = Math.max(
+        Number(existingUsage?.aishaAnimatedCount || 0),
+        aishaDailyAnimatedUsage.get(usageCacheKey) || 0
+      );
       if (!usageHit) {
         dailyUsageCache.set(usageCacheKey, {
           creditsUsed,
+          aishaAnimatedCount: aishaAnimatedUsed,
           expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS,
         });
       }
@@ -1116,7 +1389,7 @@ export async function handleAiMentorsRequest(request, env) {
     });
   }
 
-  // 3. Enforce plan depth gate & exact credit cost
+  // 3. Enforce plan depth gate & determine Aisha visual mode + exact credit cost
   if (!depthCfg.freeAllowed && !planInfo.deepMaxUnlocked) {
     return jsonResponse(
       {
@@ -1130,7 +1403,44 @@ export async function handleAiMentorsRequest(request, env) {
     );
   }
 
-  const cost = computeServerMessageCost(depthId, validatedContents);
+  const isAisha = mentorId === AISHA_MENTOR_ID;
+  const adminAishaAnimationsOn = planInfo.planCredits?.aishaAnimationsEnabled !== false;
+  const aishaDailyLimit = planInfo.isUnlimited
+    ? 9999
+    : planInfo.isPaid
+      ? Number(aiConfig.AISHA_VISUAL_CONFIG?.dailyLimits?.paid ?? 50)
+      : Number(aiConfig.AISHA_VISUAL_CONFIG?.dailyLimits?.free ?? 5);
+  const aishaWithinDailyCap = aishaAnimatedUsed < aishaDailyLimit;
+  const useAishaVisualMode =
+    isAisha &&
+    adminAishaAnimationsOn &&
+    body?.visualEnabled !== false &&
+    aishaWithinDailyCap &&
+    isPhysicsVisualQuery(latestUserText);
+
+  // Single shared depth execution plan used identically by all 6 AI mentors
+  executionPlan = resolveAiDepthExecution({
+    mentorId,
+    depthId,
+    env,
+    isModelInCooldown: (m) => isModelInCooldown(m),
+    visualMode: useAishaVisualMode,
+    questionText: latestUserText,
+    avoidPreviousRefusal: isAisha ? aishaLastRefusalByUser.get(authUser.uid) || '' : '',
+  });
+
+  const isSceneCacheHit = Boolean(useAishaVisualMode && cachedSceneEntry);
+  const cost = computeServerMessageCost(depthId, validatedContents, {
+    mentorId,
+    visualMode: useAishaVisualMode,
+    cacheHit: isSceneCacheHit,
+  });
+  const textFallbackCost = computeServerMessageCost(depthId, validatedContents, {
+    mentorId,
+    visualMode: false,
+    cacheHit: false,
+  });
+
   if (!planInfo.isUnlimited && creditsLeft < cost) {
     const pc = planInfo.planCredits || getFallbackPlansCredits();
     const zeroMsg =
@@ -1171,11 +1481,16 @@ export async function handleAiMentorsRequest(request, env) {
     else inFlightReservedCredits.set(reserveKey, next);
   };
 
-  // Idempotent atomic credit deduction — executes ONCE on first visible token (never blocks TTFT, never double-charges)
+  // Idempotent atomic credit deduction — supports delayed visual-mode deduction (charge ONLY after scene validates)
   let deductionPromise = null;
   let deductedFinalUsed = creditsUsed;
-  const triggerAtomicDeductionOnce = () => {
-    if (planInfo.isUnlimited) {
+  const triggerAtomicDeductionOnce = (overrideDelta = cost, aishaAnimatedDelta = 0) => {
+    if (aishaAnimatedDelta > 0) {
+      const nextCount = (aishaDailyAnimatedUsage.get(reserveKey) || aishaAnimatedUsed) + aishaAnimatedDelta;
+      aishaDailyAnimatedUsage.set(reserveKey, nextCount);
+    }
+    if (planInfo.isUnlimited || overrideDelta <= 0) {
+      releaseReservation();
       return Promise.resolve(creditsUsed);
     }
     if (deductionPromise) return deductionPromise;
@@ -1188,7 +1503,7 @@ export async function handleAiMentorsRequest(request, env) {
       return deductionPromise;
     }
 
-    const predictedUsed = creditsUsed + cost;
+    const predictedUsed = creditsUsed + overrideDelta;
     deductedFinalUsed = predictedUsed;
     deductedRequestCache.set(requestId, { ts: Date.now(), creditsUsed: predictedUsed });
 
@@ -1197,7 +1512,8 @@ export async function handleAiMentorsRequest(request, env) {
       databaseId,
       accessToken,
       docPath: usageDocPath,
-      delta: cost,
+      delta: overrideDelta,
+      aishaAnimatedDelta,
       dailyLimit: planInfo.dailyLimit,
       dateKey,
       requestId,
@@ -1208,6 +1524,7 @@ export async function handleAiMentorsRequest(request, env) {
           deductedRequestCache.set(requestId, { ts: Date.now(), creditsUsed: serverUsed });
           dailyUsageCache.set(reserveKey, {
             creditsUsed: serverUsed,
+            aishaAnimatedCount: aishaDailyAnimatedUsage.get(reserveKey) || aishaAnimatedUsed,
             expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS,
           });
         }
@@ -1224,6 +1541,96 @@ export async function handleAiMentorsRequest(request, env) {
     return deductionPromise;
   };
 
+  // ── 3B. Aisha Visual Physics Scene Cache Hit Fast Path (1 credit, instant!) ──
+  if (isSceneCacheHit && cachedSceneEntry) {
+    const cachedText = cachedSceneEntry.sceneJson;
+    const finalUsed = await triggerAtomicDeductionOnce(cost, 1);
+    const finalCreditsLeft = planInfo.isUnlimited
+      ? planInfo.dailyLimit
+      : Math.max(0, planInfo.dailyLimit - finalUsed);
+    const tEnd = Date.now();
+    const timings = {
+      ttfbMs: tEnd - tStart,
+      ttftMs: tEnd - tStart,
+      totalMs: tEnd - tStart,
+      authDbMs: tEnd - tStart,
+    };
+
+    recordAishaVisualTelemetry({
+      dateKey,
+      depthKey: executionPlan.depthKey,
+      tokens: 0,
+      costUsd: 0,
+      cacheHit: true,
+    });
+
+    if (!wantStream) {
+      return jsonResponse({
+        text: cachedText,
+        creditsLeft: finalCreditsLeft,
+        creditsUsed: finalUsed,
+        dailyLimit: planInfo.dailyLimit,
+        isUnlimited: planInfo.isUnlimited,
+        cost: planInfo.isUnlimited ? 0 : cost,
+        depth: depthId,
+        model: 'aisha-scene-cache',
+        isVisualScene: true,
+        cacheHit: true,
+        tokensUsed: 0,
+        estimatedCostUsd: 0,
+        resetAt,
+        dateKey,
+        timings,
+      });
+    }
+
+    const enc = new TextEncoder();
+    const cachedStream = new ReadableStream({
+      start(controller) {
+        const push = (ev, data) =>
+          controller.enqueue(enc.encode(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`));
+        push('meta', {
+          model: 'aisha-scene-cache',
+          depth: depthId,
+          depthKey: executionPlan.depthKey,
+          visualMode: true,
+          cacheHit: true,
+          cost: planInfo.isUnlimited ? 0 : cost,
+          ttfbMs: timings.ttfbMs,
+        });
+        push('delta', { text: cachedText });
+        push('done', {
+          text: cachedText,
+          creditsLeft: finalCreditsLeft,
+          creditsUsed: finalUsed,
+          dailyLimit: planInfo.dailyLimit,
+          isUnlimited: planInfo.isUnlimited,
+          cost: planInfo.isUnlimited ? 0 : cost,
+          depth: depthId,
+          depthKey: executionPlan.depthKey,
+          model: 'aisha-scene-cache',
+          isVisualScene: true,
+          cacheHit: true,
+          tokensUsed: 0,
+          estimatedCostUsd: 0,
+          resetAt,
+          dateKey,
+          timings,
+        });
+        controller.close();
+      },
+    });
+    return new Response(cachedStream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+        ...CORS_HEADERS,
+      },
+    });
+  }
+
   // 4. Invoke Gemini with streaming (:streamGenerateContent?alt=sse) + automatic failover
   const apiKey = resolveGeminiApiKey(env);
   const modelCandidates = executionPlan.modelCandidates;
@@ -1233,7 +1640,7 @@ export async function handleAiMentorsRequest(request, env) {
   console.log(
     `[AI Mentor Server] request start requestId=${requestId} uid=${authUser.uid} plan=${planInfo.plan} ` +
       `mentor=${mentorId}(${executionPlan.mentorSlug}) depth=${executionPlan.depthKey} thinking=${executionPlan.thinkingLevel} ` +
-      `stream=${wantStream} turns=${geminiContents.length}/${validatedContents.length} ` +
+      `visual=${useAishaVisualMode} stream=${wantStream} turns=${geminiContents.length}/${validatedContents.length} ` +
       `candidates=${modelCandidates.join(',')}`
   );
 
@@ -1247,6 +1654,7 @@ export async function handleAiMentorsRequest(request, env) {
       {
         maxOutputTokens: executionPlan.maxOutputTokens,
         thinkingLevel: executionPlan.rawThinkingLevel,
+        responseMimeType: executionPlan.responseMimeType,
       },
       includeThinkingConfig
     );
@@ -1270,6 +1678,54 @@ export async function handleAiMentorsRequest(request, env) {
       },
       timeoutMs
     );
+  };
+
+  // Single-shot helper used ONLY for Aisha visual schema repair retry (max 1 retry) or warm text fallback
+  const invokeGeminiSingleShot = async ({
+    modelName,
+    systemText,
+    contentsPayload,
+    maxTokens,
+    responseMimeType = null,
+    timeoutMs = 14_000,
+  }) => {
+    const res = await fetchWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+        modelName
+      )}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+          'User-Agent': 'aistudio-build',
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemText }] },
+          contents: contentsPayload,
+          generationConfig: buildModelGenerationConfig(
+            modelName,
+            { maxOutputTokens: maxTokens, thinkingLevel: 'NONE', responseMimeType },
+            false
+          ),
+        }),
+      },
+      timeoutMs
+    );
+    if (!res.ok) return { text: '', inputTokens: 0, outputTokens: 0 };
+    const data = await res.json().catch(() => ({}));
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const text = parts
+      .filter((p) => p && p.thought !== true && typeof p.text === 'string')
+      .map((p) => p.text)
+      .join('')
+      .trim();
+    const meta = data?.usageMetadata || {};
+    return {
+      text,
+      inputTokens: Number(meta.promptTokenCount || 0),
+      outputTokens: Number(meta.candidatesTokenCount || 0),
+    };
   };
 
   const tGeminiStart = Date.now();
@@ -1477,14 +1933,15 @@ export async function handleAiMentorsRequest(request, env) {
           }
           const candidate = parsed?.candidates?.[0];
           const parts = candidate?.content?.parts || [];
+          const usageMeta = parsed?.usageMetadata || null;
           let chunkText = '';
           for (const p of parts) {
             if (p && p.thought !== true && typeof p.text === 'string' && p.text.length > 0) {
               chunkText += p.text;
             }
           }
-          if (chunkText) {
-            yield { text: chunkText, finishReason: candidate?.finishReason };
+          if (chunkText || usageMeta) {
+            yield { text: chunkText, finishReason: candidate?.finishReason, usageMeta };
           }
         }
       }
@@ -1498,7 +1955,9 @@ export async function handleAiMentorsRequest(request, env) {
               .filter((p) => p && p.thought !== true && typeof p.text === 'string')
               .map((p) => p.text)
               .join('');
-            if (chunkText) yield { text: chunkText };
+            if (chunkText || parsed?.usageMetadata) {
+              yield { text: chunkText, usageMeta: parsed?.usageMetadata || null };
+            }
           } catch {
             // ignore trailing partial
           }
@@ -1520,15 +1979,128 @@ export async function handleAiMentorsRequest(request, env) {
     }
   }
 
+  // Validates Aisha's visual scene JSON; retries ONCE on invalid schema; falls back to text & refunds visual credits if still invalid
+  const finalizeAishaVisualResponse = async (rawText, inputTokens, outputTokens) => {
+    let totalIn = inputTokens;
+    let totalOut = outputTokens;
+    let check = validatePhysicsScene(rawText, executionPlan.maxSteps);
+
+    if (!check.valid) {
+      console.warn(
+        `[Aisha Visual] Schema invalid on first pass (${check.error}); retrying ONCE requestId=${requestId}`
+      );
+      const retryModel = executionPlan.modelCandidates[0] || usedModel;
+      const retryRes = await invokeGeminiSingleShot({
+        modelName: retryModel,
+        systemText: systemInstructionText,
+        contentsPayload: [
+          ...geminiContents,
+          {
+            role: 'user',
+            parts: [
+              {
+                text: `Return ONLY valid raw JSON matching {"title":"...","steps":[{"narration":"...","equation":"...","shapes":[...]}]} with at most ${executionPlan.maxSteps} steps and valid shapes inside 0..400 x 0..240.`,
+              },
+            ],
+          },
+        ],
+        maxTokens: executionPlan.maxOutputTokens,
+        responseMimeType: 'application/json',
+      });
+      totalIn += retryRes.inputTokens;
+      totalOut += retryRes.outputTokens;
+      check = validatePhysicsScene(retryRes.text, executionPlan.maxSteps);
+    }
+
+    const totalTokens =
+      totalIn + totalOut || Math.ceil((rawText.length + latestUserText.length) / 4);
+    const estCostUsd = estimateGeminiCostUsd(usedModel, totalIn || Math.round(totalTokens * 0.35), totalOut || Math.round(totalTokens * 0.65));
+
+    if (check.valid && check.scene) {
+      const cleanJson = JSON.stringify(check.scene);
+      if (sceneCacheHash) {
+        setCachedAishaScene(sceneCacheHash, check.scene, executionPlan.depthKey);
+      }
+      recordAishaVisualTelemetry({
+        dateKey,
+        depthKey: executionPlan.depthKey,
+        tokens: totalTokens,
+        costUsd: estCostUsd,
+        cacheHit: false,
+      });
+      return {
+        isVisualScene: true,
+        text: cleanJson,
+        replaced: cleanJson !== rawText.trim(),
+        chargeDelta: cost,
+        aishaAnimatedDelta: 1,
+        tokensUsed: totalTokens,
+        estimatedCostUsd: estCostUsd,
+      };
+    }
+
+    // Both attempts failed schema validation -> DO NOT charge visual credits; fall back cleanly to warm text answer
+    console.warn(
+      `[Aisha Visual] Retry failed (${check.error}); refunding visual credits and falling back to text requestId=${requestId}`
+    );
+    const textPlan = resolveAiDepthExecution({
+      mentorId: AISHA_MENTOR_ID,
+      depthId,
+      env,
+      isModelInCooldown: (m) => isModelInCooldown(m),
+      visualMode: false,
+      questionText: latestUserText,
+    });
+    const fallbackRes = await invokeGeminiSingleShot({
+      modelName: textPlan.modelCandidates[0] || usedModel,
+      systemText: textPlan.systemInstruction,
+      contentsPayload: geminiContents,
+      maxTokens: Math.min(1200, textPlan.maxOutputTokens),
+      responseMimeType: null,
+    });
+    const fallbackText =
+      fallbackRes.text ||
+      'I had trouble sketching that diagram right now, so let me walk you through it in words — could you share which part you want me to break down first?';
+    const fbTokens = totalTokens + fallbackRes.inputTokens + fallbackRes.outputTokens;
+    const fbCostUsd = Number(
+      (
+        estCostUsd +
+        estimateGeminiCostUsd(usedModel, fallbackRes.inputTokens, fallbackRes.outputTokens)
+      ).toFixed(6)
+    );
+    recordAishaVisualTelemetry({
+      dateKey,
+      depthKey: executionPlan.depthKey,
+      tokens: fbTokens,
+      costUsd: fbCostUsd,
+      cacheHit: false,
+      textFallback: true,
+    });
+    return {
+      isVisualScene: false,
+      text: fallbackText,
+      replaced: true,
+      chargeDelta: fallbackRes.text ? textFallbackCost : 0,
+      aishaAnimatedDelta: 0,
+      tokensUsed: fbTokens,
+      estimatedCostUsd: fbCostUsd,
+    };
+  };
+
   // 5A. Non-streaming JSON mode (backwards-compatible when stream: false)
   if (!wantStream || !geminiRes.body) {
     let fullText = '';
     let tFirstToken = null;
+    let lastUsageMeta = null;
     try {
       for await (const item of readGeminiSseDeltas(geminiRes.body)) {
+        if (item.usageMeta) lastUsageMeta = item.usageMeta;
+        if (!item.text) continue;
         if (tFirstToken === null) {
           tFirstToken = Date.now();
-          void triggerAtomicDeductionOnce();
+          if (!useAishaVisualMode) {
+            void triggerAtomicDeductionOnce();
+          }
         }
         fullText += item.text;
       }
@@ -1546,7 +2118,27 @@ export async function handleAiMentorsRequest(request, env) {
       );
     }
 
-    const answerText = fullText.trim();
+    let answerText = fullText.trim();
+    let finalIsVisualScene = false;
+    let finalChargeDelta = cost;
+    let finalAishaAnimatedDelta = 0;
+    let tokensUsed;
+    let estimatedCostUsd;
+
+    if (useAishaVisualMode) {
+      const finalized = await finalizeAishaVisualResponse(
+        answerText,
+        Number(lastUsageMeta?.promptTokenCount || 0),
+        Number(lastUsageMeta?.candidatesTokenCount || 0)
+      );
+      answerText = finalized.text;
+      finalIsVisualScene = finalized.isVisualScene;
+      finalChargeDelta = finalized.chargeDelta;
+      finalAishaAnimatedDelta = finalized.aishaAnimatedDelta;
+      tokensUsed = finalized.tokensUsed;
+      estimatedCostUsd = finalized.estimatedCostUsd;
+    }
+
     if (!answerText) {
       releaseReservation();
       console.warn(
@@ -1561,7 +2153,13 @@ export async function handleAiMentorsRequest(request, env) {
       );
     }
 
-    const finalUsed = await triggerAtomicDeductionOnce();
+    if (isAisha && !finalIsVisualScene && looksLikeRefusalText(answerText)) {
+      aishaLastRefusalByUser.set(authUser.uid, answerText.slice(0, 140));
+    } else if (isAisha) {
+      aishaLastRefusalByUser.delete(authUser.uid);
+    }
+
+    const finalUsed = await triggerAtomicDeductionOnce(finalChargeDelta, finalAishaAnimatedDelta);
     releaseReservation();
     const finalCreditsLeft = planInfo.isUnlimited
       ? planInfo.dailyLimit
@@ -1576,8 +2174,8 @@ export async function handleAiMentorsRequest(request, env) {
     };
     console.log(
       `[AI Mentor Server] done (json) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} words=${countWords(answerText)} cost=${
-        planInfo.isUnlimited ? 0 : cost
-      } ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
+        planInfo.isUnlimited ? 0 : finalChargeDelta
+      } visual=${finalIsVisualScene} ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
     );
 
     return jsonResponse({
@@ -1586,9 +2184,13 @@ export async function handleAiMentorsRequest(request, env) {
       creditsUsed: finalUsed,
       dailyLimit: planInfo.dailyLimit,
       isUnlimited: planInfo.isUnlimited,
-      cost: planInfo.isUnlimited ? 0 : cost,
+      cost: planInfo.isUnlimited ? 0 : finalChargeDelta,
       depth: depthId,
       model: usedModel,
+      isVisualScene: finalIsVisualScene,
+      cacheHit: false,
+      ...(typeof tokensUsed === 'number' ? { tokensUsed } : {}),
+      ...(typeof estimatedCostUsd === 'number' ? { estimatedCostUsd } : {}),
       resetAt,
       dateKey,
       timings,
@@ -1622,28 +2224,59 @@ export async function handleAiMentorsRequest(request, env) {
 
       let fullText = '';
       let tFirstToken = null;
+      let lastUsageMeta = null;
       try {
         sendEvent('meta', {
           model: usedModel,
           depth: depthId,
           depthKey: depthCfg.key,
+          visualMode: useAishaVisualMode,
+          cacheHit: false,
           ttfbMs: tTtfb - tStart,
         });
 
         for await (const item of readGeminiSseDeltas(geminiRes.body)) {
+          if (item.usageMeta) lastUsageMeta = item.usageMeta;
+          if (!item.text) continue;
           if (tFirstToken === null) {
             tFirstToken = Date.now();
             console.log(
-              `[AI Mentor Server] first-token requestId=${requestId} model=${usedModel} ttft=${tFirstToken - tStart}ms`
+              `[AI Mentor Server] first-token requestId=${requestId} model=${usedModel} visual=${useAishaVisualMode} ttft=${tFirstToken - tStart}ms`
             );
-            // Fire atomic Firestore credit increment in parallel with streaming — 0ms added to TTFT!
-            void triggerAtomicDeductionOnce();
+            // For non-visual mentors/text replies: fire atomic Firestore increment in parallel (0ms added to TTFT).
+            // For Aisha visual mode: defer charge until full scene JSON validates (so invalid scenes NEVER charge).
+            if (!useAishaVisualMode) {
+              void triggerAtomicDeductionOnce();
+            }
           }
           fullText += item.text;
           sendEvent('delta', { text: item.text });
         }
 
-        const answerText = fullText.trim();
+        let answerText = fullText.trim();
+        let finalIsVisualScene = false;
+        let finalChargeDelta = cost;
+        let finalAishaAnimatedDelta = 0;
+        let tokensUsed;
+        let estimatedCostUsd;
+
+        if (useAishaVisualMode) {
+          const finalized = await finalizeAishaVisualResponse(
+            answerText,
+            Number(lastUsageMeta?.promptTokenCount || 0),
+            Number(lastUsageMeta?.candidatesTokenCount || 0)
+          );
+          answerText = finalized.text;
+          finalIsVisualScene = finalized.isVisualScene;
+          finalChargeDelta = finalized.chargeDelta;
+          finalAishaAnimatedDelta = finalized.aishaAnimatedDelta;
+          tokensUsed = finalized.tokensUsed;
+          estimatedCostUsd = finalized.estimatedCostUsd;
+          if (finalized.replaced && answerText) {
+            sendEvent('replace', { text: answerText, isVisualScene: finalIsVisualScene });
+          }
+        }
+
         if (!answerText) {
           console.warn(
             `[AI Mentor Server] empty answer (sse) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} elapsed=${Date.now() - tStart}ms`
@@ -1655,7 +2288,13 @@ export async function handleAiMentorsRequest(request, env) {
           return;
         }
 
-        const finalUsed = await triggerAtomicDeductionOnce();
+        if (isAisha && !finalIsVisualScene && looksLikeRefusalText(answerText)) {
+          aishaLastRefusalByUser.set(authUser.uid, answerText.slice(0, 140));
+        } else if (isAisha) {
+          aishaLastRefusalByUser.delete(authUser.uid);
+        }
+
+        const finalUsed = await triggerAtomicDeductionOnce(finalChargeDelta, finalAishaAnimatedDelta);
         const finalCreditsLeft = planInfo.isUnlimited
           ? planInfo.dailyLimit
           : Math.max(0, planInfo.dailyLimit - finalUsed);
@@ -1671,8 +2310,8 @@ export async function handleAiMentorsRequest(request, env) {
 
         console.log(
           `[AI Mentor Server] done (sse) requestId=${requestId} model=${usedModel} depth=${depthCfg.key} words=${words} cost=${
-            planInfo.isUnlimited ? 0 : cost
-          } ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
+            planInfo.isUnlimited ? 0 : finalChargeDelta
+          } visual=${finalIsVisualScene} ttfb=${timings.ttfbMs}ms ttft=${timings.ttftMs}ms total=${timings.totalMs}ms`
         );
 
         sendEvent('done', {
@@ -1681,11 +2320,15 @@ export async function handleAiMentorsRequest(request, env) {
           creditsUsed: finalUsed,
           dailyLimit: planInfo.dailyLimit,
           isUnlimited: planInfo.isUnlimited,
-          cost: planInfo.isUnlimited ? 0 : cost,
+          cost: planInfo.isUnlimited ? 0 : finalChargeDelta,
           depth: depthId,
           depthKey: depthCfg.key,
           model: usedModel,
           wordCount: words,
+          isVisualScene: finalIsVisualScene,
+          cacheHit: false,
+          ...(typeof tokensUsed === 'number' ? { tokensUsed } : {}),
+          ...(typeof estimatedCostUsd === 'number' ? { estimatedCostUsd } : {}),
           resetAt,
           dateKey,
           timings,

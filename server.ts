@@ -14261,6 +14261,12 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       res.status(404).type("text/plain").send("Asset chunk not found (hash updated)");
     });
 
+    // Serve standalone 30s vertical video ad page at /ad without SPA fallback
+    app.get(["/ad", "/ad/"], (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
+      return res.sendFile(path.join(distPath, "ad.html"));
+    });
+
     // SPA fallback: Always serve index.html with route-specific OpenGraph & canonical tags injected
     app.get("*", (req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");

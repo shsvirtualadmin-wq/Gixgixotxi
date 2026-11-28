@@ -44,6 +44,7 @@ import { AiUpgradeSheet } from './AiUpgradeSheet';
 import { AiDepthThinkingIndicator } from './AiDepthMotion';
 import { AiErrorBoundary } from './AiErrorBoundary';
 import { MentorAvatar } from './MentorAvatar';
+import { isAishaVisualPhysicsFlagEnabled } from '@/utils/aiFeatureFlags';
 
 interface MentorThreadState {
   chatId: string;
@@ -133,6 +134,9 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
 
   const currentThread = threadsByMentor[mentorId] || makeInitialThread(mentorId);
   const mentor = getMentorConfig(mentorId);
+  const aishaVisualEnabled = isAishaVisualPhysicsFlagEnabled(
+    plansConfig.aishaAnimationsEnabled
+  );
 
   const cancelInFlightRequest = useCallback(() => {
     if (safetyTimerRef.current !== null) {
@@ -408,6 +412,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         contents: apiContents,
         signal: controller.signal,
         stream: true,
+        visualEnabled: aishaVisualEnabled,
         onDelta: (_delta, fullText) => {
           if (activeSessionTokenRef.current !== requestToken) return;
 
@@ -453,6 +458,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         role: 'model',
         text: result.text,
         isStreaming: false,
+        isVisualScene: Boolean(result.isVisualScene),
+        sceneCacheHit: Boolean(result.cacheHit),
         createdAt: Date.now(),
       };
 
@@ -822,9 +829,12 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                       <AiMessageRenderer
                         text={msg.text}
                         accentColor={mentor.accent}
+                        mentorId={mentorId}
+                        aishaVisualEnabled={aishaVisualEnabled}
                         isGreeting={msg.isGreeting}
                         isError={msg.isError}
                         isStreaming={msg.isStreaming}
+                        sceneCacheHit={msg.sceneCacheHit}
                         onRegenerate={
                           !msg.isGreeting && !msg.isError && !msg.isStreaming
                             ? () => handleRegenerate(idx)
@@ -868,6 +878,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             resetCountdown={resetCountdown}
             proDailyLimit={plansConfig.pro.aiCreditsPerDay}
             plusDailyLimit={plansConfig.plus.aiCreditsPerDay}
+            aishaVisualEnabled={aishaVisualEnabled}
             onSend={(text, atts) => void sendPayload(text, atts)}
             onOpenMentorPicker={() => setMentorPickerOpen(true)}
             onOpenDepthGauge={() => setDepthGaugeOpen(true)}
@@ -951,6 +962,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         <AiDepthGaugeModal
           open={depthGaugeOpen}
           selectedDepth={depthId}
+          mentorId={mentorId}
+          aishaVisualEnabled={aishaVisualEnabled}
           deepMaxUnlocked={credits.deepMaxUnlocked}
           accentColor={mentor.accent}
           onSelectDepth={(d) => setDepthId(d)}

@@ -51,6 +51,8 @@ export interface StoredAiMessage {
   isGreeting?: boolean;
   isError?: boolean;
   isStreaming?: boolean;
+  isVisualScene?: boolean;
+  sceneCacheHit?: boolean;
   attachmentLabels?: string[];
   retryPayload?: {
     text: string;
@@ -244,6 +246,10 @@ export interface SendAiMessageResult {
   cost: number;
   resetAt: string;
   dateKey: string;
+  isVisualScene?: boolean;
+  cacheHit?: boolean;
+  tokensUsed?: number;
+  estimatedCostUsd?: number;
   timings?: AiMessageTimings;
 }
 
@@ -305,8 +311,15 @@ export async function sendAiMentorMessage(params: {
   signal?: AbortSignal;
   requestId?: string;
   stream?: boolean;
+  visualEnabled?: boolean;
   onDelta?: (delta: string, fullText: string) => void;
-  onMeta?: (meta: { model?: string; depth?: number; cost?: number }) => void;
+  onMeta?: (meta: {
+    model?: string;
+    depth?: number;
+    cost?: number;
+    visualMode?: boolean;
+    cacheHit?: boolean;
+  }) => void;
 }): Promise<SendAiMessageResult> {
   const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const token = await getIdTokenWithTimeout(10_000);
@@ -374,6 +387,9 @@ export async function sendAiMentorMessage(params: {
         contents: params.contents,
         stream: wantStream,
         requestId,
+        ...(typeof params.visualEnabled === 'boolean'
+          ? { visualEnabled: params.visualEnabled }
+          : {}),
       }),
       signal: controller.signal,
     });
@@ -443,13 +459,21 @@ export async function sendAiMentorMessage(params: {
           metaModel = typeof parsed.model === 'string' ? parsed.model : metaModel;
           if (typeof parsed.depth === 'number') metaDepth = parsed.depth;
           console.info(
-            `[AI Mentor Client] meta requestId=${requestId} model=${metaModel || 'unknown'} depth=${metaDepth}`
+            `[AI Mentor Client] meta requestId=${requestId} model=${metaModel || 'unknown'} depth=${metaDepth} visual=${Boolean(parsed.visualMode)} cacheHit=${Boolean(parsed.cacheHit)}`
           );
           params.onMeta?.({
             model: metaModel,
             depth: metaDepth,
             cost: typeof parsed.cost === 'number' ? parsed.cost : undefined,
+            visualMode: typeof parsed.visualMode === 'boolean' ? parsed.visualMode : undefined,
+            cacheHit: typeof parsed.cacheHit === 'boolean' ? parsed.cacheHit : undefined,
           });
+        } else if (eventName === 'replace') {
+          const replacementText = typeof parsed.text === 'string' ? parsed.text : '';
+          if (replacementText) {
+            fullText = replacementText;
+            params.onDelta?.(replacementText, fullText);
+          }
         } else if (eventName === 'delta') {
           const delta = typeof parsed.text === 'string' ? parsed.text : '';
           if (delta) {
@@ -515,7 +539,11 @@ export async function sendAiMentorMessage(params: {
         }
       }
 
-      const finalText = (fullText || String(donePayload?.text || '')).trim();
+      const finalText = (
+        typeof donePayload?.text === 'string' && donePayload.text.trim()
+          ? donePayload.text
+          : fullText
+      ).trim();
       if (!finalText) {
         console.error(`[AI Mentor Client] empty SSE answer requestId=${requestId}`);
         throw new AiMentorApiError(
@@ -533,7 +561,7 @@ export async function sendAiMentorMessage(params: {
 
       console.info(
         `[AI Mentor Client] done requestId=${requestId} mentor=${params.mentor} depth=${metaDepth} model=${metaModel || 'unknown'} ` +
-          `TTFB=${ttfbMs}ms TTFT=${resolvedTtft}ms Total=${totalMs}ms words=${wordCount} cost=${cost}`
+          `TTFB=${ttfbMs}ms TTFT=${resolvedTtft}ms Total=${totalMs}ms words=${wordCount} cost=${cost} visual=${Boolean(donePayload?.isVisualScene)} cacheHit=${Boolean(donePayload?.cacheHit)}`
       );
 
       return {
@@ -545,6 +573,13 @@ export async function sendAiMentorMessage(params: {
         cost,
         resetAt: String(donePayload?.resetAt || getPktResetInfo().resetAtIso),
         dateKey: String(donePayload?.dateKey || getPktDateKey()),
+        isVisualScene: Boolean(donePayload?.isVisualScene),
+        cacheHit: Boolean(donePayload?.cacheHit),
+        tokensUsed: typeof donePayload?.tokensUsed === 'number' ? donePayload.tokensUsed : undefined,
+        estimatedCostUsd:
+          typeof donePayload?.estimatedCostUsd === 'number'
+            ? donePayload.estimatedCostUsd
+            : undefined,
         timings: {
           ttfbMs,
           ttftMs: resolvedTtft,
@@ -589,6 +624,11 @@ export async function sendAiMentorMessage(params: {
       cost,
       resetAt: String(data.resetAt || getPktResetInfo().resetAtIso),
       dateKey: String(data.dateKey || getPktDateKey()),
+      isVisualScene: Boolean(data.isVisualScene),
+      cacheHit: Boolean(data.cacheHit),
+      tokensUsed: typeof data.tokensUsed === 'number' ? data.tokensUsed : undefined,
+      estimatedCostUsd:
+        typeof data.estimatedCostUsd === 'number' ? data.estimatedCostUsd : undefined,
       timings: {
         ttfbMs,
         ttftMs: totalMs,
@@ -638,6 +678,89 @@ export async function sendAiMentorMessage(params: {
     if (params.signal) {
       params.signal.removeEventListener('abort', onExternalAbort);
     }
+  }
+}
+
+// ─── Voice Audio Fallback Transcription (MediaRecorder -> /api/ai) ────────────
+
+export async function transcribeVoiceAudio(params: {
+  audioBase64: string;
+  mimeType: string;
+  lang: string;
+}): Promise<string> {
+  const token = await getIdTokenWithTimeout(10_000);
+  if (!token) {
+    throw new AiMentorApiError('Please sign in to use voice input.', 401);
+  }
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  try {
+    const res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action: 'transcribe',
+        audioBase64: params.audioBase64,
+        mimeType: params.mimeType,
+        lang: params.lang,
+      }),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new AiMentorApiError(
+        data?.error || `Voice transcription failed (HTTP ${res.status}).`,
+        res.status,
+        { code: data?.code }
+      );
+    }
+    return String(data?.transcript || '').trim();
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+// ─── Admin Aisha Visual Telemetry Summary (GET /api/ai?adminStats=1) ─────────
+
+export interface AishaAdminStats {
+  dateKey: string;
+  aishaAnimationsEnabled: boolean;
+  totalVisualAnswers: number;
+  cacheHits: number;
+  textFallbacks: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+  byDepth: Record<'quick' | 'balanced' | 'deep' | 'max', number>;
+  recentEntries?: Array<{
+    ts: string;
+    depth: string;
+    tokens: number;
+    costUsd: number;
+    cacheHit: boolean;
+  }>;
+}
+
+export async function fetchAishaAdminStats(): Promise<AishaAdminStats | null> {
+  const token = await getIdTokenWithTimeout(10_000);
+  if (!token) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch('/api/ai?adminStats=1', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data as AishaAdminStats;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 

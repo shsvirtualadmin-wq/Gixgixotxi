@@ -15,9 +15,11 @@ import {
   X,
 } from 'lucide-react';
 import {
+  AISHA_MENTOR_ID,
   calculateMessageCreditCost,
   getDepthConfig,
   getMentorConfig,
+  isPhysicsVisualQuery,
   type AiDepthId,
   type AiMentorId,
   type AiPlan,
@@ -25,8 +27,20 @@ import {
 import {
   prepareImageAttachment,
   preparePdfAttachment,
+  transcribeVoiceAudio,
   type PreparedAttachment,
 } from '@/services/aiMentorsService';
+import { isVoiceInputV2FlagEnabled } from '@/utils/aiFeatureFlags';
+import {
+  VOICE_ERROR_MESSAGES,
+  getVoiceCapabilities,
+  isInAppBrowser,
+  isSecureVoiceContext,
+  mapMicrophoneError,
+  resolveVoiceLanguage,
+  stopMediaStreamTracks,
+  type VoiceLangCode,
+} from '@/utils/voiceInput';
 
 interface AiComposerProps {
   mentorId: AiMentorId;
@@ -42,6 +56,7 @@ interface AiComposerProps {
   resetCountdown?: string;
   proDailyLimit?: number;
   plusDailyLimit?: number;
+  aishaVisualEnabled?: boolean;
   onSend: (text: string, attachments: PreparedAttachment[]) => void;
   onOpenMentorPicker: () => void;
   onOpenDepthGauge: () => void;
@@ -63,6 +78,7 @@ export const AiComposer: React.FC<AiComposerProps> = ({
   resetCountdown,
   proDailyLimit = 50,
   plusDailyLimit = 100,
+  aishaVisualEnabled = true,
   onSend,
   onOpenMentorPicker,
   onOpenDepthGauge,
@@ -74,19 +90,32 @@ export const AiComposer: React.FC<AiComposerProps> = ({
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [micNote, setMicNote] = useState<string | null>(null);
+  const [voiceLang, setVoiceLang] = useState<VoiceLangCode>(() => resolveVoiceLanguage());
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const micNoteTimerRef = useRef<number | null>(null);
 
   const mentor = getMentorConfig(mentorId);
   const depthCfg = getDepthConfig(depthId);
+  const voiceV2Enabled = isVoiceInputV2FlagEnabled();
+  const voiceCaps = getVoiceCapabilities();
 
   const photoCount = attachments.filter((a) => a.kind === 'photo').length;
   const pdfCount = attachments.filter((a) => a.kind === 'pdf').length;
+
+  const isAishaVisualEstimate =
+    mentorId === AISHA_MENTOR_ID &&
+    aishaVisualEnabled &&
+    (text.trim().length === 0 || isPhysicsVisualQuery(text));
 
   const costEstimate = calculateMessageCreditCost({
     depth: depthId,
@@ -94,6 +123,8 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     photoCount,
     pdfCount,
     historyMessageCount,
+    mentorId,
+    visualMode: isAishaVisualEstimate,
   });
 
   // Auto-grow textarea up to ~140px
@@ -106,13 +137,35 @@ export const AiComposer: React.FC<AiComposerProps> = ({
 
   useEffect(() => {
     return () => {
+      if (micNoteTimerRef.current !== null) {
+        window.clearTimeout(micNoteTimerRef.current);
+      }
       try {
         recognitionRef.current?.stop?.();
       } catch {
         // Ignore
       }
+      try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch {
+        // Ignore
+      }
+      stopMediaStreamTracks(mediaStreamRef.current);
+      mediaStreamRef.current = null;
     };
   }, []);
+
+  const showMicMessage = (msg: string, durationMs = 4500) => {
+    setMicNote(msg);
+    if (micNoteTimerRef.current !== null) {
+      window.clearTimeout(micNoteTimerRef.current);
+    }
+    micNoteTimerRef.current = window.setTimeout(() => {
+      setMicNote((prev) => (prev === msg ? null : prev));
+    }, durationMs);
+  };
 
   const showTempNote = (msg: string) => {
     setAttachError(msg);
@@ -187,53 +240,268 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     }
   };
 
-  const handleToggleMic = () => {
-    if (typeof window === 'undefined') return;
-    const SpeechRec =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
-      setMicNote('Voice input is not supported in this browser.');
-      window.setTimeout(() => setMicNote(null), 2800);
-      return;
-    }
-    if (listening) {
-      try {
-        recognitionRef.current?.stop?.();
-      } catch {
-        // Ignore
-      }
-      setListening(false);
-      return;
-    }
+  const stopActiveVoiceCapture = () => {
     try {
-      const rec = new SpeechRec();
-      rec.lang = 'en-US';
-      rec.interimResults = false;
-      rec.maxAlternatives = 1;
-      rec.onresult = (evt: any) => {
-        const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
-        if (transcript) {
-          setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      recognitionRef.current?.stop?.();
+    } catch {
+      // Ignore
+    }
+    recognitionRef.current = null;
+    try {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        return; // tracks stopped inside onstop after blob flush
+      }
+    } catch {
+      // Ignore
+    }
+    stopMediaStreamTracks(mediaStreamRef.current);
+    mediaStreamRef.current = null;
+    setListening(false);
+  };
+
+  const startMediaRecorderFallback = (stream: MediaStream, lang: VoiceLangCode) => {
+    try {
+      const preferredMimes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+      const chosenMime =
+        typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function'
+          ? preferredMimes.find((m) => MediaRecorder.isTypeSupported(m)) || ''
+          : '';
+      const recorder = chosenMime
+        ? new MediaRecorder(stream, { mimeType: chosenMime })
+        : new MediaRecorder(stream);
+
+      recordedChunksRef.current = [];
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+
+      recorder.ondataavailable = (evt) => {
+        if (evt.data && evt.data.size > 0) {
+          recordedChunksRef.current.push(evt.data);
         }
       };
-      rec.onend = () => setListening(false);
-      rec.onerror = () => {
+
+      recorder.onerror = (evt) => {
+        stopMediaStreamTracks(stream);
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
         setListening(false);
-        setMicNote('Could not capture voice. Check microphone permission.');
-        window.setTimeout(() => setMicNote(null), 2800);
+        const mapped = mapMicrophoneError((evt as any)?.error || evt);
+        showMicMessage(mapped.message);
       };
-      recognitionRef.current = rec;
+
+      recorder.onstop = () => {
+        stopMediaStreamTracks(stream);
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        setListening(false);
+
+        const chunks = recordedChunksRef.current;
+        recordedChunksRef.current = [];
+        if (chunks.length === 0) return;
+
+        const mimeType = recorder.mimeType || chosenMime || 'audio/webm';
+        const blob = new Blob(chunks, { type: mimeType });
+        if (blob.size < 256) return;
+
+        setTranscribing(true);
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const dataUrl = String(reader.result || '');
+            const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : '';
+            if (!base64) return;
+            const transcript = await transcribeVoiceAudio({
+              audioBase64: base64,
+              mimeType: mimeType.split(';')[0] || 'audio/webm',
+              lang,
+            });
+            if (transcript) {
+              setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+            } else {
+              showMicMessage(VOICE_ERROR_MESSAGES.noSpeech, 3200);
+            }
+          } catch (err) {
+            console.error('[Boardly Voice Input] server transcription failed:', err);
+            showMicMessage('Could not transcribe voice right now. Please try typing or tap mic again.');
+          } finally {
+            setTranscribing(false);
+          }
+        };
+        reader.onerror = () => {
+          setTranscribing(false);
+          showMicMessage(VOICE_ERROR_MESSAGES.generic);
+        };
+        reader.readAsDataURL(blob);
+      };
+
       setListening(true);
-      rec.start();
-    } catch {
+      setMicNote(null);
+      recorder.start();
+    } catch (err) {
+      stopMediaStreamTracks(stream);
+      mediaStreamRef.current = null;
       setListening(false);
-      setMicNote('Could not start voice input.');
-      window.setTimeout(() => setMicNote(null), 2800);
+      const mapped = mapMicrophoneError(err);
+      showMicMessage(mapped.message);
     }
+  };
+
+  const handleToggleMic = () => {
+    if (typeof window === 'undefined' || transcribing) return;
+
+    if (listening) {
+      stopActiveVoiceCapture();
+      return;
+    }
+
+    // Legacy path when voiceV2 feature flag is explicitly turned off
+    if (!voiceV2Enabled) {
+      const SpeechRec =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRec) {
+        showMicMessage(VOICE_ERROR_MESSAGES.unsupported, 3000);
+        return;
+      }
+      try {
+        const rec = new SpeechRec();
+        rec.lang = 'en-US';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.onresult = (evt: any) => {
+          const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
+          if (transcript) setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        };
+        rec.onend = () => setListening(false);
+        rec.onerror = (evt: any) => {
+          setListening(false);
+          const mapped = mapMicrophoneError(evt?.error || evt);
+          showMicMessage(mapped.message);
+        };
+        recognitionRef.current = rec;
+        setListening(true);
+        rec.start();
+      } catch (err) {
+        setListening(false);
+        showMicMessage(mapMicrophoneError(err).message);
+      }
+      return;
+    }
+
+    // Secure context (HTTPS / localhost) required by browsers for microphone capture
+    if (!isSecureVoiceContext()) {
+      showMicMessage(VOICE_ERROR_MESSAGES.insecureContext);
+      return;
+    }
+
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const hasMediaRecorder = typeof (window as any).MediaRecorder !== 'undefined';
+    const hasGetUserMedia = Boolean(navigator?.mediaDevices?.getUserMedia);
+
+    if (!SpeechRec && !hasMediaRecorder) {
+      if (isInAppBrowser()) {
+        showMicMessage(VOICE_ERROR_MESSAGES.inAppBrowser);
+      } else {
+        showMicMessage(VOICE_ERROR_MESSAGES.unsupported);
+      }
+      return;
+    }
+
+    if (!hasGetUserMedia) {
+      if (isInAppBrowser()) {
+        showMicMessage(VOICE_ERROR_MESSAGES.inAppBrowser);
+        return;
+      }
+      if (!SpeechRec) {
+        showMicMessage(VOICE_ERROR_MESSAGES.unsupported);
+        return;
+      }
+    }
+
+    const activeLang = resolveVoiceLanguage({
+      preferredLang: voiceLang,
+      draftText: text,
+    });
+
+    // CRITICAL (Requirement 2a): Call navigator.mediaDevices.getUserMedia({ audio: true })
+    // DIRECTLY synchronously inside the click handler (before any await or timer) so
+    // mobile Chrome & Safari preserve the user gesture and grant microphone permission.
+    const micPermissionPromise: Promise<MediaStream | null> = hasGetUserMedia
+      ? navigator.mediaDevices.getUserMedia({ audio: true })
+      : Promise.resolve(null);
+
+    micPermissionPromise
+      .then((stream) => {
+        // Fallback to MediaRecorder + server transcription when SpeechRecognition is unavailable
+        if (!SpeechRec) {
+          if (stream && hasMediaRecorder) {
+            startMediaRecorderFallback(stream, activeLang);
+          } else {
+            stopMediaStreamTracks(stream);
+            showMicMessage(
+              isInAppBrowser() ? VOICE_ERROR_MESSAGES.inAppBrowser : VOICE_ERROR_MESSAGES.unsupported
+            );
+          }
+          return;
+        }
+
+        // Stop getUserMedia probe tracks immediately before starting SpeechRecognition
+        // so Android/iOS Chrome doesn't report audio device busy (NotReadableError).
+        stopMediaStreamTracks(stream);
+
+        try {
+          const rec = new SpeechRec();
+          rec.lang = activeLang;
+          rec.interimResults = false;
+          rec.maxAlternatives = 1;
+          rec.continuous = false;
+
+          rec.onresult = (evt: any) => {
+            const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
+            if (transcript) {
+              setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+              setMicNote(null);
+            }
+          };
+          rec.onend = () => {
+            recognitionRef.current = null;
+            setListening(false);
+          };
+          rec.onerror = (evt: any) => {
+            recognitionRef.current = null;
+            setListening(false);
+            const errCode = String(evt?.error || '');
+            // Ignore deliberate user cancel
+            if (errCode === 'aborted') return;
+            const mapped = mapMicrophoneError(errCode || evt);
+            showMicMessage(mapped.message);
+          };
+          recognitionRef.current = rec;
+          setMicNote(null);
+          setListening(true);
+          rec.start();
+        } catch (err) {
+          recognitionRef.current = null;
+          setListening(false);
+          const mapped = mapMicrophoneError(err);
+          showMicMessage(mapped.message);
+        }
+      })
+      .catch((err) => {
+        setListening(false);
+        const mapped = mapMicrophoneError(err);
+        showMicMessage(mapped.message);
+      });
   };
 
   const isThinkHarderOn = depthId >= 2;
   const canSend = !sending && (text.trim().length > 0 || attachments.length > 0);
+  const showMicButton =
+    !voiceV2Enabled ||
+    voiceCaps.hasSpeechRecognition ||
+    voiceCaps.hasMediaRecorder ||
+    voiceCaps.isInApp;
 
   return (
     <div
@@ -246,6 +514,7 @@ export const AiComposer: React.FC<AiComposerProps> = ({
         {/* Inline attachment/mic feedback */}
         {(attachError || micNote) && (
           <div
+            role="status"
             className="rounded-2xl px-3.5 py-2 text-[12.5px] font-medium"
             style={{
               backgroundColor: 'var(--tag-danger-bg)',
@@ -458,21 +727,59 @@ export const AiComposer: React.FC<AiComposerProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={handleToggleMic}
-                aria-label={listening ? 'Stop voice input' : 'Voice input'}
-                title={listening ? 'Stop listening' : 'Voice input'}
-                className="flex h-9 w-9 items-center justify-center rounded-full transition-colors cursor-pointer hover:bg-[var(--surface-hover)]"
-                style={{
-                  backgroundColor: listening
-                    ? `color-mix(in srgb, ${mentor.accent} 16%, var(--bg))`
-                    : 'transparent',
-                  color: listening ? mentor.accent : 'var(--text-muted)',
-                }}
-              >
-                {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </button>
+              {showMicButton && voiceV2Enabled && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVoiceLang((prev) => (prev === 'ur-PK' ? 'en-PK' : 'ur-PK'))
+                  }
+                  disabled={listening || transcribing}
+                  aria-label={`Voice language ${voiceLang === 'ur-PK' ? 'Urdu' : 'English'}. Tap to switch.`}
+                  title={`Voice language: ${voiceLang === 'ur-PK' ? 'Urdu (ur-PK)' : 'English (en-PK)'}`}
+                  className="flex h-8 items-center justify-center rounded-full px-2 text-[11px] font-semibold transition-colors cursor-pointer hover:bg-[var(--surface-hover)] disabled:opacity-50"
+                  style={{
+                    backgroundColor: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {voiceLang === 'ur-PK' ? 'اردو' : 'EN'}
+                </button>
+              )}
+
+              {showMicButton && (
+                <button
+                  type="button"
+                  onClick={handleToggleMic}
+                  disabled={transcribing}
+                  aria-label={
+                    transcribing
+                      ? 'Transcribing voice input'
+                      : listening
+                        ? 'Stop voice input'
+                        : 'Voice input'
+                  }
+                  title={
+                    transcribing
+                      ? 'Transcribing...'
+                      : listening
+                        ? 'Stop listening'
+                        : 'Voice input'
+                  }
+                  className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors cursor-pointer hover:bg-[var(--surface-hover)] disabled:opacity-60 ${
+                    listening || transcribing ? 'animate-pulse' : ''
+                  }`}
+                  style={{
+                    backgroundColor:
+                      listening || transcribing
+                        ? `color-mix(in srgb, ${mentor.accent} 16%, var(--bg))`
+                        : 'transparent',
+                    color: listening || transcribing ? mentor.accent : 'var(--text-muted)',
+                  }}
+                >
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </button>
+              )}
 
               <button
                 type="button"

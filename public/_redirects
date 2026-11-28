@@ -1,6 +1,10 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
 /ads.txt /ads.txt 200
+/ad /ad.html 200
+/ad.html /ad.html 200
+/boardly-ad.mp4 /boardly-ad.mp4 200
+/boardly-ad-poster.jpg /boardly-ad-poster.jpg 200
 /assets/* /assets/:splat 404
 /api/* /api/:splat 200
 /about-kobans /kobans 301

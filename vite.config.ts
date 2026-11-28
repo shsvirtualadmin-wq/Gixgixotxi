@@ -445,7 +445,10 @@ function aiTutorPlugin() {
             if (Array.isArray(v)) headers.set(k, v.join(', '));
             else if (typeof v === 'string') headers.set(k, v);
           }
-          const webReq = new Request(`http://localhost:3000/api/ai`, {
+          const rawQuery = String(req.url || '').includes('?')
+            ? String(req.url).slice(String(req.url).indexOf('?'))
+            : '';
+          const webReq = new Request(`http://localhost:3000/api/ai${rawQuery}`, {
             method: req.method || 'GET',
             headers,
             body: bodyBuf && bodyBuf.length > 0 ? bodyBuf : undefined,
@@ -1763,6 +1766,21 @@ RULES:
         }
       });
 
+      server.middlewares.use((req: any, res: any, next: any) => {
+        const cleanUrl = String(req.url || '').split('?')[0];
+        if (cleanUrl === '/ad' || cleanUrl === '/ad/') {
+          const adHtmlPath = path.join(__dirname, 'public', 'ad.html');
+          if (fs.existsSync(adHtmlPath)) {
+            res.writeHead(200, {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-cache',
+            });
+            res.end(fs.readFileSync(adHtmlPath));
+            return;
+          }
+        }
+        next();
+      });
       server.middlewares.use('/assets', (req: any, res: any, next: any) => {
         const cleanRel = decodeURIComponent((req.url || '').split('?')[0]).replace(/^\/+/, '');
         const publicAssetPath = path.join(__dirname, 'public', 'assets', cleanRel);

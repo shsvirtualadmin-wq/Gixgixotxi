@@ -173,14 +173,71 @@
       "slug": "aisha",
       "aliases": ["aisha", "ayesha"],
       "name": "Aisha",
-      "role": "Board & Writing Coach",
+      "role": "Visual Physics Tutor",
       "accent": "#0ea5e9",
       "emoji": "⚫",
-      "tag": "Custom role",
+      "tag": "Animated Physics",
       "avatar": "/ai/aisha.webp",
-      "description": "Structured board exam answers, essay feedback & high-scoring paper presentation.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Aisha. Share your topic, draft, or past-paper question and let's polish it for top marks.",
-      "systemPrompt": "Mentor: Aisha (Board & Writing Coach) — [Edit role & instructions here in ai-config.json] Help Pakistani students structure high-scoring board answers, essays, summaries, and revision notes with clarity and accuracy."
+      "description": "Turns Matric, FSc & university physics concepts and numericals into step-by-step animated whiteboard explanations.",
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Aisha, your Visual Physics Tutor. Ask me any physics concept or numerical and I'll animate it step by step on the whiteboard.",
+      "systemPrompt": "You are Aisha, a visual physics tutor for Matric, FSC and university students in Pakistan. You turn physics ideas and numericals into animated whiteboard explanations, step by step. Be warm and clear. Match the student's language (English, Urdu or Roman Urdu). Stay in character and never say you are 'programmed'. For greetings or off-topic messages, reply warmly in one short line, then invite a physics question."
     }
-  ]
+  ],
+  "AISHA_VISUAL_CONFIG": {
+    "cacheHitCost": 1,
+    "dailyLimits": {
+      "free": 5,
+      "paid": 50
+    },
+    "depths": [
+      {
+        "id": 0,
+        "key": "quick",
+        "baseCost": 2,
+        "maxSteps": 3,
+        "maxOutputTokens": 1200,
+        "model": "gemini-3.1-flash-lite",
+        "fallbackModels": ["gemini-3-flash-preview", "gemini-4-hydrogen"],
+        "thinkingLevel": "NONE",
+        "maxHistoryMessages": 10,
+        "firstAttemptTimeoutMs": 5000
+      },
+      {
+        "id": 1,
+        "key": "balanced",
+        "baseCost": 4,
+        "maxSteps": 5,
+        "maxOutputTokens": 2000,
+        "model": "gemini-3.1-flash-lite",
+        "fallbackModels": ["gemini-3-flash-preview", "gemini-4-hydrogen"],
+        "thinkingLevel": "MINIMAL",
+        "maxHistoryMessages": 10,
+        "firstAttemptTimeoutMs": 6500
+      },
+      {
+        "id": 2,
+        "key": "deep",
+        "baseCost": 8,
+        "maxSteps": 8,
+        "maxOutputTokens": 3500,
+        "model": "gemini-4-hydrogen",
+        "fallbackModels": ["gemini-3-flash-preview", "gemini-3.1-flash-lite"],
+        "thinkingLevel": "LOW",
+        "maxHistoryMessages": 10,
+        "firstAttemptTimeoutMs": 10000
+      },
+      {
+        "id": 3,
+        "key": "max",
+        "baseCost": 12,
+        "maxSteps": 12,
+        "maxOutputTokens": 5000,
+        "model": "gemini-4-hydrogen",
+        "fallbackModels": ["gemini-3-flash-preview"],
+        "thinkingLevel": "MEDIUM",
+        "maxHistoryMessages": 10,
+        "firstAttemptTimeoutMs": 12000
+      }
+    ]
+  }
 }

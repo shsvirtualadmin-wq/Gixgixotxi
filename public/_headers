@@ -5,7 +5,7 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(), payment=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Content-Security-Policy: img-src 'self' data: blob: https: http:;
   Vary: User-Agent
