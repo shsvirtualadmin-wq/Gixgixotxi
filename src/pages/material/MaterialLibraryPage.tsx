@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 import {
   ArrowLeft,
   BookOpen,
@@ -195,6 +196,7 @@ export const MaterialLibraryPage: React.FC = () => {
     itemId?: string;
   }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profile, authProfile, isGuest } = useAuth();
   const wallet = useWallet();
 
@@ -420,11 +422,7 @@ export const MaterialLibraryPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                if (window.history.length > 2) {
-                  navigate(-1);
-                } else {
-                  navigate('/commons');
-                }
+                navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/commons' });
               }}
               aria-label="Go back"
               className="press-scale w-11 h-11 rounded-full flex items-center justify-center text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer shrink-0"

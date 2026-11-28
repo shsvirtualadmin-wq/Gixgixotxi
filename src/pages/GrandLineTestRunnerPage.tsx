@@ -559,6 +559,7 @@ export function GrandLineTestRunnerPage() {
             </Link>
             <Link
               to="/grand-line"
+              replace
               className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center gap-2"
             >
               <ArrowLeft size={15} />
@@ -702,6 +703,7 @@ export function GrandLineTestRunnerPage() {
 
             <Link
               to="/grand-line"
+              replace
               className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm font-semibold text-[var(--text)] hover:bg-[var(--surface-hover)] inline-flex items-center justify-center gap-2"
             >
               <ArrowLeft size={15} />
@@ -951,6 +953,7 @@ export function GrandLineTestRunnerPage() {
             )}
             <Link
               to="/grand-line"
+              replace
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs font-bold"
             >
               <ArrowLeft size={14} />
@@ -979,7 +982,7 @@ export function GrandLineTestRunnerPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => navigate('/grand-line')}
+                onClick={() => navigate('/grand-line', { replace: true })}
                 className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 cursor-pointer"
               >
                 <ArrowLeft size={14} /> Exit

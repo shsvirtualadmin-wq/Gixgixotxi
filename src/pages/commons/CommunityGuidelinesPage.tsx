@@ -15,7 +15,7 @@ export function CommunityGuidelinesPage() {
     e.preventDefault();
     setBackPulsing(true);
     window.setTimeout(() => {
-      navigate(commonsUrl);
+      navigate(commonsUrl, { replace: true });
     }, 140);
   };
 
@@ -27,6 +27,7 @@ export function CommunityGuidelinesPage() {
           <div className="flex items-center gap-3 min-w-0">
             <Link
               to={commonsUrl}
+              replace
               onClick={handleBack}
               className={`ios-circle-btn text-[var(--text)] shrink-0 cursor-pointer ${
                 backPulsing ? 'nav-back-pulse' : ''

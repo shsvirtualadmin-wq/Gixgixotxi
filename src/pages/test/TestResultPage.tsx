@@ -127,7 +127,7 @@ export function TestResultPage() {
           title={t('common.somethingWrong')}
           error={error}
           onRetry={() => setRetryCount((c) => c + 1)}
-          onBack={() => navigate('/dashboard/practice')}
+          onBack={() => navigate('/dashboard/practice', { replace: true })}
           backLabel={t('common.back')}
         />
       </div>

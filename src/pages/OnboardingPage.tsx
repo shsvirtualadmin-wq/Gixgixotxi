@@ -134,7 +134,7 @@ export function OnboardingPage() {
             weakChapters={[]}
             onSubjectsChange={setSubjects}
             onNext={() => setStep(2)}
-            onBack={() => navigate('/dashboard')}
+            onBack={() => navigate('/dashboard', { replace: true })}
           />
         )}
         {step === 2 && (

@@ -16,7 +16,8 @@ import {
 import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth';
 import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 import { getPageScrollY, scrollPageToTop, subscribePageScroll } from '@/utils/scrollContainer';
 import {
   Edit2,
@@ -557,6 +558,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     proBadgeVisible: myProBadgeVisible,
   } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const wallet = useWallet();
   const liveEffectivePlan = useEffectivePlan();
   const { effectivePlusBadgeId: myEffectivePlusBadgeId } = usePlusBadge();
@@ -2118,10 +2120,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const handleBack = () => {
     if (isModal && onClose) {
       onClose();
-    } else if (window.history.length > 2) {
-      navigate(-1);
     } else {
-      navigate('/dashboard');
+      navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/dashboard' });
     }
   };
 

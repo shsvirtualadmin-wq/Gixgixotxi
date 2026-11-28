@@ -1,7 +1,8 @@
 import { useCallback } from 'react';
-import { useNavigate, type NavigateFunction } from 'react-router-dom';
+import { useLocation, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
+import { getParentRoute } from '@/utils/navigationParentMap';
 
 const AUTH_CACHE_KEY = 'boardly_user_authenticated';
 const GUEST_TOKEN_CACHE_KEY = 'boardly_guest_session_token';
@@ -124,29 +125,31 @@ export function hasInAppHistory(): boolean {
 }
 
 /**
- * Navigates back using `window.history.back()` when there is in-app history,
- * and falls back to `getHomeUrl()` if there is none (e.g. opened directly in a new tab).
+ * Navigates to the explicit parent route from the shared parent map using
+ * `replace: true` so back buttons never call `history.back()` or build loops.
  */
 export function navigateBackOrHome(
   navigate: NavigateFunction,
   user?: { uid?: string } | null,
-  profileLoading?: boolean
+  profileLoading?: boolean,
+  currentPathname?: string
 ): void {
-  if (hasInAppHistory()) {
-    window.history.back();
-  } else {
-    navigate(getHomeUrl(user, profileLoading));
-  }
+  const fallbackHome = getHomeUrl(user, profileLoading);
+  const pathname =
+    currentPathname ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  const parent = getParentRoute(pathname, { fallbackHome });
+  navigate(parent, { replace: true });
 }
 
 /**
- * React hook returning a smart back handler for page header back arrows (←).
- * Uses `window.history.back()` when in-app history exists, and falls back to `getHomeUrl()`.
+ * React hook returning a loop-free back handler for page header back arrows (←).
+ * Always navigates to the route's explicit parent from `PARENT_ROUTE_MAP` with `replace: true`.
  */
 export function useSmartBack(): () => void {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, profileLoading } = useAuth();
   return useCallback(() => {
-    navigateBackOrHome(navigate, user, profileLoading);
-  }, [navigate, user, profileLoading]);
+    navigateBackOrHome(navigate, user, profileLoading, location.pathname);
+  }, [navigate, user, profileLoading, location.pathname]);
 }

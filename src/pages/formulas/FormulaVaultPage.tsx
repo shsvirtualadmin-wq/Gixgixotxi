@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation, useParams, Link } from 'react-router-dom';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 import {
   ArrowLeft,
   Search,
@@ -1150,8 +1151,7 @@ export const FormulaVaultPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (window.history.length > 1) navigate(-1);
-                  else navigate('/dashboard');
+                  navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/dashboard' });
                 }}
                 aria-label="Go back"
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text)] transition-transform duration-150 active:scale-[0.98] hover:border-[var(--accent)]"

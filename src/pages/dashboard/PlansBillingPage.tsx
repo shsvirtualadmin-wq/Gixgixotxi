@@ -42,6 +42,7 @@ import {
 import type { PaymentRequest } from '@/types';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatPlanLabel } from '@/lib/planTier';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 
 export function PlansBillingPage() {
   const { user, isGuest } = useAuth();
@@ -296,11 +297,7 @@ export function PlansBillingPage() {
   );
 
   const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/settings');
-    }
+    navigateToParentRoute(navigate, location.pathname);
   };
 
   if (isGuest) {

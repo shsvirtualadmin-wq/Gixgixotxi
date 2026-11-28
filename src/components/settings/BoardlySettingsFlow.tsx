@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { getParentRoute } from '@/utils/navigationParentMap';
 import {
   ArrowLeftRight,
   AtSign,
@@ -168,6 +169,7 @@ function mapRouteParamToSection(param?: string): SettingsSectionId {
     case 'appearance':
     case 'theme':
       return 'customize';
+    case 'kobans':
     case 'koban':
     case 'koban-icon':
       return 'customize-koban';
@@ -200,41 +202,44 @@ function mapRouteParamToSection(param?: string): SettingsSectionId {
   }
 }
 
-function mapSectionToRoutePath(section: SettingsSectionId): string {
+function mapSectionToRoutePath(
+  section: SettingsSectionId,
+  basePath: '/settings' | '/dashboard/settings' = '/settings'
+): string {
   switch (section) {
     case 'account':
-      return '/settings/account';
+      return `${basePath}/account`;
     case 'account-display-name':
-      return '/settings/display-name';
+      return `${basePath}/display-name`;
     case 'account-username-role':
-      return '/settings/username';
+      return `${basePath}/username`;
     case 'customize':
-      return '/settings/customize';
+      return `${basePath}/customize`;
     case 'customize-koban':
-      return '/settings/koban';
+      return `${basePath}/kobans`;
     case 'customize-pro-badge':
-      return '/settings/pro-badge';
+      return `${basePath}/pro-badge`;
     case 'customize-plus-badge':
-      return '/settings/plus-badge';
+      return `${basePath}/plus-badge`;
     case 'general':
-      return '/settings/general';
+      return `${basePath}/general`;
     case 'usage':
-      return '/settings/usage';
+      return `${basePath}/usage`;
     case 'notifications':
     case 'notifications-tests':
     case 'notifications-commons':
     case 'notifications-rewards':
     case 'notifications-announcements':
-      return '/settings/notifications';
+      return `${basePath}/notifications`;
     case 'security':
-      return '/settings/security';
+      return `${basePath}/security`;
     case 'privacy':
-      return '/settings/privacy';
+      return `${basePath}/privacy`;
     case 'boardly-ai':
-      return '/settings/boardly-ai';
+      return `${basePath}/boardly-ai`;
     case 'main':
     default:
-      return '/settings';
+      return basePath;
   }
 }
 
@@ -256,6 +261,12 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   scrollContainer = 'window',
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const settingsBase: '/settings' | '/dashboard/settings' = location.pathname.startsWith(
+    '/dashboard/settings'
+  )
+    ? '/dashboard/settings'
+    : '/settings';
   const {
     user,
     profile,
@@ -344,14 +355,45 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   const setSection = useCallback(
     (next: SettingsSectionId) => {
       setSectionState(next);
-      if (scrollContainer === 'window' && typeof window !== 'undefined') {
-        const targetPath = mapSectionToRoutePath(next);
-        if (window.location.pathname !== targetPath) {
+      if (scrollContainer === 'window') {
+        const targetPath = mapSectionToRoutePath(next, settingsBase);
+        if (location.pathname !== targetPath) {
+          // Forward navigation into a child settings page uses a normal push
           navigate(targetPath, { replace: false });
         }
       }
     },
-    [scrollContainer, navigate]
+    [scrollContainer, navigate, settingsBase, location.pathname]
+  );
+  const goBackFromSection = useCallback(
+    (fallbackSection: SettingsSectionId = 'main') => {
+      if (scrollContainer !== 'window') {
+        setSectionState(fallbackSection);
+        return;
+      }
+      // Notification sub-categories share /settings/notifications; return to notifications list in-place
+      if (
+        section === 'notifications-tests' ||
+        section === 'notifications-commons' ||
+        section === 'notifications-rewards' ||
+        section === 'notifications-announcements'
+      ) {
+        setSectionState('notifications');
+        return;
+      }
+      const parentPath = getParentRoute(location.pathname);
+      if (parentPath === '/settings' || parentPath === '/dashboard/settings') {
+        setSectionState('main');
+      } else if (parentPath.startsWith('/settings/')) {
+        setSectionState(mapRouteParamToSection(parentPath.slice('/settings/'.length)));
+      } else if (parentPath.startsWith('/dashboard/settings/')) {
+        setSectionState(mapRouteParamToSection(parentPath.slice('/dashboard/settings/'.length)));
+      } else {
+        setSectionState(fallbackSection);
+      }
+      navigate(parentPath, { replace: true });
+    },
+    [scrollContainer, section, location.pathname, navigate]
   );
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -445,10 +487,6 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
   );
 
   useEffect(() => {
-    setSectionState(mapRouteParamToSection(initialSubPage));
-  }, [initialSubPage]);
-
-  useEffect(() => {
     setDisplayNameDraft(currentDisplayName);
   }, [currentDisplayName]);
 
@@ -487,12 +525,9 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
       onClose();
       return;
     }
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/dashboard');
-    }
-  }, [onClose, navigate]);
+    const parentPath = getParentRoute(location.pathname);
+    navigate(parentPath, { replace: true });
+  }, [onClose, navigate, location.pathname]);
 
   const handleSaveDisplayName = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -689,7 +724,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <Suspense fallback={<SettingsSubpageSkeleton />}>
         <LazySecurityCenterPages
-          onBack={() => setSection('main')}
+          onBack={() => goBackFromSection('main')}
           scrollContainer={scrollContainer}
           onSummaryChange={setSecuritySummary}
         />
@@ -701,7 +736,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <Suspense fallback={<SettingsSubpageSkeleton />}>
         <LazyPrivacyCenterPage
-          onBack={() => setSection('main')}
+          onBack={() => goBackFromSection('main')}
           onNavigate={navigateTo}
           onOpenAiPrivacy={() => setSection('boardly-ai')}
           scrollContainer={scrollContainer}
@@ -734,7 +769,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.boardlyAi')}
-        onBack={() => setSection('privacy')}
+        onBack={() => goBackFromSection('privacy')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup label={t('ai.title')}>
@@ -796,7 +831,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.displayName')}
-        onBack={() => setSection('account')}
+        onBack={() => goBackFromSection('account')}
         scrollContainer={scrollContainer}
       >
         <form
@@ -856,7 +891,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.usernameAndRole')}
-        onBack={() => setSection('account')}
+        onBack={() => goBackFromSection('account')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup
@@ -892,7 +927,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.account')}
-        onBack={() => setSection('main')}
+        onBack={() => goBackFromSection('main')}
         scrollContainer={scrollContainer}
       >
         {/* Centered avatar with pencil badge + display name — tapping opens /profile */}
@@ -1056,7 +1091,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title="Koban icon"
-        onBack={() => setSection('customize')}
+        onBack={() => goBackFromSection('customize')}
         scrollContainer={scrollContainer}
       >
         <div
@@ -1079,7 +1114,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title="Pro badge"
-        onBack={() => setSection('customize')}
+        onBack={() => goBackFromSection('customize')}
         scrollContainer={scrollContainer}
       >
         <div
@@ -1102,7 +1137,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title="PLUS badge"
-        onBack={() => setSection('customize')}
+        onBack={() => goBackFromSection('customize')}
         scrollContainer={scrollContainer}
       >
         <div
@@ -1125,7 +1160,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.customize')}
-        onBack={() => setSection('main')}
+        onBack={() => goBackFromSection('main')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup>
@@ -1189,7 +1224,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.general')}
-        onBack={() => setSection('main')}
+        onBack={() => goBackFromSection('main')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup>
@@ -1334,7 +1369,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.usageLimits')}
-        onBack={() => setSection('main')}
+        onBack={() => goBackFromSection('main')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup
@@ -1497,7 +1532,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={categoryMeta.title}
-        onBack={() => setSection('notifications')}
+        onBack={() => goBackFromSection('notifications')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup helperText={categoryMeta.helper}>
@@ -1516,7 +1551,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     return (
       <SettingsPage
         title={t('settings.notifications')}
-        onBack={() => setSection('main')}
+        onBack={() => goBackFromSection('main')}
         scrollContainer={scrollContainer}
       >
         <SettingsGroup label={t('settings.notifications')}>

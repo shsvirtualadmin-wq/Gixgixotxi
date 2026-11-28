@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 import {
   Sparkles,
   Check,
@@ -131,6 +132,7 @@ export const StorePage: React.FC<StorePageProps> = ({
   defaultOpenGetKobans = false,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, formatNumber } = useLanguage();
   const { user, profile: authUserProfile, isGuest } = useAuth();
   const { profile: liveUserProfile } = useUserProfile();
@@ -1127,7 +1129,7 @@ export const StorePage: React.FC<StorePageProps> = ({
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={() => navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/dashboard' })}
               aria-label={t('common.back')}
               className="w-9 h-9 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--border)] border border-[var(--border)] flex items-center justify-center transition-colors shrink-0"
             >

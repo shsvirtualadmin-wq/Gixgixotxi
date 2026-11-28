@@ -300,11 +300,13 @@ import { ProBadgeProvider } from './contexts/ProBadgeContext';
 import { PlusBadgeProvider } from './contexts/PlusBadgeContext';
 import { DeviceUnlockGate } from './components/security/DeviceUnlockGate';
 import { useBoardlyUIMode } from './utils/uiMode';
+import { useParentNavigationGuard } from './utils/navigationParentMap';
 import './styles/glass.css';
 
 function AppInner() {
   useReferralCapture();
   useBoardlyUIMode();
+  useParentNavigationGuard();
 
   return (
     <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">
@@ -458,6 +460,7 @@ function AppInner() {
             <Route path="settings/profile-layout" element={<Navigate to="/profile" replace />} />
             <Route path="settings/layout" element={<Navigate to="/profile" replace />} />
             <Route path="settings/bookmarks" element={<Navigate to="/bookmarks" replace />} />
+            <Route path="settings/boardly-plus" element={<PlansBillingPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="settings/:subPage" element={<SettingsPage />} />
             <Route path="bookmarks" element={<BookmarksPage />} />
@@ -482,6 +485,7 @@ function AppInner() {
           <Route path="/settings/bookmarks" element={<Navigate to="/bookmarks" replace />} />
           <Route path="/settings/profile-layout" element={<Navigate to="/profile" replace />} />
           <Route path="/settings/layout" element={<Navigate to="/profile" replace />} />
+          <Route path="/settings/boardly-plus" element={<PlansBillingPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/:subPage" element={<SettingsPage />} />
           <Route path="/profile/layout" element={<Navigate to="/profile" replace />} />

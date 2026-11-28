@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 
 interface ProfileModalContextType {
   openProfile: (uid?: string | null) => void;
@@ -44,11 +45,7 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const closeProfile = useCallback(
     (skipHistoryBack = false) => {
       if (!skipHistoryBack && location.pathname === '/profile') {
-        if (window.history.length > 1) {
-          navigate(-1);
-        } else {
-          navigate('/dashboard');
-        }
+        navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/dashboard' });
       }
     },
     [location.pathname, navigate]

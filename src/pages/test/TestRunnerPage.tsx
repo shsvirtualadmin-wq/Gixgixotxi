@@ -561,7 +561,7 @@ export function TestRunnerPage() {
           }
           path={error?.path}
           onRetry={() => setRetryCount((c) => c + 1)}
-          onBack={() => navigate('/dashboard/practice')}
+          onBack={() => navigate('/dashboard/practice', { replace: true })}
           backLabel={t('common.back')}
         />
       </div>
@@ -648,7 +648,7 @@ export function TestRunnerPage() {
                 if (isSubjectToDailyLimit) {
                   setLeaveWarningOpen(true);
                 } else {
-                  navigate('/dashboard/practice');
+                  navigate('/dashboard/practice', { replace: true });
                 }
               }}
               title={t('test.exitTest')}

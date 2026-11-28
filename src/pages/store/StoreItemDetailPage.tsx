@@ -306,6 +306,7 @@ export const StoreItemDetailPage: React.FC = () => {
 
               <Link
                 to="/store"
+                replace
                 className="btn-secondary py-3 px-4 text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5"
               >
                 <ArrowLeft size={14} className="rtl-mirror" />

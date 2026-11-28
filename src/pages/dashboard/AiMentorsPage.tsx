@@ -1,22 +1,20 @@
 import { useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { AiMentorsOverlay } from '@/components/ai/AiMentorsOverlay';
 import { AiErrorBoundary } from '@/components/ai/AiErrorBoundary';
 import { resolveMentorIdFromParam } from '@/utils/aiMentorsLogic';
+import { navigateToParentRoute } from '@/utils/navigationParentMap';
 
 export function AiMentorsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const initialMentor = resolveMentorIdFromParam(searchParams.get('mentor'));
 
   const handleClose = useCallback(() => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [navigate]);
+    navigateToParentRoute(navigate, location.pathname, { fallbackHome: '/dashboard' });
+  }, [navigate, location.pathname]);
 
   return (
     <>
