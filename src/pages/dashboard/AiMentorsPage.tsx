@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { AiMentorsOverlay } from '@/components/ai/AiMentorsOverlay';
+import { AiErrorBoundary } from '@/components/ai/AiErrorBoundary';
 import { resolveMentorIdFromParam } from '@/utils/aiMentorsLogic';
 
 export function AiMentorsPage() {
@@ -21,10 +22,12 @@ export function AiMentorsPage() {
     <>
       <PageMeta
         title="AI Mentors — Boardly"
-        description="Chat with Noor, Zain, Sehar, Hamza, and Mahnoor — your Boardly AI Mentors."
+        description="Chat with Noor, Zain, Sehar, Hamza, Mahnoor, and Aisha — your Boardly AI Mentors."
         noindex={true}
       />
-      <AiMentorsOverlay initialMentor={initialMentor} onClose={handleClose} />
+      <AiErrorBoundary scope="chat" onClose={handleClose}>
+        <AiMentorsOverlay initialMentor={initialMentor} onClose={handleClose} />
+      </AiErrorBoundary>
     </>
   );
 }

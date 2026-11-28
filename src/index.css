@@ -12788,24 +12788,150 @@ input[type="search"]:active,
   animation: ai-stream-blink 0.9s ease-in-out infinite;
 }
 
-@keyframes ai-mentor-dock-settle {
+/* Answer-Depth Picker & Thinking Indicator Motion (GPU transform + opacity ONLY) */
+@keyframes ai-depth-quick-spark-kf {
   0% {
-    transform: scale(1.22);
-    box-shadow: 0 0 0 3px var(--mentor-accent, var(--accent)), 0 0 18px color-mix(in srgb, var(--mentor-accent, var(--accent)) 65%, transparent);
+    opacity: 0;
+    transform: rotate(-18deg) scale(0.96);
+  }
+  28% {
+    opacity: 0.95;
+    transform: rotate(6deg) scale(1.03);
   }
   100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--mentor-accent, var(--accent)) 65%, transparent);
+    opacity: 0;
+    transform: rotate(22deg) scale(1);
   }
 }
 
-.ai-mentor-docked-pulse {
-  animation: ai-mentor-dock-settle 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+@keyframes ai-depth-balanced-pulse-kf {
+  0%, 100% {
+    opacity: 0.22;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.56;
+    transform: scale(1.015);
+  }
+}
+
+@keyframes ai-depth-deep-ripple-kf {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.3);
+  }
+}
+
+@keyframes ai-depth-max-glow-kf {
+  0%, 100% {
+    opacity: 0.68;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ai-depth-max-halo-kf {
+  0%, 100% {
+    opacity: 0.14;
+  }
+  50% {
+    opacity: 0.34;
+  }
+}
+
+@keyframes ai-depth-max-orbit-kf {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ai-depth-max-burst-kf {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.85);
+  }
+}
+
+.ai-depth-quick-spark {
+  animation: ai-depth-quick-spark-kf 520ms cubic-bezier(0.22, 1, 0.36, 1) 1 both;
+}
+
+.ai-depth-thinking-active .ai-depth-quick-spark {
+  animation: ai-depth-quick-spark-kf 780ms cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.ai-depth-balanced-pulse {
+  animation: ai-depth-balanced-pulse-kf 2.4s ease-in-out infinite;
+}
+
+.ai-depth-deep-ripple {
+  animation: ai-depth-deep-ripple-kf 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.ai-depth-deep-ripple--2 {
+  animation-delay: 0.8s;
+}
+
+.ai-depth-deep-ripple--3 {
+  animation-delay: 1.6s;
+}
+
+.ai-depth-max-arc-glow {
+  animation: ai-depth-max-glow-kf 1.8s ease-in-out infinite;
+}
+
+.ai-depth-max-halo {
+  animation: ai-depth-max-halo-kf 1.8s ease-in-out infinite;
+}
+
+.ai-depth-max-orbit--1 {
+  animation: ai-depth-max-orbit-kf 3.2s linear infinite;
+}
+
+.ai-depth-max-orbit--2 {
+  animation: ai-depth-max-orbit-kf 4.4s linear infinite reverse;
+}
+
+.ai-depth-max-orbit--3 {
+  animation: ai-depth-max-orbit-kf 2.6s linear infinite;
+}
+
+.ai-depth-max-burst {
+  animation: ai-depth-max-burst-kf 520ms cubic-bezier(0.16, 1, 0.3, 1) 1 both;
+}
+
+/* Pause all depth animations cleanly when tab is hidden */
+[data-tab-hidden="true"] .ai-depth-quick-spark,
+[data-tab-hidden="true"] .ai-depth-balanced-pulse,
+[data-tab-hidden="true"] .ai-depth-deep-ripple,
+[data-tab-hidden="true"] .ai-depth-max-arc-glow,
+[data-tab-hidden="true"] .ai-depth-max-halo,
+[data-tab-hidden="true"] .ai-depth-max-orbit,
+[data-tab-hidden="true"] .ai-depth-max-burst {
+  animation-play-state: paused !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ai-stream-cursor,
-  .ai-mentor-docked-pulse {
+  .ai-depth-quick-spark,
+  .ai-depth-balanced-pulse,
+  .ai-depth-deep-ripple,
+  .ai-depth-max-arc-glow,
+  .ai-depth-max-halo,
+  .ai-depth-max-orbit,
+  .ai-depth-max-burst {
     animation: none !important;
   }
 }

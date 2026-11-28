@@ -13,6 +13,7 @@ import {
 import { auth, db } from '@/lib/firebase';
 import {
   AI_COST_RULES,
+  AI_MENTORS,
   FREE_AI_CREDITS_PER_DAY,
   buildChatTitle,
   getDailyCreditsLimit,
@@ -757,7 +758,7 @@ export async function loadAiChatsFromFirestore(uid: string): Promise<SavedAiChat
     const rawMessages = Array.isArray(data.messages) ? data.messages : [];
     return {
       id: d.id,
-      mentor: Math.max(0, Math.min(4, Number(data.mentor) || 0)) as AiMentorId,
+      mentor: Math.max(0, Math.min(AI_MENTORS.length - 1, Number(data.mentor) || 0)) as AiMentorId,
       title: String(data.title || 'New chat').slice(0, 48),
       updatedAt: parseUpdatedAtMs(data.updatedAt),
       messages: rawMessages

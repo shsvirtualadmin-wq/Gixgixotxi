@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -14,9 +14,11 @@ import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { getDisplayName } from '@/utils/displayName';
 import {
+  AI_MENTORS,
   buildMentorGreeting,
   getMentorConfig,
   prepareApiContentsWithSummary,
+  resolveAiDepthExecution,
   type AiDepthId,
   type AiMentorId,
   type ApiContentPart,
@@ -39,22 +41,9 @@ import { AiHistorySidebar } from './AiHistorySidebar';
 import { AiMentorPickerModal } from './AiMentorPickerModal';
 import { AiDepthGaugeModal } from './AiDepthGaugeModal';
 import { AiUpgradeSheet } from './AiUpgradeSheet';
+import { AiDepthThinkingIndicator } from './AiDepthMotion';
+import { AiErrorBoundary } from './AiErrorBoundary';
 import { MentorAvatar } from './MentorAvatar';
-import {
-  getMentorCharacterProfile,
-  shouldUseStaticPortraitFallback,
-  type MentorPoseState,
-} from './mentorCharacterConfig';
-
-const LazyMentorCharacterStage = lazy(() => import('./MentorCharacterStage'));
-
-interface FlipFlightState {
-  id: string;
-  mentorId: AiMentorId;
-  targetMsgId: string;
-  fromRect: { left: number; top: number; width: number; height: number };
-  toRect: { left: number; top: number; width: number; height: number };
-}
 
 interface MentorThreadState {
   chatId: string;
@@ -117,26 +106,19 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     [studentDisplayName]
   );
 
-  // Each mentor keeps its own current chat thread
-  const [threadsByMentor, setThreadsByMentor] = useState<Record<number, MentorThreadState>>(() => ({
-    0: makeInitialThread(0),
-    1: makeInitialThread(1),
-    2: makeInitialThread(2),
-    3: makeInitialThread(3),
-    4: makeInitialThread(4),
-  }));
+  // Each registered mentor keeps its own active chat thread (built dynamically from AI_MENTORS)
+  const [threadsByMentor, setThreadsByMentor] = useState<Record<number, MentorThreadState>>(() => {
+    const initial: Record<number, MentorThreadState> = {};
+    for (const m of AI_MENTORS) {
+      initial[m.id] = makeInitialThread(m.id);
+    }
+    return initial;
+  });
 
   // Saved Firestore history list (latest 60)
   const [savedChats, setSavedChats] = useState<SavedAiChat[]>(() => getCachedAiChats(uid));
   const [sending, setSending] = useState(false);
-
-  // Realistic Hero Mentor Character state (poses, lip-sync, FLIP fly-and-dock)
-  const [characterPose, setCharacterPose] = useState<MentorPoseState>('idle');
-  const [nodSeq, setNodSeq] = useState(0);
-  const [speechState, setSpeechState] = useState<{ seq: number; chunk: string }>({ seq: 0, chunk: '' });
   const [streamingMsgId, setStreamingMsgId] = useState<string | null>(null);
-  const [flipFlight, setFlipFlight] = useState<FlipFlightState | null>(null);
-  const [dockedMsgId, setDockedMsgId] = useState<string | null>(null);
 
   // Popups & Drawers
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
@@ -145,26 +127,17 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
   const [upgradeSheetReason, setUpgradeSheetReason] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const heroStageRef = useRef<HTMLDivElement | null>(null);
-  const avatarSlotRefs = useRef<Record<string, HTMLSpanElement | null>>({});
-  const flipCloneRef = useRef<HTMLDivElement | null>(null);
-  const nodTimerRef = useRef<number | null>(null);
-  const dockTimerRef = useRef<number | null>(null);
   const activeSessionTokenRef = useRef<string>('');
   const inFlightAbortRef = useRef<AbortController | null>(null);
   const safetyTimerRef = useRef<number | null>(null);
+
   const currentThread = threadsByMentor[mentorId] || makeInitialThread(mentorId);
   const mentor = getMentorConfig(mentorId);
-  const mentorProfile = useMemo(() => getMentorCharacterProfile(mentorId), [mentorId]);
 
   const cancelInFlightRequest = useCallback(() => {
     if (safetyTimerRef.current !== null) {
       window.clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
-    }
-    if (nodTimerRef.current !== null) {
-      window.clearTimeout(nodTimerRef.current);
-      nodTimerRef.current = null;
     }
     if (inFlightAbortRef.current) {
       try {
@@ -175,96 +148,25 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       inFlightAbortRef.current = null;
     }
     setStreamingMsgId(null);
-    setCharacterPose('idle');
   }, []);
 
   useEffect(() => {
     return () => {
       cancelInFlightRequest();
-      if (dockTimerRef.current !== null) {
-        window.clearTimeout(dockTimerRef.current);
-      }
     };
   }, [cancelInFlightRequest]);
-
-  // Execute FLIP fly-and-dock animation whenever a flight state is queued
-  useEffect(() => {
-    if (!flipFlight) return;
-    const el = flipCloneRef.current;
-    if (!el) {
-      setFlipFlight(null);
-      return;
-    }
-
-    const { fromRect, toRect, targetMsgId } = flipFlight;
-    const dx = toRect.left + toRect.width / 2 - (fromRect.left + fromRect.width / 2);
-    const dy = toRect.top + toRect.height / 2 - (fromRect.top + fromRect.height / 2);
-    const sx = Math.max(0.15, toRect.width / Math.max(1, fromRect.width));
-    const sy = Math.max(0.15, toRect.height / Math.max(1, fromRect.height));
-
-    const finishDock = () => {
-      setFlipFlight(null);
-      setDockedMsgId(targetMsgId);
-      if (dockTimerRef.current !== null) {
-        window.clearTimeout(dockTimerRef.current);
-      }
-      dockTimerRef.current = window.setTimeout(() => {
-        setDockedMsgId((cur) => (cur === targetMsgId ? null : cur));
-      }, 480);
-    };
-
-    if (typeof el.animate === 'function') {
-      const anim = el.animate(
-        [
-          {
-            transform: 'translate3d(0px, 0px, 0px) scale(1, 1)',
-            borderRadius: '18px',
-            opacity: 1,
-          },
-          {
-            transform: `translate3d(${dx * 0.55}px, ${dy * 0.55 - 14}px, 0px) scale(${(1 + sx) * 0.48}, ${(1 + sy) * 0.48})`,
-            borderRadius: '9999px',
-            opacity: 0.98,
-            offset: 0.55,
-          },
-          {
-            transform: `translate3d(${dx}px, ${dy}px, 0px) scale(${sx}, ${sy})`,
-            borderRadius: '9999px',
-            opacity: 1,
-          },
-        ],
-        {
-          duration: 460,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-          fill: 'forwards',
-        }
-      );
-      anim.onfinish = finishDock;
-      anim.oncancel = finishDock;
-      return () => {
-        try {
-          anim.cancel();
-        } catch {
-          // Ignore
-        }
-      };
-    }
-
-    const fallbackTimer = window.setTimeout(finishDock, 120);
-    return () => window.clearTimeout(fallbackTimer);
-  }, [flipFlight]);
 
   // Keep greeting personalized if profile finishes loading and chat has no user messages yet
   useEffect(() => {
     setThreadsByMentor((prev) => {
       const next = { ...prev };
       let changed = false;
-      for (let i = 0; i < 5; i++) {
-        const t = next[i];
+      for (const m of AI_MENTORS) {
+        const t = next[m.id];
         if (t && t.messages.length === 1 && t.messages[0].isGreeting) {
-          const fresh = buildMentorGreeting(i as AiMentorId, studentDisplayName);
+          const fresh = buildMentorGreeting(m.id, studentDisplayName);
           if (t.messages[0].text !== fresh) {
-            next[i] = { ...t, messages: [{ ...t.messages[0], text: fresh }] };
+            next[m.id] = { ...t, messages: [{ ...t.messages[0], text: fresh }] };
             changed = true;
           }
         }
@@ -362,7 +264,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
 
   const handleToggleTemporary = () => {
     if (!saveHistoryEnabled) {
-      // History saving is disabled in Settings; start fresh temp chat anyway
       startFreshChat(mentorId);
       return;
     }
@@ -411,9 +312,16 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
 
     const thread = currentThread;
     const targetMentor = mentorId;
+    const targetDepth = depthId;
     const targetChatId = thread.chatId;
     const requestToken = `${targetChatId}:${Date.now()}`;
     activeSessionTokenRef.current = requestToken;
+
+    // Resolve shared depth execution plan (same function used by server & all 6 AIs)
+    const executionPlan = resolveAiDepthExecution({
+      mentorId: targetMentor,
+      depthId: targetDepth,
+    });
 
     const controller = new AbortController();
     inFlightAbortRef.current = controller;
@@ -459,22 +367,15 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     let firstTokenReceived = false;
 
     try {
+      // Immediately enter thinking state (0ms delay — no artificial wait)
       setSending(true);
       setStreamingMsgId(null);
-
-      // Character behavior: small nod on send, then transition into "thinking" pose while waiting
-      setNodSeq((n) => n + 1);
-      setCharacterPose('nod');
-      nodTimerRef.current = window.setTimeout(() => {
-        setCharacterPose((cur) => (cur === 'nod' ? 'thinking' : cur));
-        nodTimerRef.current = null;
-      }, 360);
 
       // Belt-and-suspenders safety timer: guarantee thinking state never exceeds 48s
       safetyTimerRef.current = window.setTimeout(() => {
         safetyTriggered = true;
         console.error(
-          `[AI Mentor UI] safety timeout fired after 48s mentor=${targetMentor} depth=${depthId}`
+          `[AI Mentor UI] safety timeout fired after 48s mentor=${targetMentor} depth=${targetDepth}`
         );
         try {
           controller.abort();
@@ -483,7 +384,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         }
       }, 48_000);
 
-      // Send only the last ~10 messages plus a short summary of earlier turns
+      // Trim history per depth (Quick=4, Balanced=6, Deep=10, Max=12) for minimal TTFT
       const apiContents = prepareApiContentsWithSummary(
         [
           ...existingList.map((m) => ({
@@ -498,30 +399,22 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
             parts: userMsgParts,
           },
         ],
-        10
+        executionPlan.maxHistoryMessages
       );
 
       const result = await sendAiMentorMessage({
         mentor: targetMentor,
-        depth: depthId,
+        depth: targetDepth,
         contents: apiContents,
         signal: controller.signal,
         stream: true,
-        onDelta: (delta, fullText) => {
+        onDelta: (_delta, fullText) => {
           if (activeSessionTokenRef.current !== requestToken) return;
 
           if (!firstTokenReceived) {
             firstTokenReceived = true;
-            if (nodTimerRef.current !== null) {
-              window.clearTimeout(nodTimerRef.current);
-              nodTimerRef.current = null;
-            }
             setStreamingMsgId(replyMsgId);
-            setCharacterPose('speaking');
           }
-
-          // Drive real-time viseme lip-sync from incoming streamed text
-          setSpeechState((prev) => ({ seq: prev.seq + 1, chunk: delta }));
 
           // Render tokens immediately as they arrive (zero artificial typing delay)
           const streamingBubble: StoredAiMessage = {
@@ -555,9 +448,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         return;
       }
 
-      // Capture FLIP "First" rect from the big hero character stage BEFORE it docks
-      const heroRect = heroStageRef.current?.getBoundingClientRect() || null;
-
       const modelBubble: StoredAiMessage = {
         id: replyMsgId,
         role: 'model',
@@ -575,35 +465,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         },
       }));
       setStreamingMsgId(null);
-      setCharacterPose('idle');
-
-      // Trigger FLIP fly-and-dock from Hero Stage -> small avatar slot beside this reply
-      if (heroRect && heroRect.width > 20 && !shouldUseStaticPortraitFallback()) {
-        const fromRect = {
-          left: heroRect.left,
-          top: heroRect.top,
-          width: heroRect.width,
-          height: heroRect.height,
-        };
-        requestAnimationFrame(() => {
-          const targetSlot = avatarSlotRefs.current[replyMsgId];
-          const toDomRect = targetSlot?.getBoundingClientRect();
-          if (toDomRect && toDomRect.width > 0 && toDomRect.height > 0) {
-            setFlipFlight({
-              id: `flip_${replyMsgId}`,
-              mentorId: targetMentor,
-              targetMsgId: replyMsgId,
-              fromRect,
-              toRect: {
-                left: toDomRect.left,
-                top: toDomRect.top,
-                width: toDomRect.width,
-                height: toDomRect.height,
-              },
-            });
-          }
-        });
-      }
 
       // Save non-temporary chats to Firestore asynchronously after reply finishes
       if (!isTemporary && uid && !isGuest && !uid.startsWith('guest_')) {
@@ -628,7 +489,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       }
 
       console.error(
-        `[AI Mentor UI] sendPayload failed mentor=${targetMentor} depth=${depthId} safetyTriggered=${safetyTriggered}:`,
+        `[AI Mentor UI] sendPayload failed mentor=${targetMentor} depth=${targetDepth} safetyTriggered=${safetyTriggered}:`,
         err
       );
 
@@ -676,24 +537,18 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         window.clearTimeout(safetyTimerRef.current);
         safetyTimerRef.current = null;
       }
-      if (nodTimerRef.current !== null) {
-        window.clearTimeout(nodTimerRef.current);
-        nodTimerRef.current = null;
-      }
       if (inFlightAbortRef.current === controller) {
         inFlightAbortRef.current = null;
       }
       if (activeSessionTokenRef.current === requestToken) {
         setSending(false);
         setStreamingMsgId(null);
-        setCharacterPose('idle');
       }
     }
   };
 
   const handleRegenerate = (modelMsgIndex: number) => {
     if (sending) return;
-    // Find the preceding user message
     const msgs = currentThread.messages;
     let lastUserIdx = -1;
     for (let i = modelMsgIndex - 1; i >= 0; i--) {
@@ -811,7 +666,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               borderBottom: '1px solid var(--border)',
             }}
           >
-            {/* Left controls: Close (X) + History menu (mobile/tablet only) — borderless icon buttons */}
+            {/* Left controls: Close (X) + History menu (mobile/tablet only) */}
             <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
@@ -819,9 +674,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 aria-label="Close AI Mentors"
                 title="Close"
                 className="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
-                style={{
-                  color: 'var(--text)',
-                }}
+                style={{ color: 'var(--text)' }}
               >
                 <X className="h-[20px] w-[20px]" />
               </button>
@@ -832,27 +685,22 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 aria-label="Open chat history"
                 title="Chat history"
                 className="flex lg:hidden h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
-                style={{
-                  color: 'var(--text)',
-                }}
+                style={{ color: 'var(--text)' }}
               >
                 <Menu className="h-[20px] w-[20px]" />
               </button>
             </div>
 
-            {/* Centered Mentor Name + Role */}
+            {/* Centered Mentor Name + Role + Avatar */}
             <button
               type="button"
               onClick={() => setMentorPickerOpen(true)}
-              className="flex flex-col items-center justify-center min-w-0 px-2 py-0.5 rounded-2xl hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+              className="flex items-center gap-2 min-w-0 px-2.5 py-1 rounded-2xl hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-1.5 min-w-0">
+              <MentorAvatar mentorId={mentorId} size={30} active eager />
+              <div className="flex flex-col items-start justify-center min-w-0 text-left">
                 <span
-                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: mentor.accent }}
-                />
-                <span
-                  className="text-[17px] font-bold leading-tight truncate"
+                  className="text-[16px] font-bold leading-tight truncate"
                   style={{
                     fontFamily: "'Doto', var(--font-dot), sans-serif",
                     color: 'var(--text)',
@@ -860,13 +708,13 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 >
                   {mentor.name}
                 </span>
+                <span className="text-[11.5px] leading-tight truncate" style={{ color: 'var(--text-muted)' }}>
+                  {mentor.role}
+                </span>
               </div>
-              <span className="text-[12px] leading-tight truncate" style={{ color: 'var(--text-muted)' }}>
-                {mentor.role}
-              </span>
             </button>
 
-            {/* Right controls: Temporary-chat toggle + New-chat pencil — borderless icon buttons */}
+            {/* Right controls: Temporary-chat toggle + New-chat pencil */}
             <div className="flex items-center gap-0.5 shrink-0">
               <button
                 type="button"
@@ -891,9 +739,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 aria-label="Start new chat"
                 title="New chat"
                 className="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
-                style={{
-                  color: 'var(--text)',
-                }}
+                style={{ color: 'var(--text)' }}
               >
                 <PenSquare className="h-[19px] w-[19px]" />
               </button>
@@ -919,31 +765,17 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                 </div>
               )}
 
-              {/* Hero Mentor Character Stage on fresh thread (tracks mouse/finger, breathes, blinks) */}
+              {/* Static Hero Portrait on fresh thread (zero 3D/WebGL, instant load + fallback) */}
               {realHistoryCount === 0 && !sending && (
-                <div className="flex flex-col items-center pt-1 pb-1">
-                  <Suspense
-                    fallback={
-                      <div className="w-[138px] h-[184px] sm:w-[162px] sm:h-[216px] flex items-end justify-center">
-                        <img
-                          src={mentorProfile.bustWebp}
-                          alt={mentor.name}
-                          className="h-full w-full object-contain object-bottom"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    }
+                <div className="flex flex-col items-center pt-2 pb-1">
+                  <div
+                    className="relative flex items-center justify-center rounded-full p-1"
+                    style={{
+                      background: `radial-gradient(circle, color-mix(in srgb, ${mentor.accent} 22%, transparent) 0%, transparent 72%)`,
+                    }}
                   >
-                    <LazyMentorCharacterStage
-                      stageRef={heroStageRef}
-                      mentorId={mentorId}
-                      pose={characterPose}
-                      nodSeq={nodSeq}
-                      speechSeq={speechState.seq}
-                      speechChunk={speechState.chunk}
-                      size="hero"
-                    />
-                  </Suspense>
+                    <MentorAvatar mentorId={mentorId} size={116} active eager />
+                  </div>
                 </div>
               )}
 
@@ -976,126 +808,44 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
                   );
                 }
 
-                const isActivelyStreamingMsg = Boolean(msg.isStreaming && streamingMsgId === msg.id);
-                const isTargetOfFlight = flipFlight?.targetMsgId === msg.id;
-                const isJustDocked = dockedMsgId === msg.id;
-
                 return (
-                  <div key={msg.id} className="space-y-2">
-                    {/* Active Hero Character Stage while streaming this reply (lip-syncs, then FLIP-docks into the small avatar slot) */}
-                    {isActivelyStreamingMsg && (
-                      <div className="flex items-end gap-3 pl-1">
-                        <Suspense
-                          fallback={
-                            <div className="w-[104px] h-[138px] sm:w-[116px] sm:h-[154px]">
-                              <img
-                                src={mentorProfile.bustWebp}
-                                alt={mentor.name}
-                                className="h-full w-full object-contain object-bottom"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                          }
-                        >
-                          <LazyMentorCharacterStage
-                            stageRef={heroStageRef}
-                            mentorId={mentorId}
-                            pose={characterPose}
-                            nodSeq={nodSeq}
-                            speechSeq={speechState.seq}
-                            speechChunk={speechState.chunk}
-                            size="compact"
-                          />
-                        </Suspense>
-                      </div>
-                    )}
-
-                    <div className="flex items-start gap-3">
-                      <span
-                        ref={(el) => {
-                          if (el) avatarSlotRefs.current[msg.id] = el;
-                          else delete avatarSlotRefs.current[msg.id];
-                        }}
-                        className="mt-0.5 inline-flex shrink-0"
-                      >
-                        <MentorAvatar
-                          mentorId={mentorId}
-                          size={32}
-                          hiddenForFlight={isTargetOfFlight || isActivelyStreamingMsg}
-                          justDocked={isJustDocked}
-                          eager={idx >= currentThread.messages.length - 3}
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1 pt-0.5">
-                        <AiMessageRenderer
-                          text={msg.text}
-                          accentColor={mentor.accent}
-                          isGreeting={msg.isGreeting}
-                          isError={msg.isError}
-                          isStreaming={msg.isStreaming}
-                          onRegenerate={
-                            !msg.isGreeting && !msg.isError && !msg.isStreaming
-                              ? () => handleRegenerate(idx)
-                              : undefined
-                          }
-                          onRetry={msg.isError ? () => handleRetryError(idx) : undefined}
-                        />
-                      </div>
+                  <div key={msg.id} className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-flex shrink-0">
+                      <MentorAvatar
+                        mentorId={mentorId}
+                        size={32}
+                        active={Boolean(msg.isStreaming && streamingMsgId === msg.id)}
+                        eager={idx >= currentThread.messages.length - 3}
+                      />
+                    </span>
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <AiMessageRenderer
+                        text={msg.text}
+                        accentColor={mentor.accent}
+                        isGreeting={msg.isGreeting}
+                        isError={msg.isError}
+                        isStreaming={msg.isStreaming}
+                        onRegenerate={
+                          !msg.isGreeting && !msg.isError && !msg.isStreaming
+                            ? () => handleRegenerate(idx)
+                            : undefined
+                        }
+                        onRetry={msg.isError ? () => handleRetryError(idx) : undefined}
+                      />
                     </div>
                   </div>
                 );
               })}
 
-              {/* Nod -> Thinking Stage while waiting for first streamed token */}
+              {/* Immediate depth-matched thinking indicator while waiting for first streamed token */}
               {sending && !streamingMsgId && (
-                <div className="space-y-2" aria-live="polite">
-                  <div className="flex items-end gap-3 pl-1">
-                    <Suspense
-                      fallback={
-                        <div className="w-[104px] h-[138px] sm:w-[116px] sm:h-[154px]">
-                          <img
-                            src={mentorProfile.bustWebp}
-                            alt={mentor.name}
-                            className="h-full w-full object-contain object-bottom"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      }
-                    >
-                      <LazyMentorCharacterStage
-                        stageRef={heroStageRef}
-                        mentorId={mentorId}
-                        pose={characterPose}
-                        nodSeq={nodSeq}
-                        speechSeq={speechState.seq}
-                        speechChunk={speechState.chunk}
-                        size="compact"
-                      />
-                    </Suspense>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <MentorAvatar mentorId={mentorId} size={32} active eager />
-                    <div
-                      className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px]"
-                      style={{
-                        backgroundColor: 'var(--card)',
-                        border: '1px solid var(--border)',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      <span className="ai-typing-dot" style={{ backgroundColor: mentor.accent }} />
-                      <span
-                        className="ai-typing-dot"
-                        style={{ backgroundColor: mentor.accent, animationDelay: '150ms' }}
-                      />
-                      <span
-                        className="ai-typing-dot"
-                        style={{ backgroundColor: mentor.accent, animationDelay: '300ms' }}
-                      />
-                      <span className="ml-1.5">{mentor.name} is thinking…</span>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-3" aria-live="polite">
+                  <MentorAvatar mentorId={mentorId} size={32} active eager />
+                  <AiDepthThinkingIndicator
+                    depthId={depthId}
+                    mentorName={mentor.name}
+                    accentColor={mentor.accent}
+                  />
                 </div>
               )}
 
@@ -1177,30 +927,42 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         </div>
       )}
 
-      {/* Sub-Popups */}
-      <AiMentorPickerModal
-        open={mentorPickerOpen}
-        selectedMentor={mentorId}
-        selectedDepth={depthId}
-        onSelectMentor={handleSelectMentor}
-        onOpenDepthGauge={() => setDepthGaugeOpen(true)}
+      {/* Sub-Popups wrapped in dedicated Error Boundaries */}
+      <AiErrorBoundary
+        scope="picker"
+        compact
         onClose={() => setMentorPickerOpen(false)}
-      />
+      >
+        <AiMentorPickerModal
+          open={mentorPickerOpen}
+          selectedMentor={mentorId}
+          selectedDepth={depthId}
+          onSelectMentor={handleSelectMentor}
+          onOpenDepthGauge={() => setDepthGaugeOpen(true)}
+          onClose={() => setMentorPickerOpen(false)}
+        />
+      </AiErrorBoundary>
 
-      <AiDepthGaugeModal
-        open={depthGaugeOpen}
-        selectedDepth={depthId}
-        deepMaxUnlocked={credits.deepMaxUnlocked}
-        accentColor={mentor.accent}
-        onSelectDepth={(d) => setDepthId(d)}
-        onLockedDepthClick={(depthLabel) => {
-          setDepthGaugeOpen(false);
-          setUpgradeSheetReason(
-            `${depthLabel} thinking is unlocked on Boardly Pro (${plansConfig.pro.aiCreditsPerDay}/day) and Boardly Plus (${plansConfig.plus.aiCreditsPerDay}/day).`
-          );
-        }}
+      <AiErrorBoundary
+        scope="depth"
+        compact
         onClose={() => setDepthGaugeOpen(false)}
-      />
+      >
+        <AiDepthGaugeModal
+          open={depthGaugeOpen}
+          selectedDepth={depthId}
+          deepMaxUnlocked={credits.deepMaxUnlocked}
+          accentColor={mentor.accent}
+          onSelectDepth={(d) => setDepthId(d)}
+          onLockedDepthClick={(depthLabel) => {
+            setDepthGaugeOpen(false);
+            setUpgradeSheetReason(
+              `${depthLabel} thinking is unlocked on Boardly Pro (${plansConfig.pro.aiCreditsPerDay}/day) and Boardly Plus (${plansConfig.plus.aiCreditsPerDay}/day).`
+            );
+          }}
+          onClose={() => setDepthGaugeOpen(false)}
+        />
+      </AiErrorBoundary>
 
       <AiUpgradeSheet
         open={Boolean(upgradeSheetReason) && credits.plan !== 'plus'}
@@ -1214,35 +976,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         onClose={() => setUpgradeSheetReason(null)}
         onUpgrade={handleUpgradeNavigate}
       />
-
-      {/* FLIP Fly-and-Dock Overlay Clone: flies Hero Character smoothly into the reply's small avatar slot */}
-      {flipFlight && (() => {
-        const flightProfile = getMentorCharacterProfile(flipFlight.mentorId);
-        return (
-          <div
-            ref={flipCloneRef}
-            key={flipFlight.id}
-            aria-hidden="true"
-            className="pointer-events-none fixed z-[10090] overflow-hidden will-change-transform"
-            style={{
-              left: flipFlight.fromRect.left,
-              top: flipFlight.fromRect.top,
-              width: flipFlight.fromRect.width,
-              height: flipFlight.fromRect.height,
-              borderRadius: '18px',
-              boxShadow: `0 0 0 2px ${flightProfile.accentHex}, 0 10px 28px color-mix(in srgb, ${flightProfile.accentHex} 45%, rgba(0,0,0,0.6))`,
-              backgroundColor: 'rgba(16, 16, 20, 0.72)',
-            }}
-          >
-            <img
-              src={flightProfile.avatarWebp}
-              alt=""
-              className="h-full w-full object-cover object-top"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-        );
-      })()}
     </div>
   );
 

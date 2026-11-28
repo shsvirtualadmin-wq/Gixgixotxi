@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import katex from 'katex';
 import {
+  AI_DEPTHS,
+  AI_MENTORS,
   calculateMessageCreditCost,
   getPktDateKey,
   getPktResetInfo,
@@ -10,15 +12,109 @@ import {
   stripLatexForSpeech,
   buildChatTitle,
   resolveMentorIdFromParam,
+  resolveAiDepthExecution,
+  trimContentsForDepth,
   FREE_AI_CREDITS_PER_DAY,
   PRO_AI_CREDITS_PER_DAY,
   PLUS_AI_CREDITS_PER_DAY,
 } from './aiMentorsLogic';
 
-test('shared ai-config limits match spec', () => {
+test('shared ai-config limits and 6-mentor registry (including Aisha) match spec', () => {
   assert.equal(FREE_AI_CREDITS_PER_DAY, 5);
   assert.equal(PRO_AI_CREDITS_PER_DAY, 50);
   assert.equal(PLUS_AI_CREDITS_PER_DAY, 100);
+
+  assert.equal(AI_MENTORS.length, 6);
+  const expectedAvatars = [
+    '/ai/noor.webp',
+    '/ai/zen.webp',
+    '/ai/seher.webp',
+    '/ai/hamza.webp',
+    '/ai/mahnur.webp',
+    '/ai/aisha.webp',
+  ];
+  AI_MENTORS.forEach((m, idx) => {
+    assert.equal(m.id, idx);
+    assert.equal(m.avatar, expectedAvatars[idx]);
+    assert.ok(m.name.length > 0);
+    assert.ok(m.role.length > 0);
+    assert.ok((m.systemPrompt || '').length > 10);
+  });
+
+  const aisha = AI_MENTORS[5];
+  assert.equal(aisha.slug, 'aisha');
+  assert.equal(aisha.name, 'Aisha');
+});
+
+test('all 6 AI mentors (including Aisha) honor all 4 answer depths through one shared router', () => {
+  assert.equal(AI_MENTORS.length, 6);
+  assert.equal(AI_DEPTHS.length, 4);
+
+  for (const mentor of AI_MENTORS) {
+    const plans = AI_DEPTHS.map((depth) =>
+      resolveAiDepthExecution({ mentorId: mentor.id, depthId: depth.id })
+    );
+
+    const [quick, balanced, deep, max] = plans;
+
+    // Every depth keeps the exact requested mentor & depth metadata (no special-casing)
+    plans.forEach((plan, depthIdx) => {
+      assert.equal(plan.mentorId, mentor.id);
+      assert.equal(plan.mentorName, mentor.name);
+      assert.equal(plan.depthId, depthIdx);
+      assert.ok(plan.systemInstruction.includes(mentor.name), `Prompt for ${mentor.name} must include mentor identity`);
+      assert.ok(plan.systemInstruction.includes('DEPTH LAW'), `Prompt for ${mentor.name} depth ${depthIdx} must include depth law`);
+      assert.equal(plan.baseCost, AI_DEPTHS[depthIdx].baseCost);
+    });
+
+    // Credit cost ladder: 1 / 1 / 3 / 5
+    assert.equal(quick.baseCost, 1);
+    assert.equal(balanced.baseCost, 1);
+    assert.equal(deep.baseCost, 3);
+    assert.equal(max.baseCost, 5);
+
+    // Quick must be the fastest configuration: flash-lite + MINIMAL thinking + smallest tokens & history
+    assert.equal(quick.model, 'gemini-3.1-flash-lite');
+    assert.equal(quick.thinkingLevel, 'MINIMAL');
+    assert.equal(quick.generationConfig.thinkingConfig?.thinkingLevel, 'MINIMAL');
+    assert.ok(quick.maxOutputTokens < balanced.maxOutputTokens);
+    assert.ok(quick.maxHistoryMessages < balanced.maxHistoryMessages);
+    assert.ok(quick.firstAttemptTimeoutMs < balanced.firstAttemptTimeoutMs);
+
+    // Balanced / Deep / Max scale thinking budget, output tokens, and history window monotonically
+    assert.equal(balanced.model, 'gemini-4-hydrogen');
+    assert.equal(balanced.thinkingLevel, 'LOW');
+    assert.equal(deep.model, 'gemini-4-hydrogen');
+    assert.equal(deep.thinkingLevel, 'MEDIUM');
+    assert.equal(max.model, 'gemini-4-hydrogen');
+    assert.equal(max.thinkingLevel, 'HIGH');
+
+    assert.ok(balanced.maxOutputTokens < deep.maxOutputTokens);
+    assert.ok(deep.maxOutputTokens < max.maxOutputTokens);
+    assert.ok(balanced.maxHistoryMessages < deep.maxHistoryMessages);
+    assert.ok(deep.maxHistoryMessages <= max.maxHistoryMessages);
+
+    // Distinct depth instructions per level
+    const uniqueInstructions = new Set(plans.map((p) => p.depthInstruction));
+    assert.equal(uniqueInstructions.size, 4);
+  }
+});
+
+test('trimContentsForDepth caps turns per depth and keeps user-first invariant', () => {
+  const longThread = [
+    { role: 'user' as const, parts: [{ text: 'Q1' }] },
+    { role: 'model' as const, parts: [{ text: 'A1' }] },
+    { role: 'user' as const, parts: [{ text: 'Q2' }] },
+    { role: 'model' as const, parts: [{ text: 'A2' }] },
+    { role: 'user' as const, parts: [{ text: 'Q3' }] },
+    { role: 'model' as const, parts: [{ text: 'A3' }] },
+    { role: 'user' as const, parts: [{ text: 'Q4' }] },
+  ];
+
+  const quickTrimmed = trimContentsForDepth(longThread, 4);
+  assert.ok(quickTrimmed.length <= 4);
+  assert.equal(quickTrimmed[0].role, 'user');
+  assert.equal(quickTrimmed[quickTrimmed.length - 1].parts[0].text, 'Q4');
 });
 
 test('calculateMessageCreditCost matches depth, text, photo, PDF, and history rules', () => {
@@ -141,12 +237,18 @@ test('stripLatexForSpeech strips math delimiters and markdown cleanly', () => {
   assert.ok(!spoken.includes('**'));
 });
 
-test('mentor slug resolution and chat title truncation', () => {
+test('mentor slug/alias resolution (all 6 mentors including Aisha) and chat title truncation', () => {
   assert.equal(resolveMentorIdFromParam('noor'), 0);
   assert.equal(resolveMentorIdFromParam('Zain'), 1);
+  assert.equal(resolveMentorIdFromParam('zen'), 1);
   assert.equal(resolveMentorIdFromParam('sehar'), 2);
+  assert.equal(resolveMentorIdFromParam('seher'), 2);
   assert.equal(resolveMentorIdFromParam('hamza'), 3);
   assert.equal(resolveMentorIdFromParam('mahnoor'), 4);
+  assert.equal(resolveMentorIdFromParam('mahnur'), 4);
+  assert.equal(resolveMentorIdFromParam('aisha'), 5);
+  assert.equal(resolveMentorIdFromParam('Ayesha'), 5);
+  assert.equal(resolveMentorIdFromParam('5'), 5);
   assert.equal(resolveMentorIdFromParam('unknown'), 0);
 
   const longTitle = buildChatTitle('Explain Kirchhoff voltage law and solve this 3-loop circuit problem in detail please');

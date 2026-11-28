@@ -172,7 +172,7 @@ export const AiHistorySidebar: React.FC<AiHistorySidebarProps> = ({
 
       {/* Scrollable Mentors + Chats list */}
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 space-y-4">
-        {/* 5 Mentors Quick Switch */}
+        {/* 6 Mentors Quick Switch */}
         <div>
           <div
             className="px-2 pb-1.5 text-[12px] font-medium"

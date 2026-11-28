@@ -741,7 +741,7 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
           <SettingsRow
             icon={<Sparkles />}
             label={t('nav.aiMentors')}
-            subtitle="Noor, Zain, Sehar, Hamza & Mahnoor"
+            subtitle="Noor, Zain, Sehar, Hamza, Mahnoor & Aisha"
             onClick={() => navigateTo('/dashboard/ai')}
           />
         </SettingsGroup>

@@ -44,26 +44,18 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     typeof window !== 'undefined' && Boolean((window as any).katex?.renderToString)
   );
 
-  // Ensure lazy KaTeX CSS + mhchem are loaded so AI formulas never flash unstyled
+  // Load lazy KaTeX CSS + mhchem once cleanly (no background polling interval)
   useEffect(() => {
-    void ensureKatexLoaded();
-  }, []);
-
-  // Re-render once CDN KaTeX + mhchem finishes deferred load so \ce{...} renders cleanly
-  useEffect(() => {
-    if (cdnKatexReady || typeof window === 'undefined') return;
-    let attempts = 0;
-    const timer = window.setInterval(() => {
-      attempts += 1;
-      if ((window as any).katex?.renderToString) {
+    let active = true;
+    void ensureKatexLoaded().then(() => {
+      if (active && typeof window !== 'undefined' && Boolean((window as any).katex?.renderToString)) {
         setCdnKatexReady(true);
-        window.clearInterval(timer);
-      } else if (attempts > 30) {
-        window.clearInterval(timer);
       }
-    }, 150);
-    return () => window.clearInterval(timer);
-  }, [cdnKatexReady]);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Cancel active speech if component unmounts
   useEffect(() => {

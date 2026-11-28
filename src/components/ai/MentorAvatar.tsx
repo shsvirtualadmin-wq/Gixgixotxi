@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import type { AiMentorId } from '@/utils/aiMentorsLogic';
-import { getMentorCharacterProfile } from './mentorCharacterConfig';
+import React, { useEffect, useState } from 'react';
+import { getMentorConfig, type AiMentorId } from '@/utils/aiMentorsLogic';
 
 interface MentorAvatarProps {
   mentorId: AiMentorId;
@@ -9,15 +8,12 @@ interface MentorAvatarProps {
   ring?: boolean;
   active?: boolean;
   eager?: boolean;
-  /** Hides the avatar visually while a FLIP fly-in clone is in mid-flight */
-  hiddenForFlight?: boolean;
-  /** Triggers a brief accent ring pulse right as the hero character docks */
-  justDocked?: boolean;
 }
 
 /**
- * Static rendered portrait avatar used for small avatar slots (drawer, mentor cards,
- * saved chats, chat message bubbles) and reduced-motion/low-end fallback.
+ * Static WebP portrait avatar for Boardly AI Mentors (/ai/{noor,zen,seher,hamza,mahnur,aisha}.webp).
+ * Uses explicit width/height, lazy loading by default, and a colored initial-letter circle fallback
+ * if an image is missing or fails to load.
  */
 export const MentorAvatar: React.FC<MentorAvatarProps> = ({
   mentorId,
@@ -26,35 +22,37 @@ export const MentorAvatar: React.FC<MentorAvatarProps> = ({
   ring = true,
   active = false,
   eager = false,
-  hiddenForFlight = false,
-  justDocked = false,
 }) => {
-  const profile = getMentorCharacterProfile(mentorId);
+  const mentor = getMentorConfig(mentorId);
   const [imgError, setImgError] = useState(false);
+
+  // Reset image error state whenever mentor changes so switching mentors always loads cleanly
+  useEffect(() => {
+    setImgError(false);
+  }, [mentor.id, mentor.avatar]);
+
+  const initial = (mentor.name || 'A').charAt(0).toUpperCase();
+  const initialFontSize = Math.max(11, Math.round(size * 0.42));
 
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full select-none transition-opacity duration-150 ${
-        justDocked ? 'ai-mentor-docked-pulse' : ''
-      } ${className}`}
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full select-none ${className}`}
       style={{
         width: size,
         height: size,
-        backgroundColor: '#141418',
+        backgroundColor: imgError ? mentor.accent : 'color-mix(in srgb, var(--card) 85%, #0d0d12)',
         boxShadow: ring
           ? active
-            ? `0 0 0 2px ${profile.accentHex}, 0 0 12px color-mix(in srgb, ${profile.accentHex} 45%, transparent)`
-            : `0 0 0 1.5px color-mix(in srgb, ${profile.accentHex} 65%, transparent)`
+            ? `0 0 0 2px ${mentor.accent}, 0 0 12px color-mix(in srgb, ${mentor.accent} 42%, transparent)`
+            : `0 0 0 1.5px color-mix(in srgb, ${mentor.accent} 62%, transparent)`
           : undefined,
-        opacity: hiddenForFlight ? 0 : 1,
-        ['--mentor-accent' as any]: profile.accentHex,
       }}
       aria-hidden="true"
     >
-      {!imgError ? (
+      {!imgError && mentor.avatar ? (
         <img
-          src={profile.avatarWebp}
-          alt={profile.name}
+          src={mentor.avatar}
+          alt={mentor.name}
           width={size}
           height={size}
           loading={eager ? 'eager' : 'lazy'}
@@ -66,10 +64,13 @@ export const MentorAvatar: React.FC<MentorAvatarProps> = ({
         />
       ) : (
         <span
-          className="flex h-full w-full items-center justify-center text-[12px] font-bold text-white"
-          style={{ backgroundColor: profile.accentHex }}
+          className="flex h-full w-full items-center justify-center font-bold text-white leading-none"
+          style={{
+            backgroundColor: mentor.accent,
+            fontSize: `${initialFontSize}px`,
+          }}
         >
-          {profile.name[0]}
+          {initial}
         </span>
       )}
     </span>

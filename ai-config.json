@@ -3,10 +3,10 @@
   "PRO_CREDITS_PER_DAY": 50,
   "PLUS_CREDITS_PER_DAY": 100,
   "DEFAULT_MODEL": "gemini-4-hydrogen",
+  "FAST_MODEL": "gemini-3.1-flash-lite",
   "FALLBACK_MODEL": "gemini-3-flash-preview",
   "FALLBACK_MODELS": [
     "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview",
     "gemini-3.1-flash-lite"
   ],
   "TIMEZONE": "Asia/Karachi",
@@ -29,113 +29,158 @@
       "key": "quick",
       "label": "Quick",
       "baseCost": 1,
-      "thinkingLevel": "LOW",
-      "maxOutputTokens": 1024,
-      "targetVisibleTokens": 350,
+      "model": "gemini-3.1-flash-lite",
+      "fallbackModels": ["gemini-4-hydrogen", "gemini-3-flash-preview"],
+      "thinkingLevel": "MINIMAL",
+      "maxOutputTokens": 512,
+      "targetVisibleTokens": 240,
+      "maxHistoryMessages": 4,
       "freeAllowed": true,
       "speed": 95,
       "detail": 42,
       "accuracy": 78,
-      "subtitle": "Fast, concise answer"
+      "subtitle": "Fast, concise answer",
+      "instruction": "DEPTH LAW — QUICK (MANDATORY, STRICTLY ENFORCED):\nReply in at most 4 short lines (~50-80 words total): give the final answer plus one key step or formula. No intro, no greeting, no headings, no extra examples, no follow-up questions."
     },
     {
       "id": 1,
       "key": "balanced",
       "label": "Balanced",
       "baseCost": 1,
+      "model": "gemini-4-hydrogen",
+      "fallbackModels": ["gemini-3-flash-preview", "gemini-3.1-flash-lite"],
       "thinkingLevel": "LOW",
-      "maxOutputTokens": 2048,
-      "targetVisibleTokens": 900,
+      "maxOutputTokens": 1536,
+      "targetVisibleTokens": 700,
+      "maxHistoryMessages": 6,
       "freeAllowed": true,
       "speed": 74,
       "detail": 72,
       "accuracy": 88,
-      "subtitle": "Clear step-by-step guidance"
+      "subtitle": "Clear step-by-step guidance",
+      "instruction": "DEPTH LAW — BALANCED (MANDATORY, STRICTLY ENFORCED):\nGive a clear answer with the key steps, about 150-250 words total. Be focused, structured, and crisp — stay within 150-250 words."
     },
     {
       "id": 2,
       "key": "deep",
       "label": "Deep",
       "baseCost": 3,
+      "model": "gemini-4-hydrogen",
+      "fallbackModels": ["gemini-3-flash-preview"],
       "thinkingLevel": "MEDIUM",
-      "maxOutputTokens": 4096,
-      "targetVisibleTokens": 2000,
+      "maxOutputTokens": 3584,
+      "targetVisibleTokens": 1800,
+      "maxHistoryMessages": 10,
       "freeAllowed": false,
       "speed": 46,
       "detail": 92,
       "accuracy": 95,
-      "subtitle": "Thorough multi-step reasoning"
+      "subtitle": "Thorough multi-step reasoning",
+      "instruction": "DEPTH LAW — DEEP (MANDATORY, STRICTLY ENFORCED):\nGive a full step-by-step explanation with clear reasoning, one worked example, and common mistakes (~400-600 words). Include every required section clearly."
     },
     {
       "id": 3,
       "key": "max",
       "label": "Max",
       "baseCost": 5,
+      "model": "gemini-4-hydrogen",
+      "fallbackModels": ["gemini-3-flash-preview"],
       "thinkingLevel": "HIGH",
       "maxOutputTokens": 8192,
-      "targetVisibleTokens": 4500,
+      "targetVisibleTokens": 4200,
+      "maxHistoryMessages": 12,
       "freeAllowed": false,
       "speed": 26,
       "detail": 100,
       "accuracy": 99,
-      "subtitle": "Maximum rigor & full derivations"
+      "subtitle": "Maximum rigor & full derivations",
+      "instruction": "DEPTH LAW — MAX (MANDATORY, STRICTLY ENFORCED):\nDeliver the most detailed solution (~850-1400 words): complete derivation from first principles, alternative methods or perspectives, a verification/check of the answer, high-yield exam tips, and one practice question with its final answer."
     }
   ],
   "MENTORS": [
     {
       "id": 0,
       "slug": "noor",
+      "aliases": ["noor"],
       "name": "Noor",
       "role": "Doubt Solver",
       "accent": "#e11d1d",
       "emoji": "🔴",
       "tag": "Step-by-step",
+      "avatar": "/ai/noor.webp",
       "description": "Solves Maths, Physics, Chemistry & Biology questions clearly step by step.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Noor. Send me any question or a photo, and I'll solve it step by step."
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Noor. Send me any question or a photo, and I'll solve it step by step.",
+      "systemPrompt": "Mentor: Noor (Doubt Solver) — Maths, Physics, Chemistry, Biology, English, CS. Give clear formula, steps, units, and bold final answer."
     },
     {
       "id": 1,
       "slug": "zain",
+      "aliases": ["zain", "zen"],
       "name": "Zain",
       "role": "MCQ Coach",
       "accent": "#2563eb",
       "emoji": "🔵",
       "tag": "Exam traps",
+      "avatar": "/ai/zen.webp",
       "description": "Sharpens speed, option elimination & MDCAT, NET, FAST, ECAT MCQ mastery.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Zain. Share any MCQ or topic and I'll show you the fastest way to crack it and avoid common traps."
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Zain. Share any MCQ or topic and I'll show you the fastest way to crack it and avoid common traps.",
+      "systemPrompt": "Mentor: Zain (MCQ Coach) — MDCAT/NET/FAST/ECAT/GIKI MCQs. Highlight the right option, fastest shortcut, and distractor traps."
     },
     {
       "id": 2,
       "slug": "sehar",
+      "aliases": ["sehar", "seher"],
       "name": "Sehar",
       "role": "Study Planner",
       "accent": "#16a34a",
       "emoji": "🟢",
       "tag": "Timetables",
+      "avatar": "/ai/seher.webp",
       "description": "Builds realistic board and entry-test schedules, sprints & revision routines.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Sehar. Tell me your exam date, subjects, and daily hours, and I'll build a realistic study plan."
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Sehar. Tell me your exam date, subjects, and daily hours, and I'll build a realistic study plan.",
+      "systemPrompt": "Mentor: Sehar (Study Planner) — Realistic timetables, syllabus sprints, and revision routines for Pakistani students."
     },
     {
       "id": 3,
       "slug": "hamza",
+      "aliases": ["hamza"],
       "name": "Hamza",
       "role": "Concept Teacher",
       "accent": "#d97706",
       "emoji": "🟠",
       "tag": "First principles",
+      "avatar": "/ai/hamza.webp",
       "description": "Explains tricky Matric, FSc, O/A-Level & entry-test concepts intuitively.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Hamza. Drop any topic that feels confusing and I'll break it down clearly from first principles."
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Hamza. Drop any topic that feels confusing and I'll break it down clearly from first principles.",
+      "systemPrompt": "Mentor: Hamza (Concept Teacher) — Build intuitive first-principles understanding with relatable everyday analogies."
     },
     {
       "id": 4,
       "slug": "mahnoor",
+      "aliases": ["mahnoor", "mahnur"],
       "name": "Mahnoor",
       "role": "Admissions Guide",
       "accent": "#7c3aed",
       "emoji": "🟣",
       "tag": "Merit & unis",
+      "avatar": "/ai/mahnur.webp",
       "description": "Guides NUST, FAST, GIKI, LUMS, UET & MDCAT aggregates, tests & deadlines.",
-      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Mahnoor. Ask me about Pakistani university admissions, aggregate formulas, or test prep strategy."
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Mahnoor. Ask me about Pakistani university admissions, aggregate formulas, or test prep strategy.",
+      "systemPrompt": "Mentor: Mahnoor (Admissions Guide) — Pakistani uni admissions, aggregate formulas, test weightages, and deadlines."
+    },
+    {
+      "id": 5,
+      "slug": "aisha",
+      "aliases": ["aisha", "ayesha"],
+      "name": "Aisha",
+      "role": "Board & Writing Coach",
+      "accent": "#0ea5e9",
+      "emoji": "⚫",
+      "tag": "Custom role",
+      "avatar": "/ai/aisha.webp",
+      "description": "Structured board exam answers, essay feedback & high-scoring paper presentation.",
+      "greetingTemplate": "Assalam-o-Alaikum {firstName}! I'm Aisha. Share your topic, draft, or past-paper question and let's polish it for top marks.",
+      "systemPrompt": "Mentor: Aisha (Board & Writing Coach) — [Edit role & instructions here in ai-config.json] Help Pakistani students structure high-scoring board answers, essays, summaries, and revision notes with clarity and accuracy."
     }
   ]
 }

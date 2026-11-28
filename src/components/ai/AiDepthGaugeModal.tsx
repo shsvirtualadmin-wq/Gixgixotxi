@@ -5,6 +5,12 @@ import {
   getDepthConfig,
   type AiDepthId,
 } from '@/utils/aiMentorsLogic';
+import { useAiDepthMotion } from '@/utils/aiDepthMotionFlag';
+import {
+  AiDepthGaugeSvg,
+  DEPTH_ANGLES,
+  getMetricBarTransition,
+} from './AiDepthMotion';
 
 interface AiDepthGaugeModalProps {
   open: boolean;
@@ -16,7 +22,16 @@ interface AiDepthGaugeModalProps {
   onClose: () => void;
 }
 
-const DEPTH_ANGLES = [-72, -24, 24, 72];
+function triggerMaxHapticIfSupported(motionEnabled: boolean): void {
+  if (!motionEnabled || typeof navigator === 'undefined') return;
+  try {
+    if (typeof navigator.vibrate === 'function') {
+      navigator.vibrate(18);
+    }
+  } catch {
+    // Ignore unsupported vibration APIs
+  }
+}
 
 export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
   open,
@@ -29,6 +44,8 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [selectionSeq, setSelectionSeq] = useState(0);
+  const { motionEnabled } = useAiDepthMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -45,7 +62,14 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
   if (!open) return null;
 
   const activeCfg = getDepthConfig(selectedDepth);
-  const angleDeg = DEPTH_ANGLES[selectedDepth] ?? -24;
+
+  const commitDepth = (depthId: AiDepthId) => {
+    setSelectionSeq((n) => n + 1);
+    if (depthId === 3) {
+      triggerMaxHapticIfSupported(motionEnabled);
+    }
+    onSelectDepth(depthId);
+  };
 
   const pickDepthFromPointer = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -76,7 +100,7 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
       return;
     }
     if (nearest !== selectedDepth) {
-      onSelectDepth(nearest);
+      commitDepth(nearest);
     }
   };
 
@@ -86,8 +110,10 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
       onLockedDepthClick(cfg.label);
       return;
     }
-    onSelectDepth(depthId);
+    commitDepth(depthId);
   };
+
+  const barTransition = getMetricBarTransition(selectedDepth, motionEnabled);
 
   return (
     <div
@@ -138,12 +164,14 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
           </button>
         </div>
 
-        {/* Semicircle SVG Gauge with Draggable Needle */}
+        {/* Semicircle SVG Gauge with Draggable Needle & Per-Depth Motion */}
         <div className="mt-3 flex flex-col items-center">
-          <svg
-            ref={svgRef}
-            viewBox="0 0 260 150"
-            className="w-full max-w-[260px] select-none touch-none cursor-pointer"
+          <AiDepthGaugeSvg
+            svgRef={svgRef}
+            depthId={selectedDepth}
+            accentColor={accentColor}
+            dragging={dragging}
+            selectionSeq={selectionSeq}
             onPointerDown={(e) => {
               setDragging(true);
               try {
@@ -159,54 +187,7 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
             }}
             onPointerUp={() => setDragging(false)}
             onPointerCancel={() => setDragging(false)}
-          >
-            {/* Background arc */}
-            <path
-              d="M 28 130 A 102 102 0 0 1 232 130"
-              fill="none"
-              stroke="var(--border)"
-              strokeWidth="14"
-              strokeLinecap="round"
-            />
-            {/* Tick markers */}
-            {DEPTH_ANGLES.map((deg, idx) => {
-              const rad = ((deg - 90) * Math.PI) / 180;
-              const x = 130 + 102 * Math.cos(rad);
-              const y = 130 + 102 * Math.sin(rad);
-              const active = idx <= selectedDepth;
-              return (
-                <circle
-                  key={idx}
-                  cx={x}
-                  cy={y}
-                  r={idx === selectedDepth ? 6 : 4}
-                  fill={active ? accentColor : 'var(--text-muted)'}
-                  opacity={active ? 1 : 0.45}
-                />
-              );
-            })}
-            {/* Draggable Needle */}
-            <g
-              transform={`rotate(${angleDeg} 130 130)`}
-              style={{
-                transition: dragging ? 'none' : 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
-              }}
-            >
-              <line
-                x1="130"
-                y1="130"
-                x2="130"
-                y2="46"
-                stroke={accentColor}
-                strokeWidth="4.5"
-                strokeLinecap="round"
-              />
-              <circle cx="130" cy="46" r="5" fill={accentColor} />
-            </g>
-            {/* Hub */}
-            <circle cx="130" cy="130" r="10" fill={accentColor} />
-            <circle cx="130" cy="130" r="4.5" fill="var(--card)" />
-          </svg>
+          />
 
           <div className="mt-1 flex items-center gap-2">
             <span
@@ -264,7 +245,7 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
           })}
         </div>
 
-        {/* Speed / Detail / Accuracy Bars */}
+        {/* Speed / Detail / Accuracy Bars (GPU transform: scaleX only — zero layout animation) */}
         <div
           className="mt-4 rounded-[22px] p-3.5 space-y-2.5"
           style={{
@@ -289,9 +270,11 @@ export const AiDepthGaugeModal: React.FC<AiDepthGaugeModalProps> = ({
                 style={{ backgroundColor: 'var(--border)' }}
               >
                 <div
-                  className="h-full rounded-full transition-all duration-300"
+                  className="h-full w-full rounded-full will-change-transform"
                   style={{
-                    width: `${metric.value}%`,
+                    transformOrigin: 'left center',
+                    transform: `scaleX(${Math.max(0, Math.min(1, metric.value / 100))})`,
+                    transition: barTransition,
                     backgroundColor: accentColor,
                   }}
                 />

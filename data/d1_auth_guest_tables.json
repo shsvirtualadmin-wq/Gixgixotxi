@@ -2366,6 +2366,30 @@
       "verified_auth_time": 0,
       "verified_at": 1795650551571,
       "updated_at": 1795650551571
+    },
+    {
+      "user_id": "test_superadmin_plus_1795842473247",
+      "email_hash": "owner@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795842473251,
+      "updated_at": 1795842473251
+    },
+    {
+      "user_id": "test_free_plus_1795842473247",
+      "email_hash": "student@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795842473606,
+      "updated_at": 1795842473606
+    },
+    {
+      "user_id": "test_pro_plus_1795842473249",
+      "email_hash": "pro@boardly.test",
+      "email_verified": 1,
+      "verified_auth_time": 0,
+      "verified_at": 1795842473862,
+      "updated_at": 1795842473862
     }
   ],
   "user_koban_style": [],

@@ -1,7 +1,25 @@
 import aiConfig from '../../ai-config.json';
+import {
+  BASE_AI_SYSTEM_PROMPT,
+  resolveAiDepthExecution,
+  trimContentsForDepth,
+  parseStrictDepthId,
+  parseStrictMentorId,
+  type AiDepthExecutionPlan,
+} from '../../shared/aiDepthRouter.js';
+
+export {
+  BASE_AI_SYSTEM_PROMPT,
+  resolveAiDepthExecution,
+  trimContentsForDepth,
+  parseStrictDepthId,
+  parseStrictMentorId,
+  type AiDepthExecutionPlan,
+};
 
 export type AiDepthId = 0 | 1 | 2 | 3;
-export type AiMentorId = 0 | 1 | 2 | 3 | 4;
+export type AiMentorId = 0 | 1 | 2 | 3 | 4 | 5;
+export type AiMentorSlug = 'noor' | 'zain' | 'sehar' | 'hamza' | 'mahnoor' | 'aisha';
 export type AiPlan = 'free' | 'pro' | 'plus';
 
 export interface AiDepthConfig {
@@ -9,26 +27,33 @@ export interface AiDepthConfig {
   key: 'quick' | 'balanced' | 'deep' | 'max';
   label: string;
   baseCost: number;
+  model: string;
+  fallbackModels?: string[];
   thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
   maxOutputTokens: number;
   targetVisibleTokens?: number;
+  maxHistoryMessages?: number;
   freeAllowed: boolean;
   speed: number;
   detail: number;
   accuracy: number;
   subtitle: string;
+  instruction?: string;
 }
 
 export interface AiMentorConfig {
   id: AiMentorId;
-  slug: 'noor' | 'zain' | 'sehar' | 'hamza' | 'mahnoor';
+  slug: AiMentorSlug;
+  aliases?: string[];
   name: string;
   role: string;
   accent: string;
   emoji: string;
   tag: string;
+  avatar: string;
   description: string;
   greetingTemplate: string;
+  systemPrompt?: string;
 }
 
 export const AI_CONFIG = aiConfig;
@@ -93,14 +118,8 @@ export function getMentorConfig(mentor: number): AiMentorConfig {
 
 export function resolveMentorIdFromParam(param?: string | null): AiMentorId {
   if (!param) return 0;
-  const clean = String(param).trim().toLowerCase();
-  const bySlug = AI_MENTORS.find((m) => m.slug === clean || m.name.toLowerCase() === clean);
-  if (bySlug) return bySlug.id;
-  const num = Number(clean);
-  if (Number.isInteger(num) && num >= 0 && num < AI_MENTORS.length) {
-    return num as AiMentorId;
-  }
-  return 0;
+  const parsed = parseStrictMentorId(param);
+  return (parsed >= 0 ? parsed : 0) as AiMentorId;
 }
 
 export function calculateMessageCreditCost(input: CreditCostInput): CreditCostBreakdown {
@@ -350,7 +369,7 @@ export interface KatexLike {
     options?: {
       displayMode?: boolean;
       throwOnError?: boolean;
-      strict?: boolean | string;
+      strict?: boolean | 'warn' | 'error' | 'ignore';
       trust?: boolean;
     }
   ) => string;

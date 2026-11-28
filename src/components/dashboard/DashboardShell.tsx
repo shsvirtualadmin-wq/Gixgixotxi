@@ -248,26 +248,23 @@ export function DashboardShell() {
       {!isProfileRoute && !isCommonsRoute && !isSettingsRoute && <DashboardTopBar />}
       {!isGuest && <LegalUpdateNoticeBanner />}
 
-      {hasDockedBottomNav ? (
-        <>
-          <div
-            data-student-scroll-container="true"
-            className="student-scroll-viewport flex-1 min-h-0 w-full overflow-y-auto overflow-x-clip flex flex-col"
-          >
-            {guestNoticeBanner}
-            {mainElement}
-          </div>
-          <div
-            data-bottom-nav-safe-area="true"
-            className="student-bottom-nav-tray shrink-0 w-full pointer-events-none"
-            aria-hidden="true"
-          />
-        </>
-      ) : (
-        <>
-          {guestNoticeBanner}
-          {mainElement}
-        </>
+      <div
+        data-student-scroll-container={hasDockedBottomNav ? 'true' : undefined}
+        className={
+          hasDockedBottomNav
+            ? 'student-scroll-viewport flex-1 min-h-0 w-full overflow-y-auto overflow-x-clip flex flex-col'
+            : 'flex-1 min-h-0 w-full flex flex-col'
+        }
+      >
+        {guestNoticeBanner}
+        {mainElement}
+      </div>
+      {hasDockedBottomNav && (
+        <div
+          data-bottom-nav-safe-area="true"
+          className="student-bottom-nav-tray shrink-0 w-full pointer-events-none"
+          aria-hidden="true"
+        />
       )}
 
       {/* Unified Student Pill Navigation — hidden on Settings-area pages (Settings, Account, Security, Privacy, Plans and billing) */}
