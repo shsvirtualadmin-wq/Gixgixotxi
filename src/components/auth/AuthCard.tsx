@@ -527,11 +527,24 @@ export function AuthCard({
         onAuthSubmitSuccess?.(nextUid);
       }
     } catch (err: unknown) {
-      if (import.meta.env.DEV) {
-        console.error('[AuthCard] Submit error:', err);
-      }
       const fe = err as { code?: string; message?: string };
       const code = fe.code ?? '';
+      const isExpectedAuthRejection =
+        code === 'auth/user-not-found' ||
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        code === 'INVALID_CREDENTIALS' ||
+        code === 'USERNAME_TAKEN' ||
+        code === 'USERNAME_TAKEN_OR_SIMILAR' ||
+        code === 'INVALID_USERNAME_FORMAT' ||
+        code === 'auth/email-already-in-use' ||
+        code === 'auth/weak-password' ||
+        code === 'auth/too-many-requests' ||
+        code === 'auth/user-disabled';
+
+      if (import.meta.env.DEV && !isExpectedAuthRejection) {
+        console.error('[AuthCard] Submit error:', err);
+      }
 
       if (
         code === 'auth/user-not-found' ||

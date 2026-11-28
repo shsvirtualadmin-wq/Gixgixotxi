@@ -103,15 +103,21 @@ let sharedState: SharedUserProfileState = {
 };
 
 const subscriberCallbacks = new Set<() => void>();
+let broadcastScheduled = false;
 
 function broadcastState() {
-  for (const cb of subscriberCallbacks) {
-    try {
-      cb();
-    } catch {
-      // Ignore callback errors
+  if (broadcastScheduled) return;
+  broadcastScheduled = true;
+  queueMicrotask(() => {
+    broadcastScheduled = false;
+    for (const cb of subscriberCallbacks) {
+      try {
+        cb();
+      } catch {
+        // Ignore callback errors
+      }
     }
-  }
+  });
 }
 
 export function forceRefreshUserProfile(uid?: string | null): Promise<void> {
@@ -408,7 +414,11 @@ export function teardownSharedUserProfile(): void {
   broadcastState();
 }
 
-export function seedSharedUserProfileCache(uid: string, profile: UserProfile): void {
+export function seedSharedUserProfileCache(
+  uid: string,
+  profile: UserProfile,
+  options?: { silent?: boolean }
+): void {
   if (!uid || !profile) return;
   const clean: UserProfile = {
     ...(sharedState.profile || {}),
@@ -422,7 +432,9 @@ export function seedSharedUserProfileCache(uid: string, profile: UserProfile): v
   sharedState.hasReceivedSnapshot = true;
   sharedState.error = null;
   setLocalCachedProfile(uid, clean);
-  broadcastState();
+  if (!options?.silent) {
+    broadcastState();
+  }
 }
 
 export function getSharedUserProfileSnapshot(uid?: string | null): UserProfile | null {

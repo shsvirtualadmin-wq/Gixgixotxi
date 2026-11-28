@@ -450,7 +450,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       frame: restoredEquipped.frame || opt.frame || undefined,
       equipped: restoredEquipped,
     };
-    seedSharedUserProfileCache(opt.uid, restored);
+    seedSharedUserProfileCache(opt.uid, restored, { silent: true });
     return restored;
   });
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');

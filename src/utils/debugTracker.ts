@@ -137,8 +137,15 @@ class DebugTracker {
     };
   }
 
+  private notifyScheduled = false;
+
   private notify(): void {
-    this.listeners.forEach((fn) => fn());
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    queueMicrotask(() => {
+      this.notifyScheduled = false;
+      this.listeners.forEach((fn) => fn());
+    });
   }
 }
 
