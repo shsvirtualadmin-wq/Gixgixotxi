@@ -1,85 +1,52 @@
 export const SCENE_VIEWBOX_WIDTH: number;
 export const SCENE_VIEWBOX_HEIGHT: number;
+export const MAX_ANIMATION_SVG_BYTES: number;
 
-export interface PhysicsLineShape {
-  type: 'line' | 'arrow';
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  stroke: string;
-  strokeWidth: number;
-  dashed: boolean;
-  label?: string;
+export interface PhysicsGraphPhase {
+  fromIndex: number;
+  toIndex: number;
+  label: string;
 }
 
-export interface PhysicsRectShape {
-  type: 'rect';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  stroke: string;
-  fill: string;
-  strokeWidth: number;
-  dashed: boolean;
-  label?: string;
-}
-
-export interface PhysicsCircleShape {
-  type: 'circle';
-  cx: number;
-  cy: number;
-  r: number;
-  stroke: string;
-  fill: string;
-  strokeWidth: number;
-  dashed: boolean;
-  label?: string;
-}
-
-export interface PhysicsLabelShape {
-  type: 'label';
-  x: number;
-  y: number;
-  text: string;
-  color: string;
-  size: number;
-}
-
-export interface PhysicsCurveShape {
-  type: 'curve';
+export interface PhysicsGraphData {
+  xLabel: string;
+  yLabel: string;
+  xMax: number;
+  yMax: number;
   points: Array<[number, number]>;
-  stroke: string;
-  strokeWidth: number;
-  dashed: boolean;
-  label?: string;
+  phases: PhysicsGraphPhase[];
 }
-
-export type PhysicsShape =
-  | PhysicsLineShape
-  | PhysicsRectShape
-  | PhysicsCircleShape
-  | PhysicsLabelShape
-  | PhysicsCurveShape;
 
 export interface PhysicsSceneStep {
+  from: number;
+  to: number;
   narration: string;
   equation: string;
-  shapes: PhysicsShape[];
 }
 
 export interface PhysicsScene {
   title: string;
   steps: PhysicsSceneStep[];
+  animationSvg: string;
+  graph?: PhysicsGraphData;
+  graphOnly?: boolean;
+  totalDuration: number;
 }
 
 export interface StreamingPhysicsScene extends PhysicsScene {
   isComplete: boolean;
 }
 
-export function normalizePhysicsShape(raw: unknown): PhysicsShape | null;
-export function normalizePhysicsStep(raw: unknown): PhysicsSceneStep | null;
+export function sanitizeAnimationSvg(
+  rawSvg: unknown,
+  maxBytes?: number
+): { ok: true; svg: string } | { ok: false; error: string };
+export function normalizeAndValidateGraph(raw: unknown): PhysicsGraphData | null;
+export function buildGraphSvg(
+  graph: PhysicsGraphData,
+  opts?: { totalDuration?: number; activePhase?: number }
+): string;
+export function normalizePhysicsStep(raw: unknown, prevEnd?: number): PhysicsSceneStep | null;
 export function extractJsonObjectText(rawText: string): string;
 export function validatePhysicsScene(
   input: unknown,
@@ -92,8 +59,8 @@ export function extractStreamingPhysicsScene(
 export function parseStoredPhysicsScene(text: string): PhysicsScene | null;
 export function normalizePhysicsQuestion(question: string): string;
 export function hashPhysicsQuestion(question: string, depthId: number): string;
+export function isGraphOnlyQuery(rawText: string): boolean;
 export function isPhysicsVisualQuery(rawText: string): boolean;
-export function detectPhysicsTemplate(rawText: string): { key: string; hint: string };
 export function buildAishaVisualSchemaInstruction(params: {
   maxSteps: number;
   question: string;

@@ -1,21 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import katex from 'katex';
 import {
   AI_DEPTHS,
   AI_MENTORS,
   AISHA_MENTOR_ID,
+  buildGraphSvg,
   calculateMessageCreditCost,
-  detectPhysicsTemplate,
   extractStreamingPhysicsScene,
   getDepthBaseCostForMentor,
   getPktDateKey,
   getPktResetInfo,
   hashPhysicsQuestion,
+  isGraphOnlyQuery,
   isPhysicsVisualQuery,
+  normalizeAndValidateGraph,
   parseStoredPhysicsScene,
   prepareApiContents,
   renderAiMarkdownWithKatex,
+  sanitizeAnimationSvg,
   stripLatexForSpeech,
   buildChatTitle,
   resolveMentorIdFromParam,
@@ -32,6 +37,7 @@ import {
   mapMicrophoneError,
   resolveVoiceLanguage,
 } from './voiceInput';
+import { isPreviewAdHost, resolveLandingAdVideoMode } from '../config/ads';
 
 test('shared ai-config limits and 6-mentor registry (protecting Aisha identity/position/avatar) match spec', () => {
   assert.equal(FREE_AI_CREDITS_PER_DAY, 5);
@@ -157,133 +163,197 @@ test('all 6 AI mentors honor all 4 answer depths through one shared router with 
   }
 });
 
-test('Aisha name, avatar, role, and saved chat history (including physics whiteboard scene) survive reload round-trip', () => {
+test('Aisha name, avatar, role, and saved chat history (alive SVG + graph scene) survive reload round-trip', () => {
   const sampleScene = {
-    title: 'Projectile Motion at 45°',
+    title: 'Car Velocity-Time Motion',
     steps: [
-      {
-        narration: 'Launch the ball with initial speed u at angle 45 degrees.',
-        equation: 'v_x = u \\cos 45^\\circ, \\; v_y = u \\sin 45^\\circ',
-        shapes: [
-          { type: 'line', x1: 30, y1: 205, x2: 370, y2: 205, stroke: '#475569' },
-          { type: 'arrow', x1: 50, y1: 205, x2: 115, y2: 140, stroke: '#e11d48', label: 'u' },
-          { type: 'circle', cx: 50, cy: 205, r: 8, stroke: '#0ea5e9', fill: '#bae6fd' },
-        ],
-      },
-      {
-        narration: 'Gravity pulls it along a symmetric parabolic trajectory to range R.',
-        equation: 'R = \\frac{u^2 \\sin 2\\theta}{g}',
-        shapes: [
-          { type: 'line', x1: 30, y1: 205, x2: 370, y2: 205, stroke: '#475569' },
-          { type: 'curve', points: [[50, 205], [200, 55], [350, 205]], stroke: '#0ea5e9' },
-          { type: 'label', x: 200, y: 42, text: 'Max Height H', color: '#0f172a' },
-        ],
-      },
+      { from: 0, to: 3, narration: 'The car accelerates from 0 to 20 m/s.', equation: 'v = u + at' },
+      { from: 3, to: 6, narration: 'It cruises at steady 20 m/s.', equation: 'a = 0' },
+      { from: 6, to: 9, narration: 'It brakes smoothly back to 0 m/s.', equation: 'v^2 = u^2 + 2as' },
     ],
+    animationSvg:
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 240"><rect width="380" height="240" fill="#e0f2fe"/><g class="car"><rect x="20" y="150" width="70" height="28" rx="8" fill="#0284c7"/></g></svg>',
+    graph: {
+      xLabel: 'Time (s)',
+      yLabel: 'Velocity (m/s)',
+      xMax: 10,
+      yMax: 20,
+      points: [[0, 0], [4, 20], [7, 20], [10, 0]],
+      phases: [
+        { fromIndex: 0, toIndex: 1, label: 'Accelerate' },
+        { fromIndex: 1, toIndex: 2, label: 'Cruise' },
+        { fromIndex: 2, toIndex: 3, label: 'Brake' },
+      ],
+    },
   };
 
-  // Simulate saving a chat to localStorage/Firestore and reloading
-  const serializedChat = JSON.stringify({
-    id: 'chat_aisha_reload_1',
-    mentor: AISHA_MENTOR_ID,
-    title: 'Projectile Motion at 45°',
-    updatedAt: 1764000000000,
-    messages: [
-      { role: 'user', text: 'Explain projectile motion at 45 degrees' },
-      { role: 'model', text: JSON.stringify(sampleScene) },
-    ],
-  });
+  const reloaded = JSON.parse(
+    JSON.stringify({
+      id: 'chat_aisha_reload_1',
+      mentor: AISHA_MENTOR_ID,
+      title: sampleScene.title,
+      updatedAt: 1764000000000,
+      messages: [
+        { role: 'user', text: 'Draw velocity-time graph of a car accelerating, cruising, and braking' },
+        { role: 'model', text: JSON.stringify(sampleScene) },
+      ],
+    })
+  );
 
-  const reloaded = JSON.parse(serializedChat);
   const mentorAfterReload = AI_MENTORS[reloaded.mentor];
   assert.equal(mentorAfterReload.name, 'Aisha');
   assert.equal(mentorAfterReload.avatar, '/ai/aisha.webp');
   assert.equal(mentorAfterReload.role, 'Visual Physics Tutor');
-  assert.equal(reloaded.messages.length, 2);
 
-  const restoredScene = parseStoredPhysicsScene(reloaded.messages[1].text);
-  assert.ok(restoredScene, 'Reloaded Aisha physics scene must parse cleanly');
-  assert.equal(restoredScene?.title, 'Projectile Motion at 45°');
-  assert.equal(restoredScene?.steps.length, 2);
-  assert.equal(restoredScene?.steps[1].shapes[1].type, 'curve');
+  const restored = parseStoredPhysicsScene(reloaded.messages[1].text);
+  assert.ok(restored);
+  assert.equal(restored?.steps.length, 3);
+  assert.equal(restored?.totalDuration, 9);
+  assert.ok(restored?.animationSvg.startsWith('<svg'));
+  assert.equal(restored?.graph?.phases.length, 3);
 });
 
-test('Aisha physics schema validation, incremental streaming step parser, caching hash, query classifier, and 7 templates', () => {
-  // Streaming incremental extraction draws Step 1 before Step 2 finishes
-  const partialStream =
-    '{"title":"Free Fall","steps":[{"narration":"Drop ball from rest.","equation":"v = gt","shapes":[{"type":"circle","cx":200,"cy":50,"r":10,"stroke":"#0ea5e9"}]},{"narration":"Accelerating down';
-  const partial = extractStreamingPhysicsScene(partialStream, 5);
-  assert.ok(partial);
-  assert.equal(partial?.title, 'Free Fall');
-  assert.equal(partial?.steps.length, 1);
-  assert.equal(partial?.isComplete, false);
+test('AI full-screen overlay, 44px close button, SVG sanitizer, invalid fallback, connected v-t graph, and landing ad fallback', () => {
+  // 1. Full-screen overlay + >=44px X close button
+  const overlaySrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/components/ai/AiMentorsOverlay.tsx'),
+    'utf8'
+  );
+  assert.ok(overlaySrc.includes('fixed inset-0') && overlaySrc.includes('h-[100dvh]'));
+  assert.ok(!overlaySrc.includes('lg:max-w-[1040px]') && !overlaySrc.includes('lg:h-[86vh]'));
+  assert.ok(overlaySrc.includes('data-ai-close-button="true"'));
+  assert.ok(overlaySrc.includes('min-h-[44px] min-w-[44px]'));
+  assert.ok(overlaySrc.includes('onClick={onClose}'));
 
-  // Invalid scene rejected strictly (never charged)
-  assert.equal(validatePhysicsScene('not json at all', 5).valid, false);
-  assert.equal(validatePhysicsScene('{"title":"No steps","steps":[]}', 5).valid, false);
+  // 2. SVG sanitizer blocks <script>, <foreignObject>, on* attributes, external URLs, and >6KB SVGs
   assert.equal(
-    validatePhysicsScene('{"title":"Bad shape","steps":[{"narration":"Hi","equation":"","shapes":[{"type":"invalid"}]}]}', 5).valid,
+    sanitizeAnimationSvg('<svg viewBox="0 0 380 240"><script>alert(1)</script><rect width="10" height="10"/></svg>').ok,
+    false
+  );
+  assert.equal(
+    sanitizeAnimationSvg('<svg viewBox="0 0 380 240"><rect onclick="steal()" width="10" height="10"/></svg>').ok,
+    false
+  );
+  assert.equal(
+    sanitizeAnimationSvg('<svg viewBox="0 0 380 240"><foreignObject><div>x</div></foreignObject></svg>').ok,
+    false
+  );
+  assert.equal(
+    sanitizeAnimationSvg('<svg viewBox="0 0 380 240"><a href="https://evil.example"><rect width="10" height="10"/></a></svg>').ok,
+    false
+  );
+  assert.equal(
+    sanitizeAnimationSvg(`<svg viewBox="0 0 380 240">${'<rect width="1" height="1"/>'.repeat(300)}</svg>`).ok,
     false
   );
 
-  // Normalization & cache hash deterministic across punctuation/case/whitespace
-  const h1 = hashPhysicsQuestion('Explain Projectile Motion! ', 1);
-  const h2 = hashPhysicsQuestion('explain   projectile motion?', 1);
-  const h3 = hashPhysicsQuestion('explain projectile motion', 2);
-  assert.equal(h1, h2);
-  assert.notEqual(h1, h3);
+  // 3. Invalid SVG fails validation -> triggers retry/text fallback (never raw code)
+  assert.equal(validatePhysicsScene('not json at all', 5).valid, false);
+  assert.equal(validatePhysicsScene('{"title":"Empty","steps":[{"from":0,"to":3,"narration":"Hi","equation":""}],"animationSvg":""}', 5).valid, false);
+  assert.equal(
+    validatePhysicsScene(
+      JSON.stringify({
+        title: 'Unsafe',
+        steps: [{ from: 0, to: 3, narration: 'Hi', equation: '' }],
+        animationSvg: '<svg viewBox="0 0 380 240" onload="alert(1)"><circle cx="50" cy="50" r="10"/></svg>',
+      }),
+      5
+    ).valid,
+    false
+  );
 
-  // Greetings stay text; physics questions trigger visual mode
+  // Streaming narration extracts steps before SVG completes
+  const partial = extractStreamingPhysicsScene(
+    '{"title":"Free Fall","steps":[{"from":0,"to":3,"narration":"Drop ball from rest.","equation":"v = gt"}],"animationSvg":"<svg',
+    5
+  );
+  assert.ok(partial);
+  assert.equal(partial?.steps.length, 1);
+  assert.equal(partial?.isComplete, false);
+
+  // 4. Velocity-time graph (accelerate, cruise, brake): ONE set of axes + ONE connected polyline + touching phases
+  const graph = normalizeAndValidateGraph({
+    xLabel: 'Time (s)',
+    yLabel: 'Velocity (m/s)',
+    xMax: 10,
+    yMax: 20,
+    points: [[7, 20], [0, 0], [10, 0], [4, 20]], // deliberately unsorted to verify auto-repair
+    phases: [
+      { fromIndex: 0, toIndex: 1, label: 'Accelerate' },
+      { fromIndex: 1, toIndex: 2, label: 'Cruise' },
+      { fromIndex: 2, toIndex: 3, label: 'Brake' },
+    ],
+  });
+  assert.ok(graph);
+  assert.deepEqual(graph?.points, [[0, 0], [4, 20], [7, 20], [10, 0]]);
+  for (let i = 1; i < (graph?.phases.length || 0); i++) {
+    assert.equal(graph!.phases[i].fromIndex, graph!.phases[i - 1].toIndex);
+  }
+  const svg = buildGraphSvg(graph!, { totalDuration: 9, activePhase: 1 });
+  assert.equal((svg.match(/data-axis="x"/g) || []).length, 1);
+  assert.equal((svg.match(/data-axis="y"/g) || []).length, 1);
+  assert.equal((svg.match(/data-connected-curve="true"/g) || []).length, 1);
+  assert.ok(svg.includes('Accelerate') && svg.includes('Cruise') && svg.includes('Brake'));
+  assert.equal(sanitizeAnimationSvg(svg).ok, true);
+  assert.equal(isGraphOnlyQuery('Draw only a velocity-time graph'), true);
+
+  // Cache hash deterministic across punctuation/case/whitespace
+  assert.equal(hashPhysicsQuestion('Explain Projectile Motion! ', 1), hashPhysicsQuestion('explain   projectile motion?', 1));
+  assert.notEqual(hashPhysicsQuestion('explain projectile motion', 1), hashPhysicsQuestion('explain projectile motion', 2));
   assert.equal(isPhysicsVisualQuery('Salam!'), false);
-  assert.equal(isPhysicsVisualQuery('hi how are you?'), false);
   assert.equal(isPhysicsVisualQuery('Explain projectile motion at 30 degrees'), true);
-  assert.equal(isPhysicsVisualQuery('Calculate bending moment of a truck on a bridge'), true);
 
-  // All 7 starter templates match cleanly
-  assert.equal(detectPhysicsTemplate('projectile launch angle range').key, 'projectile_motion');
-  assert.equal(detectPhysicsTemplate('object dropped in free fall').key, 'free_fall');
-  assert.equal(detectPhysicsTemplate('truck on bridge bending moment').key, 'bridge_bending_moment');
-  assert.equal(detectPhysicsTemplate('water filling a cone tank rate graph').key, 'tank_filling_rate');
-  assert.equal(detectPhysicsTemplate('velocity-time graph and distance-time graph').key, 'kinematics_graphs');
-  assert.equal(detectPhysicsTemplate('block on an inclined plane with friction').key, 'inclined_plane');
-  assert.equal(detectPhysicsTemplate('series and parallel resistor circuit').key, 'simple_circuits');
-  assert.equal(detectPhysicsTemplate('quantum tunneling barrier').key, 'free_compose');
+  // 5. Landing ad section never renders a blank box (poster fallback in preview or when URL missing/errored)
+  assert.equal(isPreviewAdHost('ais-dev-abc.us-west1.run.app', true), true);
+  assert.equal(isPreviewAdHost('boardly.cfd', false), false);
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: '', isPreview: false }), 'poster');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: true }), 'poster');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: false, loadFailed: true }), 'poster');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: false, loadFailed: false }), 'video');
 });
 
 test('voice input error mapper returns exact friendly message for every microphone error type and in-app browser', () => {
   assert.equal(
-    mapMicrophoneError({ name: 'NotAllowedError' }).message,
+    mapMicrophoneError({ error: 'not-allowed' }, { logToConsole: false }).message,
     VOICE_ERROR_MESSAGES.notAllowed
   );
   assert.equal(
-    mapMicrophoneError({ name: 'PermissionDeniedError' }).message,
+    mapMicrophoneError({ error: 'service-not-allowed' }, { logToConsole: false }).message,
     VOICE_ERROR_MESSAGES.notAllowed
   );
   assert.equal(
-    mapMicrophoneError({ name: 'NotFoundError' }).message,
-    VOICE_ERROR_MESSAGES.notFound
+    mapMicrophoneError({ error: 'network' }, { logToConsole: false }).message,
+    VOICE_ERROR_MESSAGES.network
   );
   assert.equal(
-    mapMicrophoneError({ name: 'NotReadableError' }).message,
-    VOICE_ERROR_MESSAGES.notReadable
+    mapMicrophoneError({ error: 'audio-capture' }, { logToConsole: false }).message,
+    VOICE_ERROR_MESSAGES.audioCapture
+  );
+  assert.equal(
+    mapMicrophoneError({ name: 'NotReadableError' }, { logToConsole: false }).message,
+    VOICE_ERROR_MESSAGES.audioCapture
+  );
+  assert.equal(
+    mapMicrophoneError({ error: 'no-speech' }, { logToConsole: false }).message,
+    VOICE_ERROR_MESSAGES.noSpeech
+  );
+  assert.equal(
+    mapMicrophoneError({ error: 'language-not-supported' }, { logToConsole: false }).code,
+    'language-not-supported'
   );
   assert.equal(
     mapMicrophoneError(
       { name: 'NotAllowedError' },
-      { userAgent: 'Mozilla/5.0 Instagram 312.0' }
+      { userAgent: 'Mozilla/5.0 Instagram 312.0', logToConsole: false }
     ).message,
     VOICE_ERROR_MESSAGES.inAppBrowser
-  );
-  assert.equal(
-    mapMicrophoneError({ name: 'SomeUnknownErr' }, { logToConsole: false }).message,
-    VOICE_ERROR_MESSAGES.generic
   );
   assert.equal(isInAppBrowser('Mozilla/5.0 Instagram 312.0'), true);
   assert.equal(isInAppBrowser('Mozilla/5.0 WhatsApp/2.24'), true);
   assert.equal(isInAppBrowser('Mozilla/5.0 Chrome/126.0.0.0 Mobile Safari/537.36'), false);
 
   assert.equal(resolveVoiceLanguage({ draftText: 'فزکس کا سوال' }), 'ur-PK');
-  assert.equal(resolveVoiceLanguage({ preferredLang: 'en-PK', draftText: 'Find acceleration' }), 'en-PK');
+  assert.equal(resolveVoiceLanguage({ draftText: 'Find acceleration' }), 'en-US');
 });
 
 test('trimContentsForDepth caps turns per depth and keeps user-first invariant', () => {

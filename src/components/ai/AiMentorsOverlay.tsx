@@ -615,76 +615,66 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
       role="dialog"
       aria-modal="true"
       aria-label="Boardly AI Mentors"
-      className="fixed inset-0 z-[9950] flex items-end lg:items-center justify-center lg:p-6"
+      className="ai-mentors-sheet fixed inset-0 z-[9950] flex h-[100dvh] w-full overflow-hidden m-0 p-0"
+      style={{
+        backgroundColor: 'var(--bg)',
+        color: 'var(--text)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
+      }}
     >
-      {/* Dimmed backdrop (desktop click closes) */}
-      <div
-        className="fixed inset-0 bg-black/55 backdrop-blur-[3px]"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Main Container: Full-screen 100dvh sheet on <1024px; Centered 1040px x 86vh dialog on >=1024px */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="ai-mentors-sheet relative z-10 flex w-full h-[100dvh] lg:h-[86vh] lg:max-w-[1040px] lg:rounded-[32px] overflow-hidden shadow-2xl"
-        style={{
-          backgroundColor: 'var(--bg)',
-          border: '1px solid var(--border)',
-          color: 'var(--text)',
-        }}
+      {/* Permanent Left History Column on Laptop (>= 1024px) */}
+      <aside
+        className="hidden lg:flex w-[300px] shrink-0 flex-col min-h-0 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
+        style={{ borderRight: '1px solid var(--border)' }}
       >
-        {/* Permanent Left History Column on Laptop (>= 1024px) */}
-        <aside
-          className="hidden lg:flex w-[300px] shrink-0 flex-col min-h-0"
-          style={{ borderRight: '1px solid var(--border)' }}
-        >
-          <AiHistorySidebar
-            chats={savedChats}
-            activeChatId={currentThread.chatId}
-            activeMentor={mentorId}
-            plan={credits.plan}
-            isPro={credits.isPro}
-            isPlus={credits.isPlus}
-            dailyLimit={credits.dailyLimit}
-            isSuperAdmin={credits.isSuperAdmin}
-            planSource={credits.source}
-            onSelectMentor={handleSelectMentor}
-            onSelectChat={handleSelectSavedChat}
-            onDeleteChat={handleDeleteSavedChat}
-            onNewChat={() => startFreshChat(mentorId)}
-            onUpgradeClick={() =>
-              setUpgradeSheetReason(
-                credits.plan === 'pro'
-                  ? `Upgrade to Boardly Plus for ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2× Pro).`
-                  : `Upgrade to Boardly Pro for ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day and Deep & Max thinking.`
-              )
-            }
-          />
-        </aside>
+        <AiHistorySidebar
+          chats={savedChats}
+          activeChatId={currentThread.chatId}
+          activeMentor={mentorId}
+          plan={credits.plan}
+          isPro={credits.isPro}
+          isPlus={credits.isPlus}
+          dailyLimit={credits.dailyLimit}
+          isSuperAdmin={credits.isSuperAdmin}
+          planSource={credits.source}
+          onSelectMentor={handleSelectMentor}
+          onSelectChat={handleSelectSavedChat}
+          onDeleteChat={handleDeleteSavedChat}
+          onNewChat={() => startFreshChat(mentorId)}
+          onUpgradeClick={() =>
+            setUpgradeSheetReason(
+              credits.plan === 'pro'
+                ? `Upgrade to Boardly Plus for ${plansConfig.plus.aiCreditsPerDay} AI Mentor credits/day (2× Pro).`
+                : `Upgrade to Boardly Pro for ${plansConfig.pro.aiCreditsPerDay} AI Mentor credits/day and Deep & Max thinking.`
+            )
+          }
+        />
+      </aside>
 
-        {/* Right Main Chat Column */}
-        <div className="flex flex-1 min-w-0 flex-col min-h-0">
-          {/* Header */}
-          <header
-            className="shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 pt-[calc(10px+env(safe-area-inset-top,0px))] lg:pt-3 pb-2.5"
-            style={{
-              backgroundColor: 'var(--bg)',
-              borderBottom: '1px solid var(--border)',
-            }}
-          >
-            {/* Left controls: Close (X) + History menu (mobile/tablet only) */}
-            <div className="flex items-center gap-0.5 shrink-0">
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close AI Mentors"
-                title="Close"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
-                style={{ color: 'var(--text)' }}
-              >
-                <X className="h-[20px] w-[20px]" />
-              </button>
+      {/* Right Main Chat Column */}
+      <div className="flex flex-1 min-w-0 flex-col min-h-0 h-full">
+        {/* Header */}
+        <header
+          className="relative z-40 shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 pt-[calc(10px+env(safe-area-inset-top,0px))] pb-2.5"
+          style={{
+            backgroundColor: 'var(--bg)',
+            borderBottom: '1px solid var(--border)',
+          }}
+        >
+          {/* Left controls: Close (X) >=44px + History menu (mobile/tablet only) */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              type="button"
+              data-ai-close-button="true"
+              onClick={onClose}
+              aria-label="Close AI Mentors"
+              title="Close"
+              className="relative z-50 flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-0 bg-transparent cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95 active:bg-[var(--surface-hover)]"
+              style={{ color: 'var(--text)' }}
+            >
+              <X className="h-[22px] w-[22px]" />
+            </button>
 
               <button
                 type="button"
@@ -887,7 +877,6 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               if (credits.plan !== 'plus') setUpgradeSheetReason(reason);
             }}
           />
-        </div>
       </div>
 
       {/* Mobile/Tablet Slide-Over History Drawer */}

@@ -1,25 +1,17 @@
 /**
  * Boardly AI Voice Input utilities (shared across all 6 AI mentors).
- *
- * Handles:
- * - Granular microphone error mapping (NotAllowedError, NotFoundError, NotReadableError, etc.)
- * - In-app browser detection (Instagram, Facebook, TikTok, Snapchat, Line, Android WebView)
- * - HTTPS / secure context validation
- * - Student language selection (English en-PK / Urdu ur-PK + Roman Urdu support)
- * - MediaStream track cleanup
  */
 
-export type VoiceLangCode = 'en-PK' | 'ur-PK';
+export type VoiceLangCode = 'en-US' | 'ur-PK';
 
 export const VOICE_ERROR_MESSAGES = {
-  notAllowed:
-    'Microphone is blocked. Tap the lock icon in the address bar, allow Microphone, then try again.',
-  notFound: 'No microphone found.',
-  notReadable: 'Another app is using the microphone.',
+  notAllowed: 'Microphone is blocked, tap the lock icon and allow Microphone',
+  network: 'No connection to the speech service',
+  audioCapture: 'Microphone busy or missing',
+  noSpeech: 'Nothing heard, try again',
   inAppBrowser: 'Open in Chrome to use voice',
+  unsupported: 'Voice works in Chrome',
   insecureContext: 'Voice input requires a secure HTTPS connection.',
-  unsupported: 'Voice input is not supported in this browser.',
-  noSpeech: 'No speech detected. Tap the mic and try again.',
   generic: 'Voice input could not start right now. Please try again.',
 } as const;
 
@@ -47,10 +39,6 @@ export function isSecureVoiceContext(): boolean {
   );
 }
 
-/**
- * Resolves the best SpeechRecognition / transcription language from explicit choice,
- * current draft text (Urdu script detection), or browser locale.
- */
 export function resolveVoiceLanguage(opts?: {
   preferredLang?: VoiceLangCode | string | null;
   draftText?: string;
@@ -58,19 +46,14 @@ export function resolveVoiceLanguage(opts?: {
 }): VoiceLangCode {
   const pref = String(opts?.preferredLang || '').trim().toLowerCase();
   if (pref === 'ur' || pref === 'ur-pk' || pref === 'urdu') return 'ur-PK';
-  if (pref === 'en' || pref === 'en-pk' || pref === 'en-us' || pref === 'english') return 'en-PK';
-
-  // Detect Urdu / Arabic script in current composer draft
-  if (opts?.draftText && /[\u0600-\u06FF]/.test(opts.draftText)) {
-    return 'ur-PK';
-  }
-
+  if (pref === 'en' || pref === 'en-us' || pref === 'en-pk' || pref === 'english') return 'en-US';
+  if (opts?.draftText && /[\u0600-\u06FF]/.test(opts.draftText)) return 'ur-PK';
   const navLang = (
     opts?.navigatorLanguage ||
     (typeof navigator !== 'undefined' ? navigator.language : '')
   ).toLowerCase();
   if (navLang.startsWith('ur')) return 'ur-PK';
-  return 'en-PK';
+  return 'en-US';
 }
 
 export function stopMediaStreamTracks(stream: MediaStream | null | undefined): void {
@@ -80,7 +63,7 @@ export function stopMediaStreamTracks(stream: MediaStream | null | undefined): v
       try {
         track.stop();
       } catch {
-        // ignore individual track stop failure
+        // ignore
       }
     }
   } catch {
@@ -88,10 +71,6 @@ export function stopMediaStreamTracks(stream: MediaStream | null | undefined): v
   }
 }
 
-/**
- * Maps any DOMException (getUserMedia), SpeechRecognitionErrorEvent, or runtime error
- * to the exact user-friendly message required. Always logs unknown errors to console.
- */
 export function mapMicrophoneError(
   err: unknown,
   opts?: { userAgent?: string; logToConsole?: boolean }
@@ -100,81 +79,55 @@ export function mapMicrophoneError(
   const rawName =
     typeof err === 'string'
       ? err
-      : String((err as any)?.name || (err as any)?.error || '').trim();
+      : String((err as any)?.error || (err as any)?.name || '').trim();
   const rawMessage = String((err as any)?.message || '').toLowerCase();
 
+  if (opts?.logToConsole !== false) {
+    console.error('[Boardly Voice Input] mic error:', rawName || err);
+  }
+
   if (
-    rawName === 'NotAllowedError' ||
-    rawName === 'PermissionDeniedError' ||
     rawName === 'not-allowed' ||
     rawName === 'service-not-allowed' ||
+    rawName === 'NotAllowedError' ||
+    rawName === 'PermissionDeniedError' ||
     rawName === 'SecurityError'
   ) {
-    if (inApp) {
-      return {
-        code: 'IN_APP_BLOCKED',
-        message: VOICE_ERROR_MESSAGES.inAppBrowser,
-        isInApp: true,
-      };
-    }
-    return {
-      code: 'NotAllowedError',
-      message: VOICE_ERROR_MESSAGES.notAllowed,
-      isInApp: false,
-    };
+    return inApp
+      ? { code: 'IN_APP_BLOCKED', message: VOICE_ERROR_MESSAGES.inAppBrowser, isInApp: true }
+      : { code: 'not-allowed', message: VOICE_ERROR_MESSAGES.notAllowed, isInApp: false };
+  }
+
+  if (rawName === 'network') {
+    return { code: 'network', message: VOICE_ERROR_MESSAGES.network, isInApp: inApp };
   }
 
   if (
+    rawName === 'audio-capture' ||
     rawName === 'NotFoundError' ||
     rawName === 'DevicesNotFoundError' ||
-    rawName === 'audio-capture' ||
-    rawMessage.includes('requested device not found')
-  ) {
-    return {
-      code: 'NotFoundError',
-      message: VOICE_ERROR_MESSAGES.notFound,
-      isInApp: inApp,
-    };
-  }
-
-  if (
     rawName === 'NotReadableError' ||
     rawName === 'TrackStartError' ||
-    rawName === 'AbortError' ||
+    rawMessage.includes('requested device not found') ||
     rawMessage.includes('could not start audio source') ||
     rawMessage.includes('device in use')
   ) {
-    return {
-      code: 'NotReadableError',
-      message: VOICE_ERROR_MESSAGES.notReadable,
-      isInApp: inApp,
-    };
+    return { code: 'audio-capture', message: VOICE_ERROR_MESSAGES.audioCapture, isInApp: inApp };
   }
 
   if (rawName === 'no-speech') {
-    return {
-      code: 'no-speech',
-      message: VOICE_ERROR_MESSAGES.noSpeech,
-      isInApp: inApp,
-    };
+    return { code: 'no-speech', message: VOICE_ERROR_MESSAGES.noSpeech, isInApp: inApp };
+  }
+
+  if (rawName === 'language-not-supported') {
+    return { code: 'language-not-supported', message: '', isInApp: inApp };
   }
 
   if (inApp) {
-    return {
-      code: 'IN_APP_BLOCKED',
-      message: VOICE_ERROR_MESSAGES.inAppBrowser,
-      isInApp: true,
-    };
+    return { code: 'IN_APP_BLOCKED', message: VOICE_ERROR_MESSAGES.inAppBrowser, isInApp: true };
   }
 
-  if (opts?.logToConsole !== false) {
-    console.error('[Boardly Voice Input] unexpected microphone error:', err);
-  }
-  return {
-    code: rawName || 'UNKNOWN',
-    message: VOICE_ERROR_MESSAGES.generic,
-    isInApp: false,
-  };
+  return { code: rawName || 'UNKNOWN', message: VOICE_ERROR_MESSAGES.generic, isInApp: false };
 }
 
 export function getVoiceCapabilities(): {

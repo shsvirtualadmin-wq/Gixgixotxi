@@ -90,7 +90,12 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     if (isStreaming && looksLikeSceneJson) {
       const partial = extractStreamingPhysicsScene(text, 12);
       if (partial && partial.steps.length > 0) {
-        return { title: partial.title, steps: partial.steps };
+        return {
+          title: partial.title,
+          steps: partial.steps,
+          animationSvg: '',
+          totalDuration: partial.totalDuration,
+        };
       }
       return null;
     }
@@ -104,9 +109,22 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     isStreaming && looksLikeSceneJson && !physicsScene
   );
 
+  // Never leak raw JSON/SVG code to students if a stored/completed scene fails validation
+  const safeDisplayText = useMemo(() => {
+    if (physicsScene || waitingForFirstSceneStep) return '';
+    if (!isStreaming && looksLikeSceneJson) {
+      const partial = extractStreamingPhysicsScene(text, 12);
+      if (partial && partial.steps.length > 0) {
+        return partial.steps.map((s, i) => `${i + 1}. ${s.narration}`).join('\n\n');
+      }
+      return 'I had trouble rendering that physics animation. Please ask again or tap Regenerate for a clear step-by-step explanation.';
+    }
+    return text;
+  }, [physicsScene, waitingForFirstSceneStep, isStreaming, looksLikeSceneJson, text]);
+
   const needsMath = useMemo(
-    () => !physicsScene && !waitingForFirstSceneStep && hasMathNotation(text),
-    [physicsScene, waitingForFirstSceneStep, text]
+    () => !physicsScene && !waitingForFirstSceneStep && hasMathNotation(safeDisplayText),
+    [physicsScene, waitingForFirstSceneStep, safeDisplayText]
   );
 
   // Lazy-load KaTeX JS + CSS ONLY when this message actually contains math notation
@@ -143,8 +161,8 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
 
   const renderedHtml = useMemo(() => {
     if (physicsScene || waitingForFirstSceneStep) return '';
-    return renderAiMarkdownWithKatex(text, lazyKatex || undefined);
-  }, [physicsScene, waitingForFirstSceneStep, text, lazyKatex]);
+    return renderAiMarkdownWithKatex(safeDisplayText, lazyKatex || undefined);
+  }, [physicsScene, waitingForFirstSceneStep, safeDisplayText, lazyKatex]);
 
   const handleCopy = async (raw = false) => {
     try {

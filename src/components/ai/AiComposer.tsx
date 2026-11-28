@@ -347,6 +347,78 @@ export const AiComposer: React.FC<AiComposerProps> = ({
     }
   };
 
+  const startSpeechRecognition = (langCode: VoiceLangCode, allowLangFallback: boolean) => {
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      showMicMessage(
+        isInAppBrowser() ? VOICE_ERROR_MESSAGES.inAppBrowser : VOICE_ERROR_MESSAGES.unsupported
+      );
+      return;
+    }
+
+    // Never open two mic streams at once: ensure any prior stream/recognition is stopped first
+    if (mediaStreamRef.current) {
+      stopMediaStreamTracks(mediaStreamRef.current);
+      mediaStreamRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+
+    try {
+      const rec = new SpeechRec();
+      rec.lang = langCode;
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      rec.continuous = false;
+
+      rec.onresult = (evt: any) => {
+        const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
+        if (transcript) {
+          setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
+          setMicNote(null);
+        }
+      };
+      rec.onend = () => {
+        if (recognitionRef.current === rec) {
+          recognitionRef.current = null;
+        }
+        setListening(false);
+      };
+      rec.onerror = (evt: any) => {
+        if (recognitionRef.current === rec) {
+          recognitionRef.current = null;
+        }
+        setListening(false);
+        const errCode = String(evt?.error || '');
+        if (errCode === 'aborted') return;
+        console.error('[Boardly Voice Input] SpeechRecognition error:', errCode, evt);
+        if (errCode === 'language-not-supported' && allowLangFallback && langCode !== 'en-US') {
+          setVoiceLang('en-US');
+          startSpeechRecognition('en-US', false);
+          return;
+        }
+        const mapped = mapMicrophoneError(errCode || evt, { logToConsole: false });
+        if (mapped.message) showMicMessage(mapped.message);
+      };
+      recognitionRef.current = rec;
+      setMicNote(null);
+      setListening(true);
+      rec.start();
+    } catch (err) {
+      recognitionRef.current = null;
+      setListening(false);
+      const mapped = mapMicrophoneError(err);
+      if (mapped.message) showMicMessage(mapped.message);
+    }
+  };
+
   const handleToggleMic = () => {
     if (typeof window === 'undefined' || transcribing) return;
 
@@ -355,40 +427,11 @@ export const AiComposer: React.FC<AiComposerProps> = ({
       return;
     }
 
-    // Legacy path when voiceV2 feature flag is explicitly turned off
-    if (!voiceV2Enabled) {
-      const SpeechRec =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRec) {
-        showMicMessage(VOICE_ERROR_MESSAGES.unsupported, 3000);
-        return;
-      }
-      try {
-        const rec = new SpeechRec();
-        rec.lang = 'en-US';
-        rec.interimResults = false;
-        rec.maxAlternatives = 1;
-        rec.onresult = (evt: any) => {
-          const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
-          if (transcript) setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        };
-        rec.onend = () => setListening(false);
-        rec.onerror = (evt: any) => {
-          setListening(false);
-          const mapped = mapMicrophoneError(evt?.error || evt);
-          showMicMessage(mapped.message);
-        };
-        recognitionRef.current = rec;
-        setListening(true);
-        rec.start();
-      } catch (err) {
-        setListening(false);
-        showMicMessage(mapMicrophoneError(err).message);
-      }
+    if (isInAppBrowser()) {
+      showMicMessage(VOICE_ERROR_MESSAGES.inAppBrowser);
       return;
     }
 
-    // Secure context (HTTPS / localhost) required by browsers for microphone capture
     if (!isSecureVoiceContext()) {
       showMicMessage(VOICE_ERROR_MESSAGES.insecureContext);
       return;
@@ -396,112 +439,39 @@ export const AiComposer: React.FC<AiComposerProps> = ({
 
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const hasMediaRecorder = typeof (window as any).MediaRecorder !== 'undefined';
-    const hasGetUserMedia = Boolean(navigator?.mediaDevices?.getUserMedia);
-
-    if (!SpeechRec && !hasMediaRecorder) {
-      if (isInAppBrowser()) {
-        showMicMessage(VOICE_ERROR_MESSAGES.inAppBrowser);
-      } else {
-        showMicMessage(VOICE_ERROR_MESSAGES.unsupported);
-      }
-      return;
-    }
-
-    if (!hasGetUserMedia) {
-      if (isInAppBrowser()) {
-        showMicMessage(VOICE_ERROR_MESSAGES.inAppBrowser);
-        return;
-      }
-      if (!SpeechRec) {
-        showMicMessage(VOICE_ERROR_MESSAGES.unsupported);
-        return;
-      }
-    }
 
     const activeLang = resolveVoiceLanguage({
       preferredLang: voiceLang,
       draftText: text,
     });
 
-    // CRITICAL (Requirement 2a): Call navigator.mediaDevices.getUserMedia({ audio: true })
-    // DIRECTLY synchronously inside the click handler (before any await or timer) so
-    // mobile Chrome & Safari preserve the user gesture and grant microphone permission.
-    const micPermissionPromise: Promise<MediaStream | null> = hasGetUserMedia
-      ? navigator.mediaDevices.getUserMedia({ audio: true })
-      : Promise.resolve(null);
+    if (SpeechRec) {
+      // Start fresh SpeechRecognition synchronously inside the click handler (no double mic stream)
+      startSpeechRecognition(activeLang, true);
+      return;
+    }
 
-    micPermissionPromise
+    if (!voiceV2Enabled || !navigator?.mediaDevices?.getUserMedia || typeof (window as any).MediaRecorder === 'undefined') {
+      showMicMessage(VOICE_ERROR_MESSAGES.unsupported);
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
       .then((stream) => {
-        // Fallback to MediaRecorder + server transcription when SpeechRecognition is unavailable
-        if (!SpeechRec) {
-          if (stream && hasMediaRecorder) {
-            startMediaRecorderFallback(stream, activeLang);
-          } else {
-            stopMediaStreamTracks(stream);
-            showMicMessage(
-              isInAppBrowser() ? VOICE_ERROR_MESSAGES.inAppBrowser : VOICE_ERROR_MESSAGES.unsupported
-            );
-          }
-          return;
-        }
-
-        // Stop getUserMedia probe tracks immediately before starting SpeechRecognition
-        // so Android/iOS Chrome doesn't report audio device busy (NotReadableError).
-        stopMediaStreamTracks(stream);
-
-        try {
-          const rec = new SpeechRec();
-          rec.lang = activeLang;
-          rec.interimResults = false;
-          rec.maxAlternatives = 1;
-          rec.continuous = false;
-
-          rec.onresult = (evt: any) => {
-            const transcript = String(evt?.results?.[0]?.[0]?.transcript || '').trim();
-            if (transcript) {
-              setText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-              setMicNote(null);
-            }
-          };
-          rec.onend = () => {
-            recognitionRef.current = null;
-            setListening(false);
-          };
-          rec.onerror = (evt: any) => {
-            recognitionRef.current = null;
-            setListening(false);
-            const errCode = String(evt?.error || '');
-            // Ignore deliberate user cancel
-            if (errCode === 'aborted') return;
-            const mapped = mapMicrophoneError(errCode || evt);
-            showMicMessage(mapped.message);
-          };
-          recognitionRef.current = rec;
-          setMicNote(null);
-          setListening(true);
-          rec.start();
-        } catch (err) {
-          recognitionRef.current = null;
-          setListening(false);
-          const mapped = mapMicrophoneError(err);
-          showMicMessage(mapped.message);
-        }
+        startMediaRecorderFallback(stream, activeLang);
       })
       .catch((err) => {
+        console.error('[Boardly Voice Input] getUserMedia error:', err?.name || err);
         setListening(false);
-        const mapped = mapMicrophoneError(err);
-        showMicMessage(mapped.message);
+        const mapped = mapMicrophoneError(err, { logToConsole: false });
+        if (mapped.message) showMicMessage(mapped.message);
       });
   };
 
   const isThinkHarderOn = depthId >= 2;
   const canSend = !sending && (text.trim().length > 0 || attachments.length > 0);
-  const showMicButton =
-    !voiceV2Enabled ||
-    voiceCaps.hasSpeechRecognition ||
-    voiceCaps.hasMediaRecorder ||
-    voiceCaps.isInApp;
+  const showMicButton = voiceCaps.hasSpeechRecognition || voiceCaps.isInApp;
 
   return (
     <div
@@ -727,15 +697,15 @@ export const AiComposer: React.FC<AiComposerProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              {showMicButton && voiceV2Enabled && (
+              {showMicButton && !voiceCaps.isInApp && voiceV2Enabled && (
                 <button
                   type="button"
                   onClick={() =>
-                    setVoiceLang((prev) => (prev === 'ur-PK' ? 'en-PK' : 'ur-PK'))
+                    setVoiceLang((prev) => (prev === 'ur-PK' ? 'en-US' : 'ur-PK'))
                   }
                   disabled={listening || transcribing}
                   aria-label={`Voice language ${voiceLang === 'ur-PK' ? 'Urdu' : 'English'}. Tap to switch.`}
-                  title={`Voice language: ${voiceLang === 'ur-PK' ? 'Urdu (ur-PK)' : 'English (en-PK)'}`}
+                  title={`Voice language: ${voiceLang === 'ur-PK' ? 'Urdu (ur-PK)' : 'English (en-US)'}`}
                   className="flex h-8 items-center justify-center rounded-full px-2 text-[11px] font-semibold transition-colors cursor-pointer hover:bg-[var(--surface-hover)] disabled:opacity-50"
                   style={{
                     backgroundColor: 'var(--bg)',
@@ -747,7 +717,7 @@ export const AiComposer: React.FC<AiComposerProps> = ({
                 </button>
               )}
 
-              {showMicButton && (
+              {showMicButton ? (
                 <button
                   type="button"
                   onClick={handleToggleMic}
@@ -760,11 +730,13 @@ export const AiComposer: React.FC<AiComposerProps> = ({
                         : 'Voice input'
                   }
                   title={
-                    transcribing
-                      ? 'Transcribing...'
-                      : listening
-                        ? 'Stop listening'
-                        : 'Voice input'
+                    voiceCaps.isInApp
+                      ? VOICE_ERROR_MESSAGES.inAppBrowser
+                      : transcribing
+                        ? 'Transcribing...'
+                        : listening
+                          ? 'Stop listening'
+                          : 'Voice input'
                   }
                   className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors cursor-pointer hover:bg-[var(--surface-hover)] disabled:opacity-60 ${
                     listening || transcribing ? 'animate-pulse' : ''
@@ -779,6 +751,13 @@ export const AiComposer: React.FC<AiComposerProps> = ({
                 >
                   {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 </button>
+              ) : (
+                <span
+                  className="text-[11px] font-medium px-1.5 select-none"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {VOICE_ERROR_MESSAGES.unsupported}
+                </span>
               )}
 
               <button

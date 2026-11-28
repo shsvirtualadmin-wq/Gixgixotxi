@@ -5,6 +5,8 @@ import {
   DEFAULT_AD_SLOTS,
   isAdBlockedRoute,
   isOfferActiveNow,
+  isPreviewAdHost,
+  resolveLandingAdVideoMode,
   sanitizeGoogleSlotId,
   sanitizePublisherId,
   type AdSlotConfig,
@@ -327,6 +329,7 @@ export const AdSlot = memo(function AdSlot({
   const [mobileAllowed, setMobileAllowed] = useState(true);
   // Track Google AdSense fill state: 'idle' | 'pending' | 'filled' | 'unfilled'
   const [googleState, setGoogleState] = useState<'idle' | 'pending' | 'filled' | 'unfilled'>('idle');
+  const [videoFailed, setVideoFailed] = useState(false);
 
   const isWaitingForPlan = !isPreview && planLoading;
   const isPaidAdFree = !isPreview && rawIsPaidAdFree;
@@ -359,11 +362,13 @@ export const AdSlot = memo(function AdSlot({
     slotConfig && !slotConfig.boardlyOnly ? sanitizeGoogleSlotId(slotConfig.googleSlotId) : '';
   const cleanPublisherId = sanitizePublisherId(config.publisherId);
 
+  const isPreviewHost = isPreviewAdHost();
   const canAttemptGoogle =
     showAds &&
     !shouldHideCompletely &&
     !isWaitingForPlan &&
     !isPreview &&
+    !isPreviewHost &&
     (effectiveMode === 'google' || effectiveMode === 'auto') &&
     Boolean(cleanGoogleSlotId) &&
     Boolean(cleanPublisherId);
@@ -533,11 +538,7 @@ export const AdSlot = memo(function AdSlot({
           return;
         }
         const status = insEl.getAttribute('data-ad-status');
-        const hasIframe = Boolean(insEl.querySelector('iframe'));
-        if (
-          status === 'filled' ||
-          (hasIframe && status !== 'unfilled' && insEl.offsetHeight >= 40)
-        ) {
+        if (status === 'filled') {
           setGoogleState('filled');
         } else {
           setGoogleState('unfilled');
@@ -837,6 +838,13 @@ export const AdSlot = memo(function AdSlot({
     : 'visible';
 
   const activePromoEndDate = config.promoCode?.active ? config.promoCode.endDate : null;
+  const landingVideoMode = resolveLandingAdVideoMode({
+    videoUrl: config.landingAdVideoUrl,
+    isPreview: isPreview || isPreviewHost,
+    loadFailed: videoFailed,
+  });
+  const showLandingVideo =
+    slotConfig.id === 'home_faq' && (Boolean(config.landingAdVideoUrl) || !showGoogleUnit);
 
   const innerContent = isWaitingForPlan ? (
     <AdSpacePlaceholder
@@ -844,6 +852,49 @@ export const AdSlot = memo(function AdSlot({
       compact={compact || Boolean(slotConfig.desktopOnly)}
       loading
     />
+  ) : showLandingVideo ? (
+    <aside
+      aria-label="Boardly showcase video"
+      data-boardly-slot={slotConfig.id}
+      data-landing-ad-mode={landingVideoMode}
+      className="w-full min-w-0 flex flex-col gap-1.5"
+    >
+      <div className="relative w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[#0b0d13]">
+        {landingVideoMode === 'video' && config.landingAdVideoUrl ? (
+          <video
+            src={config.landingAdVideoUrl}
+            poster="/boardly-ad-poster.jpg"
+            controls
+            playsInline
+            preload="metadata"
+            onError={() => setVideoFailed(true)}
+            className="w-full max-h-[420px] object-cover block bg-[#0b0d13]"
+          />
+        ) : (
+          <div className="relative w-full aspect-[16/9] max-h-[360px] overflow-hidden bg-[#0b0d13]">
+            <img
+              src="/boardly-ad-poster.jpg"
+              alt="Boardly preview"
+              loading="lazy"
+              className="w-full h-full object-cover opacity-80"
+            />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-black/45 px-4 text-center">
+              <span
+                aria-hidden="true"
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-white/95 text-[#0b0d13] shadow-lg"
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6 translate-x-0.5 fill-current">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              </span>
+              <span className="rounded-full bg-black/70 px-3.5 py-1 text-xs font-semibold text-white">
+                Video available on the live site
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
   ) : showGoogleUnit ? (
     <aside
       aria-label="Sponsored placement"

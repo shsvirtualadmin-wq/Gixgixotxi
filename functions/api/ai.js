@@ -1999,7 +1999,7 @@ export async function handleAiMentorsRequest(request, env) {
             role: 'user',
             parts: [
               {
-                text: `Return ONLY valid raw JSON matching {"title":"...","steps":[{"narration":"...","equation":"...","shapes":[...]}]} with at most ${executionPlan.maxSteps} steps and valid shapes inside 0..400 x 0..240.`,
+                text: `Previous output failed validation (${check.error}). Return ONLY valid raw JSON matching {"title":"...","steps":[{"from":0,"to":3,"narration":"...","equation":"..."}],"animationSvg":"<svg viewBox=\\"0 0 380 240\\">...</svg>"} (plus optional "graph" if a graph was requested) with at most ${executionPlan.maxSteps} steps, SVG under 5.5 KB, NO <script>, NO <foreignObject>, NO on* attributes, and NO external URLs.`,
               },
             ],
           },

@@ -60,6 +60,7 @@ export interface AdsConfigDoc {
   adsEnabled: boolean;
   publisherId: string;
   fallbackToBoardly: boolean;
+  landingAdVideoUrl?: string;
   slots: Record<AdSlotId, AdSlotConfig>;
   offers: BoardlyOffer[];
   promoCode: AdPromoCodeConfig;
@@ -359,6 +360,9 @@ export function createDefaultAdsConfig(): AdsConfigDoc {
     adsEnabled: true,
     publisherId: ADSENSE_CLIENT_ID,
     fallbackToBoardly: true,
+    landingAdVideoUrl: sanitizeSafeVideoUrl(
+      (import.meta as any)?.env?.VITE_LANDING_AD_VIDEO_URL || ''
+    ),
     slots: slotsCopy,
     offers: DEFAULT_BOARDLY_OFFERS.map((o) => ({ ...o })),
     promoCode: {
@@ -370,6 +374,48 @@ export function createDefaultAdsConfig(): AdsConfigDoc {
 }
 
 export const DEFAULT_ADS_CONFIG: AdsConfigDoc = createDefaultAdsConfig();
+
+export function sanitizeSafeVideoUrl(raw: unknown): string {
+  const str = String(raw || '').trim();
+  if (!str) return '';
+  if (str.startsWith('/') && !str.startsWith('//')) return str;
+  try {
+    const parsed = new URL(str);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return parsed.toString();
+  } catch {
+    // Reject invalid URLs
+  }
+  return '';
+}
+
+export function isPreviewAdHost(
+  hostname: string = typeof window !== 'undefined' ? window.location.hostname : '',
+  isFramed: boolean = typeof window !== 'undefined' ? window.self !== window.top : false
+): boolean {
+  const host = String(hostname || '').toLowerCase();
+  if (!host) return false;
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.run.app') ||
+    host.endsWith('.webcontainer.io') ||
+    host.endsWith('.stackblitz.io') ||
+    host.endsWith('.pages.dev')
+  ) {
+    return true;
+  }
+  return isFramed && !host.endsWith('boardly.cfd');
+}
+
+export function resolveLandingAdVideoMode(params: {
+  videoUrl?: string;
+  isPreview?: boolean;
+  loadFailed?: boolean;
+}): 'video' | 'poster' {
+  const cleanUrl = sanitizeSafeVideoUrl(params.videoUrl);
+  if (!cleanUrl || params.isPreview || params.loadFailed) return 'poster';
+  return 'video';
+}
 
 export function sanitizeSafeOfferUrl(raw: unknown): string {
   const str = String(raw || '').trim();
@@ -590,11 +636,16 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
     endDate: normalizeOptionalDate(rawPromo.endDate),
   };
 
+  const landingAdVideoUrl = sanitizeSafeVideoUrl(
+    raw.landingAdVideoUrl ?? defaults.landingAdVideoUrl ?? ''
+  );
+
   return {
     version: Number(raw.version) || 1,
     adsEnabled,
     publisherId,
     fallbackToBoardly,
+    landingAdVideoUrl,
     slots,
     offers: finalOffers,
     promoCode,
