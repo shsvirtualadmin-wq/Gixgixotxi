@@ -155,13 +155,137 @@ export async function getGooglePublicJwks(): Promise<any[]> {
 
 import seedDataset from '../data/cloudflare_d1_posts.json';
 
+// ── In-memory TTL Read Cache & Zero-D1-Read Public IP Rate Limiter ──────────
+interface WorkerCacheEntry {
+  value: any;
+  expiresAt: number;
+}
+const WORKER_READ_CACHE = new Map<string, WorkerCacheEntry>();
+const WORKER_READ_CACHE_MAX = 300;
+
+function getWorkerCached<T>(key: string): T | null {
+  const entry = WORKER_READ_CACHE.get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    WORKER_READ_CACHE.delete(key);
+    return null;
+  }
+  return entry.value as T;
+}
+
+function setWorkerCached<T>(key: string, value: T, ttlMs: number): T {
+  const now = Date.now();
+  if (WORKER_READ_CACHE.size >= WORKER_READ_CACHE_MAX) {
+    for (const [k, v] of WORKER_READ_CACHE.entries()) {
+      if (v.expiresAt <= now) WORKER_READ_CACHE.delete(k);
+    }
+    if (WORKER_READ_CACHE.size >= WORKER_READ_CACHE_MAX) {
+      const oldestKey = WORKER_READ_CACHE.keys().next().value;
+      if (oldestKey) WORKER_READ_CACHE.delete(oldestKey);
+    }
+  }
+  WORKER_READ_CACHE.set(key, { value, expiresAt: now + ttlMs });
+  return value;
+}
+
+function invalidateWorkerCache(prefixes: string[]): void {
+  for (const key of Array.from(WORKER_READ_CACHE.keys())) {
+    if (prefixes.some((p) => key.startsWith(p))) {
+      WORKER_READ_CACHE.delete(key);
+    }
+  }
+}
+
+interface MemoryRateBucket {
+  count: number;
+  resetAt: number;
+}
+const PUBLIC_IP_RATE_LIMITS = new Map<string, MemoryRateBucket>();
+const PUBLIC_IP_RATE_LIMIT_MAX = 2000;
+
+function checkPublicIpRateLimit(
+  req: Request,
+  scope: string,
+  maxRequests = 120,
+  windowMs = 60_000
+): boolean {
+  const ip =
+    req.headers.get('CF-Connecting-IP') ||
+    req.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    'unknown';
+  const key = `${scope}:${ip}`;
+  const now = Date.now();
+  const existing = PUBLIC_IP_RATE_LIMITS.get(key);
+  if (!existing || now >= existing.resetAt) {
+    if (PUBLIC_IP_RATE_LIMITS.size >= PUBLIC_IP_RATE_LIMIT_MAX) {
+      for (const [k, v] of PUBLIC_IP_RATE_LIMITS.entries()) {
+        if (v.resetAt <= now) PUBLIC_IP_RATE_LIMITS.delete(k);
+      }
+      if (PUBLIC_IP_RATE_LIMITS.size >= PUBLIC_IP_RATE_LIMIT_MAX) {
+        const firstKey = PUBLIC_IP_RATE_LIMITS.keys().next().value;
+        if (firstKey) PUBLIC_IP_RATE_LIMITS.delete(firstKey);
+      }
+    }
+    PUBLIC_IP_RATE_LIMITS.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (existing.count >= maxRequests) {
+    return false;
+  }
+  existing.count += 1;
+  return true;
+}
+
+function buildQuestionCandidateIds(rawId: string): string[] {
+  const clean = rawId.trim();
+  if (!clean) return [];
+  const bare = clean.includes(':') ? clean.slice(clean.indexOf(':') + 1) : clean;
+  return Array.from(
+    new Set([clean, bare, `legacy:${bare}`, `bank1:${bare}`, `bank2:${bare}`])
+  );
+}
+
+function shuffleInPlace<T>(items: T[]): T[] {
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = items[i];
+    items[i] = items[j];
+    items[j] = tmp;
+  }
+  return items;
+}
+
+const POST_SELECT_COLS = `id, slug, type, title, description, subject, chapter, target, class_level, board, format, tags_json, files_json, is_anonymous, anonymous_alias, author_uid, real_author_uid, author_name, author_avatar, author_frame, author_equipped_avatar, author_photo_url, author_role, author_custom_role, status, visibility, is_hidden, is_pinned, is_featured, upvotes, downvotes, views, comment_count, save_count, shares_count, report_count, created_at, updated_at`;
+
+const QUESTION_PUBLIC_COLS = `id, bank_id, subject, topic, difficulty, status, needs_review, question_text, options_json, source_path, created_at, updated_at`;
+const QUESTION_ADMIN_COLS = `${QUESTION_PUBLIC_COLS}, correct_answer, explanation`;
+
+const MCQ_PUBLIC_COLS = `id, university_id, subject, topic, question, option_a, option_b, option_c, option_d, difficulty, created_at`;
+const MCQ_FULL_COLS = `${MCQ_PUBLIC_COLS}, correct_answer, explanation`;
+
 /**
- * Ensures the D1 database schema exists so a newly bound D1 database works out of the box,
- * and seeds the initial study material dataset if the `posts` table is empty.
+ * Ensures the D1 database schema exists so a newly bound D1 database works out of the box.
+ * Uses a fast 1-query existence probe so production cold starts skip 50+ DDL statements
+ * and never re-run seed/rewrite logic against an already-initialized database.
  */
 async function ensureD1Schema(db: D1Database): Promise<void> {
   if (schemaInitialized) return;
   try {
+    // Fast-path probe: if core tables already exist, skip DDL and seeding completely.
+    try {
+      await db.batch([
+        db.prepare('SELECT 1 FROM posts LIMIT 1'),
+        db.prepare('SELECT 1 FROM universities LIMIT 1'),
+        db.prepare('SELECT 1 FROM mcqs LIMIT 1'),
+        db.prepare('SELECT 1 FROM questions LIMIT 1'),
+        db.prepare('SELECT 1 FROM notifications LIMIT 1'),
+        db.prepare('SELECT 1 FROM guest_accounts LIMIT 1'),
+      ]);
+      schemaInitialized = true;
+      return;
+    } catch {
+      // One or more core tables do not exist yet — run one-time additive schema bootstrap below.
+    }
     await db.batch([
       db.prepare(`CREATE TABLE IF NOT EXISTS posts (
         id TEXT PRIMARY KEY,
@@ -1048,12 +1172,12 @@ export async function resolveWorkerLiveAuthorsBatch(
         .all<Record<string, any>>()
         .catch(() => ({ results: [] as Record<string, any>[] })),
       db
-        .prepare(`SELECT * FROM guest_accounts WHERE uid IN (${placeholders})`)
+        .prepare(`SELECT uid, username, display_name FROM guest_accounts WHERE uid IN (${placeholders})`)
         .bind(...uniqueUids)
         .all<Record<string, any>>()
         .catch(() => ({ results: [] as Record<string, any>[] })),
       db
-        .prepare(`SELECT * FROM user_roles WHERE uid IN (${placeholders})`)
+        .prepare(`SELECT uid, role FROM user_roles WHERE uid IN (${placeholders})`)
         .bind(...uniqueUids)
         .all<Record<string, any>>()
         .catch(() => ({ results: [] as Record<string, any>[] })),
@@ -1497,9 +1621,16 @@ export async function handleHealthCheck(req: Request, env: Env): Promise<Respons
   if (env.DB) {
     try {
       await ensureD1Schema(env.DB);
-      const row = await env.DB.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
-      d1Connected = true;
-      d1PostCount = Number(row?.cnt ?? 0);
+      const cachedPostCount = getWorkerCached<number>('health:posts_count');
+      if (cachedPostCount !== null) {
+        await env.DB.prepare('SELECT 1 AS ok').first();
+        d1Connected = true;
+        d1PostCount = cachedPostCount;
+      } else {
+        const row = await env.DB.prepare('SELECT COUNT(*) as cnt FROM posts').first<{ cnt: number }>();
+        d1Connected = true;
+        d1PostCount = setWorkerCached('health:posts_count', Number(row?.cnt ?? 0), 5 * 60_000);
+      }
     } catch (err: any) {
       d1Error = err?.message || String(err);
     }
@@ -2648,7 +2779,7 @@ ${urls
         status: 200,
         headers: {
           'Content-Type': 'application/xml; charset=utf-8',
-          'Cache-Control': 'public, max-age=300, s-maxage=900',
+          'Cache-Control': 'public, max-age=600, s-maxage=3600',
           ...cors,
         },
       });
@@ -2669,12 +2800,18 @@ ${urls
         ) || url.searchParams.get('ssr') === '1';
 
       if (isBot) {
+        const ssrCache = (globalThis as any).caches?.default;
+        const ssrCacheKey = new Request(url.toString(), { method: 'GET' });
+        if (ssrCache) {
+          const cachedSsr = await ssrCache.match(ssrCacheKey).catch(() => null);
+          if (cachedSsr) return cachedSsr;
+        }
         const slugPart = url.pathname
           .replace(/^\/commons\/post\//, '')
           .replace(/^\/material\//, '');
         const postId = extractIdFromSlugOrId(slugPart);
         const row = await env.DB.prepare(
-          'SELECT * FROM posts WHERE (id = ? OR slug = ?) AND is_hidden = 0 LIMIT 1'
+          `SELECT ${POST_SELECT_COLS} FROM posts WHERE (id = ? OR slug = ?) AND is_hidden = 0 LIMIT 1`
         )
           .bind(postId, slugPart)
           .first<Record<string, any>>();
@@ -2712,13 +2849,17 @@ ${urls
   </article>
 </body>
 </html>`;
-          return new Response(html, {
+          const ssrResp = new Response(html, {
             status: 200,
             headers: {
               'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'public, max-age=300, s-maxage=900',
+              'Cache-Control': 'public, max-age=300, s-maxage=600',
             },
           });
+          if (ssrCache && ctx && typeof ctx.waitUntil === 'function') {
+            ctx.waitUntil(ssrCache.put(ssrCacheKey, ssrResp.clone()).catch(() => {}));
+          }
+          return ssrResp;
         }
       }
     }
@@ -3449,7 +3590,11 @@ ${urls
         const [{ results: notifRows }, { results: readAnnRows }, welcomeSt, { results: followRows }] =
           await Promise.all([
             env.DB.prepare(
-              'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100'
+              `SELECT id, user_id, type, title, message, link, read, is_pinned, author_id, author_name, author_avatar, author_frame, post_id, post_type, created_at, read_at
+               FROM notifications
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT 50`
             )
               .bind(userId)
               .all(),
@@ -3463,9 +3608,11 @@ ${urls
             )
               .bind(userId)
               .first<{ welcomed: number; read: number }>(),
-            env.DB.prepare('SELECT following_uid FROM follows WHERE follower_uid = ?')
-              .bind(userId)
-              .all(),
+            followingKnown
+              ? Promise.resolve({ results: [] as any[] })
+              : env.DB.prepare('SELECT following_uid FROM follows WHERE follower_uid = ?')
+                  .bind(userId)
+                  .all(),
           ]);
 
         const effectiveFollowingSet =
@@ -3782,19 +3929,30 @@ ${urls
         return baseDto;
       };
 
-      // GET /api/questions/health or /api/questions/stats
+      // GET /api/questions/health or /api/questions/stats (SQL GROUP BY + 5-min cache)
       if ((qSub === '/health' || qSub === '/stats') && req.method === 'GET') {
+        const cachedStats = getWorkerCached<Record<string, any>>('questions:health');
+        if (cachedStats) {
+          return jsonResponse(cachedStats, 200, {
+            ...cors,
+            'Cache-Control': 'public, max-age=60, s-maxage=180',
+          });
+        }
         const t0 = Date.now();
-        const [{ results: allRows }, { results: importLogs }] = await Promise.all([
+        const [{ results: aggRows }, { results: importLogs }] = await Promise.all([
           env.DB.prepare(
-            'SELECT id, bank_id, subject, topic, difficulty, status, needs_review, correct_answer FROM questions'
+            `SELECT bank_id, subject, topic, difficulty, status, needs_review,
+                    COUNT(*) AS cnt,
+                    SUM(CASE WHEN correct_answer IS NULL OR correct_answer < 0 OR correct_answer > 3 THEN 1 ELSE 0 END) AS invalid_cnt
+             FROM questions
+             GROUP BY bank_id, subject, topic, difficulty, status, needs_review`
           ).all(),
           env.DB.prepare(
             'SELECT bank_id, subject, imported_count, needs_review_count, imported_at FROM questions_import_log ORDER BY imported_at DESC LIMIT 100'
           ).all(),
         ]);
 
-        const rows = (allRows || []) as Record<string, any>[];
+        const rows = (aggRows || []) as Record<string, any>[];
         const logs = (importLogs || []) as Record<string, any>[];
 
         const byBank: Record<string, number> = { legacy: 0, bank1: 0, bank2: 0 };
@@ -3809,12 +3967,14 @@ ${urls
         const byChapter: Record<string, number> = {};
         const byDifficulty = { easy: 0, medium: 0, hard: 0 };
         const byStatus = { draft: 0, reviewed: 0, published: 0 };
+        let totalQuestions = 0;
         let activeCount = 0;
         let inactiveCount = 0;
         let needsReviewCount = 0;
         let invalidCorrectCount = 0;
 
         for (const r of rows) {
+          const cnt = Number(r.cnt || 0);
           const bId = String(r.bank_id || 'legacy');
           const sub = String(r.subject || 'mathematics');
           const top = String(r.topic || 'General Concepts');
@@ -3822,39 +3982,37 @@ ${urls
           const st = String(r.status || 'published').toLowerCase();
           const nr = Number(r.needs_review || 0);
 
-          byBank[bId] = (byBank[bId] || 0) + 1;
+          totalQuestions += cnt;
+          byBank[bId] = (byBank[bId] || 0) + cnt;
           if (!byBankAndSubject[bId]) byBankAndSubject[bId] = {};
-          byBankAndSubject[bId][sub] = (byBankAndSubject[bId][sub] || 0) + 1;
+          byBankAndSubject[bId][sub] = (byBankAndSubject[bId][sub] || 0) + cnt;
 
-          bySubject[sub] = (bySubject[sub] || 0) + 1;
+          bySubject[sub] = (bySubject[sub] || 0) + cnt;
           if (!byTopic[sub]) byTopic[sub] = {};
-          byTopic[sub][top] = (byTopic[sub][top] || 0) + 1;
-          byChapter[top] = (byChapter[top] || 0) + 1;
+          byTopic[sub][top] = (byTopic[sub][top] || 0) + cnt;
+          byChapter[top] = (byChapter[top] || 0) + cnt;
 
-          if (diff === 'easy') byDifficulty.easy++;
-          else if (diff === 'hard') byDifficulty.hard++;
-          else byDifficulty.medium++;
+          if (diff === 'easy') byDifficulty.easy += cnt;
+          else if (diff === 'hard') byDifficulty.hard += cnt;
+          else byDifficulty.medium += cnt;
 
           if (st === 'draft') {
-            byStatus.draft++;
-            inactiveCount++;
+            byStatus.draft += cnt;
+            inactiveCount += cnt;
           } else if (st === 'reviewed') {
-            byStatus.reviewed++;
-            activeCount++;
+            byStatus.reviewed += cnt;
+            activeCount += cnt;
           } else {
-            byStatus.published++;
-            activeCount++;
+            byStatus.published += cnt;
+            activeCount += cnt;
           }
 
           if (nr === 1) {
-            needsReviewCount++;
-            needsReviewByBank[bId] = (needsReviewByBank[bId] || 0) + 1;
+            needsReviewCount += cnt;
+            needsReviewByBank[bId] = (needsReviewByBank[bId] || 0) + cnt;
           }
 
-          const cAns = Number(r.correct_answer);
-          if (!Number.isInteger(cAns) || cAns < 0 || cAns > 3) {
-            invalidCorrectCount++;
-          }
+          invalidCorrectCount += Number(r.invalid_cnt || 0);
         }
 
         const lastImportAtByBank: Record<string, string | null> = {
@@ -3894,12 +4052,13 @@ ${urls
           checkedAt: new Date().toISOString(),
         }));
 
-        return jsonResponse(
+        const payload = setWorkerCached(
+          'questions:health',
           {
             success: true,
             storageEngine: 'cloudflare-d1',
             databaseName: 'boardly-posts-db',
-            totalQuestions: rows.length,
+            totalQuestions,
             activeCount,
             inactiveCount,
             needsReviewCount,
@@ -3919,24 +4078,40 @@ ${urls
             },
             banks,
           },
-          200,
-          { ...cors, 'Cache-Control': 'no-store' }
+          5 * 60_000
         );
+
+        return jsonResponse(payload, 200, {
+          ...cors,
+          'Cache-Control': 'public, max-age=60, s-maxage=180',
+        });
       }
 
-      // GET /api/questions/ids — Lightweight list of published question IDs for a subject
+      // GET /api/questions/ids — Lightweight list of published question IDs for a subject (cached 3m)
       if (qSub === '/ids' && req.method === 'GET') {
+        if (!checkPublicIpRateLimit(req, 'questions_ids', 120, 60_000)) {
+          return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+        }
         const rawSub = url.searchParams.get('subject') || '';
         const subject = normalizeSubSlug(rawSub);
         const bank = (url.searchParams.get('bank') || url.searchParams.get('bank_id') || 'all').trim();
         const topic = (url.searchParams.get('topic') || '').trim();
         const difficulty = (url.searchParams.get('difficulty') || '').trim().toLowerCase();
 
+        const idsCacheKey = `questions:ids:${subject}:${bank}:${topic.toLowerCase()}:${difficulty}`;
+        const cachedIds = getWorkerCached<Record<string, any>>(idsCacheKey);
+        if (cachedIds) {
+          return jsonResponse(cachedIds, 200, {
+            ...cors,
+            'Cache-Control': 'public, max-age=60, s-maxage=180',
+          });
+        }
+
         const clauses: string[] = ["status = 'published'"];
         const binds: any[] = [];
 
         if (subject && subject !== 'all') {
-          clauses.push('subject = ?');
+          clauses.push('subject = ? COLLATE NOCASE');
           binds.push(subject);
         }
         if (bank && bank !== 'all') {
@@ -3944,18 +4119,26 @@ ${urls
           binds.push(bank);
         }
         if (topic && topic !== 'all') {
-          clauses.push('LOWER(topic) = LOWER(?)');
+          clauses.push('topic = ? COLLATE NOCASE');
           binds.push(topic);
         }
         if (difficulty && difficulty !== 'all' && difficulty !== 'mixed') {
-          clauses.push('difficulty = ?');
+          clauses.push('difficulty = ? COLLATE NOCASE');
           binds.push(difficulty);
         }
 
-        const sql = `SELECT id FROM questions WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC LIMIT 5000`;
+        const sql = `SELECT id FROM questions WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC LIMIT 2000`;
         const { results } = await env.DB.prepare(sql).bind(...binds).all();
         const ids = (results || []).map((r: any) => String(r.id));
-        return jsonResponse({ success: true, subject, ids, count: ids.length }, 200, cors);
+        const payload = setWorkerCached(
+          idsCacheKey,
+          { success: true, subject, ids, count: ids.length },
+          3 * 60_000
+        );
+        return jsonResponse(payload, 200, {
+          ...cors,
+          'Cache-Control': 'public, max-age=60, s-maxage=180',
+        });
       }
 
       // POST /api/questions/verify — Student answer verification (returns correct_answer ONLY after submitting an answer)
@@ -4051,16 +4234,8 @@ ${urls
         for (const ans of answersInput) {
           const qId = ans.questionId.trim();
           const bareId = qId.includes(':') ? qId.slice(qId.indexOf(':') + 1) : qId;
-          let row: Record<string, any> | null | undefined =
+          const row: Record<string, any> | null | undefined =
             rowById.get(qId) || rowByBareId.get(bareId);
-          if (!row) {
-            row = await env.DB.prepare(
-              'SELECT id, options_json, correct_answer, explanation FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
-            )
-              .bind(qId, `%:${bareId}`)
-              .first<Record<string, any>>();
-          }
-
           if (!row) continue;
 
           let storedOptions: string[] = ['', '', '', ''];
@@ -4141,6 +4316,7 @@ ${urls
           )
             .bind(newTopic, now, subject, oldTopic)
             .run();
+          invalidateWorkerCache(['questions:']);
           return jsonResponse({ success: true, updated: Number(res.meta?.changes ?? 0) }, 200, cors);
         }
 
@@ -4149,14 +4325,34 @@ ${urls
           return jsonResponse({ success: false, error: 'No question IDs provided' }, 400, cors);
         }
 
-        let updatedCount = 0;
+        // Batch-fetch all target rows using primary-key IN (...) instead of N+1 LIKE full scans
+        const candidateSet = new Set<string>();
+        for (const rawId of ids) {
+          for (const cid of buildQuestionCandidateIds(rawId)) candidateSet.add(cid);
+        }
+        const existingById = new Map<string, Record<string, any>>();
+        const existingByBare = new Map<string, Record<string, any>>();
+        const candidateArr = Array.from(candidateSet);
+        for (let i = 0; i < candidateArr.length; i += 80) {
+          const slice = candidateArr.slice(i, i + 80);
+          const ph = slice.map(() => '?').join(',');
+          const { results: foundRows } = await env.DB.prepare(
+            `SELECT id, subject, topic, status FROM questions WHERE id IN (${ph})`
+          )
+            .bind(...slice)
+            .all<Record<string, any>>();
+          for (const r of foundRows || []) {
+            const rid = String(r.id || '');
+            existingById.set(rid, r);
+            const bare = rid.includes(':') ? rid.slice(rid.indexOf(':') + 1) : rid;
+            if (!existingByBare.has(bare)) existingByBare.set(bare, r);
+          }
+        }
+
+        const updateStmts: D1PreparedStatement[] = [];
         for (const rawId of ids) {
           const bareId = rawId.includes(':') ? rawId.slice(rawId.indexOf(':') + 1) : rawId;
-          const existing = await env.DB.prepare(
-            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
-          )
-            .bind(rawId, `%:${bareId}`)
-            .first<Record<string, any>>();
+          const existing = existingById.get(rawId) || existingByBare.get(bareId);
           if (!existing) continue;
 
           const nextTopic = body.topic !== undefined ? String(body.topic).trim() : existing.topic;
@@ -4171,19 +4367,26 @@ ${urls
               ? 'published'
               : existing.status;
 
-          await env.DB.prepare(
-            'UPDATE questions SET subject = ?, topic = ?, status = ?, updated_at = ? WHERE id = ?'
-          )
-            .bind(nextSubject, nextTopic, nextStatus, now, existing.id)
-            .run();
-          updatedCount++;
+          updateStmts.push(
+            env.DB.prepare(
+              'UPDATE questions SET subject = ?, topic = ?, status = ?, updated_at = ? WHERE id = ?'
+            ).bind(nextSubject, nextTopic, nextStatus, now, existing.id)
+          );
         }
 
-        return jsonResponse({ success: true, updated: updatedCount }, 200, cors);
+        for (let i = 0; i < updateStmts.length; i += 50) {
+          await env.DB.batch(updateStmts.slice(i, i + 50));
+        }
+
+        invalidateWorkerCache(['questions:']);
+        return jsonResponse({ success: true, updated: updateStmts.length }, 200, cors);
       }
 
       // GET /api/questions — List, filter, search, or fetch by IDs
       if (qSub === '/' && req.method === 'GET') {
+        if (!isStrictQuestionAdmin && !checkPublicIpRateLimit(req, 'questions_list', 120, 60_000)) {
+          return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+        }
         const bank = (url.searchParams.get('bank') || url.searchParams.get('bank_id') || 'all').trim();
         const rawSub = (url.searchParams.get('subject') || 'all').trim();
         const subject = normalizeSubSlug(rawSub);
@@ -4193,39 +4396,36 @@ ${urls
         const needsReviewParam = url.searchParams.get('needs_review');
         const search = (url.searchParams.get('search') || url.searchParams.get('q') || '').trim().toLowerCase();
         const idsParam = (url.searchParams.get('ids') || '').trim();
-        const limitCount = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 1000);
+        const maxAllowedLimit = isStrictQuestionAdmin ? 200 : 100;
+        const limitCount = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), maxAllowedLimit);
         const pageIndex = Math.max(Number(url.searchParams.get('page')) || 0, 0);
         const offset =
           url.searchParams.get('offset') !== null
             ? Math.max(Number(url.searchParams.get('offset')) || 0, 0)
             : pageIndex * limitCount;
+        const qSelectCols = isStrictQuestionAdmin ? QUESTION_ADMIN_COLS : QUESTION_PUBLIC_COLS;
 
         // If specific IDs requested (e.g. test runner loading questions by ID)
         if (idsParam) {
           const requestedIds = idsParam
             .split(',')
             .map((s) => s.trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .slice(0, 150);
           const candidateIds = new Set<string>();
           for (const reqId of requestedIds) {
-            candidateIds.add(reqId);
-            if (reqId.includes(':')) {
-              const bare = reqId.slice(reqId.indexOf(':') + 1);
-              candidateIds.add(bare);
-              candidateIds.add(`legacy:${bare}`);
-              candidateIds.add(`bank1:${bare}`);
-              candidateIds.add(`bank2:${bare}`);
-            }
+            for (const cid of buildQuestionCandidateIds(reqId)) candidateIds.add(cid);
           }
-          const idList = Array.from(candidateIds).slice(0, 500);
+          const idList = Array.from(candidateIds);
           const rowById = new Map<string, Record<string, any>>();
           const rowByBareId = new Map<string, Record<string, any>>();
-          if (idList.length > 0) {
-            const placeholders = idList.map(() => '?').join(',');
+          for (let i = 0; i < idList.length; i += 80) {
+            const slice = idList.slice(i, i + 80);
+            const placeholders = slice.map(() => '?').join(',');
             const { results: batchRows } = await env.DB.prepare(
-              `SELECT * FROM questions WHERE id IN (${placeholders})`
+              `SELECT ${qSelectCols} FROM questions WHERE id IN (${placeholders})`
             )
-              .bind(...idList)
+              .bind(...slice)
               .all<Record<string, any>>();
             for (const r of batchRows || []) {
               const rid = String(r.id || '');
@@ -4238,15 +4438,7 @@ ${urls
           const matchedQuestions: Record<string, any>[] = [];
           for (const reqId of requestedIds) {
             const bareId = reqId.includes(':') ? reqId.slice(reqId.indexOf(':') + 1) : reqId;
-            let row: Record<string, any> | null | undefined =
-              rowById.get(reqId) || rowByBareId.get(bareId);
-            if (!row) {
-              row = await env.DB.prepare(
-                'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
-              )
-                .bind(reqId, `%:${bareId}`)
-                .first<Record<string, any>>();
-            }
+            const row = rowById.get(reqId) || rowByBareId.get(bareId);
             if (!row) continue;
             if (!isStrictQuestionAdmin && String(row.status) !== 'published') continue;
             const dto = rowToQuestionDto(row, isStrictQuestionAdmin);
@@ -4280,15 +4472,15 @@ ${urls
           binds.push(bank);
         }
         if (subject && subject !== 'all') {
-          clauses.push('subject = ?');
+          clauses.push('subject = ? COLLATE NOCASE');
           binds.push(subject);
         }
         if (topic && topic !== 'all') {
-          clauses.push('LOWER(topic) = LOWER(?)');
+          clauses.push('topic = ? COLLATE NOCASE');
           binds.push(topic);
         }
         if (difficulty && difficulty !== 'all' && difficulty !== 'mixed') {
-          clauses.push('difficulty = ?');
+          clauses.push('difficulty = ? COLLATE NOCASE');
           binds.push(difficulty);
         }
         if (needsReviewParam === '1' || needsReviewParam === 'true') {
@@ -4305,13 +4497,17 @@ ${urls
         }
 
         const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-        const countRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM questions ${whereSql}`)
-          .bind(...binds)
-          .first<{ cnt: number }>();
-        const total = Number(countRow?.cnt ?? 0);
+        const countCacheKey = `questions:count:${isStrictQuestionAdmin ? 'adm' : 'pub'}:${whereSql}:${binds.join('|')}`;
+        let total = getWorkerCached<number>(countCacheKey);
+        if (total === null) {
+          const countRow = await env.DB.prepare(`SELECT COUNT(*) as cnt FROM questions ${whereSql}`)
+            .bind(...binds)
+            .first<{ cnt: number }>();
+          total = setWorkerCached(countCacheKey, Number(countRow?.cnt ?? 0), 2 * 60_000);
+        }
 
         const { results } = await env.DB.prepare(
-          `SELECT * FROM questions ${whereSql} ORDER BY updated_at DESC, id ASC LIMIT ? OFFSET ?`
+          `SELECT ${qSelectCols} FROM questions ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
         )
           .bind(...binds, limitCount, offset)
           .all();
@@ -4474,6 +4670,7 @@ ${urls
           );
         }
 
+        invalidateWorkerCache(['questions:']);
         return jsonResponse(
           {
             success: true,
@@ -4490,13 +4687,15 @@ ${urls
       // Single question routes: GET / PUT / PATCH / DELETE /api/questions/:id
       const targetId = decodeURIComponent(qSub.slice(1));
       if (targetId) {
-        const bareId = targetId.includes(':') ? targetId.slice(targetId.indexOf(':') + 1) : targetId;
+        const candidateIds = buildQuestionCandidateIds(targetId);
+        const candidatePlaceholders = candidateIds.map(() => '?').join(',');
 
         if (req.method === 'GET') {
+          const qSelectCols = isStrictQuestionAdmin ? QUESTION_ADMIN_COLS : QUESTION_PUBLIC_COLS;
           const row = await env.DB.prepare(
-            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+            `SELECT ${qSelectCols} FROM questions WHERE id IN (${candidatePlaceholders}) LIMIT 1`
           )
-            .bind(targetId, `%:${bareId}`)
+            .bind(...candidateIds)
             .first<Record<string, any>>();
           if (!row || (!isStrictQuestionAdmin && String(row.status) !== 'published')) {
             return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
@@ -4524,9 +4723,9 @@ ${urls
           }
 
           const existing = await env.DB.prepare(
-            'SELECT * FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+            `SELECT ${QUESTION_ADMIN_COLS} FROM questions WHERE id IN (${candidatePlaceholders}) LIMIT 1`
           )
-            .bind(targetId, `%:${bareId}`)
+            .bind(...candidateIds)
             .first<Record<string, any>>();
           if (!existing) {
             return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
@@ -4625,15 +4824,16 @@ ${urls
           }
 
           const existing = await env.DB.prepare(
-            'SELECT id FROM questions WHERE id = ? OR id LIKE ? LIMIT 1'
+            `SELECT id FROM questions WHERE id IN (${candidatePlaceholders}) LIMIT 1`
           )
-            .bind(targetId, `%:${bareId}`)
+            .bind(...candidateIds)
             .first<{ id: string }>();
           if (!existing) {
             return jsonResponse({ success: false, error: 'Question not found' }, 404, cors);
           }
 
           await env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(existing.id).run();
+          invalidateWorkerCache(['questions:']);
           return jsonResponse({ success: true, deletedId: existing.id }, 200, cors);
         }
       }
@@ -4745,22 +4945,41 @@ ${urls
       };
 
       const recalculateD1UniCount = async (uniId: string) => {
-        await env.DB!.prepare(
-          `UPDATE universities
-           SET mcq_count = (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id),
-               is_live = CASE WHEN (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id) > 0 THEN 1 ELSE 0 END
-           WHERE id = ?`
+        const countRow = await env.DB!.prepare(
+          'SELECT COUNT(*) AS cnt FROM mcqs WHERE university_id = ?'
         )
           .bind(uniId)
+          .first<{ cnt: number }>();
+        const cnt = Number(countRow?.cnt || 0);
+        await env.DB!.prepare(
+          'UPDATE universities SET mcq_count = ?, is_live = ? WHERE id = ?'
+        )
+          .bind(cnt, cnt > 0 ? 1 : 0, uniId)
           .run();
+        invalidateWorkerCache(['universities:', 'mcqs:']);
       };
 
       const recalculateAllD1UniCounts = async () => {
-        await env.DB!.prepare(
-          `UPDATE universities
-           SET mcq_count = (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id),
-               is_live = CASE WHEN (SELECT COUNT(*) FROM mcqs WHERE mcqs.university_id = universities.id) > 0 THEN 1 ELSE 0 END`
-        ).run();
+        const [{ results: unis }, { results: counts }] = await Promise.all([
+          env.DB!.prepare('SELECT id FROM universities').all<{ id: string }>(),
+          env.DB!.prepare(
+            'SELECT university_id, COUNT(*) AS cnt FROM mcqs GROUP BY university_id'
+          ).all<{ university_id: string; cnt: number }>(),
+        ]);
+        const countMap = new Map<string, number>();
+        for (const r of counts || []) {
+          if (r.university_id) countMap.set(String(r.university_id), Number(r.cnt || 0));
+        }
+        const stmts = (unis || []).map((u) => {
+          const cnt = countMap.get(String(u.id)) || 0;
+          return env.DB!.prepare(
+            'UPDATE universities SET mcq_count = ?, is_live = ? WHERE id = ?'
+          ).bind(cnt, cnt > 0 ? 1 : 0, u.id);
+        });
+        if (stmts.length > 0) {
+          await env.DB!.batch(stmts);
+        }
+        invalidateWorkerCache(['universities:', 'mcqs:']);
       };
 
       const getSafePublicOrigin = (): string => {
@@ -4841,6 +5060,7 @@ ${urls
       };
 
       const purgeWorkerUniversitiesCache = async () => {
+        invalidateWorkerCache(['universities:', 'mcqs:']);
         try {
           const cacheStorage = (globalThis as any).caches?.default;
           if (cacheStorage && typeof cacheStorage.delete === 'function') {
@@ -4851,6 +5071,28 @@ ${urls
         } catch {
           // Non-fatal
         }
+      };
+
+      const resolveCachedUniversity = async (
+        uniParam: string
+      ): Promise<{ id: string; mcq_count: number } | null> => {
+        const key = uniParam.trim().toLowerCase();
+        if (!key) return null;
+        let unis = getWorkerCached<D1UniversityRow[]>('universities:list');
+        if (!unis) {
+          unis = setWorkerCached(
+            'universities:list',
+            await fetchNormalizedD1Universities(),
+            5 * 60_000
+          );
+        }
+        const match = unis.find(
+          (u) =>
+            String(u.id || '').toLowerCase() === key ||
+            String(u.slug || '').toLowerCase() === key ||
+            String(u.name || '').toLowerCase() === key
+        );
+        return match ? { id: String(match.id), mcq_count: Number(match.mcq_count || 0) } : null;
       };
 
       const fetchNormalizedD1Universities = async (): Promise<D1UniversityRow[]> => {
@@ -4924,15 +5166,22 @@ ${urls
       if (url.pathname.startsWith('/api/universities')) {
         const uniSub = url.pathname.slice('/api/universities'.length).replace(/\/+$/, '') || '/';
 
-        // GET /api/universities
+        // GET /api/universities — Read-only + 5-min memory & edge cache (counts maintained on writes)
         if (uniSub === '/' && req.method === 'GET') {
-          await recalculateAllD1UniCounts();
-          const universities = await fetchNormalizedD1Universities();
-          return jsonResponse(
-            { success: true, universities },
-            200,
-            { ...cors, 'Cache-Control': 'no-cache, must-revalidate' }
+          if (!checkPublicIpRateLimit(req, 'universities_list', 180, 60_000)) {
+            return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+          }
+          const cacheHeaders = { ...cors, 'Cache-Control': 'public, max-age=120, s-maxage=300' };
+          const cachedUnis = getWorkerCached<D1UniversityRow[]>('universities:list');
+          if (cachedUnis) {
+            return jsonResponse({ success: true, universities: cachedUnis }, 200, cacheHeaders);
+          }
+          const universities = setWorkerCached(
+            'universities:list',
+            await fetchNormalizedD1Universities(),
+            5 * 60_000
           );
+          return jsonResponse({ success: true, universities }, 200, cacheHeaders);
         }
 
         const adminUser = await verifyD1Admin();
@@ -5337,8 +5586,11 @@ ${urls
       if (url.pathname.startsWith('/api/mcqs')) {
         const mcqSub = url.pathname.slice('/api/mcqs'.length).replace(/\/+$/, '') || '/';
 
-        // GET /api/mcqs/topics
+        // GET /api/mcqs/topics (cached 5 min per university, invalidated on MCQ mutations)
         if (mcqSub === '/topics' && req.method === 'GET') {
+          if (!checkPublicIpRateLimit(req, 'mcqs_topics', 120, 60_000)) {
+            return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+          }
           const uniParam = (
             url.searchParams.get('university_id') ||
             url.searchParams.get('university_slug') ||
@@ -5346,12 +5598,17 @@ ${urls
           ).trim();
           let resolvedUniId = uniParam;
           if (uniParam) {
-            const uRow = await env.DB.prepare(
-              'SELECT id FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1'
-            )
-              .bind(uniParam, uniParam, uniParam)
-              .first<{ id: string }>();
-            if (uRow) resolvedUniId = uRow.id;
+            const matchedUni = await resolveCachedUniversity(uniParam);
+            if (matchedUni) resolvedUniId = matchedUni.id;
+          }
+
+          const topicsCacheKey = `mcqs:topics:${resolvedUniId || 'all'}`;
+          const cachedTopics = getWorkerCached<Record<string, any>>(topicsCacheKey);
+          if (cachedTopics) {
+            return jsonResponse(cachedTopics, 200, {
+              ...cors,
+              'Cache-Control': 'public, max-age=120, s-maxage=300',
+            });
           }
 
           const { results } = resolvedUniId
@@ -5393,7 +5650,8 @@ ${urls
           const flat = subjects.flatMap((s) =>
             s.topics.map((t) => ({ subject: s.subject, topic: t.topic, count: t.count }))
           );
-          return jsonResponse(
+          const payload = setWorkerCached(
+            topicsCacheKey,
             {
               ok: true,
               success: true,
@@ -5402,30 +5660,61 @@ ${urls
               subjects,
               flat,
             },
-            200,
-            cors
+            5 * 60_000
           );
+          return jsonResponse(payload, 200, {
+            ...cors,
+            'Cache-Control': 'public, max-age=120, s-maxage=300',
+          });
         }
 
-        // GET /api/mcqs/health (strictly read-only to avoid D1 write locks on health checks)
+        // GET /api/mcqs/health (consolidated aggregate queries + 3-min cache)
         if (mcqSub === '/health' && req.method === 'GET') {
-          const [uniRes, totalRow, uniCountRes, subRes, diffRes, missRes, repRes, lastMcqRes, lastImportRes] = await Promise.all([
-            env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
-            env.DB.prepare('SELECT COUNT(*) as cnt FROM mcqs').first<{ cnt: number }>(),
-            env.DB.prepare('SELECT university_id, COUNT(*) as cnt FROM mcqs GROUP BY university_id').all<{ university_id: string; cnt: number }>(),
-            env.DB.prepare('SELECT subject, COUNT(*) as cnt FROM mcqs GROUP BY subject').all<{ subject: string; cnt: number }>(),
-            env.DB.prepare('SELECT difficulty, COUNT(*) as cnt FROM mcqs GROUP BY difficulty').all<{ difficulty: string; cnt: number }>(),
-            env.DB.prepare("SELECT COUNT(*) as cnt FROM mcqs WHERE TRIM(COALESCE(explanation, '')) = ''").first<{ cnt: number }>(),
+          if (!checkPublicIpRateLimit(req, 'mcqs_health', 60, 60_000)) {
+            return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+          }
+          const cachedHealth = getWorkerCached<Record<string, any>>('mcqs:health');
+          if (cachedHealth) {
+            return jsonResponse(cachedHealth, 200, {
+              ...cors,
+              'Cache-Control': 'public, max-age=60, s-maxage=180',
+            });
+          }
+
+          // Consolidated: 1 grouped summary query + 1 scalar aggregate instead of 6 separate full scans of mcqs
+          const [uniRes, summaryRes, groupedRes, repRes, lastImportRes] = await Promise.all([
+            env.DB.prepare(
+              'SELECT id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at FROM universities ORDER BY sort_order ASC, name ASC'
+            ).all<D1UniversityRow>(),
+            env.DB.prepare(
+              `SELECT COUNT(*) AS cnt,
+                      SUM(CASE WHEN TRIM(COALESCE(explanation, '')) = '' THEN 1 ELSE 0 END) AS missing_cnt,
+                      MAX(created_at) AS last_at
+               FROM mcqs`
+            ).first<{ cnt: number; missing_cnt: number; last_at: string | null }>(),
+            env.DB.prepare(
+              'SELECT university_id, subject, difficulty, COUNT(*) AS cnt FROM mcqs GROUP BY university_id, subject, difficulty'
+            ).all<{ university_id: string; subject: string; difficulty: string; cnt: number }>(),
             env.DB.prepare("SELECT COUNT(*) as cnt FROM mcq_reports WHERE status = 'open'").first<{ cnt: number }>(),
-            env.DB.prepare('SELECT MAX(created_at) as last_at FROM mcqs').first<{ last_at: string | null }>().catch(() => null),
             env.DB.prepare('SELECT MAX(created_at) as last_at FROM imports').first<{ last_at: string | null }>().catch(() => null),
           ]);
 
           const liveCountByUni = new Map<string, number>();
-          for (const row of uniCountRes.results || []) {
+          const bySubject: Record<string, number> = {};
+          const byDifficulty: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
+          let subjectSum = 0;
+
+          for (const row of groupedRes.results || []) {
+            const cnt = Number(row.cnt || 0);
             const uid = String(row.university_id || '').trim();
-            if (!uid) continue;
-            liveCountByUni.set(uid, Number(row.cnt || 0));
+            if (uid) {
+              liveCountByUni.set(uid, (liveCountByUni.get(uid) || 0) + cnt);
+            }
+            const subjKey = String(row.subject ?? '').trim() || 'General';
+            bySubject[subjKey] = (bySubject[subjKey] || 0) + cnt;
+            subjectSum += cnt;
+            const diffKey = String(row.difficulty || 'medium').toLowerCase();
+            byDifficulty[diffKey] = (byDifficulty[diffKey] || 0) + cnt;
           }
 
           const universities = (uniRes.results || []).map((u) => {
@@ -5438,26 +5727,14 @@ ${urls
               is_live: liveCount > 0 ? 1 : 0,
             };
           });
-          const bySubject: Record<string, number> = {};
-          let subjectSum = 0;
-          for (const r of subRes.results || []) {
-            const subjKey = String(r.subject ?? '').trim() || 'General';
-            const cnt = Number(r.cnt || 0);
-            bySubject[subjKey] = (bySubject[subjKey] || 0) + cnt;
-            subjectSum += cnt;
-          }
           const uniSum = universities.reduce((acc, u) => acc + Number(u.mcq_count || 0), 0);
-          const directTotal = Number(totalRow?.cnt || 0);
+          const directTotal = Number(summaryRes?.cnt || 0);
           const totalMcqs = Math.max(directTotal, subjectSum, uniSum);
-          const byDifficulty: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
-          for (const r of diffRes.results || []) {
-            byDifficulty[String(r.difficulty || 'medium').toLowerCase()] = Number(r.cnt || 0);
-          }
 
-          const missingCount = Number(missRes?.cnt || 0);
+          const missingCount = Number(summaryRes?.missing_cnt || 0);
           const openRepCount = Number(repRes?.cnt || 0);
 
-          const candidateTimestamps = [lastImportRes?.last_at, lastMcqRes?.last_at]
+          const candidateTimestamps = [lastImportRes?.last_at, summaryRes?.last_at]
             .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
             .map((v) => v.trim());
           let lastImportAt: string | null = null;
@@ -5474,7 +5751,8 @@ ${urls
             }
           }
 
-          return jsonResponse(
+          const payload = setWorkerCached(
+            'mcqs:health',
             {
               ok: true,
               success: true,
@@ -5494,15 +5772,13 @@ ${urls
               byUniversity: universities,
               universities,
             },
-            200,
-            {
-              ...cors,
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-              'CDN-Cache-Control': 'no-store',
-              'Cloudflare-CDN-Cache-Control': 'no-store',
-              Pragma: 'no-cache',
-            }
+            3 * 60_000
           );
+
+          return jsonResponse(payload, 200, {
+            ...cors,
+            'Cache-Control': 'public, max-age=60, s-maxage=180',
+          });
         }
 
         // GET & POST & PATCH /api/mcqs/reports
@@ -5810,10 +6086,15 @@ ${urls
           return jsonResponse({ success: true }, 200, cors);
         }
 
-        // GET /api/mcqs
+        // GET /api/mcqs (index-friendly COLLATE NOCASE + random range sampling + cached counts + rate limit)
         if (mcqSub === '/' && req.method === 'GET') {
-          const adminUser = await verifyD1Admin().catch(() => null);
+          const hasAuth = Boolean(req.headers.get('Authorization'));
+          const adminUser = hasAuth ? await verifyD1Admin().catch(() => null) : null;
           const isAdmin = Boolean(adminUser);
+          if (!isAdmin && !checkPublicIpRateLimit(req, 'mcqs_list', 120, 60_000)) {
+            return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+          }
+
           const includeAnswers =
             isAdmin ||
             url.searchParams.get('practice') === '1' ||
@@ -5836,33 +6117,43 @@ ${urls
           const isRandom =
             url.searchParams.get('random') === '1' || url.searchParams.get('random') === 'true';
           const limit = Math.min(
-            500,
+            200,
             Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10) || 50)
           );
           const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
 
-          const clauses: string[] = ['1=1'];
+          // Serve deterministic, non-admin paginated reads from 2-min in-memory cache
+          const canCacheMcqResponse = !isAdmin && !isRandom && !searchParam;
+          const listCacheKey = `mcqs:list:${includeAnswers ? '1' : '0'}:${uniParam.toLowerCase()}:${subjectParam.toLowerCase()}:${topicParam.toLowerCase()}:${difficultyParam}:${limit}:${offset}`;
+          if (canCacheMcqResponse) {
+            const cachedList = getWorkerCached<Record<string, any>>(listCacheKey);
+            if (cachedList) {
+              return jsonResponse(cachedList, 200, {
+                ...cors,
+                'Cache-Control': 'public, max-age=60, s-maxage=120',
+              });
+            }
+          }
+
+          const clauses: string[] = [];
           const binds: any[] = [];
+          let matchedUniInfo: { id: string; mcq_count: number } | null = null;
 
           if (uniParam && uniParam !== 'all') {
-            const uRow = await env.DB.prepare(
-              'SELECT id FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) OR LOWER(name) = LOWER(?) LIMIT 1'
-            )
-              .bind(uniParam, uniParam, uniParam)
-              .first<{ id: string }>();
+            matchedUniInfo = await resolveCachedUniversity(uniParam);
             clauses.push('university_id = ?');
-            binds.push(uRow ? uRow.id : uniParam);
+            binds.push(matchedUniInfo ? matchedUniInfo.id : uniParam);
           }
           if (subjectParam && subjectParam !== 'all') {
-            clauses.push('LOWER(subject) = LOWER(?)');
+            clauses.push('subject = ? COLLATE NOCASE');
             binds.push(subjectParam);
           }
           if (topicParam && topicParam !== 'all') {
-            clauses.push('LOWER(topic) = LOWER(?)');
+            clauses.push('topic = ? COLLATE NOCASE');
             binds.push(topicParam);
           }
           if (difficultyParam && difficultyParam !== 'all') {
-            clauses.push('LOWER(difficulty) = LOWER(?)');
+            clauses.push('difficulty = ? COLLATE NOCASE');
             binds.push(difficultyParam);
           }
           if (searchParam) {
@@ -5873,19 +6164,90 @@ ${urls
             binds.push(like, like, like, like, like, like);
           }
 
-          const countRow = await env.DB.prepare(
-            `SELECT COUNT(*) as cnt FROM mcqs WHERE ${clauses.join(' AND ')}`
-          )
-            .bind(...binds)
-            .first<{ cnt: number }>();
-          const total = Number(countRow?.cnt || 0);
+          const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+          const isUniOnlyFilter =
+            Boolean(matchedUniInfo) &&
+            (!subjectParam || subjectParam === 'all') &&
+            (!topicParam || topicParam === 'all') &&
+            (!difficultyParam || difficultyParam === 'all') &&
+            !searchParam;
 
-          const orderSql = isRandom ? 'RANDOM()' : 'created_at DESC, id ASC';
-          const { results } = await env.DB.prepare(
-            `SELECT * FROM mcqs WHERE ${clauses.join(' AND ')} ORDER BY ${orderSql} LIMIT ? OFFSET ?`
-          )
-            .bind(...binds, limit, offset)
-            .all<D1McqRow>();
+          // Avoid recounting the filtered set on every page load: reuse maintained university mcq_count or 3-min cache
+          let total: number;
+          if (isUniOnlyFilter && matchedUniInfo) {
+            total = matchedUniInfo.mcq_count;
+          } else {
+            const countKey = `mcqs:count:${whereSql}:${binds.join('|')}`;
+            const cachedCount = getWorkerCached<number>(countKey);
+            if (cachedCount !== null) {
+              total = cachedCount;
+            } else {
+              const countRow = await env.DB.prepare(
+                `SELECT COUNT(*) as cnt FROM mcqs ${whereSql}`
+              )
+                .bind(...binds)
+                .first<{ cnt: number }>();
+              total = setWorkerCached(countKey, Number(countRow?.cnt || 0), 3 * 60_000);
+            }
+          }
+
+          const selectCols = includeAnswers ? MCQ_FULL_COLS : MCQ_PUBLIC_COLS;
+          let results: D1McqRow[] = [];
+
+          if (total > 0) {
+            if (isRandom) {
+              // Index-friendly random sampling: pick random indexed slice(s) within [0, total) and shuffle in JS
+              // Replaces full-table-scanning ORDER BY RANDOM()
+              if (total <= limit) {
+                const res = await env.DB.prepare(
+                  `SELECT ${selectCols} FROM mcqs ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ?`
+                )
+                  .bind(...binds, limit)
+                  .all<D1McqRow>();
+                results = shuffleInPlace([...(res.results || [])]);
+              } else if (limit >= 10 && total >= limit * 2) {
+                // Split into 2 non-overlapping random indexed slices across the range for better variety
+                const half1 = Math.ceil(limit / 2);
+                const half2 = limit - half1;
+                const mid = Math.floor(total / 2);
+                const off1 = Math.floor(Math.random() * Math.max(1, mid - half1 + 1));
+                const off2 = mid + Math.floor(Math.random() * Math.max(1, total - mid - half2 + 1));
+                const [r1, r2] = await env.DB.batch([
+                  env.DB.prepare(
+                    `SELECT ${selectCols} FROM mcqs ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+                  ).bind(...binds, half1, off1),
+                  env.DB.prepare(
+                    `SELECT ${selectCols} FROM mcqs ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+                  ).bind(...binds, half2, off2),
+                ]);
+                const seenIds = new Set<string>();
+                const combined: D1McqRow[] = [];
+                for (const row of [...((r1?.results || []) as D1McqRow[]), ...((r2?.results || []) as D1McqRow[])]) {
+                  if (!seenIds.has(row.id)) {
+                    seenIds.add(row.id);
+                    combined.push(row);
+                  }
+                }
+                results = shuffleInPlace(combined);
+              } else {
+                const maxStart = Math.max(0, total - limit);
+                const randOffset = Math.floor(Math.random() * (maxStart + 1));
+                const res = await env.DB.prepare(
+                  `SELECT ${selectCols} FROM mcqs ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+                )
+                  .bind(...binds, limit, randOffset)
+                  .all<D1McqRow>();
+                results = shuffleInPlace([...(res.results || [])]);
+              }
+            } else {
+              const res = await env.DB.prepare(
+                `SELECT ${selectCols} FROM mcqs ${whereSql} ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+              )
+                .bind(...binds, limit, offset)
+                .all<D1McqRow>();
+              results = res.results || [];
+            }
+          }
 
           const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
           const repairWorkerMcqOpts = (opts: [string, string, string, string]): [string, string, string, string] => {
@@ -5945,17 +6307,24 @@ ${urls
             return base;
           });
 
+          const responsePayload = {
+            success: true,
+            mcqs,
+            total,
+            limit,
+            offset,
+            hasMore: offset + mcqs.length < total,
+          };
+          if (canCacheMcqResponse) {
+            setWorkerCached(listCacheKey, responsePayload, 2 * 60_000);
+          }
+
           return jsonResponse(
-            {
-              success: true,
-              mcqs,
-              total,
-              limit,
-              offset,
-              hasMore: offset + mcqs.length < total,
-            },
+            responsePayload,
             200,
-            cors
+            canCacheMcqResponse
+              ? { ...cors, 'Cache-Control': 'public, max-age=60, s-maxage=120' }
+              : cors
           );
         }
 
@@ -5968,7 +6337,7 @@ ${urls
           const body = (await req.json().catch(() => ({}))) as Record<string, any>;
           const uniParam = String(body.university_id || body.universityId || '').trim();
           const uni = await env.DB.prepare(
-            'SELECT * FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) LIMIT 1'
+            'SELECT id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1'
           )
             .bind(uniParam, uniParam)
             .first<D1UniversityRow>();
@@ -6016,19 +6385,43 @@ ${urls
             .run();
 
           await recalculateD1UniCount(uni.id);
-          const created = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ?').bind(id).first<D1McqRow>();
+          const created = await env.DB.prepare(`SELECT ${MCQ_FULL_COLS} FROM mcqs WHERE id = ?`).bind(id).first<D1McqRow>();
           return jsonResponse({ success: true, mcq: created }, 201, cors);
         }
 
-        // GET /api/mcqs/export
+        // GET /api/mcqs/export (Admin-only + paginated to prevent crawler full-table D1 dumps)
         if (mcqSub === '/export' && req.method === 'GET') {
+          const adminUser = await verifyD1Admin();
+          if (!adminUser) {
+            return jsonResponse(
+              { success: false, error: 'Forbidden: Only admin and superadmin can export MCQs.' },
+              403,
+              cors
+            );
+          }
           const format = (url.searchParams.get('format') || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
           const uniFilter = (url.searchParams.get('university_id') || '').trim();
+          const exportLimit = Math.min(
+            2000,
+            Math.max(1, parseInt(url.searchParams.get('limit') || '1000', 10) || 1000)
+          );
+          const exportOffset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10) || 0);
+          const exportCols = `id, university_id, university_slug, import_batch_id, subject, topic, question, option_a, option_b, option_c, option_d, correct_answer, explanation, difficulty, created_at`;
           const [uniRes, mcqRes] = await Promise.all([
-            env.DB.prepare('SELECT * FROM universities ORDER BY sort_order ASC, name ASC').all<D1UniversityRow>(),
+            env.DB.prepare(
+              'SELECT id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at FROM universities ORDER BY sort_order ASC, name ASC'
+            ).all<D1UniversityRow>(),
             uniFilter && uniFilter !== 'all'
-              ? env.DB.prepare('SELECT * FROM mcqs WHERE university_id = ? ORDER BY created_at DESC').bind(uniFilter).all<D1McqRow>()
-              : env.DB.prepare('SELECT * FROM mcqs ORDER BY created_at DESC').all<D1McqRow>(),
+              ? env.DB.prepare(
+                  `SELECT ${exportCols} FROM mcqs WHERE university_id = ? ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+                )
+                  .bind(uniFilter, exportLimit, exportOffset)
+                  .all<D1McqRow>()
+              : env.DB.prepare(
+                  `SELECT ${exportCols} FROM mcqs ORDER BY created_at DESC, id ASC LIMIT ? OFFSET ?`
+                )
+                  .bind(exportLimit, exportOffset)
+                  .all<D1McqRow>(),
           ]);
           const universities = uniRes.results || [];
           const uniMap = new Map(universities.map((u) => [u.id, u.slug]));
@@ -6075,6 +6468,9 @@ ${urls
                 exported_at: new Date().toISOString(),
                 total_universities: universities.length,
                 total_mcqs: rows.length,
+                limit: exportLimit,
+                offset: exportOffset,
+                has_more: rows.length === exportLimit,
                 universities,
                 mcqs: rows,
               },
@@ -7764,8 +8160,11 @@ ${urls
         );
       }
 
-      // ── GET /api/posts — Paginated list, filter, search (Always fresh so new posts appear immediately) ──
+      // ── GET /api/posts — Paginated list, filter, search (COLLATE NOCASE + explicit cols + rate limit) ──
       if (subPath === '/' && req.method === 'GET') {
+        if (!checkPublicIpRateLimit(req, 'posts_feed', 150, 60_000)) {
+          return jsonResponse({ success: false, error: 'Too many requests.' }, 429, cors);
+        }
 
         const pageSize = Math.min(
           100,
@@ -7807,7 +8206,7 @@ ${urls
         const binds: any[] = [];
 
         if (subject && subject !== 'all') {
-          clauses.push('LOWER(subject) = LOWER(?)');
+          clauses.push('subject = ? COLLATE NOCASE');
           binds.push(subject);
         }
         if (type && type !== 'all') {
@@ -7815,7 +8214,7 @@ ${urls
           binds.push(type);
         }
         if (target && target !== 'all') {
-          clauses.push('LOWER(target) = LOWER(?)');
+          clauses.push('target = ? COLLATE NOCASE');
           binds.push(target);
         }
         if (classLevel && classLevel !== 'all') {
@@ -7823,7 +8222,7 @@ ${urls
           binds.push(classLevel.replace(/^Class\s+/i, ''));
         }
         if (board && board !== 'all') {
-          clauses.push('LOWER(board) = LOWER(?)');
+          clauses.push('board = ? COLLATE NOCASE');
           binds.push(board);
         }
         if (authorUid) {
@@ -7872,7 +8271,7 @@ ${urls
 
         const whereSql = clauses.join(' AND ');
         const filterBinds = [...binds];
-        const sql = `SELECT * FROM posts WHERE ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+        const sql = `SELECT ${POST_SELECT_COLS} FROM posts WHERE ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
         binds.push(pageSize + 1, offset);
 
         const [{ results }, countRow] = await Promise.all([
@@ -7894,10 +8293,10 @@ ${urls
           !followingUidsRaw &&
           Array.isArray((seedDataset as any)?.posts)
         ) {
-          const totalInDb = await env.DB.prepare('SELECT COUNT(*) as cnt FROM posts')
-            .first<{ cnt: number }>()
-            .catch(() => ({ cnt: 0 }));
-          if (Number(totalInDb?.cnt ?? 0) === 0) {
+          const anyPostRow = await env.DB.prepare('SELECT 1 AS has_any FROM posts LIMIT 1')
+            .first<{ has_any: number }>()
+            .catch(() => null);
+          if (!anyPostRow) {
             let fallbackRows = ((seedDataset as any).posts as Record<string, any>[]).filter(
               (p) => !Number(p.is_hidden || 0)
             );
@@ -8224,27 +8623,34 @@ ${urls
         );
       }
 
-      // GET /api/posts/moderation/queue
+      // GET /api/posts/moderation/queue (60-sec cache to absorb 30s AdminLayout polling)
       if (subPath === '/moderation/queue' && req.method === 'GET') {
+        const cachedModQueue = getWorkerCached<Record<string, any>>('posts:moderation_queue');
+        if (cachedModQueue) {
+          return jsonResponse(cachedModQueue, 200, cors);
+        }
         try {
-          const { results: rows } = await env.DB.prepare(
-            'SELECT * FROM posts WHERE report_count >= 1 OR is_hidden = 1 ORDER BY created_at DESC LIMIT 100'
-          ).all();
+          const [{ results: rows }, { results: reportRows }] = await Promise.all([
+            env.DB.prepare(
+              `SELECT ${POST_SELECT_COLS} FROM posts WHERE report_count >= 1 OR is_hidden = 1 ORDER BY created_at DESC LIMIT 100`
+            ).all(),
+            env.DB.prepare(
+              `SELECT id, post_id, reporter_uid, reason, details, status, created_at FROM post_reports WHERE status = 'pending' ORDER BY created_at DESC LIMIT 100`
+            )
+              .all()
+              .catch(() => ({ results: [] })),
+          ]);
           const flaggedPosts = (rows || []).map((r: any) => rowToCommonsPost(r));
-          const { results: reportRows } = await env.DB.prepare(
-            "SELECT * FROM post_reports WHERE status = 'pending' ORDER BY created_at DESC LIMIT 100"
-          )
-            .all()
-            .catch(() => ({ results: [] }));
-          return jsonResponse(
+          const payload = setWorkerCached(
+            'posts:moderation_queue',
             {
               success: true,
               flaggedPosts,
               reports: reportRows || [],
             },
-            200,
-            cors
+            60_000
           );
+          return jsonResponse(payload, 200, cors);
         } catch {
           return jsonResponse({ success: true, flaggedPosts: [], reports: [] }, 200, cors);
         }

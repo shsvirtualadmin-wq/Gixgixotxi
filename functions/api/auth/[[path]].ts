@@ -267,7 +267,27 @@ export function extractClientIp(request: Request): string {
 
 // ─── D1 Schema Initialization ─────────────────────────────────────────────────
 
+const ensuredAuthSchemaDbs = new WeakSet<object>();
+
 export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Promise<void> {
+  if (db && typeof db === 'object' && ensuredAuthSchemaDbs.has(db)) {
+    return;
+  }
+  try {
+    // Fast-path probe: skip 36 CREATE TABLE/INDEX + 13 ALTER TABLE statements when already migrated
+    await db.batch([
+      db.prepare('SELECT 1 FROM email_verification_codes LIMIT 1'),
+      db.prepare('SELECT email, display_name, avatar, frame, role, custom_role, bio, status, accent FROM user_usernames LIMIT 1'),
+      db.prepare('SELECT status, abandoned_at, purge_after FROM guest_accounts LIMIT 1'),
+      db.prepare('SELECT 1 FROM device_account_sessions LIMIT 1'),
+    ]);
+    if (db && typeof db === 'object') {
+      ensuredAuthSchemaDbs.add(db);
+    }
+    return;
+  } catch {
+    // Tables or columns missing — run idempotent setup once per DB instance
+  }
   try {
     await db.batch([
       db.prepare(`CREATE TABLE IF NOT EXISTS email_verification_codes (
@@ -545,6 +565,9 @@ export async function ensureEmailVerificationD1Schema(db: RewardsD1Database): Pr
     } catch {
       // Column or index already exists
     }
+  }
+  if (db && typeof db === 'object') {
+    ensuredAuthSchemaDbs.add(db);
   }
 }
 

@@ -192,8 +192,13 @@ export function parseAdminEmails(env: SendEmailEnv): string[] {
   return Array.from(new Set(emails.length > 0 ? emails : ['admin@boardly.cfd']));
 }
 
+const ensuredEmailLogsDbs = new WeakSet<object>();
+const EMAIL_LOG_SELECT_COLS =
+  'id, idempotency_key, event_type, recipient_role, recipient_hash, recipient_masked, subject, status, resend_message_id, error, retry_payload_json, created_at';
+
 async function ensureD1EmailLogsTable(db: any): Promise<void> {
   if (!db || typeof db.prepare !== 'function') return;
+  if (typeof db === 'object' && ensuredEmailLogsDbs.has(db)) return;
   try {
     await db
       .prepare(
@@ -213,6 +218,11 @@ async function ensureD1EmailLogsTable(db: any): Promise<void> {
         )`
       )
       .run();
+    await db
+      .prepare(`CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC)`)
+      .run()
+      .catch(() => {});
+    if (typeof db === 'object') ensuredEmailLogsDbs.add(db);
   } catch {
     // Non-fatal
   }
@@ -669,9 +679,14 @@ export async function handleSendEmailRequest(
     if (env.DB && typeof env.DB.prepare === 'function') {
       try {
         await ensureD1EmailLogsTable(env.DB);
+        const reqUrl = new URL(request.url);
+        const logLimit = Math.max(1, Math.min(100, Number(reqUrl.searchParams.get('limit')) || 50));
+        const logOffset = Math.max(0, Number(reqUrl.searchParams.get('offset')) || 0);
         const d1Res = await env.DB.prepare(
-          `SELECT * FROM email_logs ORDER BY created_at DESC LIMIT 100`
-        ).all();
+          `SELECT ${EMAIL_LOG_SELECT_COLS} FROM email_logs ORDER BY created_at DESC LIMIT ? OFFSET ?`
+        )
+          .bind(logLimit, logOffset)
+          .all();
         if (Array.isArray(d1Res?.results) && d1Res.results.length > 0) {
           logs = d1Res.results.map((r: any) => ({
             id: r.id,
@@ -754,7 +769,9 @@ export async function handleSendEmailRequest(
     let targetLog = memoryEmailLogs.find((l) => l.id === body.logId);
     if (!targetLog && env.DB && typeof env.DB.prepare === 'function') {
       try {
-        const row = await env.DB.prepare(`SELECT * FROM email_logs WHERE id = ?`)
+        const row = await env.DB.prepare(
+          `SELECT ${EMAIL_LOG_SELECT_COLS} FROM email_logs WHERE id = ? LIMIT 1`
+        )
           .bind(body.logId)
           .first();
         if (row && row.retry_payload_json) {

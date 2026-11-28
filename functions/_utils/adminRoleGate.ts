@@ -650,7 +650,17 @@ export async function handleMeRolesRequest(params: {
   );
 }
 
+const ensuredAdminActivityLogDbs = new WeakSet<object>();
+const adminStatsCache = new WeakMap<
+  object,
+  { expiresAt: number; stats: { d1QuestionsCount: number; d1AttemptsCount: number; d1CrewsCount: number } }
+>();
+const ADMIN_STATS_CACHE_TTL_MS = 3 * 60 * 1000;
+
 async function ensureAdminActivityLogsD1Table(db: RewardsD1Database): Promise<void> {
+  if (db && typeof db === 'object' && ensuredAdminActivityLogDbs.has(db)) {
+    return;
+  }
   try {
     await db
       .prepare(
@@ -666,6 +676,9 @@ async function ensureAdminActivityLogsD1Table(db: RewardsD1Database): Promise<vo
         )`
       )
       .run();
+    if (db && typeof db === 'object') {
+      ensuredAdminActivityLogDbs.add(db);
+    }
   } catch {
     // Non-fatal on mock/in-memory DB
   }
@@ -981,7 +994,7 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
       try {
         const res = await db
           .prepare(
-            'SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles ORDER BY updated_at DESC LIMIT 500'
+            "SELECT uid, email, role, custom_role, is_posting_banned, updated_at, created_at FROM user_roles WHERE role IN ('admin', 'superadmin', 'super_admin') ORDER BY updated_at DESC LIMIT 200"
           )
           .all();
         roles = (res.results || []).filter(
@@ -1098,23 +1111,61 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
   // ─── 2. /api/admin/* Routes (Caller is guaranteed admin === true || superAdmin === true) ───
   if (path === '/api/admin' || path === '/api/admin/stats') {
     if (method === 'GET') {
+      const now = Date.now();
+      const cached =
+        db && typeof db === 'object' ? adminStatsCache.get(db) : undefined;
+      if (cached && now < cached.expiresAt) {
+        return jsonGateResponse(
+          {
+            ok: true,
+            callerUid: caller.uid,
+            role: caller.role,
+            stats: cached.stats,
+          },
+          200
+        );
+      }
+
       let questionsCount = 0;
       let attemptsCount = 0;
       let crewsCount = 0;
       try {
-        const [qRow, aRow, cRow] = await Promise.all([
-          db.prepare('SELECT COUNT(*) as cnt FROM mcqs').first<{ cnt: number }>().catch(() => null),
+        // Prefer summing universities.mcq_count (18 rows) over scanning the full mcqs table
+        const [uniSumRow, aRow, cRow] = await Promise.all([
+          db
+            .prepare('SELECT COALESCE(SUM(mcq_count), 0) AS cnt FROM universities')
+            .first<{ cnt: number }>()
+            .catch(() => null),
           db
             .prepare('SELECT COUNT(*) as cnt FROM test_attempts')
             .first<{ cnt: number }>()
             .catch(() => null),
           db.prepare('SELECT COUNT(*) as cnt FROM crews').first<{ cnt: number }>().catch(() => null),
         ]);
-        questionsCount = Number(qRow?.cnt || 0);
+        questionsCount = Number(uniSumRow?.cnt || 0);
+        if (questionsCount === 0) {
+          const qRow = await db
+            .prepare('SELECT COUNT(*) as cnt FROM mcqs')
+            .first<{ cnt: number }>()
+            .catch(() => null);
+          questionsCount = Number(qRow?.cnt || 0);
+        }
         attemptsCount = Number(aRow?.cnt || 0);
         crewsCount = Number(cRow?.cnt || 0);
       } catch {
         // Non-fatal
+      }
+
+      const statsPayload = {
+        d1QuestionsCount: questionsCount,
+        d1AttemptsCount: attemptsCount,
+        d1CrewsCount: crewsCount,
+      };
+      if (db && typeof db === 'object') {
+        adminStatsCache.set(db, {
+          expiresAt: now + ADMIN_STATS_CACHE_TTL_MS,
+          stats: statsPayload,
+        });
       }
 
       return jsonGateResponse(
@@ -1122,11 +1173,7 @@ export async function handleSuperAdminAndExtraAdminRoutes(params: {
           ok: true,
           callerUid: caller.uid,
           role: caller.role,
-          stats: {
-            d1QuestionsCount: questionsCount,
-            d1AttemptsCount: attemptsCount,
-            d1CrewsCount: crewsCount,
-          },
+          stats: statsPayload,
         },
         200
       );

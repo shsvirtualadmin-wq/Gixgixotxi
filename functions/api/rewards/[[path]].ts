@@ -227,14 +227,38 @@ export async function ensureRewardsD1Schema(db: RewardsD1Database): Promise<void
   }
 }
 
+const REFERRAL_SELECT_COLS =
+  'id, inviter_uid, invitee_uid, inviter_code, invitee_code, status, inviter_accepted, invitee_accepted, ip_hash, flagged, inviter_credit_status, invitee_credit_status, created_at, confirmed_at, paid_at';
+
+const REWARDS_SETTINGS_CACHE = new WeakMap<
+  object,
+  { expiresAt: number; value: { mode: RewardsMode; config: RewardsConfig } }
+>();
+const REWARDS_SETTINGS_TTL_MS = 60_000;
+
+export function invalidateRewardsSettingsCache(db?: RewardsD1Database): void {
+  if (db && typeof db === 'object') {
+    REWARDS_SETTINGS_CACHE.delete(db);
+  }
+}
+
 /**
- * Reads `mode` and `config` from D1 `reward_settings`.
+ * Reads `mode` and `config` from D1 `reward_settings` (PK lookup on 2 keys + 60s isolate cache).
  */
 export async function loadD1RewardsSettings(
-  db: RewardsD1Database
+  db: RewardsD1Database,
+  forceRefresh = false
 ): Promise<{ mode: RewardsMode; config: RewardsConfig }> {
+  const isMockDb = db && typeof db === 'object' && db.constructor?.name === 'InMemoryD1Database';
+  if (!forceRefresh && !isMockDb && db && typeof db === 'object') {
+    const cached = REWARDS_SETTINGS_CACHE.get(db);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.value;
+    }
+  }
+
   const { results } = await db
-    .prepare('SELECT key, value FROM reward_settings')
+    .prepare("SELECT key, value FROM reward_settings WHERE key IN ('mode', 'config')")
     .all<{ key: string; value: string }>();
 
   let rawMode = 'off';
@@ -302,7 +326,11 @@ export async function loadD1RewardsSettings(
     },
   };
 
-  return { mode, config };
+  const result = { mode, config };
+  if (!isMockDb && db && typeof db === 'object') {
+    REWARDS_SETTINGS_CACHE.set(db, { expiresAt: Date.now() + REWARDS_SETTINGS_TTL_MS, value: result });
+  }
+  return result;
 }
 
 /**
@@ -1223,7 +1251,8 @@ async function handleRewardsApiRequestInner(
     }
 
     // Re-read from D1 to confirm stored value
-    const verified = await loadD1RewardsSettings(db);
+    invalidateRewardsSettingsCache(db);
+    const verified = await loadD1RewardsSettings(db, true);
 
     return jsonResponse(
       {
@@ -1284,7 +1313,7 @@ async function handleRewardsApiRequestInner(
             .bind(uid),
           db
             .prepare(
-              'SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?2 ORDER BY created_at DESC'
+              `SELECT ${REFERRAL_SELECT_COLS} FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?2 ORDER BY created_at DESC LIMIT 100`
             )
             .bind(uid, uid),
           db
@@ -1433,6 +1462,23 @@ async function handleRewardsApiRequestInner(
     let alreadyAttachedInviter = false;
     let newlyPaidReferralDelta = 0;
 
+    // Batch-fetch invitee signup timestamps in a single IN (...) query instead of N+1 per referral
+    const inviteeRoleMap = new Map<string, number>();
+    const uniqueInviteeUids = Array.from(
+      new Set(referralRows.map((r) => String(r.invitee_uid || '')).filter(Boolean))
+    );
+    if (uniqueInviteeUids.length > 0) {
+      const ph = uniqueInviteeUids.map((_, i) => `?${i + 1}`).join(', ');
+      const roleRes = await db
+        .prepare(`SELECT uid, created_at FROM user_roles WHERE uid IN (${ph})`)
+        .bind(...uniqueInviteeUids)
+        .all<{ uid: string; created_at?: number }>()
+        .catch(() => ({ results: [] }));
+      for (const row of roleRes.results || []) {
+        if (row.uid) inviteeRoleMap.set(String(row.uid), Number(row.created_at || 0));
+      }
+    }
+
     // Process all referral items in parallel (Promise.all) instead of sequential awaits
     const referralItems: ReferralRecordPublic[] = await Promise.all(
       referralRows.map(async (refRow) => {
@@ -1462,22 +1508,16 @@ async function handleRewardsApiRequestInner(
             .run();
         }
 
-        const [inviteeRoleRow, cpDoc] = await Promise.all([
-          db
-            .prepare('SELECT created_at FROM user_roles WHERE uid = ?1 LIMIT 1')
-            .bind(String(refRow.invitee_uid))
-            .first<{ created_at?: number }>()
-            .catch(() => null),
+        const cpDoc =
           store && !firestoreErrorOccurred
-            ? store.getDoc(`users/${counterpartUid}`).catch((err: any) => {
+            ? await store.getDoc(`users/${counterpartUid}`).catch((err: any) => {
                 console.error(`[Rewards Firestore cpDoc Error]:`, err?.message || err);
                 firestoreErrorOccurred = true;
                 return null;
               })
-            : Promise.resolve(null),
-        ]);
+            : null;
 
-        const inviteeSignupMs = Number(inviteeRoleRow?.created_at || 0);
+        const inviteeSignupMs = inviteeRoleMap.get(String(refRow.invitee_uid)) || 0;
         const inviteeMcqs = await computeAuthoritativeMcqsFromD1(
           db,
           String(refRow.invitee_uid),
@@ -1618,48 +1658,22 @@ async function handleRewardsApiRequestInner(
     subPath === 'wingmates/radar' ||
     subPath === 'wingmates/remind'
   ) {
-    const buildWingmateStatusItem = async (
-      targetUid: string,
-      callerUid: string,
-      fallbackName?: string | null
-    ) => {
-      const [uDoc, uNameRows, dailyRows, attemptRows, nudgeRow, remindRow] = await Promise.all([
-        store ? store.getDoc(`users/${targetUid}`).catch(() => null) : Promise.resolve(null),
-        db
-          .prepare('SELECT uid, username, email FROM user_usernames WHERE uid = ?1')
-          .bind(targetUid)
-          .all<{ uid: string; username?: string; email?: string }>()
-          .catch(() => ({ results: [] })),
-        db
-          .prepare('SELECT pkt_date, created_at FROM reward_daily_claims WHERE uid = ?1')
-          .bind(targetUid)
-          .all<{ pkt_date: string; created_at: number }>()
-          .catch(() => ({ results: [] })),
-        db
-          .prepare(
-            'SELECT ta.id AS attempt_id, ta.total_questions, ta.created_at FROM test_attempts ta WHERE ta.user_uid = ?1'
-          )
-          .bind(targetUid)
-          .all<{
-            attempt_id: string;
-            total_questions: number;
-            created_at: number;
-            answered_rows?: number;
-          }>()
-          .catch(() => ({ results: [] })),
-        db
-          .prepare('SELECT value FROM reward_settings WHERE key = ?1')
-          .bind(`wingmate_nudge:${callerUid}:${targetUid}`)
-          .first<{ value: string }>()
-          .catch(() => null),
-        db
-          .prepare('SELECT value FROM reward_settings WHERE key = ?1')
-          .bind(`wingmate_remind:${targetUid}`)
-          .first<{ value: string }>()
-          .catch(() => null),
-      ]);
-
-      const uNameEntry = (uNameRows?.results || [])[0];
+    const buildWingmateStatusFromData = (params: {
+      targetUid: string;
+      fallbackName?: string | null;
+      uDoc: Record<string, any> | null;
+      uNameEntry?: { uid: string; username?: string; email?: string };
+      dailyList: Array<{ pkt_date: string; created_at: number }>;
+      attemptList: Array<{
+        attempt_id: string;
+        total_questions: number;
+        created_at: number;
+        answered_rows?: number;
+      }>;
+      nudgeValue?: string | null;
+      remindValue?: string | null;
+    }) => {
+      const { targetUid, fallbackName, uDoc, uNameEntry, dailyList, attemptList, nudgeValue, remindValue } = params;
       const displayName = sanitizeDisplayName(
         uDoc,
         uNameEntry?.username || fallbackName || `Student ${targetUid.slice(0, 5).toUpperCase()}`
@@ -1676,10 +1690,10 @@ async function handleRewardsApiRequestInner(
           ? uDoc.avatarUrl.trim()
           : null;
 
-      const attempts = [...(attemptRows?.results || [])].sort(
+      const attempts = [...attemptList].sort(
         (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
       );
-      const claims = [...(dailyRows?.results || [])].sort(
+      const claims = [...dailyList].sort(
         (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
       );
 
@@ -1729,7 +1743,6 @@ async function handleRewardsApiRequestInner(
           : 'No practice recorded yet';
       let filterCategory: 'active' | 'at_risk' | 'inactive' = 'inactive';
       let actionType: 'nudge' | 'cheer' = 'nudge';
-      // Never fabricate a synthetic "2 days ago" timestamp when no real activity exists
       const eventAtMs = hasRealActivity ? latestActivityMs : 0;
 
       if (hasRealActivity && nowMs - latestActivityMs <= 20 * 60 * 1000) {
@@ -1793,9 +1806,9 @@ async function handleRewardsApiRequestInner(
         actionType = 'nudge';
       }
 
-      const lastNudgedAtMs = nudgeRow?.value ? Number(nudgeRow.value) || null : null;
+      const lastNudgedAtMs = nudgeValue ? Number(nudgeValue) || null : null;
       const canNudge = !lastNudgedAtMs || nowMs - lastNudgedAtMs >= 24 * 60 * 60 * 1000;
-      const lastRemindedAtMs = remindRow?.value ? Number(remindRow.value) || null : null;
+      const lastRemindedAtMs = remindValue ? Number(remindValue) || null : null;
 
       return {
         uid: targetUid,
@@ -1813,9 +1826,107 @@ async function handleRewardsApiRequestInner(
       };
     };
 
+    // Batch loader: 4 D1 IN (...) queries total for the entire page instead of 5*N N+1 queries
+    const buildWingmateStatusItemsBatch = async (
+      entries: Array<[string, string | null]>,
+      callerUid: string
+    ) => {
+      if (entries.length === 0) return [];
+      const targetUids = entries.map(([tUid]) => tUid);
+      const uidPlaceholders = targetUids.map((_, i) => `?${i + 1}`).join(', ');
+      const settingKeys: string[] = [];
+      for (const tUid of targetUids) {
+        settingKeys.push(`wingmate_nudge:${callerUid}:${tUid}`);
+        settingKeys.push(`wingmate_remind:${tUid}`);
+      }
+      const keyPlaceholders = settingKeys.map((_, i) => `?${i + 1}`).join(', ');
+
+      const [uDocs, uNameRes, dailyRes, attemptRes, settingsRes] = await Promise.all([
+        Promise.all(
+          targetUids.map((tUid) =>
+            store ? store.getDoc(`users/${tUid}`).catch(() => null) : Promise.resolve(null)
+          )
+        ),
+        db
+          .prepare(`SELECT uid, username, email FROM user_usernames WHERE uid IN (${uidPlaceholders})`)
+          .bind(...targetUids)
+          .all<{ uid: string; username?: string; email?: string }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare(`SELECT uid, pkt_date, created_at FROM reward_daily_claims WHERE uid IN (${uidPlaceholders})`)
+          .bind(...targetUids)
+          .all<{ uid: string; pkt_date: string; created_at: number }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare(
+            `SELECT ta.user_uid, ta.id AS attempt_id, ta.total_questions, ta.created_at FROM test_attempts ta WHERE ta.user_uid IN (${uidPlaceholders})`
+          )
+          .bind(...targetUids)
+          .all<{
+            user_uid: string;
+            attempt_id: string;
+            total_questions: number;
+            created_at: number;
+            answered_rows?: number;
+          }>()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare(`SELECT key, value FROM reward_settings WHERE key IN (${keyPlaceholders})`)
+          .bind(...settingKeys)
+          .all<{ key: string; value: string }>()
+          .catch(() => ({ results: [] })),
+      ]);
+
+      const uNameMap = new Map<string, { uid: string; username?: string; email?: string }>();
+      for (const r of uNameRes.results || []) {
+        if (r.uid && !uNameMap.has(String(r.uid))) uNameMap.set(String(r.uid), r);
+      }
+
+      const dailyMap = new Map<string, Array<{ pkt_date: string; created_at: number }>>();
+      for (const r of dailyRes.results || []) {
+        const k = String(r.uid || '');
+        if (!k) continue;
+        const arr = dailyMap.get(k) || [];
+        arr.push({ pkt_date: r.pkt_date, created_at: r.created_at });
+        dailyMap.set(k, arr);
+      }
+
+      const attemptMap = new Map<
+        string,
+        Array<{ attempt_id: string; total_questions: number; created_at: number; answered_rows?: number }>
+      >();
+      for (const r of attemptRes.results || []) {
+        const k = String(r.user_uid || '');
+        if (!k) continue;
+        const arr = attemptMap.get(k) || [];
+        arr.push(r);
+        attemptMap.set(k, arr);
+      }
+
+      const settingsMap = new Map<string, string>();
+      for (const r of settingsRes.results || []) {
+        if (r.key) settingsMap.set(String(r.key), String(r.value || ''));
+      }
+
+      return entries.map(([targetUid, fallback], idx) =>
+        buildWingmateStatusFromData({
+          targetUid,
+          fallbackName: fallback,
+          uDoc: (uDocs[idx] as Record<string, any> | null) || null,
+          uNameEntry: uNameMap.get(targetUid),
+          dailyList: dailyMap.get(targetUid) || [],
+          attemptList: attemptMap.get(targetUid) || [],
+          nudgeValue: settingsMap.get(`wingmate_nudge:${callerUid}:${targetUid}`) ?? null,
+          remindValue: settingsMap.get(`wingmate_remind:${targetUid}`) ?? null,
+        })
+      );
+    };
+
     if (subPath === 'wingmates' && request.method === 'GET') {
       const refRowsRes = await db
-        .prepare('SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1')
+        .prepare(
+          'SELECT inviter_uid, invitee_uid, inviter_code, invitee_code FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1 LIMIT 60'
+        )
         .bind(uid)
         .all<Record<string, any>>()
         .catch(() => ({ results: [] }));
@@ -1840,9 +1951,7 @@ async function handleRewardsApiRequestInner(
       }
 
       const peerEntries = Array.from(peerMap.entries()).slice(0, 30);
-      const wingmates = await Promise.all(
-        peerEntries.map(([peerUid, fallback]) => buildWingmateStatusItem(peerUid, uid, fallback))
-      );
+      const wingmates = await buildWingmateStatusItemsBatch(peerEntries, uid);
 
       const counters = {
         practicingNow: wingmates.filter((w) => w.statusType === 'practicing_now').length,
@@ -1894,7 +2003,9 @@ async function handleRewardsApiRequestInner(
 
       // Verify target is actually in caller's wingmates
       const refCheck = await db
-        .prepare('SELECT * FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1')
+        .prepare(
+          'SELECT inviter_uid, invitee_uid FROM referrals WHERE inviter_uid = ?1 OR invitee_uid = ?1 LIMIT 100'
+        )
         .bind(uid)
         .all<Record<string, any>>()
         .catch(() => ({ results: [] }));
@@ -2012,17 +2123,27 @@ async function handleRewardsApiRequestInner(
         );
       }
 
+      const radarUrl = new URL(request.url);
+      const radarLimit = Math.max(1, Math.min(50, Number(radarUrl.searchParams.get('limit')) || 25));
+      const radarOffset = Math.max(0, Number(radarUrl.searchParams.get('offset')) || 0);
+      const discoveryCap = Math.min(200, radarOffset + radarLimit + 50);
+
       const [usernamesRes, rolesRes, refsRes] = await Promise.all([
         db
-          .prepare('SELECT uid, username, email FROM user_usernames')
+          .prepare('SELECT uid, username, email FROM user_usernames ORDER BY updated_at DESC LIMIT ?1')
+          .bind(discoveryCap)
           .all<{ uid: string; username?: string; email?: string }>()
           .catch(() => ({ results: [] })),
         db
-          .prepare('SELECT uid FROM user_roles')
+          .prepare('SELECT uid FROM user_roles ORDER BY updated_at DESC LIMIT ?1')
+          .bind(discoveryCap)
           .all<{ uid: string }>()
           .catch(() => ({ results: [] })),
         db
-          .prepare('SELECT * FROM referrals')
+          .prepare(
+            'SELECT inviter_uid, invitee_uid, inviter_code, invitee_code FROM referrals ORDER BY created_at DESC LIMIT ?1'
+          )
+          .bind(discoveryCap)
           .all<Record<string, any>>()
           .catch(() => ({ results: [] })),
       ]);
@@ -2048,12 +2169,9 @@ async function handleRewardsApiRequestInner(
         allUidsMap.set(uid, d1User.email?.split('@')[0] || 'Admin');
       }
 
-      const uidEntries = Array.from(allUidsMap.entries()).slice(0, 50);
-      const items = await Promise.all(
-        uidEntries.map(([targetUid, fallback]) =>
-          buildWingmateStatusItem(targetUid, uid, fallback)
-        )
-      );
+      const allEntries = Array.from(allUidsMap.entries());
+      const uidEntries = allEntries.slice(radarOffset, radarOffset + radarLimit);
+      const items = await buildWingmateStatusItemsBatch(uidEntries, uid);
 
       const counters = {
         practicingNow: items.filter((w) => w.statusType === 'practicing_now').length,
@@ -2067,6 +2185,12 @@ async function handleRewardsApiRequestInner(
           ok: true,
           counters,
           items,
+          pagination: {
+            limit: radarLimit,
+            offset: radarOffset,
+            total: allEntries.length,
+            hasMore: radarOffset + uidEntries.length < allEntries.length,
+          },
         },
         200,
         { 'Cache-Control': 'private, no-store' }
@@ -2710,7 +2834,7 @@ async function handleRewardsApiRequestInner(
     }
 
     const refRow = await db
-      .prepare('SELECT * FROM referrals WHERE id = ?1 LIMIT 1')
+      .prepare(`SELECT ${REFERRAL_SELECT_COLS} FROM referrals WHERE id = ?1 LIMIT 1`)
       .bind(referralId)
       .first<Record<string, any>>();
 

@@ -119,19 +119,24 @@ function decodeFirestoreFields(fields: Record<string, any>): Record<string, any>
   return out;
 }
 
+const ensuredAdsD1Dbs = new WeakSet<object>();
+const edgeAdStatsCache = new Map<string, { expiresAt: number; payload: any }>();
+const EDGE_AD_STATS_TTL_MS = 2 * 60 * 1000;
+
 async function ensureAdsD1Tables(db: RewardsD1Database): Promise<void> {
+  if (db && typeof db === 'object' && ensuredAdsD1Dbs.has(db)) {
+    return;
+  }
   try {
-    await db
-      .prepare(
+    await db.batch([
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS ads_config (
           id TEXT PRIMARY KEY,
           config_json TEXT NOT NULL,
           updated_at INTEGER NOT NULL
         )`
-      )
-      .run();
-    await db
-      .prepare(
+      ),
+      db.prepare(
         `CREATE TABLE IF NOT EXISTS ad_offer_stats_daily (
           stat_date TEXT NOT NULL,
           slot_id TEXT NOT NULL,
@@ -141,8 +146,11 @@ async function ensureAdsD1Tables(db: RewardsD1Database): Promise<void> {
           updated_at INTEGER NOT NULL,
           PRIMARY KEY (stat_date, slot_id, offer_id)
         )`
-      )
-      .run();
+      ),
+    ]);
+    if (db && typeof db === 'object') {
+      ensuredAdsD1Dbs.add(db);
+    }
   } catch {
     // Non-fatal on mock/in-memory DB
   }
@@ -393,6 +401,8 @@ export async function recordAdOfferStatServer(
     // Non-fatal
   }
 
+  // Invalidate cached admin stats summary so fresh counts appear
+  edgeAdStatsCache.clear();
   return true;
 }
 
@@ -413,6 +423,12 @@ export async function getAdStatsServer(
   const start = new Date(end.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
   const startDate = start.toISOString().slice(0, 10);
   const endDate = end.toISOString().slice(0, 10);
+
+  const statsCacheKey = `${days}:${startDate}:${endDate}`;
+  const cachedStats = edgeAdStatsCache.get(statsCacheKey);
+  if (cachedStats && Date.now() < cachedStats.expiresAt) {
+    return cachedStats.payload;
+  }
 
   const merged = new Map<string, AdDailyStatRow>();
 
@@ -480,7 +496,7 @@ export async function getAdStatsServer(
     slotMap.set(row.slotId, s);
   }
 
-  return {
+  const result = {
     days,
     startDate,
     endDate,
@@ -489,6 +505,8 @@ export async function getAdStatsServer(
     bySlot: Array.from(slotMap.values()).sort((a, b) => b.impressions - a.impressions),
     daily,
   };
+  edgeAdStatsCache.set(statsCacheKey, { expiresAt: Date.now() + EDGE_AD_STATS_TTL_MS, payload: result });
+  return result;
 }
 
 export async function handlePublicAdsApiRequest(params: {

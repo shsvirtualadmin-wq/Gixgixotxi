@@ -2606,6 +2606,16 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     // 2. reward_settings
     if (upper.includes('FROM REWARD_SETTINGS')) {
+      if (upper.includes('WHERE KEY IN')) {
+        const keySet = new Set(args.map((a) => String(a ?? '')));
+        if (keySet.size === 0 && upper.includes("'MODE'")) {
+          keySet.add('mode');
+          keySet.add('config');
+        }
+        return Array.from(this.tables.reward_settings.values())
+          .filter((r) => keySet.has(String(r.key)))
+          .map((r) => ({ ...r }));
+      }
       if (upper.includes('WHERE KEY =')) {
         const key = String(args[0] ?? '');
         const row = this.tables.reward_settings.get(key);
@@ -2622,6 +2632,11 @@ export class InMemoryD1Database implements RewardsD1Database {
           .filter((r) => uidSet.has(String(r.uid)))
           .map((r) => ({ ...r }));
       }
+      if (upper.includes('WHERE ROLE IN')) {
+        return Array.from(this.tables.user_roles.values())
+          .filter((r) => r.role === 'admin' || r.role === 'superadmin' || r.role === 'super_admin')
+          .map((r) => ({ ...r }));
+      }
       if (upper.includes('WHERE UID =')) {
         const uid = String(args[0] ?? '');
         const row = this.tables.user_roles.get(uid);
@@ -2632,6 +2647,13 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     // 4. reward_daily_claims
     if (upper.includes('FROM REWARD_DAILY_CLAIMS')) {
+      if (upper.includes('WHERE UID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        return Array.from(this.tables.reward_daily_claims.values())
+          .filter((r) => uidSet.has(String(r.uid)))
+          .sort((a, b) => b.pkt_date.localeCompare(a.pkt_date))
+          .map((r) => ({ ...r }));
+      }
       const uid = String(args[0] ?? '');
       let rows = Array.from(this.tables.reward_daily_claims.values()).filter((r) => r.uid === uid);
       if (upper.includes('AND PKT_DATE =')) {
@@ -2734,6 +2756,25 @@ export class InMemoryD1Database implements RewardsD1Database {
 
     // 8. READ-ONLY MCQ count query on test_attempts + attempt_answers
     if (upper.includes('FROM TEST_ATTEMPTS')) {
+      if (upper.includes('USER_UID IN')) {
+        const uidSet = new Set(args.map((a) => String(a ?? '')));
+        const attempts = Array.from(this.tables.test_attempts.values()).filter((ta) =>
+          uidSet.has(String(ta.user_uid))
+        );
+        const allAnswers = Array.from(this.tables.attempt_answers.values());
+        return attempts.map((ta) => {
+          const ansForAttempt = allAnswers.filter((aa) => aa.attempt_id === ta.id);
+          const answeredRows = ansForAttempt.filter((aa) => aa.selected_index >= 0).length;
+          return {
+            user_uid: ta.user_uid,
+            attempt_id: ta.id,
+            total_questions: ta.total_questions,
+            created_at: ta.created_at,
+            answered_rows: answeredRows,
+            total_answer_rows: ansForAttempt.length,
+          };
+        });
+      }
       const uid = String(args[0] ?? '');
       const sinceMs = args.length > 1 ? Number(args[1] ?? 0) : 0;
       const attempts = Array.from(this.tables.test_attempts.values()).filter(
@@ -2745,6 +2786,7 @@ export class InMemoryD1Database implements RewardsD1Database {
         const ansForAttempt = allAnswers.filter((aa) => aa.attempt_id === ta.id);
         const answeredRows = ansForAttempt.filter((aa) => aa.selected_index >= 0).length;
         return {
+          user_uid: ta.user_uid,
           attempt_id: ta.id,
           total_questions: ta.total_questions,
           created_at: ta.created_at,

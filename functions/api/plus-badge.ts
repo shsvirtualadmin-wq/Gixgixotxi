@@ -103,7 +103,12 @@ function checkPutRateLimit(
   return { allowed: true };
 }
 
+const ensuredPlusBadgeDbs = new WeakSet<object>();
+
 async function ensureUserPlusBadgeTable(db: RewardsD1Database): Promise<void> {
+  if (db && typeof db === 'object' && ensuredPlusBadgeDbs.has(db)) {
+    return;
+  }
   try {
     await db
       .prepare(
@@ -115,6 +120,9 @@ async function ensureUserPlusBadgeTable(db: RewardsD1Database): Promise<void> {
         )`
       )
       .run();
+    if (db && typeof db === 'object') {
+      ensuredPlusBadgeDbs.add(db);
+    }
   } catch {
     // Local in-memory D1 mock already defines user_plus_badge
   }

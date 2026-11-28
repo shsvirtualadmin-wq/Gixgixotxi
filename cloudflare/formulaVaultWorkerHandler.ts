@@ -361,9 +361,65 @@ async function repositionFormulaNumberD1(
 
 let formulaSchemaEnsured = false;
 
+interface FvCacheEntry {
+  value: any;
+  expiresAt: number;
+}
+const FORMULA_VAULT_CACHE = new Map<string, FvCacheEntry>();
+const FORMULA_VAULT_CACHE_MAX = 150;
+
+function getFvCache<T>(key: string): T | null {
+  const entry = FORMULA_VAULT_CACHE.get(key);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    FORMULA_VAULT_CACHE.delete(key);
+    return null;
+  }
+  return entry.value as T;
+}
+
+function setFvCache<T>(key: string, value: T, ttlMs: number): T {
+  const now = Date.now();
+  if (FORMULA_VAULT_CACHE.size >= FORMULA_VAULT_CACHE_MAX) {
+    for (const [k, v] of FORMULA_VAULT_CACHE.entries()) {
+      if (v.expiresAt <= now) FORMULA_VAULT_CACHE.delete(k);
+    }
+    if (FORMULA_VAULT_CACHE.size >= FORMULA_VAULT_CACHE_MAX) {
+      const oldest = FORMULA_VAULT_CACHE.keys().next().value;
+      if (oldest) FORMULA_VAULT_CACHE.delete(oldest);
+    }
+  }
+  FORMULA_VAULT_CACHE.set(key, { value, expiresAt: now + ttlMs });
+  return value;
+}
+
+function clearFvCache(): void {
+  FORMULA_VAULT_CACHE.clear();
+}
+
+const FV_CATEGORY_COLS = `id, name, slug, description, sort_order, chapter_count, formula_count, status, guest_access, created_at, updated_at`;
+const FV_CHAPTER_COLS = `id, category_id, chapter_no, title, slug, subtopics, sort_order, formula_count, status, pdf_r2_key, pdf_updated_at, created_at, updated_at`;
+const FV_FORMULA_COLS = `id, category_id, chapter_id, formula_no, title, formula_latex, plain_text, note, status, sort_order, is_render_valid, render_error, created_at, updated_at`;
+
 async function ensureFormulaVaultD1SchemaAndSeed(db: any): Promise<void> {
   if (formulaSchemaEnsured) return;
   try {
+    // Fast-path existence probe: if Formula Vault tables exist and already have categories,
+    // skip DDL, seeding, and full-table healing/renumbering completely.
+    try {
+      const [catProbe, chapProbe, formProbe] = await db.batch([
+        db.prepare('SELECT 1 AS ok FROM categories LIMIT 1'),
+        db.prepare('SELECT 1 AS ok FROM chapters LIMIT 1'),
+        db.prepare('SELECT 1 AS ok FROM formulas LIMIT 1'),
+      ]);
+      if ((catProbe?.results?.length ?? 0) > 0 && chapProbe && formProbe) {
+        formulaSchemaEnsured = true;
+        return;
+      }
+    } catch {
+      // Tables not initialized yet — run one-time additive bootstrap below.
+    }
+
     await db.batch([
       db.prepare(
         `CREATE TABLE IF NOT EXISTS categories (
@@ -697,66 +753,110 @@ export async function handleFormulaVaultWorkerRequest(params: {
     );
   }
 
-  // GET /api/formulas/overview — Live formula_count from formulas table + numeric chapter_no sort
+  // Invalidate Formula Vault read cache on admin write mutations
+  if (method !== 'GET' && sub !== '/bookmarks/toggle' && sub !== '/reports') {
+    clearFvCache();
+  }
+
+  // GET /api/formulas/overview — Cached catalog + single grouped count query (eliminates correlated subqueries)
   if (sub === '/overview' && method === 'GET') {
     const includeDrafts = url.searchParams.get('include_drafts') === '1' && isAdmin;
-    const catSql = includeDrafts
-      ? `SELECT categories.*,
-           (SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id) AS chapter_count,
-           (SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id) AS formula_count
-         FROM categories
-         ORDER BY sort_order ASC, name ASC`
-      : `SELECT categories.*,
-           (SELECT COUNT(*) FROM chapters ch WHERE ch.category_id = categories.id AND ch.status = 'live') AS chapter_count,
-           (SELECT COUNT(*) FROM formulas f WHERE f.category_id = categories.id AND f.status = 'live') AS formula_count
-         FROM categories
-         WHERE status = 'live'
-         ORDER BY sort_order ASC, name ASC`;
+    const overviewCacheKey = includeDrafts ? 'fv:overview:drafts' : 'fv:overview:live';
 
-    const chSql = includeDrafts
-      ? `SELECT chapters.*,
-           (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id) AS formula_count
-         FROM chapters
-         ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC`
-      : `SELECT chapters.*,
-           (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
-         FROM chapters
-         WHERE status = 'live'
-         ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC`;
+    let catalog = getFvCache<{
+      categories: any[];
+      chapters: any[];
+      formulaOfTheDay: any | null;
+    }>(overviewCacheKey);
 
-    const [catRes, chRes, featuredRes] = await Promise.all([
-      env.DB.prepare(catSql).all(),
-      env.DB.prepare(chSql).all(),
-      env.DB.prepare("SELECT * FROM formulas WHERE status = 'live' ORDER BY sort_order ASC LIMIT 40").all(),
-    ]);
+    if (!catalog) {
+      const catSql = includeDrafts
+        ? `SELECT ${FV_CATEGORY_COLS} FROM categories ORDER BY sort_order ASC, name ASC`
+        : `SELECT ${FV_CATEGORY_COLS} FROM categories WHERE status = 'live' ORDER BY sort_order ASC, name ASC`;
 
-    const featuredPool = featuredRes.results || [];
-    const daySeed = Math.floor(Date.now() / 86_400_000);
-    const fotdItem = featuredPool.length > 0 ? featuredPool[daySeed % featuredPool.length] : null;
-    const categories = (catRes.results || []).map((c: any) => ({
-      ...c,
-      chapter_count: Number(c.chapter_count || 0),
-      formula_count: Number(c.formula_count || 0),
-    }));
-    const chapters = (chRes.results || [])
-      .map((ch: any) => ({
-        ...ch,
-        chapter_no: Number(ch.chapter_no || 1),
-        formula_count: Number(ch.formula_count || 0),
-      }))
-      .sort(
-        (a: any, b: any) =>
-          Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
-          Number(a.sort_order || 0) - Number(b.sort_order || 0)
+      const chSql = includeDrafts
+        ? `SELECT ${FV_CHAPTER_COLS} FROM chapters ORDER BY chapter_no ASC, sort_order ASC`
+        : `SELECT ${FV_CHAPTER_COLS} FROM chapters WHERE status = 'live' ORDER BY chapter_no ASC, sort_order ASC`;
+
+      const countSql = includeDrafts
+        ? 'SELECT category_id, chapter_id, COUNT(*) AS cnt FROM formulas GROUP BY category_id, chapter_id'
+        : "SELECT category_id, chapter_id, COUNT(*) AS cnt FROM formulas WHERE status = 'live' GROUP BY category_id, chapter_id";
+
+      const [catRes, chRes, countRes, featuredRes] = await Promise.all([
+        env.DB.prepare(catSql).all(),
+        env.DB.prepare(chSql).all(),
+        env.DB.prepare(countSql).all(),
+        env.DB.prepare(
+          `SELECT ${FV_FORMULA_COLS} FROM formulas WHERE status = 'live' ORDER BY sort_order ASC LIMIT 20`
+        ).all(),
+      ]);
+
+      const formulaCountByChapter = new Map<string, number>();
+      const formulaCountByCategory = new Map<string, number>();
+      for (const r of (countRes.results || []) as any[]) {
+        const cnt = Number(r.cnt || 0);
+        const catId = String(r.category_id || '');
+        const chId = String(r.chapter_id || '');
+        formulaCountByChapter.set(`${catId}::${chId}`, cnt);
+        formulaCountByCategory.set(catId, (formulaCountByCategory.get(catId) || 0) + cnt);
+      }
+
+      const chapterCountByCategory = new Map<string, number>();
+      const chapters = (chRes.results || [])
+        .map((ch: any) => {
+          const catId = String(ch.category_id || '');
+          chapterCountByCategory.set(catId, (chapterCountByCategory.get(catId) || 0) + 1);
+          return {
+            ...ch,
+            chapter_no: Number(ch.chapter_no || 1),
+            formula_count:
+              formulaCountByChapter.get(`${catId}::${String(ch.id)}`) ??
+              Number(ch.formula_count || 0),
+          };
+        })
+        .sort(
+          (a: any, b: any) =>
+            Number(a.chapter_no || 0) - Number(b.chapter_no || 0) ||
+            Number(a.sort_order || 0) - Number(b.sort_order || 0)
+        );
+
+      const categories = (catRes.results || []).map((c: any) => {
+        const cid = String(c.id || '');
+        return {
+          ...c,
+          chapter_count: chapterCountByCategory.get(cid) ?? Number(c.chapter_count || 0),
+          formula_count: formulaCountByCategory.get(cid) ?? Number(c.formula_count || 0),
+        };
+      });
+
+      const featuredPool = featuredRes.results || [];
+      const daySeed = Math.floor(Date.now() / 86_400_000);
+      const fotdItem = featuredPool.length > 0 ? featuredPool[daySeed % featuredPool.length] : null;
+      const fotdChapter = fotdItem ? chapters.find((c: any) => c.id === fotdItem.chapter_id) : null;
+      const fotdCategory = fotdItem ? categories.find((c: any) => c.id === fotdItem.category_id) : null;
+
+      catalog = setFvCache(
+        overviewCacheKey,
+        {
+          categories,
+          chapters,
+          formulaOfTheDay: fotdItem
+            ? {
+                ...fotdItem,
+                chapter_title: fotdChapter?.title || '',
+                chapter_no: fotdChapter?.chapter_no || 1,
+                category_name: fotdCategory?.name || '',
+              }
+            : null,
+        },
+        5 * 60_000
       );
-
-    const fotdChapter = fotdItem ? chapters.find((c: any) => c.id === fotdItem.chapter_id) : null;
-    const fotdCategory = fotdItem ? categories.find((c: any) => c.id === fotdItem.category_id) : null;
+    }
 
     let bookmarkedIds: string[] = [];
     if (user?.uid) {
       const bmRes = await env.DB.prepare(
-        'SELECT formula_id FROM bookmarks WHERE user_id = ? ORDER BY created_at DESC'
+        'SELECT formula_id FROM bookmarks WHERE user_id = ? ORDER BY created_at DESC LIMIT 500'
       )
         .bind(user.uid)
         .all()
@@ -766,22 +866,15 @@ export async function handleFormulaVaultWorkerRequest(params: {
 
     const cacheHeader =
       !user && !includeDrafts
-        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+        ? 'public, max-age=120, s-maxage=300, stale-while-revalidate=600'
         : 'private, no-cache';
 
     return jsonResponse(
       {
         success: true,
-        categories,
-        chapters,
-        formulaOfTheDay: fotdItem
-          ? {
-              ...fotdItem,
-              chapter_title: fotdChapter?.title || '',
-              chapter_no: fotdChapter?.chapter_no || 1,
-              category_name: fotdCategory?.name || '',
-            }
-          : null,
+        categories: catalog.categories,
+        chapters: catalog.chapters,
+        formulaOfTheDay: catalog.formulaOfTheDay,
         bookmarkedIds,
         isGuest: !user,
       },
@@ -799,13 +892,21 @@ export async function handleFormulaVaultWorkerRequest(params: {
     const pageSize = Math.min(200, Math.max(10, Number(url.searchParams.get('page_size') || url.searchParams.get('limit') || 100)));
     const offset = Number(url.searchParams.get('offset') ?? (page - 1) * pageSize);
 
+    const chCacheKey = `fv:ch:${includeDrafts ? 'd' : 'l'}:${chapterId.toLowerCase()}:${pageSize}:${offset}`;
+    if (!includeDrafts) {
+      const cachedChap = getFvCache<Record<string, any>>(chCacheKey);
+      if (cachedChap) {
+        return jsonResponse(cachedChap, 200, {
+          ...cors,
+          'Cache-Control': !user
+            ? 'public, max-age=120, s-maxage=300, stale-while-revalidate=600'
+            : 'private, no-cache',
+        });
+      }
+    }
+
     const chapter = await env.DB.prepare(
-      `SELECT chapters.*,
-         (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id${
-           includeDrafts ? '' : " AND f.status = 'live'"
-         }) AS formula_count
-       FROM chapters
-       WHERE id = ? OR slug = ?`
+      `SELECT ${FV_CHAPTER_COLS} FROM chapters WHERE id = ? OR slug = ? LIMIT 1`
     )
       .bind(chapterId, chapterId.toLowerCase())
       .first();
@@ -814,85 +915,106 @@ export async function handleFormulaVaultWorkerRequest(params: {
       return jsonResponse({ success: false, error: 'Chapter not found.' }, 404, cors);
     }
 
-    const category = await env.DB.prepare('SELECT * FROM categories WHERE id = ?')
-      .bind(chapter.category_id)
-      .first();
-
-    const itemsRes = await env.DB.prepare(
-      includeDrafts
-        ? 'SELECT * FROM formulas WHERE chapter_id = ? ORDER BY CAST(formula_no AS INTEGER) ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?'
-        : "SELECT * FROM formulas WHERE chapter_id = ? AND status = 'live' ORDER BY CAST(formula_no AS INTEGER) ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?"
-    )
-      .bind(chapter.id, pageSize, offset)
-      .all();
+    const [category, countRow, itemsRes] = await Promise.all([
+      env.DB.prepare(`SELECT ${FV_CATEGORY_COLS} FROM categories WHERE id = ? LIMIT 1`)
+        .bind(chapter.category_id)
+        .first(),
+      env.DB.prepare(
+        includeDrafts
+          ? 'SELECT COUNT(*) AS cnt FROM formulas WHERE chapter_id = ?'
+          : "SELECT COUNT(*) AS cnt FROM formulas WHERE chapter_id = ? AND status = 'live'"
+      )
+        .bind(chapter.id)
+        .first(),
+      env.DB.prepare(
+        includeDrafts
+          ? `SELECT ${FV_FORMULA_COLS} FROM formulas WHERE chapter_id = ? ORDER BY formula_no ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?`
+          : `SELECT ${FV_FORMULA_COLS} FROM formulas WHERE chapter_id = ? AND status = 'live' ORDER BY formula_no ASC, sort_order ASC, id ASC LIMIT ? OFFSET ?`
+      )
+        .bind(chapter.id, pageSize, offset)
+        .all(),
+    ]);
 
     const cacheHeader =
       !user && !includeDrafts
-        ? 'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+        ? 'public, max-age=120, s-maxage=300, stale-while-revalidate=600'
         : 'private, no-cache';
 
     const formulas = itemsRes.results || [];
-    return jsonResponse(
-      {
-        success: true,
-        chapter: {
-          ...chapter,
-          formula_count: Number(chapter.formula_count ?? formulas.length),
-        },
-        category,
-        formulas,
-        total: Number(chapter.formula_count ?? formulas.length),
-        page,
-        pageSize,
-        hasMore: formulas.length === pageSize,
+    const totalCount = Number((countRow as any)?.cnt ?? chapter.formula_count ?? formulas.length);
+    const payload = {
+      success: true,
+      chapter: {
+        ...chapter,
+        formula_count: totalCount,
       },
-      200,
-      { ...cors, 'Cache-Control': cacheHeader }
-    );
+      category,
+      formulas,
+      total: totalCount,
+      page,
+      pageSize,
+      hasMore: offset + formulas.length < totalCount,
+    };
+    if (!includeDrafts) {
+      setFvCache(chCacheKey, payload, 3 * 60_000);
+    }
+    return jsonResponse(payload, 200, { ...cors, 'Cache-Control': cacheHeader });
   }
 
   // GET /api/formulas/search
   if (sub === '/search' && method === 'GET') {
     const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
     const categoryId = String(url.searchParams.get('category_id') || '').trim();
-    if (!q) {
-      return jsonResponse({ success: true, query: '', chapters: [], formulas: [] }, 200, cors);
+    if (!q || q.length < 2) {
+      return jsonResponse({ success: true, query: q, chapters: [], formulas: [] }, 200, cors);
+    }
+    const searchCacheKey = `fv:search:${categoryId}:${q}`;
+    const cachedSearch = getFvCache<Record<string, any>>(searchCacheKey);
+    if (cachedSearch) {
+      return jsonResponse(cachedSearch, 200, {
+        ...cors,
+        'Cache-Control': 'public, max-age=60, s-maxage=120',
+      });
     }
     const likePattern = `%${q}%`;
-    const chRes = await env.DB.prepare(
-      categoryId
-        ? `SELECT chapters.*,
-             (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
-           FROM chapters
-           WHERE status = 'live' AND category_id = ? AND search_text LIKE ?
-           ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC LIMIT 25`
-        : `SELECT chapters.*,
-             (SELECT COUNT(*) FROM formulas f WHERE f.chapter_id = chapters.id AND f.category_id = chapters.category_id AND f.status = 'live') AS formula_count
-           FROM chapters
-           WHERE status = 'live' AND search_text LIKE ?
-           ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC LIMIT 25`
-    )
-      .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
-      .all();
+    const [chRes, fRes] = await Promise.all([
+      env.DB.prepare(
+        categoryId
+          ? `SELECT ${FV_CHAPTER_COLS}
+             FROM chapters
+             WHERE status = 'live' AND category_id = ? AND search_text LIKE ?
+             ORDER BY chapter_no ASC, sort_order ASC LIMIT 25`
+          : `SELECT ${FV_CHAPTER_COLS}
+             FROM chapters
+             WHERE status = 'live' AND search_text LIKE ?
+             ORDER BY chapter_no ASC, sort_order ASC LIMIT 25`
+      )
+        .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
+        .all(),
+      env.DB.prepare(
+        categoryId
+          ? `SELECT ${FV_FORMULA_COLS} FROM formulas WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60`
+          : `SELECT ${FV_FORMULA_COLS} FROM formulas WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60`
+      )
+        .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
+        .all(),
+    ]);
 
-    const fRes = await env.DB.prepare(
-      categoryId
-        ? "SELECT * FROM formulas WHERE status = 'live' AND category_id = ? AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
-        : "SELECT * FROM formulas WHERE status = 'live' AND search_text LIKE ? ORDER BY sort_order ASC LIMIT 60"
-    )
-      .bind(...(categoryId ? [categoryId, likePattern] : [likePattern]))
-      .all();
-
-    return jsonResponse(
+    const payload = setFvCache(
+      searchCacheKey,
       {
         success: true,
         query: q,
         chapters: chRes.results || [],
         formulas: fRes.results || [],
       },
-      200,
-      { ...cors, 'Cache-Control': 'public, max-age=30, s-maxage=120' }
+      2 * 60_000
     );
+
+    return jsonResponse(payload, 200, {
+      ...cors,
+      'Cache-Control': 'public, max-age=60, s-maxage=120',
+    });
   }
 
   // GET /api/formulas/bookmarks
@@ -1057,16 +1179,23 @@ export async function handleFormulaVaultWorkerRequest(params: {
     return jsonResponse({ success: true }, 200, cors);
   }
 
-  // GET /api/formulas/health & POST /api/formulas/health/fix (Admin)
+  // GET /api/formulas/health & POST /api/formulas/health/fix (Admin — cached 2 min, read-only)
   if (sub === '/health' && method === 'GET') {
     if (!isAdmin) {
       return jsonResponse({ success: false, error: 'Forbidden' }, user ? 403 : 401, cors);
     }
-    await recalculateFormulaVaultD1Counts(env.DB);
+    const cachedHealth = getFvCache<Record<string, any>>('fv:health');
+    if (cachedHealth) {
+      return jsonResponse(cachedHealth, 200, cors);
+    }
     const [catsRes, chapsRes, formsRes, openReportsRes] = await Promise.all([
-      env.DB.prepare('SELECT * FROM categories').all(),
-      env.DB.prepare('SELECT * FROM chapters ORDER BY category_id ASC, CAST(chapter_no AS INTEGER) ASC, sort_order ASC').all(),
-      env.DB.prepare('SELECT * FROM formulas ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC').all(),
+      env.DB.prepare(`SELECT ${FV_CATEGORY_COLS} FROM categories`).all(),
+      env.DB.prepare(
+        `SELECT ${FV_CHAPTER_COLS} FROM chapters ORDER BY category_id ASC, chapter_no ASC, sort_order ASC`
+      ).all(),
+      env.DB.prepare(
+        `SELECT ${FV_FORMULA_COLS} FROM formulas ORDER BY chapter_id ASC, formula_no ASC, sort_order ASC`
+      ).all(),
       env.DB.prepare("SELECT COUNT(*) AS cnt FROM formula_reports WHERE status = 'open'")
         .first()
         .catch(() => ({ cnt: 0 })),
@@ -1325,15 +1454,17 @@ export async function handleFormulaVaultWorkerRequest(params: {
       stalePdfChapters: [],
     };
 
-    return jsonResponse(
+    const fullHealthResp = setFvCache(
+      'fv:health',
       {
         success: true,
         ...healthPayload,
         health: healthPayload,
       },
-      200,
-      cors
+      2 * 60_000
     );
+
+    return jsonResponse(fullHealthResp, 200, cors);
   }
 
   if (sub === '/health/fix' && method === 'POST') {

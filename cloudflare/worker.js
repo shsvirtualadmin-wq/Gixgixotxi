@@ -224,8 +224,40 @@ function cleanStr(val, maxLen = MAX_TITLE_LEN, fallback = '') {
 
 let schemaEnsured = false;
 
+const PUBLIC_IP_RATE_MAP = new Map();
+function checkWorkerJsPublicIpRateLimit(request, maxPerMinute = 120) {
+  const ip =
+    request.headers.get('CF-Connecting-IP') ||
+    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
+    'unknown';
+  const now = Date.now();
+  const entry = PUBLIC_IP_RATE_MAP.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    if (PUBLIC_IP_RATE_MAP.size >= 2000) PUBLIC_IP_RATE_MAP.clear();
+    PUBLIC_IP_RATE_MAP.set(ip, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (entry.count >= maxPerMinute) return false;
+  entry.count += 1;
+  return true;
+}
+
 async function ensureCaptainSchema(db) {
   if (schemaEnsured || !db) return;
+  try {
+    // Fast-path probe: skip 15+ DDL statements on cold start when core tables already exist
+    await db.batch([
+      db.prepare('SELECT 1 FROM user_roles LIMIT 1'),
+      db.prepare('SELECT 1 FROM crews LIMIT 1'),
+      db.prepare('SELECT 1 FROM captain_tests LIMIT 1'),
+      db.prepare('SELECT 1 FROM test_attempts LIMIT 1'),
+      db.prepare('SELECT 1 FROM posts LIMIT 1'),
+    ]);
+    schemaEnsured = true;
+    return;
+  } catch {
+    // One or more tables missing — fall through to idempotent CREATE TABLE IF NOT EXISTS
+  }
   try {
     await db.batch([
       db.prepare(`CREATE TABLE IF NOT EXISTS rate_limits (
@@ -677,6 +709,20 @@ export default {
 
       async function ensureCertificateD1Tables(database) {
         if (certificateD1TablesEnsured) return;
+        try {
+          // Fast-path probe: skip 2 CREATE TABLE + 8 ALTER TABLE statements when already migrated
+          await database.batch([
+            database.prepare('SELECT 1 FROM certificate_signatures LIMIT 1'),
+            database.prepare('SELECT 1 FROM certificates LIMIT 1'),
+            database.prepare(
+              'SELECT certificate_theme_id, results_finalised, finalised_at, start_at, end_at, status_mode, reason, force_close_attempts_at FROM captain_tests LIMIT 1'
+            ),
+          ]);
+          certificateD1TablesEnsured = true;
+          return;
+        } catch {
+          // Fall through to idempotent DDL/column migration
+        }
         await database
           .prepare(
             `CREATE TABLE IF NOT EXISTS certificate_signatures (
@@ -3339,8 +3385,8 @@ export default {
           conditions.push(`bank_id = ?${binds.length}`);
         }
         if (subject && subject !== 'all') {
-          binds.push(subject.toLowerCase());
-          conditions.push(`lower(subject) = ?${binds.length}`);
+          binds.push(subject);
+          conditions.push(`subject = ?${binds.length} COLLATE NOCASE`);
         }
         if (topic && topic !== 'all') {
           binds.push(topic);
@@ -3423,23 +3469,29 @@ export default {
 
       // 7. Community Posts, Comments (post_comments), Likes (post_likes)
       if (path === '/api/posts' && method === 'GET') {
+        if (!checkWorkerJsPublicIpRateLimit(request, 120)) {
+          return errorResponse(request, env, 'Too many requests. Please try again shortly.', 'RATE_LIMITED', 429);
+        }
         const subject = cleanStr(url.searchParams.get('subject'), 80);
         const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit')) || 30));
+        const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
+        const postCols =
+          'id, slug, type, title, description, subject, tags_json, files_json, is_anonymous, author_uid, author_name, author_avatar, author_role, likes_count, comments_count, downloads_count, is_pinned, is_hidden, status, visibility, created_at, updated_at';
 
         const stmt =
           subject && subject.toLowerCase() !== 'all'
             ? db
                 .prepare(
-                  `SELECT * FROM posts WHERE is_hidden = 0 AND status = 'published' AND lower(subject) = lower(?1)
-                   ORDER BY is_pinned DESC, created_at DESC LIMIT ?2`
+                  `SELECT ${postCols} FROM posts WHERE is_hidden = 0 AND status = 'published' AND subject = ?1 COLLATE NOCASE
+                   ORDER BY is_pinned DESC, created_at DESC LIMIT ?2 OFFSET ?3`
                 )
-                .bind(subject, limit)
+                .bind(subject, limit, offset)
             : db
                 .prepare(
-                  `SELECT * FROM posts WHERE is_hidden = 0 AND status = 'published'
-                   ORDER BY is_pinned DESC, created_at DESC LIMIT ?1`
+                  `SELECT ${postCols} FROM posts WHERE is_hidden = 0 AND status = 'published'
+                   ORDER BY is_pinned DESC, created_at DESC LIMIT ?1 OFFSET ?2`
                 )
-                .bind(limit);
+                .bind(limit, offset);
 
         const { results } = await stmt.all();
         return jsonResponse(request, env, { posts: results || [] });
