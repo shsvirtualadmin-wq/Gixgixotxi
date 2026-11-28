@@ -132,13 +132,13 @@ export async function normalizeFormulaVaultD1Numbering(
     const chapsRes = targetCategoryId
       ? await db
           .prepare(
-            'SELECT * FROM chapters WHERE category_id = ? ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+            'SELECT id, category_id, chapter_no, sort_order, title, subtopics, search_text, created_at FROM chapters WHERE category_id = ? ORDER BY CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
           )
           .bind(targetCategoryId)
           .all()
       : await db
           .prepare(
-            'SELECT * FROM chapters ORDER BY category_id ASC, CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+            'SELECT id, category_id, chapter_no, sort_order, title, subtopics, search_text, created_at FROM chapters ORDER BY category_id ASC, CAST(chapter_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
           )
           .all();
 
@@ -217,13 +217,13 @@ export async function normalizeFormulaVaultD1Numbering(
     const formsRes = targetCategoryId
       ? await db
           .prepare(
-            'SELECT * FROM formulas WHERE category_id = ? ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+            'SELECT id, category_id, chapter_id, formula_no, sort_order, title, formula_latex, description, variables_json, unit, exam_tip, difficulty, status, search_text, created_at FROM formulas WHERE category_id = ? ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
           )
           .bind(targetCategoryId)
           .all()
       : await db
           .prepare(
-            'SELECT * FROM formulas ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
+            'SELECT id, category_id, chapter_id, formula_no, sort_order, title, formula_latex, description, variables_json, unit, exam_tip, difficulty, status, search_text, created_at FROM formulas ORDER BY chapter_id ASC, CAST(formula_no AS INTEGER) ASC, sort_order ASC, created_at ASC, id ASC'
           )
           .all();
 

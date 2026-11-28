@@ -37,11 +37,25 @@ import {
   type CheckoutItemPricing,
 } from '@/utils/couponEngine';
 import {
-  GlassCard,
+  AdminButton,
+  AdminConfirmDialog,
+  AdminEmptyState,
+  AdminOverlay,
+  AdminSearchFilterBar,
+  AdminStatGrid,
   DotHeading,
+  GlassCard,
+  MonoLabel,
   Pill,
+  Segmented,
   SkeletonListRows,
+  useDebouncedValue,
 } from '@/components/admin/AdminGlassPrimitives';
+import {
+  getCachedAdminCoupons,
+  fetchAdminCouponsSWR,
+  invalidateAdminCouponsCache,
+} from '@/services/adminTabCache';
 import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 
 type StudioTab = 'create' | 'coupons' | 'test';
@@ -178,26 +192,49 @@ export function AdminCouponStudioPage() {
   );
 
   // ---------------------------------------------------------------------------
-  // TAB 2: COUPONS LIST STATE (Paginated 20/page)
+  // TAB 2: COUPONS LIST STATE (SWR + Paginated 20/page + 400ms Debounced Search)
   // ---------------------------------------------------------------------------
-  const [coupons, setCoupons] = useState<CouponDoc[]>([]);
+  const initialCouponsCache = getCachedAdminCoupons();
+  const [coupons, setCoupons] = useState<CouponDoc[]>(() => initialCouponsCache?.coupons ?? []);
   const [couponsCursor, setCouponsCursor] = useState<QueryDocumentSnapshot<DocumentData> | null>(
-    null
+    () => initialCouponsCache?.lastDoc ?? null
   );
-  const [hasMoreCoupons, setHasMoreCoupons] = useState(false);
-  const [listLoading, setListLoading] = useState(false);
+  const [hasMoreCoupons, setHasMoreCoupons] = useState<boolean>(
+    () => Boolean(initialCouponsCache?.hasMore)
+  );
+  const [listLoading, setListLoading] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [listLoadedOnce, setListLoadedOnce] = useState(false);
+  const [listLoadedOnce, setListLoadedOnce] = useState<boolean>(() => Boolean(initialCouponsCache));
   const [listError, setListError] = useState<string | null>(null);
   const [togglingCode, setTogglingCode] = useState<string | null>(null);
+  const [pauseConfirmCoupon, setPauseConfirmCoupon] = useState<CouponDoc | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [couponSearch, setCouponSearch] = useState('');
+  const debouncedCouponSearch = useDebouncedValue(couponSearch, 400);
+  const [couponStatusFilter, setCouponStatusFilter] = useState<'all' | 'Active' | 'Paused' | 'Expired' | 'Fully claimed'>('all');
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const loadCouponsFirstPage = useCallback(async () => {
-    setListLoading(true);
+  const loadCouponsFirstPage = useCallback(async (force = false) => {
+    const cached = getCachedAdminCoupons();
+    if (!cached) {
+      setListLoading(true);
+    }
+    if (force) {
+      invalidateAdminCouponsCache();
+    }
     setListError(null);
     try {
-      const res = await fetchCouponsPaginatedAdmin({ pageSize: PAGE_SIZE, cursor: null });
-      setCoupons(res.items);
+      const res = await fetchAdminCouponsSWR({
+        pageSize: PAGE_SIZE,
+        force,
+        onUpdate: (fresh) => {
+          setCoupons(fresh.coupons);
+          setCouponsCursor(fresh.lastDoc);
+          setHasMoreCoupons(fresh.hasMore);
+          setListLoadedOnce(true);
+        },
+      });
+      setCoupons(res.coupons);
       setCouponsCursor(res.lastDoc);
       setHasMoreCoupons(res.hasMore);
       setListLoadedOnce(true);
@@ -241,9 +278,29 @@ export function AdminCouponStudioPage() {
 
   useEffect(() => {
     if (activeTab === 'coupons' && !listLoadedOnce && !listLoading) {
-      void loadCouponsFirstPage();
+      void loadCouponsFirstPage(false);
     }
   }, [activeTab, listLoadedOnce, listLoading, loadCouponsFirstPage]);
+
+  const activeCouponsCount = useMemo(
+    () => coupons.filter((c) => getCouponStatusLabel(c) === 'Active').length,
+    [coupons]
+  );
+
+  const filteredCoupons = useMemo(() => {
+    const q = debouncedCouponSearch.trim().toLowerCase();
+    return coupons.filter((c) => {
+      if (couponStatusFilter !== 'all' && getCouponStatusLabel(c) !== couponStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        c.code.toLowerCase().includes(q) ||
+        formatCouponScopeLabel(c.appliesTo).toLowerCase().includes(q) ||
+        formatCouponBenefitLabel(c).toLowerCase().includes(q)
+      );
+    });
+  }, [coupons, debouncedCouponSearch, couponStatusFilter]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +336,7 @@ export function AdminCouponStudioPage() {
       setExpiryInput('');
       setActiveOnCreate(true);
       setCoupons((prev) => [created, ...prev.filter((c) => c.code !== created.code)]);
+      invalidateAdminCouponsCache();
       setListLoadedOnce(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not create coupon.';
@@ -298,6 +356,7 @@ export function AdminCouponStudioPage() {
       setCoupons((prev) =>
         prev.map((c) => (c.code === coupon.code ? { ...c, active: nextActive } : c))
       );
+      invalidateAdminCouponsCache();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not update coupon status.';
       setListError(msg);
@@ -363,71 +422,70 @@ export function AdminCouponStudioPage() {
 
   return (
     <div data-admin-page="coupons" className="mx-auto w-full max-w-[1120px] space-y-5 pb-24 md:pb-12">
-      {/* Header */}
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#E8353B]">
-            Admin &middot; Billing Controls
-          </p>
-          <DotHeading as="h1" size="page" className="mt-1">
-            Coupon Studio
-          </DotHeading>
-          <p className="mt-2 text-[13px]" style={{ color: 'var(--text-muted)' }}>
-            Create single-use promo codes, manage redemptions, and dry-run checkout pricing.
-          </p>
+      {/* Question-Bank Hero Card */}
+      <GlassCard variant="hero" padding="lg" className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1">
+            <MonoLabel>Admin · Billing Controls</MonoLabel>
+            <DotHeading as="h1" size="page">
+              Coupon Studio
+            </DotHeading>
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Create single-use promo codes, manage redemptions, and dry-run checkout pricing.
+            </p>
+          </div>
+
+          <Pill tone="accent" className="self-start py-1.5 px-3.5 text-[11px]">
+            <Lock className="h-3.5 w-3.5 shrink-0" />
+            <span>1 use per account enforced</span>
+          </Pill>
         </div>
 
-        <Pill tone="accent" className="self-start py-1.5 px-3.5 text-[12px]">
-          <Lock className="h-3.5 w-3.5 shrink-0" />
-          <span>1 use per account enforced</span>
-        </Pill>
-      </header>
+        <AdminStatGrid
+          columns={4}
+          items={[
+            {
+              label: 'Loaded Codes',
+              value: listLoadedOnce ? coupons.length : '—',
+              sublabel: `${PAGE_SIZE}/page cursor`,
+            },
+            {
+              label: 'Active Now',
+              value: listLoadedOnce ? activeCouponsCount : '—',
+              tone: 'success',
+              sublabel: 'Live at checkout',
+            },
+            {
+              label: 'Paused / Ended',
+              value: listLoadedOnce ? Math.max(0, coupons.length - activeCouponsCount) : '—',
+              sublabel: 'Inactive or maxed',
+            },
+            {
+              label: 'Per-User Cap',
+              value: '1x',
+              tone: 'accent',
+              sublabel: 'Always enforced',
+            },
+          ]}
+        />
+      </GlassCard>
 
-      {/* Sticky 3-Tab Bar */}
-      <div className="sticky top-[62px] z-20 -mx-1 px-1 py-1">
-        <div
-          role="tablist"
-          aria-label="Coupon Studio tabs"
-          className={`grid grid-cols-3 gap-1.5 rounded-full p-1.5 ${
-            glassEnabled ? 'ag-sticky-bar' : 'cs-sticky-tabs'
-          }`}
-        >
-          {(
-            [
-              { id: 'create', label: 'Create', icon: Plus },
-              { id: 'coupons', label: 'Coupons', icon: Ticket },
-              { id: 'test', label: 'Test checkout', icon: FlaskConical },
-            ] as const
-          ).map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setActiveTab(tab.id)}
-                className="cs-press flex min-h-[42px] items-center justify-center gap-2 rounded-full px-3 text-[13px] font-semibold cursor-pointer"
-                style={
-                  active
-                    ? {
-                        backgroundColor: '#E8353B',
-                        color: '#ffffff',
-                      }
-                    : {
-                        backgroundColor: 'transparent',
-                        color: 'var(--text-muted)',
-                      }
-                }
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* Question-Bank Pill Tab Bar */}
+      <Segmented
+        ariaLabel="Coupon Studio tabs"
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { value: 'create', label: 'Create', icon: <Plus className="h-4 w-4" /> },
+          {
+            value: 'coupons',
+            label: 'Coupons',
+            count: listLoadedOnce ? coupons.length : undefined,
+            icon: <Ticket className="h-4 w-4" />,
+          },
+          { value: 'test', label: 'Test checkout', icon: <FlaskConical className="h-4 w-4" /> },
+        ]}
+      />
 
       {/* =====================================================================
           TAB 1: CREATE COUPON
@@ -779,15 +837,15 @@ export function AdminCouponStudioPage() {
               </div>
             )}
 
-            <button
+            <AdminButton
               type="submit"
+              variant="primary"
+              fullWidth
               disabled={creating || !normalizedDraftCode || !isCodeFormatValid}
-              className="cs-press flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
-              style={{ backgroundColor: '#E8353B' }}
             >
               <Plus className="h-4 w-4" />
               <span>{creating ? 'Creating coupon…' : 'Create coupon'}</span>
-            </button>
+            </AdminButton>
           </form>
 
           {/* Live Preview Ticket */}
@@ -918,72 +976,97 @@ export function AdminCouponStudioPage() {
       {activeTab === 'coupons' && (
         <GlassCard variant="flat" padding="none" className="overflow-hidden">
           <div
-            className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+            className="flex flex-col gap-3 px-5 py-4"
             style={{ borderBottom: '1px solid var(--border)' }}
           >
-            <div>
-              <DotHeading as="h2" size="section">
-                All Coupons
-              </DotHeading>
-              <p className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                {listLoading
-                  ? 'Loading page…'
-                  : `Showing ${coupons.length}${hasMoreCoupons ? '+' : ''} coupons · ${PAGE_SIZE} per page`}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <DotHeading as="h2" size="section">
+                  All Coupons
+                </DotHeading>
+                <p className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  {listLoading && !listLoadedOnce
+                    ? 'Loading page…'
+                    : `Showing ${filteredCoupons.length} of ${coupons.length}${hasMoreCoupons ? '+' : ''} coupons · ${PAGE_SIZE} per page`}
+                </p>
+              </div>
+              <AdminButton
+                variant="secondary"
+                onClick={() => void loadCouponsFirstPage(true)}
+                disabled={listLoading}
+                className="!min-h-[40px] !py-1.5 !px-3.5 !text-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </AdminButton>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadCouponsFirstPage()}
-              disabled={listLoading}
-              className="cs-press inline-flex min-h-[38px] items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold cursor-pointer disabled:opacity-50"
-              style={{
-                backgroundColor: 'var(--bg)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-              }}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin text-[#E8353B]' : ''}`} />
-              <span>Refresh</span>
-            </button>
+
+            <AdminSearchFilterBar
+              value={couponSearch}
+              onChange={setCouponSearch}
+              placeholder="Search coupon code, scope, or benefit…"
+              onOpenFilters={() => setFiltersOpen(true)}
+              activeFilterCount={couponStatusFilter !== 'all' ? 1 : 0}
+            />
           </div>
 
           {listError && (
             <div
               role="alert"
-              className="mx-5 mt-4 flex items-start gap-2.5 rounded-[14px] px-4 py-3 text-[13px]"
+              className="mx-5 mt-4 flex items-center justify-between gap-2.5 rounded-[14px] px-4 py-3 text-[13px]"
               style={{
                 backgroundColor: 'rgba(239, 68, 68, 0.12)',
                 border: '1px solid rgba(239, 68, 68, 0.3)',
                 color: '#fca5a5',
               }}
             >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{listError}</span>
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{listError}</span>
+              </div>
+              <AdminButton
+                variant="pill"
+                onClick={() => void loadCouponsFirstPage(true)}
+                className="!min-h-[34px] !py-1 !px-3"
+              >
+                Retry
+              </AdminButton>
             </div>
           )}
 
-          {listLoading ? (
+          {listLoading && !listLoadedOnce ? (
             <div className="p-5">
               <SkeletonListRows rows={5} />
             </div>
-          ) : coupons.length === 0 ? (
-            <div className="px-6 py-14 text-center space-y-3">
-              <Ticket className="mx-auto h-9 w-9 opacity-45" style={{ color: 'var(--text-muted)' }} />
-              <h3 className="text-[16px] font-semibold" style={{ color: 'var(--text)' }}>
-                No coupons created yet
-              </h3>
-              <p className="mx-auto max-w-sm text-[13px]" style={{ color: 'var(--text-muted)' }}>
-                Create your first code (for example EARLY11) from the Create tab.
-              </p>
-              <button
-                type="button"
-                onClick={() => setActiveTab('create')}
-                className="cs-press inline-flex min-h-[42px] items-center gap-2 rounded-full px-5 text-[13px] font-semibold text-white cursor-pointer"
-                style={{ backgroundColor: '#D71921' }}
-              >
-                <Plus className="h-4 w-4" />
-                <span>Create coupon</span>
-              </button>
+          ) : filteredCoupons.length === 0 ? (
+            <div className="p-5">
+              <AdminEmptyState
+                icon={<Ticket className="h-6 w-6" />}
+                title={coupons.length === 0 ? 'No coupons created yet' : 'No coupons match your filter'}
+                description={
+                  coupons.length === 0
+                    ? 'Create your first code (for example EARLY11) from the Create tab.'
+                    : 'Try clearing your search or status filter.'
+                }
+                action={
+                  coupons.length === 0 ? (
+                    <AdminButton variant="primary" onClick={() => setActiveTab('create')}>
+                      <Plus className="h-4 w-4" />
+                      <span>Create coupon</span>
+                    </AdminButton>
+                  ) : (
+                    <AdminButton
+                      variant="secondary"
+                      onClick={() => {
+                        setCouponSearch('');
+                        setCouponStatusFilter('all');
+                      }}
+                    >
+                      Clear filters
+                    </AdminButton>
+                  )
+                }
+              />
             </div>
           ) : (
             <>
@@ -1008,7 +1091,7 @@ export function AdminCouponStudioPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-                    {coupons.map((c) => {
+                    {filteredCoupons.map((c) => {
                       const statusLabel = getCouponStatusLabel(c);
                       const badge = getStatusBadgeStyle(statusLabel);
                       const busy = togglingCode === c.code;
@@ -1071,22 +1154,17 @@ export function AdminCouponStudioPage() {
                                 )}
                               </button>
 
-                              <button
-                                type="button"
+                              <AdminButton
+                                variant={c.active ? 'danger' : 'secondary'}
                                 disabled={busy}
-                                onClick={() => void handleToggleActive(c)}
-                                className="cs-press inline-flex h-[32px] items-center gap-1 rounded-full px-3 text-[12px] font-semibold cursor-pointer disabled:opacity-50"
-                                style={
-                                  c.active
-                                    ? {
-                                        backgroundColor: 'rgba(245, 158, 11, 0.14)',
-                                        color: '#fbbf24',
-                                      }
-                                    : {
-                                        backgroundColor: 'rgba(16, 185, 129, 0.14)',
-                                        color: '#34d399',
-                                      }
-                                }
+                                onClick={() => {
+                                  if (c.active) {
+                                    setPauseConfirmCoupon(c);
+                                  } else {
+                                    void handleToggleActive(c);
+                                  }
+                                }}
+                                className="!min-h-[36px] !py-1 !px-3 !text-xs"
                               >
                                 {c.active ? (
                                   <>
@@ -1099,7 +1177,7 @@ export function AdminCouponStudioPage() {
                                     <span>{busy ? '…' : 'Activate'}</span>
                                   </>
                                 )}
-                              </button>
+                              </AdminButton>
                             </div>
                           </td>
                         </tr>
@@ -1111,7 +1189,7 @@ export function AdminCouponStudioPage() {
 
               {/* Mobile Compact Cards */}
               <div className="md:hidden divide-y" style={{ borderColor: 'var(--border)' }}>
-                {coupons.map((c) => {
+                {filteredCoupons.map((c) => {
                   const statusLabel = getCouponStatusLabel(c);
                   const badge = getStatusBadgeStyle(statusLabel);
                   const busy = togglingCode === c.code;
@@ -1181,22 +1259,17 @@ export function AdminCouponStudioPage() {
                             </>
                           )}
                         </button>
-                        <button
-                          type="button"
+                        <AdminButton
+                          variant={c.active ? 'danger' : 'secondary'}
                           disabled={busy}
-                          onClick={() => void handleToggleActive(c)}
-                          className="cs-press flex-1 inline-flex min-h-[38px] items-center justify-center gap-1.5 rounded-full text-[12px] font-semibold cursor-pointer disabled:opacity-50"
-                          style={
-                            c.active
-                              ? {
-                                  backgroundColor: 'rgba(245, 158, 11, 0.14)',
-                                  color: '#fbbf24',
-                                }
-                              : {
-                                  backgroundColor: 'rgba(16, 185, 129, 0.14)',
-                                  color: '#34d399',
-                                }
-                          }
+                          onClick={() => {
+                            if (c.active) {
+                              setPauseConfirmCoupon(c);
+                            } else {
+                              void handleToggleActive(c);
+                            }
+                          }}
+                          className="flex-1 !min-h-[40px] !py-1.5 !text-xs"
                         >
                           {c.active ? (
                             <>
@@ -1209,7 +1282,7 @@ export function AdminCouponStudioPage() {
                               <span>{busy ? 'Saving…' : 'Activate'}</span>
                             </>
                           )}
-                        </button>
+                        </AdminButton>
                       </div>
                     </div>
                   );
@@ -1221,19 +1294,13 @@ export function AdminCouponStudioPage() {
                   className="flex justify-center px-5 py-4"
                   style={{ borderTop: '1px solid var(--border)' }}
                 >
-                  <button
-                    type="button"
+                  <AdminButton
+                    variant="secondary"
                     disabled={loadingMore}
                     onClick={() => void loadMoreCoupons()}
-                    className="cs-press inline-flex min-h-[42px] items-center justify-center rounded-full px-6 text-[13px] font-semibold cursor-pointer disabled:opacity-50"
-                    style={{
-                      backgroundColor: 'var(--bg)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                    }}
                   >
                     {loadingMore ? 'Loading more…' : 'Load more'}
-                  </button>
+                  </AdminButton>
                 </div>
               )}
             </>
@@ -1338,15 +1405,15 @@ export function AdminCouponStudioPage() {
               />
             </div>
 
-            <button
+            <AdminButton
               type="submit"
+              variant="primary"
+              fullWidth
               disabled={testLoading}
-              className="cs-press flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white cursor-pointer disabled:opacity-50"
-              style={{ backgroundColor: '#E8353B' }}
             >
               <FlaskConical className="h-4 w-4" />
               <span>{testLoading ? 'Checking eligibility…' : 'Simulate checkout'}</span>
-            </button>
+            </AdminButton>
           </form>
 
           {/* Dry-run Output */}
@@ -1477,6 +1544,66 @@ export function AdminCouponStudioPage() {
           </GlassCard>
         </div>
       )}
+
+      {/* Coupon Status Filter Sheet (Solid Opaque) */}
+      <AdminOverlay
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        mode="sheet"
+        title="Filter Coupons"
+        subtitle="Filter loaded coupons by availability status"
+        maxWidthClass="max-w-[440px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => {
+                setCouponStatusFilter('all');
+                setFiltersOpen(false);
+              }}
+            >
+              Reset
+            </AdminButton>
+            <AdminButton variant="primary" onClick={() => setFiltersOpen(false)}>
+              Apply
+            </AdminButton>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-2">
+          {(['all', 'Active', 'Paused', 'Expired', 'Fully claimed'] as const).map((st) => (
+            <AdminButton
+              key={st}
+              variant={couponStatusFilter === st ? 'primary' : 'secondary'}
+              onClick={() => setCouponStatusFilter(st)}
+              fullWidth
+            >
+              {st === 'all' ? 'All statuses' : st}
+            </AdminButton>
+          ))}
+        </div>
+      </AdminOverlay>
+
+      {/* Pause Coupon Confirm Dialog (Solid Opaque) */}
+      <AdminConfirmDialog
+        open={Boolean(pauseConfirmCoupon)}
+        onClose={() => setPauseConfirmCoupon(null)}
+        onConfirm={() => {
+          if (!pauseConfirmCoupon) return;
+          const target = pauseConfirmCoupon;
+          setPauseConfirmCoupon(null);
+          void handleToggleActive(target);
+        }}
+        title="Pause coupon code?"
+        description={
+          pauseConfirmCoupon
+            ? `Students will not be able to redeem ${pauseConfirmCoupon.code} while paused. You can reactivate it anytime.`
+            : undefined
+        }
+        confirmLabel="Pause coupon"
+        busy={Boolean(togglingCode)}
+        danger
+      />
     </div>
   );
 }

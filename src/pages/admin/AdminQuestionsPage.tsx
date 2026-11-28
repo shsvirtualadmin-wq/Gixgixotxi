@@ -85,6 +85,7 @@ import {
 } from '../../services/adminTabCache';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBodyScrollLock } from '../../utils/scrollLock';
+import { AdminPopoverMenu } from '@/components/admin/AdminGlassPrimitives';
 
 type ActiveTab = 'questions' | 'health' | 'reports';
 type BulkSourceTab = 'csv' | 'gsheet' | 'paste';
@@ -177,6 +178,11 @@ const ComboboxField: React.FC<ComboboxFieldProps> = ({
           type="text"
           value={value}
           onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setOpen(false);
+            }
+          }}
           onChange={(e) => {
             onChange(e.target.value);
             setOpen(true);
@@ -841,12 +847,24 @@ export const AdminQuestionsPage: React.FC = () => {
   }, [anyQuestionBankSheetOpen, mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, bulkRawInput, importingChunked, importProgress]);
 
   useEffect(() => {
-    const anySheetOpen = mcqModalOpen || bulkModalOpen || uniSheetOpen || filterSheetOpen;
+    const anySheetOpen =
+      mcqModalOpen ||
+      bulkModalOpen ||
+      uniSheetOpen ||
+      filterSheetOpen ||
+      uniFormModalOpen ||
+      moveModalOpen ||
+      Boolean(confirmDeleteMcqModal) ||
+      Boolean(confirmDeleteUni);
     if (!anySheetOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (mcqModalOpen) requestCloseMcqModal();
+        if (confirmDeleteUni) setConfirmDeleteUni(null);
+        else if (confirmDeleteMcqModal) setConfirmDeleteMcqModal(null);
+        else if (moveModalOpen) setMoveModalOpen(false);
+        else if (uniFormModalOpen) setUniFormModalOpen(false);
+        else if (mcqModalOpen) requestCloseMcqModal();
         else if (bulkModalOpen) requestCloseBulkModal();
         else if (uniSheetOpen) setUniSheetOpen(false);
         else if (filterSheetOpen) setFilterSheetOpen(false);
@@ -854,7 +872,11 @@ export const AdminQuestionsPage: React.FC = () => {
     };
 
     const handlePopState = () => {
-      if (mcqModalOpen) requestCloseMcqModal();
+      if (confirmDeleteUni) setConfirmDeleteUni(null);
+      else if (confirmDeleteMcqModal) setConfirmDeleteMcqModal(null);
+      else if (moveModalOpen) setMoveModalOpen(false);
+      else if (uniFormModalOpen) setUniFormModalOpen(false);
+      else if (mcqModalOpen) requestCloseMcqModal();
       else if (bulkModalOpen) requestCloseBulkModal();
       else if (uniSheetOpen) setUniSheetOpen(false);
       else if (filterSheetOpen) setFilterSheetOpen(false);
@@ -866,7 +888,18 @@ export const AdminQuestionsPage: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [mcqModalOpen, bulkModalOpen, uniSheetOpen, filterSheetOpen, requestCloseMcqModal, requestCloseBulkModal]);
+  }, [
+    mcqModalOpen,
+    bulkModalOpen,
+    uniSheetOpen,
+    filterSheetOpen,
+    uniFormModalOpen,
+    moveModalOpen,
+    confirmDeleteMcqModal,
+    confirmDeleteUni,
+    requestCloseMcqModal,
+    requestCloseBulkModal,
+  ]);
 
   const handleSheetTouchStart = (e: React.TouchEvent) => {
     touchStartYRef.current = e.touches[0]?.clientY ?? null;
@@ -1653,42 +1686,29 @@ export const AdminQuestionsPage: React.FC = () => {
               <ChevronDown className="w-4 h-4 shrink-0 opacity-90" />
             </button>
 
-            {addMenuOpen && (
-              <div className="aqb-dropdown-menu left-0 right-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    openAddMcqModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Plus className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Add single MCQ</div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      into {selectedUniversity?.name || 'selected university'}
-                    </div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    openBulkImportModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Bulk import</div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      CSV, Google Sheet, or Paste
-                    </div>
-                  </div>
-                </button>
-              </div>
-            )}
+            <AdminPopoverMenu
+              open={addMenuOpen}
+              onClose={() => setAddMenuOpen(false)}
+              anchorEl={addMenuRef.current}
+              align="left"
+              title="Add MCQs"
+              items={[
+                {
+                  id: 'add-single-mcq',
+                  label: 'Add single MCQ',
+                  description: `into ${selectedUniversity?.name || 'selected university'}`,
+                  icon: <Plus className="w-4 h-4 text-[var(--accent)]" />,
+                  onSelect: () => openAddMcqModal(),
+                },
+                {
+                  id: 'bulk-import-mcq',
+                  label: 'Bulk import',
+                  description: 'CSV, Google Sheet, or Paste',
+                  icon: <Upload className="w-4 h-4 text-[var(--accent)]" />,
+                  onSelect: () => openBulkImportModal(),
+                },
+              ]}
+            />
           </div>
 
           {/* Secondary "⋯" Overflow Menu */}
@@ -1705,104 +1725,78 @@ export const AdminQuestionsPage: React.FC = () => {
               <MoreHorizontal className="w-5 h-5" />
             </button>
 
-            {overflowMenuOpen && (
-              <div className="aqb-dropdown-menu right-0">
-                {selectedUniversity && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOverflowMenuOpen(false);
-                        openEditUniversityModal(selectedUniversity, false);
-                      }}
-                      className="aqb-dropdown-item"
-                    >
-                      <Edit3 className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                      <span>Edit university ({selectedUniversity.name})</span>
-                    </button>
-                    {!selectedUniversity.logo_url ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOverflowMenuOpen(false);
-                          openEditUniversityModal(selectedUniversity, true);
-                        }}
-                        className="aqb-dropdown-item"
-                      >
-                        <ImageIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                        <span>Upload logo</span>
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOverflowMenuOpen(false);
-                            openEditUniversityModal(selectedUniversity, true);
-                          }}
-                          className="aqb-dropdown-item"
-                        >
-                          <ImageIcon className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                          <span>Replace logo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOverflowMenuOpen(false);
-                            openRemoveUniversityLogoModal(selectedUniversity);
-                          }}
-                          className="aqb-dropdown-item text-red-600 dark:text-red-400"
-                        >
-                          <Trash2 className="w-4 h-4 shrink-0" />
-                          <span>Remove logo</span>
-                        </button>
-                      </>
-                    )}
-                  </>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverflowMenuOpen(false);
-                    openAddUniversityModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Building2 className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Add university</span>
-                </button>
-                <a
-                  href={getUniversityMcqExportUrl('json')}
-                  download
-                  onClick={() => setOverflowMenuOpen(false)}
-                  className="aqb-dropdown-item no-underline"
-                >
-                  <Download className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Export backup (JSON)</span>
-                </a>
-                <a
-                  href={getUniversityMcqExportUrl('csv', selectedUniId)}
-                  download
-                  onClick={() => setOverflowMenuOpen(false)}
-                  className="aqb-dropdown-item no-underline"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Export current university (CSV)</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverflowMenuOpen(false);
+            <AdminPopoverMenu
+              open={overflowMenuOpen}
+              onClose={() => setOverflowMenuOpen(false)}
+              anchorEl={overflowMenuRef.current}
+              align="right"
+              title="Question Bank actions"
+              items={[
+                ...(selectedUniversity
+                  ? [
+                      {
+                        id: 'edit-uni',
+                        label: `Edit university (${selectedUniversity.name})`,
+                        icon: <Edit3 className="w-4 h-4 text-[#a1a1aa]" />,
+                        onSelect: () => openEditUniversityModal(selectedUniversity, false),
+                      },
+                      ...(!selectedUniversity.logo_url
+                        ? [
+                            {
+                              id: 'upload-logo',
+                              label: 'Upload logo',
+                              icon: <ImageIcon className="w-4 h-4 text-[var(--accent)]" />,
+                              onSelect: () => openEditUniversityModal(selectedUniversity, true),
+                            },
+                          ]
+                        : [
+                            {
+                              id: 'replace-logo',
+                              label: 'Replace logo',
+                              icon: <ImageIcon className="w-4 h-4 text-[var(--accent)]" />,
+                              onSelect: () => openEditUniversityModal(selectedUniversity, true),
+                            },
+                            {
+                              id: 'remove-logo',
+                              label: 'Remove logo',
+                              icon: <Trash2 className="w-4 h-4" />,
+                              danger: true,
+                              onSelect: () => openRemoveUniversityLogoModal(selectedUniversity),
+                            },
+                          ]),
+                    ]
+                  : []),
+                {
+                  id: 'add-uni',
+                  label: 'Add university',
+                  icon: <Building2 className="w-4 h-4 text-[#a1a1aa]" />,
+                  onSelect: () => openAddUniversityModal(),
+                },
+                {
+                  id: 'export-json',
+                  label: 'Export backup (JSON)',
+                  icon: <Download className="w-4 h-4 text-[#a1a1aa]" />,
+                  href: getUniversityMcqExportUrl('json'),
+                  download: true,
+                },
+                {
+                  id: 'export-csv',
+                  label: 'Export current university (CSV)',
+                  icon: <FileSpreadsheet className="w-4 h-4 text-[#a1a1aa]" />,
+                  href: getUniversityMcqExportUrl('csv', selectedUniId),
+                  download: true,
+                },
+                {
+                  id: 'refresh-qb',
+                  label: 'Refresh',
+                  icon: <RefreshCw className="w-4 h-4 text-[#a1a1aa]" />,
+                  onSelect: () => {
                     loadInitialData(true);
                     loadUniversityMcqs(true, true);
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <RefreshCw className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Refresh</span>
-                </button>
-              </div>
-            )}
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
 

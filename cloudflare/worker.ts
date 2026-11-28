@@ -102,6 +102,8 @@ export interface VerifiedFirebaseUser {
 
 let cachedJwks: { keys: any[]; expiresAt: number } | null = null;
 let schemaInitialized = false;
+let universityLogoAssetsEnsured = false;
+let proPurchaseLocksEnsured = false;
 
 const ALLOWED_MIME_SET = new Set<string>(BOARDLY_CLOUDFLARE_CONFIG.allowedMimeTypes);
 const ALLOWED_EXT_LIST = BOARDLY_CLOUDFLARE_CONFIG.allowedExtensions;
@@ -262,6 +264,8 @@ const QUESTION_ADMIN_COLS = `${QUESTION_PUBLIC_COLS}, correct_answer, explanatio
 
 const MCQ_PUBLIC_COLS = `id, university_id, subject, topic, question, option_a, option_b, option_c, option_d, difficulty, created_at`;
 const MCQ_FULL_COLS = `${MCQ_PUBLIC_COLS}, correct_answer, explanation`;
+const UNIVERSITY_SELECT_COLS = `id, name, slug, logo_url, sort_order, mcq_count, is_live, created_at`;
+const MCQ_REPORT_COLS = `id, mcq_id, university_id, subject, topic, question_preview, reason, comment, user_id, user_email, status, created_at`;
 
 /**
  * Ensures the D1 database schema exists so a newly bound D1 database works out of the box.
@@ -5333,7 +5337,7 @@ ${urls
         if (subSegments.length === 2 && subSegments[1] === 'logo') {
           const logoTargetId = decodeURIComponent(subSegments[0]);
           const existingUni = await env.DB.prepare(
-            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+            `SELECT ${UNIVERSITY_SELECT_COLS} FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1`
           )
             .bind(logoTargetId, logoTargetId)
             .first<D1UniversityRow>();
@@ -5431,25 +5435,29 @@ ${urls
               .run();
 
             try {
-              await env.DB.prepare(
-                `CREATE TABLE IF NOT EXISTS university_logo_assets (
-                  id TEXT PRIMARY KEY,
-                  university_id TEXT NOT NULL UNIQUE,
-                  r2_key TEXT NOT NULL,
-                  logo_url TEXT NOT NULL,
-                  mime_type TEXT NOT NULL DEFAULT 'image/webp',
-                  file_size INTEGER NOT NULL DEFAULT 0,
-                  uploaded_by_uid TEXT NOT NULL DEFAULT '',
-                  data_base64 TEXT NOT NULL DEFAULT '',
-                  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                  updated_at INTEGER NOT NULL DEFAULT 0
-                )`
-              ).run();
-              await env.DB.prepare(
-                `ALTER TABLE university_logo_assets ADD COLUMN data_base64 TEXT NOT NULL DEFAULT ''`
-              )
-                .run()
-                .catch(() => {});
+              if (!universityLogoAssetsEnsured) {
+                const probe = await env.DB.prepare('SELECT 1 FROM university_logo_assets LIMIT 1')
+                  .first()
+                  .then(() => true)
+                  .catch(() => false);
+                if (!probe) {
+                  await env.DB.prepare(
+                    `CREATE TABLE IF NOT EXISTS university_logo_assets (
+                      id TEXT PRIMARY KEY,
+                      university_id TEXT NOT NULL UNIQUE,
+                      r2_key TEXT NOT NULL,
+                      logo_url TEXT NOT NULL,
+                      mime_type TEXT NOT NULL DEFAULT 'image/webp',
+                      file_size INTEGER NOT NULL DEFAULT 0,
+                      uploaded_by_uid TEXT NOT NULL DEFAULT '',
+                      data_base64 TEXT NOT NULL DEFAULT '',
+                      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                      updated_at INTEGER NOT NULL DEFAULT 0
+                    )`
+                  ).run();
+                }
+                universityLogoAssetsEnsured = true;
+              }
               await env.DB.prepare(
                 `INSERT OR REPLACE INTO university_logo_assets (
                   id, university_id, r2_key, logo_url, mime_type, file_size, uploaded_by_uid, data_base64, updated_at
@@ -5526,7 +5534,7 @@ ${urls
         // PUT / PATCH /api/universities/:id
         if (req.method === 'PUT' || req.method === 'PATCH') {
           const existing = await env.DB.prepare(
-            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+            `SELECT ${UNIVERSITY_SELECT_COLS} FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1`
           )
             .bind(targetId, targetId)
             .first<D1UniversityRow>();
@@ -5564,7 +5572,7 @@ ${urls
         // DELETE /api/universities/:id
         if (req.method === 'DELETE') {
           const existing = await env.DB.prepare(
-            'SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1'
+            `SELECT ${UNIVERSITY_SELECT_COLS} FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1`
           )
             .bind(targetId, targetId)
             .first<D1UniversityRow>();
@@ -5788,7 +5796,7 @@ ${urls
             return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
           }
           const { results } = await env.DB.prepare(
-            'SELECT * FROM mcq_reports ORDER BY created_at DESC LIMIT 200'
+            `SELECT ${MCQ_REPORT_COLS} FROM mcq_reports ORDER BY created_at DESC LIMIT 200`
           ).all<D1McqReportRow>();
           const reports = (results || []).map((r) => ({
             ...r,
@@ -5805,7 +5813,7 @@ ${urls
           if (!mcqId) {
             return jsonResponse({ success: false, error: 'mcq_id is required.' }, 400, cors);
           }
-          const mcq = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ? LIMIT 1')
+          const mcq = await env.DB.prepare(`SELECT ${MCQ_PUBLIC_COLS} FROM mcqs WHERE id = ? LIMIT 1`)
             .bind(mcqId)
             .first<D1McqRow>();
           const reportId = `mcqrep_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
@@ -5862,7 +5870,7 @@ ${urls
           if (qIds.length > 0) {
             const placeholders = qIds.map(() => '?').join(',');
             const { results: rows } = await env.DB.prepare(
-              `SELECT * FROM mcqs WHERE id IN (${placeholders})`
+              `SELECT ${MCQ_FULL_COLS} FROM mcqs WHERE id IN (${placeholders})`
             )
               .bind(...qIds)
               .all<D1McqRow>();
@@ -5925,7 +5933,7 @@ ${urls
           const rawRows = Array.isArray(body.rows) ? body.rows : [];
 
           const uni = await env.DB.prepare(
-            'SELECT * FROM universities WHERE id = ? OR LOWER(slug) = LOWER(?) LIMIT 1'
+            `SELECT ${UNIVERSITY_SELECT_COLS} FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1`
           )
             .bind(uniIdOrSlug, uniIdOrSlug)
             .first<D1UniversityRow>();
@@ -6502,7 +6510,9 @@ ${urls
           if (!toUniId || ids.length === 0) {
             return jsonResponse({ success: false, error: 'to_university_id and mcq_ids are required.' }, 400, cors);
           }
-          const targetUni = await env.DB.prepare('SELECT * FROM universities WHERE id = ? OR slug = ? LIMIT 1')
+          const targetUni = await env.DB.prepare(
+            `SELECT ${UNIVERSITY_SELECT_COLS} FROM universities WHERE id = ? OR slug = ? COLLATE NOCASE LIMIT 1`
+          )
             .bind(toUniId, toUniId)
             .first<D1UniversityRow>();
           if (!targetUni) {
@@ -6549,7 +6559,7 @@ ${urls
           if (!adminUser) {
             return jsonResponse({ success: false, error: 'Forbidden' }, 403, cors);
           }
-          const existing = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ? LIMIT 1')
+          const existing = await env.DB.prepare(`SELECT ${MCQ_FULL_COLS} FROM mcqs WHERE id = ? LIMIT 1`)
             .bind(mcqId)
             .first<D1McqRow>();
           if (!existing) {
@@ -6608,7 +6618,7 @@ ${urls
             if (nextUniId !== existing.university_id) {
               await recalculateD1UniCount(nextUniId);
             }
-            const updated = await env.DB.prepare('SELECT * FROM mcqs WHERE id = ?')
+            const updated = await env.DB.prepare(`SELECT ${MCQ_FULL_COLS} FROM mcqs WHERE id = ? LIMIT 1`)
               .bind(existing.id)
               .first<D1McqRow>();
             return jsonResponse({ success: true, mcq: updated }, 200, cors);
@@ -7304,24 +7314,31 @@ ${urls
         );
       }
 
-      if (env.DB) {
-        await env.DB.prepare(
-          `CREATE TABLE IF NOT EXISTS pro_purchase_locks (
-            uid TEXT PRIMARY KEY,
-            state TEXT NOT NULL,
-            plan_id TEXT,
-            plan_name TEXT,
-            amount_pkr INTEGER,
-            method TEXT,
-            tid TEXT,
-            started_at INTEGER,
-            expires_at INTEGER,
-            pending_request_id TEXT,
-            updated_at INTEGER NOT NULL
-          )`
-        )
-          .run()
-          .catch(() => {});
+      if (env.DB && !proPurchaseLocksEnsured) {
+        const probe = await env.DB.prepare('SELECT 1 FROM pro_purchase_locks LIMIT 1')
+          .first()
+          .then(() => true)
+          .catch(() => false);
+        if (!probe) {
+          await env.DB.prepare(
+            `CREATE TABLE IF NOT EXISTS pro_purchase_locks (
+              uid TEXT PRIMARY KEY,
+              state TEXT NOT NULL,
+              plan_id TEXT,
+              plan_name TEXT,
+              amount_pkr INTEGER,
+              method TEXT,
+              tid TEXT,
+              started_at INTEGER,
+              expires_at INTEGER,
+              pending_request_id TEXT,
+              updated_at INTEGER NOT NULL
+            )`
+          )
+            .run()
+            .catch(() => {});
+        }
+        proPurchaseLocksEnsured = true;
       }
 
       const projectId = env.FIREBASE_PROJECT_ID || BOARDLY_CLOUDFLARE_CONFIG.firebaseProjectId;
@@ -8590,7 +8607,7 @@ ${urls
           nowMs: now,
         });
 
-        const createdRow = await env.DB.prepare('SELECT * FROM posts WHERE id = ?')
+        const createdRow = await env.DB.prepare(`SELECT ${POST_SELECT_COLS} FROM posts WHERE id = ? LIMIT 1`)
           .bind(id)
           .first<Record<string, any>>();
 
@@ -8666,7 +8683,7 @@ ${urls
       // GET /api/posts/:slugOrId
       if (!action && req.method === 'GET') {
         const row = await env.DB.prepare(
-          'SELECT * FROM posts WHERE (id = ? OR slug = ?) LIMIT 1'
+          `SELECT ${POST_SELECT_COLS} FROM posts WHERE (id = ? OR slug = ?) LIMIT 1`
         )
           .bind(postId, slugOrId)
           .first<Record<string, any>>();
@@ -8737,7 +8754,7 @@ ${urls
         if (!user) return jsonResponse({ error: 'Please sign in again' }, 401, cors);
 
         const existing = await env.DB.prepare(
-          'SELECT * FROM posts WHERE id = ? OR slug = ? LIMIT 1'
+          `SELECT ${POST_SELECT_COLS} FROM posts WHERE id = ? OR slug = ? LIMIT 1`
         )
           .bind(postId, slugOrId)
           .first<Record<string, any>>();
@@ -8776,7 +8793,7 @@ ${urls
           )
           .run();
 
-        const updated = await env.DB.prepare('SELECT * FROM posts WHERE id = ?')
+        const updated = await env.DB.prepare(`SELECT ${POST_SELECT_COLS} FROM posts WHERE id = ? LIMIT 1`)
           .bind(existing.id)
           .first<Record<string, any>>();
 

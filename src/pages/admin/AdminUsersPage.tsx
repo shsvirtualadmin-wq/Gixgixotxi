@@ -224,102 +224,112 @@ function UserActionsMenu({
 
   return createPortal(
     <div
-      ref={menuRef}
-      role="menu"
-      aria-label={`Actions for ${getUserDisplayName(u)}`}
-      data-testid={`user-actions-menu-${u.uid}`}
       data-admin-glass-portal={glassEnabled ? '1' : '0'}
-      style={{
-        position: 'fixed',
-        top: `${top}px`,
-        left: `${left}px`,
-        width: `${menuWidth}px`,
-        zIndex: 9999,
-      }}
-      className={
-        glassEnabled
-          ? 'ag-sheet-panel rounded-[18px] p-1.5 text-[12px] font-heading text-[var(--text)]'
-          : 'rounded-[18px] bg-[#141418]/95 backdrop-blur-xl border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.65)] p-1.5 text-[12px] font-heading text-[var(--text)]'
-      }
+      className="fixed inset-0 z-[9998]"
+      style={{ zIndex: 9998 }}
     >
-      <div className="px-2.5 py-1.5 border-b border-[var(--border)] mb-1">
-        <p className="font-semibold text-[12px] text-[var(--text)] truncate">
-          {getUserDisplayName(u)}
-        </p>
-        <p className="font-mono text-[10px] text-[#E8353B] font-bold">{studentId}</p>
-      </div>
-
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => triggerSection('top')}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+      <div
+        aria-hidden="true"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+        className="ag-overlay-backdrop"
+      />
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-label={`Actions for ${getUserDisplayName(u)}`}
+        data-testid={`user-actions-menu-${u.uid}`}
+        style={{
+          position: 'fixed',
+          top: `${top}px`,
+          left: `${left}px`,
+          width: `${Math.max(menuWidth, 232)}px`,
+          zIndex: 9999,
+        }}
+        className="ag-overlay-panel rounded-[20px] p-1.5 text-[13px] text-[#f5f5f7]"
       >
-        <SlidersHorizontal size={13} className="text-[var(--muted)] shrink-0" />
-        <span>View / Edit Profile</span>
-      </button>
+        <div className="px-3 py-2 border-b border-[#2e2e34] mb-1">
+          <p className="font-bold text-[13px] text-[#f5f5f7] truncate">
+            {getUserDisplayName(u)}
+          </p>
+          <p className="font-mono text-[10.5px] text-[#E8353B] font-bold">{studentId}</p>
+        </div>
 
-      {!isGuestUser && (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => triggerSection('plan')}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
-          >
-            <Crown size={13} className="text-amber-400 shrink-0" />
-            <span>Manage Plan</span>
-          </button>
-
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => triggerSection('role')}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
-          >
-            <UserCog size={13} className="text-[var(--muted)] shrink-0" />
-            <span>Change Role</span>
-          </button>
-        </>
-      )}
-
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => triggerSection('attempts')}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
-      >
-        <FileBarChart2 size={13} className="text-[var(--muted)] shrink-0" />
-        <span>Practice &amp; Attempts</span>
-      </button>
-
-      {!isGuestUser && (
         <button
           type="button"
           role="menuitem"
-          onClick={() => triggerSection('security')}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
+          onClick={() => triggerSection('top')}
+          className="ag-overlay-item"
         >
-          <ShieldCheck size={13} className="text-emerald-400 shrink-0" />
-          <span>2FA &amp; Security</span>
+          <SlidersHorizontal size={14} className="text-[#a1a1aa] shrink-0" />
+          <span>View / Edit Profile</span>
         </button>
-      )}
 
-      <div className="my-1 border-t border-white/10" />
+        {!isGuestUser && (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => triggerSection('plan')}
+              className="ag-overlay-item"
+            >
+              <Crown size={14} className="text-amber-400 shrink-0" />
+              <span>Manage Plan</span>
+            </button>
 
-      <button
-        type="button"
-        role="menuitem"
-        onClick={() => onCopyId(u.uid, u.uid)}
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] hover:bg-white/10 transition-colors cursor-pointer text-left press-scale"
-      >
-        {copiedUid === u.uid ? (
-          <Check size={13} className="text-emerald-400 shrink-0" />
-        ) : (
-          <Copy size={13} className="text-[var(--muted)] shrink-0" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => triggerSection('role')}
+              className="ag-overlay-item"
+            >
+              <UserCog size={14} className="text-[#a1a1aa] shrink-0" />
+              <span>Change Role</span>
+            </button>
+          </>
         )}
-        <span>{copiedUid === u.uid ? 'Copied UID' : 'Copy User ID'}</span>
-      </button>
+
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => triggerSection('attempts')}
+          className="ag-overlay-item"
+        >
+          <FileBarChart2 size={14} className="text-[#a1a1aa] shrink-0" />
+          <span>Practice &amp; Attempts</span>
+        </button>
+
+        {!isGuestUser && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => triggerSection('security')}
+            className="ag-overlay-item"
+          >
+            <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+            <span>2FA &amp; Security</span>
+          </button>
+        )}
+
+        <div className="my-1 border-t border-[#2e2e34]" />
+
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => onCopyId(u.uid, u.uid)}
+          className="ag-overlay-item"
+        >
+          {copiedUid === u.uid ? (
+            <Check size={14} className="text-emerald-400 shrink-0" />
+          ) : (
+            <Copy size={14} className="text-[#a1a1aa] shrink-0" />
+          )}
+          <span>{copiedUid === u.uid ? 'Copied UID' : 'Copy User ID'}</span>
+        </button>
+      </div>
     </div>,
     document.body
   );
@@ -551,9 +561,9 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
             e.stopPropagation();
             onOpenMenu(u, e.currentTarget);
           }}
-          className="press-scale w-8 h-8 rounded-full border border-[var(--border)] bg-[var(--card-2)]/70 hover:bg-white/10 flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] shrink-0 cursor-pointer transition-colors"
+          className="ag-ios-btn ag-ios-btn--icon !w-10 !h-10 !min-w-[40px] !min-h-[40px] shrink-0"
         >
-          <MoreHorizontal size={15} />
+          <MoreHorizontal size={16} />
         </button>
       </div>
 
@@ -944,7 +954,7 @@ export function AdminUsersPage() {
   );
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [nowMs] = useState<number>(() => Date.now());
 
   const allUsersRef = useRef<UserProfile[]>(allUsers);
   allUsersRef.current = allUsers;
@@ -976,17 +986,11 @@ export function AdminUsersPage() {
   const [menuState, setMenuState] = useState<ActionMenuState | null>(null);
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
 
-  // Keep relative hints ("2 mins ago") fresh once per minute
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
       setCurrentPage(1);
-    }, 250);
+    }, 400);
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -2215,11 +2219,15 @@ export function AdminUsersPage() {
                 data-testid="users-reset-filters-btn"
                 disabled={!hasAnyModifier}
                 onClick={handleResetFilters}
-                className={`press-scale inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-heading font-medium border transition-all ${
-                  hasAnyModifier
-                    ? 'border-[#E8353B]/50 bg-[#E8353B]/10 text-[var(--text)] hover:bg-[#E8353B]/20 cursor-pointer'
-                    : 'border-[var(--border)] text-[var(--text-faint)] opacity-50 cursor-not-allowed'
-                }`}
+                className={
+                  glassEnabled
+                    ? 'ag-ios-btn ag-ios-btn--pill !min-h-[40px] !px-3.5 text-[12px]'
+                    : `press-scale inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-full text-[12px] font-heading font-medium border transition-all ${
+                        hasAnyModifier
+                          ? 'border-[#E8353B]/50 bg-[#E8353B]/10 text-[var(--text)] hover:bg-[#E8353B]/20 cursor-pointer'
+                          : 'border-[var(--border)] text-[var(--text-faint)] opacity-50 cursor-not-allowed'
+                      }`
+                }
               >
                 <RotateCcw size={12} />
                 <span>Reset filters</span>
@@ -2249,7 +2257,11 @@ export function AdminUsersPage() {
                   data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('pro')}
-                  className="press-scale h-8 px-3.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-semibold disabled:opacity-50 cursor-pointer transition-colors"
+                  className={
+                    glassEnabled
+                      ? 'ag-ios-btn ag-ios-btn--primary !min-h-[40px] !py-1.5 !px-3.5 !rounded-full !text-xs'
+                      : 'press-scale min-h-[40px] px-3.5 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-semibold disabled:opacity-50 cursor-pointer transition-colors'
+                  }
                 >
                   Grant Pro (30d)
                 </button>
@@ -2258,7 +2270,11 @@ export function AdminUsersPage() {
                   data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('plus')}
-                  className="press-scale h-8 px-3.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-xs font-heading font-semibold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer transition-colors"
+                  className={
+                    glassEnabled
+                      ? 'ag-ios-btn ag-ios-btn--pill !min-h-[40px] !py-1.5 !px-3.5 !text-xs text-amber-300'
+                      : 'press-scale min-h-[40px] px-3.5 rounded-full bg-amber-500 hover:bg-amber-400 text-black text-xs font-heading font-semibold inline-flex items-center gap-1 disabled:opacity-50 cursor-pointer transition-colors'
+                  }
                 >
                   <Sparkles size={12} />
                   <span>Grant Plus (30d)</span>
@@ -2268,7 +2284,11 @@ export function AdminUsersPage() {
                   data-pressable
                   disabled={bulkApplying}
                   onClick={() => void handleBulkPlanAction('free')}
-                  className="press-scale h-8 px-3.5 rounded-full border border-[var(--border)] bg-white/[0.03] text-xs font-heading font-semibold text-[var(--text)] hover:border-white/40 disabled:opacity-50 cursor-pointer transition-colors"
+                  className={
+                    glassEnabled
+                      ? 'ag-ios-btn ag-ios-btn--pill !min-h-[40px] !py-1.5 !px-3.5 !text-xs'
+                      : 'press-scale min-h-[40px] px-3.5 rounded-full border border-[var(--border)] bg-white/[0.03] text-xs font-heading font-semibold text-[var(--text)] hover:border-white/40 disabled:opacity-50 cursor-pointer transition-colors'
+                  }
                 >
                   Revoke to Free
                 </button>
@@ -2277,7 +2297,7 @@ export function AdminUsersPage() {
                   data-pressable
                   disabled={bulkApplying}
                   onClick={() => setSelectedUids(new Set())}
-                  className="press-scale h-8 px-2.5 text-xs font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                  className="ag-ios-btn ag-ios-btn--pill !min-h-[40px] !py-1.5 !px-3 !text-xs"
                 >
                   Clear
                 </button>
@@ -2527,7 +2547,11 @@ export function AdminUsersPage() {
                     data-testid="users-prev-page-btn"
                     disabled={safePage <= 1 || loadingMore}
                     onClick={() => void handleGoToPage(safePage - 1)}
-                    className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                    className={
+                      glassEnabled
+                        ? 'ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-1.5 !px-3.5 !text-xs'
+                        : 'press-scale inline-flex items-center gap-1 min-h-[40px] px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer'
+                    }
                   >
                     <ChevronLeft size={14} />
                     <span>Prev</span>
@@ -2552,11 +2576,17 @@ export function AdminUsersPage() {
                           aria-current={entry === safePage ? 'page' : undefined}
                           disabled={loadingMore}
                           onClick={() => void handleGoToPage(entry)}
-                          className={`press-scale relative overflow-hidden inline-flex items-center justify-center min-w-[36px] h-9 px-2.5 rounded-[12px] border text-[12px] font-mono font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
-                            entry === safePage
-                              ? 'border-[#E8353B] bg-[#E8353B] text-white'
-                              : 'border-[var(--border)] bg-[var(--card)] text-[var(--text)] hover:border-white/30'
-                          }`}
+                          className={
+                            glassEnabled
+                              ? `ag-ios-btn ${
+                                  entry === safePage ? 'ag-ios-btn--primary' : 'ag-ios-btn--secondary'
+                                } !min-h-[40px] !min-w-[40px] !py-1.5 !px-2.5 !text-[12px] font-mono`
+                              : `press-scale relative overflow-hidden inline-flex items-center justify-center min-w-[40px] min-h-[40px] px-2.5 rounded-[12px] border text-[12px] font-mono font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                                  entry === safePage
+                                    ? 'border-[#E8353B] bg-[#E8353B] text-white'
+                                    : 'border-[var(--border)] bg-[var(--card)] text-[var(--text)] hover:border-white/30'
+                                }`
+                          }
                         >
                           <span>{entry}</span>
                           {loadingPageTarget === entry && <ButtonLineLoader />}
@@ -2578,7 +2608,11 @@ export function AdminUsersPage() {
                     data-testid="users-next-page-btn"
                     disabled={safePage >= totalPages || loadingMore}
                     onClick={() => void handleGoToPage(safePage + 1)}
-                    className="press-scale inline-flex items-center gap-1 h-9 px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer"
+                    className={
+                      glassEnabled
+                        ? 'ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-1.5 !px-3.5 !text-xs'
+                        : 'press-scale inline-flex items-center gap-1 min-h-[40px] px-3 rounded-[12px] border border-[var(--border)] bg-[var(--card)] text-[var(--text)] disabled:opacity-40 cursor-pointer'
+                    }
                   >
                     <span>Next</span>
                     <ChevronRight size={14} />

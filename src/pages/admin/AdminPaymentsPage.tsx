@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   RefreshCw,
   ExternalLink,
@@ -9,8 +9,9 @@ import {
   Tag,
   Plus,
   AlertCircle,
+  CreditCard,
 } from 'lucide-react';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import {
   AdminDiagnosticBanner,
   type AdminDiagnosticError,
@@ -18,16 +19,19 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
 import {
-  fetchPaymentRequests,
   approvePaymentRequest,
   rejectPaymentRequest,
   fetchAdminJsonWithRetry,
 } from '@/services/adminService';
 import {
-  fetchKobanRequests,
   approveKobanRequest,
   rejectKobanRequest,
 } from '@/services/kobanService';
+import {
+  getCachedAdminPayments,
+  fetchAdminPaymentsSWR,
+  invalidateAdminPaymentsCache,
+} from '@/services/adminTabCache';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import {
   PAYMENT_METHODS_LIST,
@@ -42,7 +46,6 @@ import {
   type NormalizedAdminCoupon,
   type NormalizedAdminCouponRedemption,
 } from '@/utils/couponMapper';
-import { getBubbleTouchHandlers } from '@/utils/bubbleTouch';
 import type { PaymentRequest, KobanRequest } from '@/types';
 import { usePlansConfig } from '@/hooks/usePlansConfig';
 import {
@@ -51,11 +54,23 @@ import {
   computeAnnualPrice,
 } from '@/lib/planTier';
 import {
-  GlassCard,
+  AdminButton,
+  AdminEmptyState,
+  AdminOverlay,
+  AdminSearchFilterBar,
+  AdminStatGrid,
   DotHeading,
+  Field,
+  GlassCard,
+  MonoLabel,
+  Pill,
+  Segmented,
   SkeletonListRows,
+  useDebouncedValue,
 } from '@/components/admin/AdminGlassPrimitives';
 import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+
+const PAYMENTS_PAGE_SIZE = 20;
 
 const TAB_ITEMS: Array<{
   id: 'plans' | 'kobans' | 'coupons';
@@ -85,17 +100,28 @@ export function AdminPaymentsPage() {
     }
     return 'plans';
   });
+  const initialPaymentsCache = getCachedAdminPayments();
   const [statusFilter, setStatusFilter] = useState('all');
   const [methodFilter, setMethodFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 400);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAYMENTS_PAGE_SIZE);
+
+  const [loading, setLoading] = useState<boolean>(() => !initialPaymentsCache);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState<boolean>(() => Boolean(initialPaymentsCache));
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   // Pro Plan Requests
-  const [planRequests, setPlanRequests] = useState<PaymentRequest[]>([]);
+  const [planRequests, setPlanRequests] = useState<PaymentRequest[]>(
+    () => initialPaymentsCache?.payments ?? []
+  );
 
   // Koban Requests
-  const [kobanRequestsList, setKobanRequestsList] = useState<KobanRequest[]>([]);
+  const [kobanRequestsList, setKobanRequestsList] = useState<KobanRequest[]>(
+    () => initialPaymentsCache?.kobanRequests ?? []
+  );
 
   // Coupons & Redemptions (Normalized via single mapper)
   const [couponsList, setCouponsList] = useState<NormalizedAdminCoupon[]>([]);
@@ -156,85 +182,102 @@ export function AdminPaymentsPage() {
     };
   }, []);
 
-  const loadData = useCallback(async () => {
-    if (!user || !hasAdminAccess) {
-      if (isMountedRef.current) setLoading(false);
-      return;
-    }
-    const requestId = ++loadRequestIdRef.current;
-    const activeTab = paymentType;
-    const activeStatus = statusFilter;
-    setLoading(true);
-    setError(null);
-    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const runTabFetch = async () => {
-        if (activeTab === 'plans') {
-          const data = await fetchPaymentRequests(activeStatus);
-          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
-            setPlanRequests(data);
-          }
-        } else if (activeTab === 'kobans') {
-          const data = await fetchKobanRequests(activeStatus);
-          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
-            setKobanRequestsList(data);
-          }
-        } else {
-          const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>(
-            '/api/admin/coupons',
-            undefined,
-            10000
-          );
-          if (!ok || !payload?.ok) {
-            const couponErr: any = new Error(errorMessage || 'Failed to load coupons from server.');
-            couponErr.code = payload?.reason || payload?.code || 'PAYMENTS_LOAD_FAILED';
-            throw couponErr;
-          }
-          const rawCoupons = Array.isArray(payload.coupons) ? payload.coupons : [];
-          const rawRedemptions = Array.isArray(payload.redemptions) ? payload.redemptions : [];
+  const applyPaymentsCache = useCallback(
+    (data: { payments: PaymentRequest[]; kobanRequests: KobanRequest[] }) => {
+      if (!isMountedRef.current) return;
+      setPlanRequests(data.payments);
+      setKobanRequestsList(data.kobanRequests);
+      setHasLoadedOnce(true);
+    },
+    []
+  );
 
-          if (isMountedRef.current && loadRequestIdRef.current === requestId) {
-            setCouponsList(rawCoupons.map((item: any) => normalizeAdminCoupon(item)));
-            setCouponRedemptions(
-              rawRedemptions
-                .map((item: any) => normalizeAdminCouponRedemption(item))
-                .sort((a: NormalizedAdminCouponRedemption, b: NormalizedAdminCouponRedemption) => {
-                  return (b.redeemedAtMs || 0) - (a.redeemedAtMs || 0);
-                })
-            );
-          }
-        }
-      };
-
-      await Promise.race([
-        runTabFetch(),
-        new Promise<never>((_, reject) => {
-          safetyTimer = setTimeout(() => {
-            const timeoutErr: any = new Error(
-              'Request timed out while refreshing payment records. Please try again.'
-            );
-            timeoutErr.code = 'DEADLINE_EXCEEDED';
-            reject(timeoutErr);
-          }, 15000);
-        }),
-      ]);
-    } catch (err: unknown) {
-      if (!isMountedRef.current || loadRequestIdRef.current !== requestId) return;
-      console.error('[AdminPaymentsPage] Failed to load payment requests:', err);
-      const e = err as Partial<AdminDiagnosticError>;
-      setError({
-        code: e?.code || 'PAYMENTS_LOAD_FAILED',
-        message: e?.message || 'Failed to load payment records. Please retry.',
-        collection: activeTab === 'plans' ? 'paymentRequests' : activeTab,
-        operation: 'loadData',
-      });
-    } finally {
-      if (safetyTimer) clearTimeout(safetyTimer);
-      if (isMountedRef.current && loadRequestIdRef.current === requestId) {
-        setLoading(false);
+  const loadData = useCallback(
+    async (force = false) => {
+      if (!user || !hasAdminAccess) {
+        if (isMountedRef.current) setLoading(false);
+        return;
       }
-    }
-  }, [user, hasAdminAccess, paymentType, statusFilter]);
+      const requestId = ++loadRequestIdRef.current;
+      const activeTab = paymentType;
+      const cached = getCachedAdminPayments();
+      if (activeTab === 'coupons' ? couponsList.length === 0 : !cached) {
+        setLoading(true);
+      }
+      if (force && activeTab !== 'coupons') {
+        invalidateAdminPaymentsCache();
+      }
+      setError(null);
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        const runTabFetch = async () => {
+          if (activeTab === 'plans' || activeTab === 'kobans') {
+            const data = await fetchAdminPaymentsSWR({
+              force,
+              onUpdate: applyPaymentsCache,
+            });
+            if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+              applyPaymentsCache(data);
+            }
+          } else {
+            const { ok, data: payload, errorMessage } = await fetchAdminJsonWithRetry<any>(
+              '/api/admin/coupons',
+              undefined,
+              10000
+            );
+            if (!ok || !payload?.ok) {
+              const couponErr: any = new Error(errorMessage || 'Failed to load coupons from server.');
+              couponErr.code = payload?.reason || payload?.code || 'PAYMENTS_LOAD_FAILED';
+              throw couponErr;
+            }
+            const rawCoupons = Array.isArray(payload.coupons) ? payload.coupons : [];
+            const rawRedemptions = Array.isArray(payload.redemptions) ? payload.redemptions : [];
+
+            if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+              setCouponsList(rawCoupons.map((item: any) => normalizeAdminCoupon(item)));
+              setCouponRedemptions(
+                rawRedemptions
+                  .map((item: any) => normalizeAdminCouponRedemption(item))
+                  .sort((a: NormalizedAdminCouponRedemption, b: NormalizedAdminCouponRedemption) => {
+                    return (b.redeemedAtMs || 0) - (a.redeemedAtMs || 0);
+                  })
+              );
+              setHasLoadedOnce(true);
+            }
+          }
+        };
+
+        await Promise.race([
+          runTabFetch(),
+          new Promise<never>((_, reject) => {
+            safetyTimer = setTimeout(() => {
+              const timeoutErr: any = new Error(
+                'Request timed out while refreshing payment records. Please try again.'
+              );
+              timeoutErr.code = 'DEADLINE_EXCEEDED';
+              reject(timeoutErr);
+            }, 15000);
+          }),
+        ]);
+      } catch (err: unknown) {
+        if (!isMountedRef.current || loadRequestIdRef.current !== requestId) return;
+        console.error('[AdminPaymentsPage] Failed to load payment requests:', err);
+        const e = err as Partial<AdminDiagnosticError>;
+        setError({
+          code: e?.code || 'PAYMENTS_LOAD_FAILED',
+          message: e?.message || 'Failed to load payment records. Please retry.',
+          collection: activeTab === 'plans' ? 'paymentRequests' : activeTab,
+          operation: 'loadData',
+        });
+      } finally {
+        if (safetyTimer) clearTimeout(safetyTimer);
+        if (isMountedRef.current && loadRequestIdRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    },
+    [user, hasAdminAccess, paymentType, applyPaymentsCache, couponsList.length]
+  );
 
   useEffect(() => {
     if (profileLoading) return;
@@ -242,8 +285,12 @@ export function AdminPaymentsPage() {
       setLoading(false);
       return;
     }
-    void loadData();
+    void loadData(false);
   }, [profileLoading, user, hasAdminAccess, loadData]);
+
+  useEffect(() => {
+    setVisibleCount(PAYMENTS_PAGE_SIZE);
+  }, [paymentType, statusFilter, methodFilter, debouncedSearch]);
 
   const handleCreateCoupon = async () => {
     const cleanCode = newCouponCode
@@ -402,7 +449,7 @@ export function AdminPaymentsPage() {
         `Approved ${isPlusReq ? 'Boardly Plus' : 'Boardly Pro'} upgrade for ${req.userName || req.userEmail}.`
       );
       setTimeout(() => setBannerNotice(null), 3000);
-      await loadData();
+      await loadData(true);
     } catch (err) {
       console.error('Failed to approve payment:', err);
       showErrorToast('Failed to approve plan payment.');
@@ -425,7 +472,7 @@ export function AdminPaymentsPage() {
       setPlanRejectTarget(null);
       setBannerNotice('Payment request rejected.');
       setTimeout(() => setBannerNotice(null), 3000);
-      await loadData();
+      await loadData(true);
     } catch (err) {
       console.error('Failed to reject payment:', err);
       showErrorToast('Failed to reject payment request.');
@@ -454,7 +501,7 @@ export function AdminPaymentsPage() {
       setKobanApproveTarget(null);
       setBannerNotice(`Credited +${kobanEditableAmount.toLocaleString()} Kobans to student.`);
       setTimeout(() => setBannerNotice(null), 3500);
-      await loadData();
+      await loadData(true);
     } catch (err: unknown) {
       showErrorToast((err as Error).message || 'Failed to approve Koban request');
     } finally {
@@ -475,7 +522,7 @@ export function AdminPaymentsPage() {
       setKobanRejectTarget(null);
       setBannerNotice('Koban request rejected.');
       setTimeout(() => setBannerNotice(null), 3000);
-      await loadData();
+      await loadData(true);
     } catch (err: unknown) {
       showErrorToast((err as Error).message || 'Failed to reject Koban request');
     } finally {
@@ -483,29 +530,62 @@ export function AdminPaymentsPage() {
     }
   };
 
-  const matchesMethodFilter = (rawMethod?: string | null) => {
-    if (methodFilter === 'all') return true;
-    const lower = String(rawMethod || '')
-      .trim()
-      .toLowerCase();
-    if (methodFilter === 'legacy') return isLegacyPaymentMethod(lower);
-    return lower === methodFilter.toLowerCase();
-  };
-
-  const filteredPlanRequests = planRequests.filter((r) => matchesMethodFilter(r.method));
-  const filteredKobanRequests = kobanRequestsList.filter((r) =>
-    matchesMethodFilter(r.paymentMethod)
+  const matchesMethodFilter = useCallback(
+    (rawMethod?: string | null) => {
+      if (methodFilter === 'all') return true;
+      const lower = String(rawMethod || '')
+        .trim()
+        .toLowerCase();
+      if (methodFilter === 'legacy') return isLegacyPaymentMethod(lower);
+      return lower === methodFilter.toLowerCase();
+    },
+    [methodFilter]
   );
 
-  const activeTabIndex = Math.max(
-    0,
-    TAB_ITEMS.findIndex((t) => t.id === paymentType)
+  const pendingPlansCount = useMemo(
+    () => planRequests.filter((r) => r.status === 'pending').length,
+    [planRequests]
   );
+  const pendingKobansCount = useMemo(
+    () => kobanRequestsList.filter((r) => r.status === 'pending').length,
+    [kobanRequestsList]
+  );
+
+  const filteredPlanRequests = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    return planRequests.filter((r) => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (!matchesMethodFilter(r.method)) return false;
+      if (!q) return true;
+      const hay = [r.userName, r.userEmail, r.TID, r.transactionId, r.method, (r as any).couponCode]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [planRequests, statusFilter, matchesMethodFilter, debouncedSearch]);
+
+  const filteredKobanRequests = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    return kobanRequestsList.filter((r) => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (!matchesMethodFilter(r.paymentMethod)) return false;
+      if (!q) return true;
+      const hay = [r.userName, r.transactionId, r.paymentMethod, String(r.amount)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [kobanRequestsList, statusFilter, matchesMethodFilter, debouncedSearch]);
+
+  const activeFilterCount =
+    (statusFilter !== 'all' ? 1 : 0) + (methodFilter !== 'all' ? 1 : 0);
 
   return (
     <div
       data-admin-page="payments"
-      className="flex flex-col gap-6 w-full max-w-full overflow-x-hidden pb-28 sm:pb-20"
+      className="flex flex-col gap-5 w-full max-w-full overflow-x-hidden pb-28 sm:pb-20"
       style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}
     >
       {/* ─── FLOATING SHORT ERROR TOAST ────────────────────────────────────── */}
@@ -513,153 +593,167 @@ export function AdminPaymentsPage() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-24 right-4 sm:right-6 z-50 max-w-sm lg-nothing-alert-red px-4 py-3 text-xs font-heading text-[var(--text)] flex items-center gap-2.5 shadow-2xl"
+          className="fixed bottom-24 right-4 sm:right-6 z-50 max-w-sm rounded-[18px] bg-[#161616] border border-[#E8353B]/50 px-4 py-3 text-xs text-[#f5f5f7] flex items-center gap-2.5 shadow-2xl"
         >
-          <AlertCircle size={15} className="text-[#D71921] shrink-0" />
+          <AlertCircle size={15} className="text-[#E8353B] shrink-0" />
           <span className="font-medium leading-snug">{toastError}</span>
         </div>
       )}
 
-      {/* ─── PAGE HEADER (Nothing OS Dot-Matrix + Glass Refresh Pill) ── */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
+      {/* ─── QUESTION-BANK HERO SUMMARY CARD ───────────────────────────────── */}
+      <GlassCard variant="hero" padding="lg" className="space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="space-y-1">
+            <MonoLabel>Billing &amp; Receipt Verification</MonoLabel>
             <DotHeading as="h1" size="page">
               Payments &amp; Promos
             </DotHeading>
-            <p className="font-heading text-xs sm:text-[13px] text-[var(--text-muted)] mt-1">
-              Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro plans, Kobans economy, and promo
-              coupon redemptions.
+            <p className="text-[13px] text-[var(--text-muted)] max-w-xl">
+              Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro/Plus plans, Kobans economy, and promo coupon redemptions.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void loadData()}
+          <AdminButton
+            variant="secondary"
+            onClick={() => void loadData(true)}
             disabled={loading}
-            {...getBubbleTouchHandlers({ disabled: loading })}
-            className="bubble-touch lg-nothing-pill min-h-[44px] px-4 py-2 text-xs sm:text-[13px] font-heading font-semibold text-[var(--text)] inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-[#E8353B]' : ''} />
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
-            {loading && <ButtonLineLoader />}
-          </button>
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <span>{loading ? 'Refreshing…' : 'Refresh'}</span>
+          </AdminButton>
         </div>
-        <div className="nothing-dot-divider" />
-      </div>
 
-      {/* ─── DIAGNOSTIC ALERT (Compact Glass Card with Collapsible Details) ── */}
+        <AdminStatGrid
+          columns={4}
+          items={[
+            {
+              label: 'Plan Requests',
+              value: loading && !hasLoadedOnce ? '—' : planRequests.length,
+              sublabel: 'Pro & Plus upgrades',
+            },
+            {
+              label: 'Pending Plans',
+              value: loading && !hasLoadedOnce ? '—' : pendingPlansCount,
+              tone: pendingPlansCount > 0 ? 'accent' : 'default',
+              sublabel: 'Needs verification',
+            },
+            {
+              label: 'Koban Orders',
+              value: loading && !hasLoadedOnce ? '—' : kobanRequestsList.length,
+              sublabel: 'Top-up receipts',
+            },
+            {
+              label: 'Pending Kobans',
+              value: loading && !hasLoadedOnce ? '—' : pendingKobansCount,
+              tone: pendingKobansCount > 0 ? 'warning' : 'default',
+              sublabel: 'Awaiting credit',
+            },
+          ]}
+        />
+      </GlassCard>
+
+      {/* ─── DIAGNOSTIC ALERT ── */}
       <AdminDiagnosticBanner
         error={error}
         collectionName={paymentType === 'plans' ? 'paymentRequests' : paymentType}
-        onRetry={loadData}
+        onRetry={() => void loadData(true)}
         retrying={loading}
       />
 
       {bannerNotice && (
-        <GlassCard variant="glass" padding="sm" className="text-xs font-heading text-emerald-500 dark:text-emerald-300 flex items-center gap-2.5 border-emerald-500/40">
+        <GlassCard variant="glass" padding="sm" className="text-xs text-emerald-300 flex items-center gap-2.5 border-emerald-500/40">
           <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
           <span>{bannerNotice}</span>
         </GlassCard>
       )}
 
-      {/* ─── SHARED LIQUID GLASS TAB BAR (Spring Sliding Pill, Single Row) ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-        <div
-          role="tablist"
-          aria-label="Payments and coupons sections"
-          className={`relative grid grid-cols-3 p-1.5 w-full lg:w-auto lg:min-w-[480px] select-none ${
-            glassEnabled ? 'ag-segmented' : 'lg-nothing-pill'
-          }`}
-        >
-          {/* Sliding Spring Active Highlight Indicator */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full bg-[#E8353B] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_22px_rgba(232,53,59,0.42)] transition-transform duration-300 ease-[cubic-bezier(0.22,1.35,0.36,1)]"
-            style={{
-              width: 'calc((100% - 0.75rem) / 3)',
-              transform: `translate3d(${activeTabIndex * 100}%, 0, 0)`,
-            }}
+      {/* ─── QUESTION-BANK PILL TAB BAR + SEARCH & FILTERS ── */}
+      <GlassCard variant="glass" padding="md" className="space-y-3.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <Segmented
+            ariaLabel="Payments and coupons sections"
+            value={paymentType}
+            onChange={(val) => setPaymentType(val)}
+            options={TAB_ITEMS.map((tab) => ({
+              value: tab.id,
+              label: tab.label,
+              count:
+                tab.id === 'plans'
+                  ? pendingPlansCount
+                  : tab.id === 'kobans'
+                  ? pendingKobansCount
+                  : undefined,
+              icon:
+                tab.id === 'plans' ? (
+                  <CreditCard size={14} />
+                ) : tab.id === 'kobans' ? (
+                  <KobanIcon size={13} />
+                ) : (
+                  <Tag size={14} />
+                ),
+            }))}
           />
 
-          {TAB_ITEMS.map((tab) => {
-            const isActive = paymentType === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                type="button"
-                aria-selected={isActive}
-                onClick={() => setPaymentType(tab.id)}
-                {...getBubbleTouchHandlers({ ripple: true })}
-                className={`bubble-touch bubble-touch-ripple relative z-10 min-h-[44px] px-2 sm:px-4 py-2 rounded-full text-[11px] sm:text-[13px] font-heading font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap truncate cursor-pointer transition-colors ${
-                  isActive
-                    ? 'text-white'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                {tab.id === 'kobans' && <KobanIcon size={13} />}
-                {tab.id === 'coupons' && <Tag size={13} />}
-                <span className="hidden sm:inline truncate">{tab.label}</span>
-                <span className="sm:hidden truncate">{tab.shortLabel}</span>
-              </button>
-            );
-          })}
+          {paymentType !== 'coupons' && (
+            <div className="hidden sm:flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'pending', label: 'Pending' },
+                { id: 'approved', label: 'Approved' },
+                { id: 'rejected', label: 'Rejected' },
+              ].map(({ id, label }) => (
+                <AdminButton
+                  key={id}
+                  variant={statusFilter === id ? 'primary' : 'pill'}
+                  onClick={() => setStatusFilter(id)}
+                  className="!min-h-[36px] !py-1.5 !px-3 !text-xs"
+                >
+                  {label}
+                </AdminButton>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Status & Method Filter Controls (for Pro Plans & Kobans tabs) */}
         {paymentType !== 'coupons' && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'pending', label: 'Pending' },
-              { id: 'approved', label: 'Approved' },
-              { id: 'rejected', label: 'Rejected' },
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setStatusFilter(id)}
-                {...getBubbleTouchHandlers({ ripple: statusFilter === id })}
-                className={`bubble-touch min-h-[44px] text-xs font-mono px-3.5 py-2 rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
-                  statusFilter === id
-                    ? 'border-[#E8353B] bg-[#E8353B] text-white font-semibold shadow-sm'
-                    : 'lg-nothing-pill text-[var(--text-muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-
-            <select
-              aria-label="Filter by payment method"
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-              className="lg-nothing-input text-xs font-mono px-3.5 py-2 min-h-[44px]"
-            >
-              <option value="all">All Methods</option>
-              {PAYMENT_METHODS_LIST.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName}
-                </option>
-              ))}
-              <option value="legacy">{formatPaymentMethodLabel('easy' + 'paisa')}</option>
-            </select>
-          </div>
+          <AdminSearchFilterBar
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder="Search student name, email, TID/TRX, or coupon…"
+            onOpenFilters={() => setFiltersOpen(true)}
+            activeFilterCount={activeFilterCount}
+          />
         )}
-      </div>
+      </GlassCard>
 
       {/* ─── PRO PLANS LIST ─────────────────────────────────────────────────── */}
       {paymentType === 'plans' && (
-        <div className="space-y-3.5">
-          {loading ? (
+        <div className="space-y-3">
+          {loading && !hasLoadedOnce ? (
             <SkeletonListRows rows={4} />
           ) : filteredPlanRequests.length === 0 ? (
-            <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
-              No plan subscription payments found matching this filter.
-            </GlassCard>
+            <AdminEmptyState
+              icon={<CreditCard size={22} />}
+              title="No plan subscription payments found"
+              description="Try adjusting your status, payment method, or search filter."
+              action={
+                (debouncedSearch.trim() || activeFilterCount > 0) && (
+                  <AdminButton
+                    variant="secondary"
+                    onClick={() => {
+                      setSearchInput('');
+                      setStatusFilter('all');
+                      setMethodFilter('all');
+                    }}
+                  >
+                    Clear filters
+                  </AdminButton>
+                )
+              }
+            />
           ) : (
-            filteredPlanRequests.map((req) => {
+            <>
+            {filteredPlanRequests.slice(0, visibleCount).map((req) => {
               const reqAny = req as Record<string, any>;
               const rawPlanId = String(reqAny.planId || req.plan || 'pro_monthly');
               const isCrewReq = req.plan === 'large_crew';
@@ -684,12 +778,11 @@ export function AdminPaymentsPage() {
                 expectedPkr !== null && !reqAny.couponCode && paidPkr > 0 && paidPkr !== expectedPkr;
 
               return (
-                <div
+                <GlassCard
                   key={req.id}
-                  {...getBubbleTouchHandlers()}
-                  className={`bubble-touch p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                    glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
-                  }`}
+                  variant="flat"
+                  padding="md"
+                  className="flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -787,8 +880,8 @@ export function AdminPaymentsPage() {
 
                   {req.status === 'pending' && (
                     <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0">
-                      <button
-                        type="button"
+                      <AdminButton
+                        variant="danger"
                         disabled={actionInProgress === req.id}
                         onClick={() => {
                           setPlanRejectTarget(req);
@@ -796,20 +889,15 @@ export function AdminPaymentsPage() {
                             `Transaction ID could not be verified on ${PAYMENT_METHODS_PAIR_LABEL} portal.`
                           );
                         }}
-                        {...getBubbleTouchHandlers({ disabled: actionInProgress === req.id })}
-                        className="bubble-touch lg-nothing-pill min-h-[44px] px-4 py-2 text-xs font-heading font-semibold text-[var(--text-secondary)] hover:text-[#ff6b72] cursor-pointer"
+                        className="!min-h-[40px] !py-1.5 !px-3.5 !text-xs"
                       >
                         Reject
-                      </button>
-                      <button
-                        type="button"
+                      </AdminButton>
+                      <AdminButton
+                        variant="primary"
                         disabled={actionInProgress === req.id}
                         onClick={() => handleApprovePlan(req)}
-                        {...getBubbleTouchHandlers({
-                          ripple: true,
-                          disabled: actionInProgress === req.id,
-                        })}
-                        className="bubble-touch bubble-touch-ripple lg-nothing-red-btn px-4 py-2 text-xs font-heading font-bold flex items-center gap-1.5 cursor-pointer"
+                        className="!min-h-[40px] !py-1.5 !px-4 !text-xs"
                       >
                         <CheckCircle2 size={13} />
                         <span>
@@ -819,33 +907,60 @@ export function AdminPaymentsPage() {
                               ? 'Approve & Activate Plus'
                               : 'Approve & Activate Pro'}
                         </span>
-                      </button>
+                      </AdminButton>
                     </div>
                   )}
-                </div>
+                </GlassCard>
               );
-            })
+            })}
+            {filteredPlanRequests.length > visibleCount && (
+              <div className="pt-2 flex justify-center">
+                <AdminButton
+                  variant="secondary"
+                  onClick={() => setVisibleCount((prev) => prev + PAYMENTS_PAGE_SIZE)}
+                >
+                  Load more payments ({filteredPlanRequests.length - visibleCount} remaining)
+                </AdminButton>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}
 
       {/* ─── KOBANS PURCHASES LIST ─────────────────────────────────────────── */}
       {paymentType === 'kobans' && (
-        <div className="space-y-3.5">
-          {loading ? (
+        <div className="space-y-3">
+          {loading && !hasLoadedOnce ? (
             <SkeletonListRows rows={4} />
           ) : filteredKobanRequests.length === 0 ? (
-            <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
-              No Koban purchase requests found matching this filter.
-            </GlassCard>
+            <AdminEmptyState
+              icon={<KobanIcon size={22} />}
+              title="No Koban purchase requests found"
+              description="Try adjusting your status, payment method, or search filter."
+              action={
+                (debouncedSearch.trim() || activeFilterCount > 0) && (
+                  <AdminButton
+                    variant="secondary"
+                    onClick={() => {
+                      setSearchInput('');
+                      setStatusFilter('all');
+                      setMethodFilter('all');
+                    }}
+                  >
+                    Clear filters
+                  </AdminButton>
+                )
+              }
+            />
           ) : (
-            filteredKobanRequests.map((req) => (
-              <div
+            <>
+            {filteredKobanRequests.slice(0, visibleCount).map((req) => (
+              <GlassCard
                 key={req.id}
-                {...getBubbleTouchHandlers()}
-                className={`bubble-touch p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                  glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
-                }`}
+                variant="flat"
+                padding="md"
+                className="flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
                 <div className="space-y-1.5 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -907,33 +1022,42 @@ export function AdminPaymentsPage() {
 
                 {req.status === 'pending' && (
                   <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0">
-                    <button
-                      type="button"
+                    <AdminButton
+                      variant="danger"
                       onClick={() => {
                         setKobanRejectTarget(req);
                         setKobanRejectReason(
                           'Transaction ID could not be verified on mobile banking portal.'
                         );
                       }}
-                      {...getBubbleTouchHandlers()}
-                      className="bubble-touch lg-nothing-pill min-h-[44px] px-4 py-2 text-xs font-heading font-semibold text-[var(--text-secondary)] hover:text-[#ff6b72] cursor-pointer"
+                      className="!min-h-[40px] !py-1.5 !px-3.5 !text-xs"
                     >
                       Reject
-                    </button>
+                    </AdminButton>
 
-                    <button
-                      type="button"
+                    <AdminButton
+                      variant="primary"
                       onClick={() => handleOpenKobanApprove(req)}
-                      {...getBubbleTouchHandlers({ ripple: true })}
-                      className="bubble-touch bubble-touch-ripple lg-nothing-red-btn px-4 py-2 text-xs font-heading font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="!min-h-[40px] !py-1.5 !px-4 !text-xs"
                     >
                       <CheckCircle2 size={14} />
                       <span>Approve &amp; Credit</span>
-                    </button>
+                    </AdminButton>
                   </div>
                 )}
+              </GlassCard>
+            ))}
+            {filteredKobanRequests.length > visibleCount && (
+              <div className="pt-2 flex justify-center">
+                <AdminButton
+                  variant="secondary"
+                  onClick={() => setVisibleCount((prev) => prev + PAYMENTS_PAGE_SIZE)}
+                >
+                  Load more Koban orders ({filteredKobanRequests.length - visibleCount} remaining)
+                </AdminButton>
               </div>
-            ))
+            )}
+            </>
           )}
         </div>
       )}
@@ -1053,20 +1177,16 @@ export function AdminPaymentsPage() {
               </div>
 
               <div className="sm:col-span-2 lg:col-span-2 flex">
-                <button
-                  type="button"
+                <AdminButton
+                  variant="primary"
+                  fullWidth
                   disabled={creatingCoupon || !newCouponCode.trim()}
                   onClick={handleCreateCoupon}
-                  {...getBubbleTouchHandlers({
-                    ripple: true,
-                    disabled: creatingCoupon || !newCouponCode.trim(),
-                  })}
-                  className="bubble-touch bubble-touch-ripple lg-nothing-red-btn w-full px-4 py-2.5 text-xs font-heading font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-45 cursor-pointer whitespace-nowrap"
                   title="Save Coupon"
                 >
                   <Plus size={15} />
-                  <span>{creatingCoupon ? '...' : 'Save'}</span>
-                </button>
+                  <span>{creatingCoupon ? 'Saving…' : 'Save'}</span>
+                </AdminButton>
               </div>
             </div>
           </GlassCard>
@@ -1100,13 +1220,14 @@ export function AdminPaymentsPage() {
                   const isToggling = actionInProgress === c.code;
 
                   return (
-                    <div
+                    <GlassCard
                       key={c.code}
+                      variant="flat"
+                      padding="md"
                       data-coupon-code={c.code}
-                      {...getBubbleTouchHandlers()}
-                      className={`bubble-touch p-5 flex flex-col justify-between gap-4 transition-opacity ${
-                        glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
-                      } ${c.active ? 'opacity-100' : 'opacity-80'}`}
+                      className={`flex flex-col justify-between gap-4 transition-opacity ${
+                        c.active ? 'opacity-100' : 'opacity-80'
+                      }`}
                     >
                       {/* Top row: Code in mono + Status Pill + Type Badge */}
                       <div className="flex items-start justify-between gap-3">
@@ -1169,26 +1290,18 @@ export function AdminPaymentsPage() {
                           </p>
                         </div>
 
-                        {/* Enable / Disable Glass Pill Button */}
-                        <button
-                          type="button"
+                        {/* Enable / Disable Raised Button */}
+                        <AdminButton
+                          variant={c.active ? 'secondary' : 'primary'}
                           disabled={isToggling}
                           onClick={(e) => {
                             e.stopPropagation();
                             void handleToggleCouponActive(c);
                           }}
-                          {...getBubbleTouchHandlers({
-                            ripple: !c.active,
-                            disabled: isToggling,
-                          })}
-                          className={`bubble-touch min-h-[44px] px-4 py-2 rounded-full text-xs font-mono font-semibold shrink-0 cursor-pointer disabled:opacity-50 ${
-                            c.active
-                              ? 'lg-nothing-pill text-[var(--text-secondary)] hover:border-[#D71921]/60 hover:text-[var(--text)]'
-                              : 'bubble-touch-ripple lg-nothing-red-btn text-white'
-                          }`}
+                          className="!min-h-[40px] !py-1.5 !px-3.5 !text-xs font-mono shrink-0"
                         >
                           {c.active ? 'Disable' : 'Enable'}
-                        </button>
+                        </AdminButton>
                       </div>
 
                       <div className="nothing-dot-divider" />
@@ -1221,7 +1334,7 @@ export function AdminPaymentsPage() {
                           />
                         </div>
                       </div>
-                    </div>
+                    </GlassCard>
                   );
                 })}
               </div>
@@ -1262,8 +1375,7 @@ export function AdminPaymentsPage() {
                           [r.id]: !prev[r.id],
                         }))
                       }
-                      {...getBubbleTouchHandlers()}
-                      className="bubble-touch px-4 sm:px-5 py-3.5 min-h-[56px] flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap text-xs cursor-pointer hover:bg-white/[0.03]"
+                      className="px-4 sm:px-5 py-3.5 min-h-[56px] flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap text-xs cursor-pointer hover:bg-white/[0.03]"
                       title={r.fullDate}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1301,178 +1413,227 @@ export function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* ─── MODAL: REJECT PLAN REQUEST ─────────────────────────────────────── */}
-      {planRejectTarget && (
-        <div
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
-        >
-          <div
-            className={`relative w-full max-w-md p-6 space-y-4 ${
-              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
-            }`}
-          >
-            <DotHeading as="h3" size="section">
-              Reject Plan Payment
-            </DotHeading>
-            <textarea
-              rows={3}
-              value={planRejectReason}
-              onChange={(e) => setPlanRejectReason(e.target.value)}
-              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none"
-            />
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => setPlanRejectTarget(null)}
-                {...getBubbleTouchHandlers()}
-                className="bubble-touch lg-nothing-pill min-h-[44px] flex-1 py-2.5 text-xs font-heading font-bold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={actionInProgress !== null}
-                onClick={handleConfirmRejectPlan}
-                {...getBubbleTouchHandlers({ ripple: true, disabled: actionInProgress !== null })}
-                className="bubble-touch bubble-touch-ripple lg-nothing-red-btn flex-1 py-2.5 px-4 text-xs font-heading font-bold cursor-pointer"
-              >
-                Confirm Rejection
-              </button>
+      {/* ─── FILTER SHEET (SOLID OPAQUE) ───────────────────────────────────── */}
+      <AdminOverlay
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        mode="sheet"
+        title="Filter Payments"
+        subtitle="Filter by approval status and payment method"
+        maxWidthClass="max-w-[460px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => {
+                setStatusFilter('all');
+                setMethodFilter('all');
+                setFiltersOpen(false);
+              }}
+            >
+              Reset
+            </AdminButton>
+            <AdminButton variant="primary" onClick={() => setFiltersOpen(false)}>
+              Apply
+            </AdminButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <MonoLabel>Approval Status</MonoLabel>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'pending', label: 'Pending' },
+                { id: 'approved', label: 'Approved' },
+                { id: 'rejected', label: 'Rejected' },
+              ].map(({ id, label }) => (
+                <AdminButton
+                  key={id}
+                  variant={statusFilter === id ? 'primary' : 'secondary'}
+                  onClick={() => setStatusFilter(id)}
+                  fullWidth
+                >
+                  {label}
+                </AdminButton>
+              ))}
             </div>
           </div>
+
+          <Field label="Payment Method">
+            <select
+              aria-label="Filter by payment method"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+              className="w-full min-h-[44px] rounded-[14px] bg-[#1e1e21] border border-[#3a3a3a] px-3.5 text-xs font-mono text-[#f5f5f7] focus:outline-none focus:border-[#E8353B]"
+            >
+              <option value="all">All Methods</option>
+              {PAYMENT_METHODS_LIST.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                </option>
+              ))}
+              <option value="legacy">{formatPaymentMethodLabel('easy' + 'paisa')}</option>
+            </select>
+          </Field>
         </div>
-      )}
+      </AdminOverlay>
 
-      {/* ─── MODAL: APPROVE KOBAN REQUEST ───────────────────────────────────── */}
-      {kobanApproveTarget && (
-        <div
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
-        >
-          <div
-            className={`relative w-full max-w-md p-6 space-y-5 ${
-              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
-            }`}
-          >
-            <DotHeading as="h3" size="section">
-              Approve Koban Payment
-            </DotHeading>
+      {/* ─── MODAL: REJECT PLAN REQUEST (SOLID OPAQUE) ──────────────────────── */}
+      <AdminOverlay
+        open={Boolean(planRejectTarget)}
+        onClose={() => {
+          if (actionInProgress === null) setPlanRejectTarget(null);
+        }}
+        mode="modal"
+        title="Reject Plan Payment"
+        subtitle={planRejectTarget?.userName || planRejectTarget?.userEmail}
+        maxWidthClass="max-w-[440px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => setPlanRejectTarget(null)}
+              disabled={actionInProgress !== null}
+            >
+              Cancel
+            </AdminButton>
+            <AdminButton
+              variant="primary"
+              disabled={actionInProgress !== null}
+              onClick={() => void handleConfirmRejectPlan()}
+            >
+              Confirm Rejection
+            </AdminButton>
+          </>
+        }
+      >
+        <Field label="Rejection reason">
+          <textarea
+            rows={3}
+            value={planRejectReason}
+            onChange={(e) => setPlanRejectReason(e.target.value)}
+            className="w-full p-3.5 rounded-[14px] bg-[#1e1e21] border border-[#3a3a3a] text-xs text-[#f5f5f7] focus:outline-none focus:border-[#E8353B]"
+          />
+        </Field>
+      </AdminOverlay>
 
-            <div className="p-3.5 rounded-2xl bg-black/25 border border-white/10 space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between text-[var(--text-muted)]">
+      {/* ─── MODAL: APPROVE KOBAN REQUEST (SOLID OPAQUE) ────────────────────── */}
+      <AdminOverlay
+        open={Boolean(kobanApproveTarget)}
+        onClose={() => {
+          if (!kobanApproving) setKobanApproveTarget(null);
+        }}
+        mode="modal"
+        title="Approve Koban Payment"
+        subtitle={kobanApproveTarget?.userName || 'Student'}
+        maxWidthClass="max-w-[460px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => setKobanApproveTarget(null)}
+              disabled={kobanApproving}
+            >
+              Cancel
+            </AdminButton>
+            <AdminButton
+              variant="primary"
+              disabled={kobanApproving || kobanEditableAmount <= 0}
+              onClick={() => void handleConfirmKobanApprove()}
+            >
+              <CheckCircle2 size={14} />
+              <span>
+                {kobanApproving
+                  ? 'Crediting…'
+                  : `Credit ${kobanEditableAmount.toLocaleString()} Kobans`}
+              </span>
+              {kobanApproving && <ButtonLineLoader />}
+            </AdminButton>
+          </>
+        }
+      >
+        {kobanApproveTarget && (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-[16px] bg-[#1e1e21] border border-[#2f2f34] space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between text-[#a1a1aa]">
                 <span>Student:</span>
-                <span className="text-[var(--text)] font-bold">
+                <span className="text-[#f5f5f7] font-bold">
                   {kobanApproveTarget.userName}
                 </span>
               </div>
-              <div className="flex justify-between text-[var(--text-muted)]">
+              <div className="flex justify-between text-[#a1a1aa]">
                 <span>Transaction ID:</span>
-                <span className="text-[var(--text)] font-bold">
+                <span className="text-[#f5f5f7] font-bold">
                   {kobanApproveTarget.transactionId}
                 </span>
               </div>
-              <div className="flex justify-between text-[var(--text-muted)]">
+              <div className="flex justify-between text-[#a1a1aa]">
                 <span>Payment Method:</span>
-                <span className="text-[var(--text)]">
+                <span className="text-[#f5f5f7]">
                   {formatPaymentMethodLabel(kobanApproveTarget.paymentMethod)}
                 </span>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-mono text-[var(--text-muted)] block">
-                Kobans to Credit (Editable if over/underpaid)
-              </label>
+            <Field
+              label="Kobans to Credit (Editable if over/underpaid)"
+              hint={`Equivalent PKR: PKR ${Math.floor(kobanEditableAmount / 10)}`}
+            >
               <input
                 type="number"
                 min="1"
                 step="10"
                 value={kobanEditableAmount}
                 onChange={(e) => setKobanEditableAmount(Number(e.target.value))}
-                className="lg-nothing-input w-full px-4 py-2.5 text-sm font-mono font-bold tabular-nums text-[#FFD66B]"
+                className="w-full min-h-[44px] rounded-[14px] bg-[#1e1e21] border border-[#3a3a3a] px-4 py-2.5 text-sm font-mono font-bold tabular-nums text-[#FFD66B] focus:outline-none focus:border-[#E8353B]"
               />
-              <p className="text-[11px] font-mono tabular-nums text-[var(--text-muted)]">
-                Equivalent PKR: PKR {Math.floor(kobanEditableAmount / 10)}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setKobanApproveTarget(null)}
-                {...getBubbleTouchHandlers()}
-                className="bubble-touch lg-nothing-pill min-h-[44px] flex-1 py-2.5 text-xs font-heading font-bold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={kobanApproving || kobanEditableAmount <= 0}
-                onClick={handleConfirmKobanApprove}
-                {...getBubbleTouchHandlers({
-                  ripple: true,
-                  disabled: kobanApproving || kobanEditableAmount <= 0,
-                })}
-                className="bubble-touch bubble-touch-ripple lg-nothing-red-btn flex-1 py-2.5 px-3 text-xs font-heading font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                <CheckCircle2 size={14} />
-                <span>
-                  {kobanApproving
-                    ? 'Crediting...'
-                    : `Credit ${kobanEditableAmount.toLocaleString()} Kobans`}
-                </span>
-                {kobanApproving && <ButtonLineLoader />}
-              </button>
-            </div>
+            </Field>
           </div>
-        </div>
-      )}
+        )}
+      </AdminOverlay>
 
-      {/* ─── MODAL: REJECT KOBAN REQUEST ────────────────────────────────────── */}
-      {kobanRejectTarget && (
-        <div
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
-        >
-          <div
-            className={`relative w-full max-w-md p-6 space-y-4 ${
-              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
-            }`}
-          >
-            <DotHeading as="h3" size="section">
-              Reject Koban Request
-            </DotHeading>
-            <textarea
-              rows={3}
-              value={kobanRejectReason}
-              onChange={(e) => setKobanRejectReason(e.target.value)}
-              className="w-full p-3.5 rounded-2xl bg-[var(--lg-input-surface)] border border-[var(--lg-input-border)] text-xs text-[var(--text)] focus:outline-none"
-            />
-            <div className="flex items-center gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setKobanRejectTarget(null)}
-                {...getBubbleTouchHandlers()}
-                className="bubble-touch lg-nothing-pill min-h-[44px] flex-1 py-2.5 text-xs font-heading font-bold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={kobanRejecting}
-                onClick={handleConfirmKobanReject}
-                {...getBubbleTouchHandlers({ ripple: true, disabled: kobanRejecting })}
-                className="bubble-touch bubble-touch-ripple lg-nothing-red-btn flex-1 py-2.5 px-4 text-xs font-heading font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <XCircle size={14} />
-                <span>{kobanRejecting ? 'Rejecting...' : 'Confirm Rejection'}</span>
-                {kobanRejecting && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ─── MODAL: REJECT KOBAN REQUEST (SOLID OPAQUE) ─────────────────────── */}
+      <AdminOverlay
+        open={Boolean(kobanRejectTarget)}
+        onClose={() => {
+          if (!kobanRejecting) setKobanRejectTarget(null);
+        }}
+        mode="modal"
+        title="Reject Koban Request"
+        subtitle={kobanRejectTarget?.userName || 'Student'}
+        maxWidthClass="max-w-[440px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => setKobanRejectTarget(null)}
+              disabled={kobanRejecting}
+            >
+              Cancel
+            </AdminButton>
+            <AdminButton
+              variant="primary"
+              disabled={kobanRejecting}
+              onClick={() => void handleConfirmKobanReject()}
+            >
+              <XCircle size={14} />
+              <span>{kobanRejecting ? 'Rejecting…' : 'Confirm Rejection'}</span>
+              {kobanRejecting && <ButtonLineLoader />}
+            </AdminButton>
+          </>
+        }
+      >
+        <Field label="Rejection reason">
+          <textarea
+            rows={3}
+            value={kobanRejectReason}
+            onChange={(e) => setKobanRejectReason(e.target.value)}
+            className="w-full p-3.5 rounded-[14px] bg-[#1e1e21] border border-[#3a3a3a] text-xs text-[#f5f5f7] focus:outline-none focus:border-[#E8353B]"
+          />
+        </Field>
+      </AdminOverlay>
     </div>
   );
 }

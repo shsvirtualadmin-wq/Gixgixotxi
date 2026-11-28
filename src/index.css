@@ -4709,23 +4709,29 @@ html[data-tab-hidden="true"] *::after {
   transform: scale(0.97);
 }
 
-/* Popover Glass Menu */
+/* Popover Solid Opaque Menu (no background bleed, always above cards & nav) */
 .aqb-dropdown-menu {
   position: absolute;
   top: calc(100% + 8px);
-  z-index: 50;
-  min-width: 210px;
+  z-index: 9999;
+  min-width: 220px;
   padding: 6px;
   border-radius: 20px;
-  background-color: var(--glass-surface-strong);
-  border: 1px solid var(--glass-border-strong);
-  border-top-color: var(--glass-highlight);
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  background-color: #161616;
+  color: #f5f5f7;
+  border: 1px solid #3a3a3a;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.82), 0 6px 20px rgba(0, 0, 0, 0.56);
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.aqb-dropdown-menu .aqb-dropdown-item {
+  color: #f5f5f7;
+}
+
+.aqb-dropdown-menu .aqb-dropdown-item:hover {
+  background-color: #26262a;
 }
 
 .aqb-dropdown-item {
@@ -4843,12 +4849,12 @@ html[data-tab-hidden="true"] *::after {
   display: none;
 }
 
-/* Full-Height Bottom Sheet (~92% height, single body scroll) — scrim only when open, no stuck blur */
+/* Full-Height Bottom Sheet (~92% height, single body scroll) — solid opaque surface */
 .aqb-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 100;
-  background-color: rgba(0, 0, 0, 0.54);
+  z-index: 9998;
+  background-color: rgba(0, 0, 0, 0.8);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -4859,6 +4865,7 @@ html[data-tab-hidden="true"] *::after {
 
 .aqb-sheet {
   position: relative;
+  z-index: 9999;
   width: 100%;
   max-width: 720px;
   height: 92dvh;
@@ -4866,20 +4873,23 @@ html[data-tab-hidden="true"] *::after {
   min-width: 0;
   box-sizing: border-box;
   border-radius: 28px 28px 0 0;
-  background-color: var(--glass-surface-strong);
-  background-image: linear-gradient(
-    145deg,
-    var(--glass-highlight) 0%,
-    transparent 50%
-  );
-  border: 1px solid var(--glass-border-strong);
+  background-color: #161616;
+  color: #f5f5f7;
+  border: 1px solid #3a3a3a;
   border-bottom: none;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.86), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   overscroll-behavior: contain;
   animation: aqbSheetSlideUp 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-theme="light"] .aqb-sheet,
+html.light .aqb-sheet {
+  background-color: #161616;
+  color: #f5f5f7;
+  border-color: #3a3a3a;
 }
 
 .aqb-sheet--compact {

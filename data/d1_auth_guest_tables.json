@@ -1276,6 +1276,9 @@
       "last_active_at": 1795865138829
     },
     {
+      "status": "abandoned",
+      "abandoned_at": 1795865180079,
+      "purge_after": 1796469980079,
       "uid": "guest_1795865179920_d44956e401",
       "username": "bilalkhan99",
       "username_lower": "bilalkhan99__abandoned_guest_1795865179920_d44956e401",
@@ -1286,9 +1289,6 @@
       "email": "",
       "plan": "free",
       "role": "student",
-      "status": "abandoned",
-      "abandoned_at": 1795865180079,
-      "purge_after": 1796469980079,
       "upgraded_to_uid": null,
       "upgraded_at": null,
       "target_university": "NUST",
@@ -2863,9 +2863,9 @@
       "uid": "uid_student",
       "email": "student@boardly.cfd",
       "role": "captain",
-      "custom_role": "1795865177523",
+      "custom_role": "1795872390781",
       "is_posting_banned": 0,
-      "updated_at": 1795865177523,
+      "updated_at": 1795872390781,
       "created_at": 1795505628206
     },
     {

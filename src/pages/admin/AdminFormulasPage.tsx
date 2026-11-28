@@ -63,6 +63,7 @@ import {
   ParsedFormulaImportRow,
   FormulaChunkImportProgress,
 } from '../../services/formulaVaultService';
+import { AdminPopoverMenu } from '@/components/admin/AdminGlassPrimitives';
 import { convertGoogleSheetToCsvUrl } from '../../services/universityMcqService';
 import { MathText, validateMath } from '../../components/ui/MathText';
 import { ButtonLineLoader } from '../../components/ui/LineLoader';
@@ -1180,58 +1181,36 @@ export const AdminFormulasPage: React.FC = () => {
               <ChevronDown className="w-4 h-4 shrink-0 opacity-90" />
             </button>
 
-            {addMenuOpen && (
-              <div className="aqb-dropdown-menu left-0 right-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    openAddFormulaModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Plus className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Add single formula</div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      into {selectedChapter?.title || selectedCategory?.name || 'selected chapter'}
-                    </div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    openBulkImportModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Upload className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Bulk import</div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      CSV, Google Sheet, or Paste
-                    </div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddMenuOpen(false);
-                    openAddChapterModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <BookOpen className="w-4 h-4 text-[var(--accent)] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-[13px] truncate">Add chapter</div>
-                    <div className="text-[11px] text-[var(--text-muted)] truncate">
-                      into {selectedCategory?.name || 'selected category'}
-                    </div>
-                  </div>
-                </button>
-              </div>
-            )}
+            <AdminPopoverMenu
+              open={addMenuOpen}
+              onClose={() => setAddMenuOpen(false)}
+              anchorEl={addMenuRef.current}
+              align="left"
+              title="Add formulas"
+              items={[
+                {
+                  id: 'add-single-formula',
+                  label: 'Add single formula',
+                  description: `into ${selectedChapter?.title || selectedCategory?.name || 'selected chapter'}`,
+                  icon: <Plus className="w-4 h-4 text-[var(--accent)]" />,
+                  onSelect: () => openAddFormulaModal(),
+                },
+                {
+                  id: 'bulk-import-formula',
+                  label: 'Bulk import',
+                  description: 'CSV, Google Sheet, or Paste',
+                  icon: <Upload className="w-4 h-4 text-[var(--accent)]" />,
+                  onSelect: () => openBulkImportModal(),
+                },
+                {
+                  id: 'add-chapter',
+                  label: 'Add chapter',
+                  description: `into ${selectedCategory?.name || 'selected category'}`,
+                  icon: <BookOpen className="w-4 h-4 text-[var(--accent)]" />,
+                  onSelect: () => openAddChapterModal(),
+                },
+              ]}
+            />
           </div>
 
           <div ref={overflowMenuRef} className="relative shrink-0">
@@ -1247,74 +1226,63 @@ export const AdminFormulasPage: React.FC = () => {
               <MoreHorizontal className="w-5 h-5" />
             </button>
 
-            {overflowMenuOpen && (
-              <div className="aqb-dropdown-menu right-0">
-                {selectedCategory && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOverflowMenuOpen(false);
-                      openEditCategoryModal(selectedCategory);
-                    }}
-                    className="aqb-dropdown-item"
-                  >
-                    <Edit3 className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                    <span>Edit category ({selectedCategory.name})</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverflowMenuOpen(false);
-                    openAddCategoryModal();
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Plus className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Add category</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverflowMenuOpen(false);
+            <AdminPopoverMenu
+              open={overflowMenuOpen}
+              onClose={() => setOverflowMenuOpen(false)}
+              anchorEl={overflowMenuRef.current}
+              align="right"
+              title="Formula Bank actions"
+              items={[
+                ...(selectedCategory
+                  ? [
+                      {
+                        id: 'edit-cat',
+                        label: `Edit category (${selectedCategory.name})`,
+                        icon: <Edit3 className="w-4 h-4 text-[#a1a1aa]" />,
+                        onSelect: () => openEditCategoryModal(selectedCategory),
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'add-cat',
+                  label: 'Add category',
+                  icon: <Plus className="w-4 h-4 text-[#a1a1aa]" />,
+                  onSelect: () => openAddCategoryModal(),
+                },
+                {
+                  id: 'manage-cats',
+                  label: 'Reorder / Manage categories',
+                  icon: <Layers className="w-4 h-4 text-[#a1a1aa]" />,
+                  onSelect: () => {
                     setCategorySheetMode('manage');
                     setCategorySheetOpen(true);
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <Layers className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Reorder / Manage categories</span>
-                </button>
-                {selectedCategory && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOverflowMenuOpen(false);
-                      downloadFormulaCsvExport({
-                        categoryId: selectedCategory.id,
-                        filenameHint: `formulas_${selectedCategory.slug}`,
-                      });
-                    }}
-                    className="aqb-dropdown-item"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                    <span>Export category CSV ({selectedCategory.name})</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOverflowMenuOpen(false);
+                  },
+                },
+                ...(selectedCategory
+                  ? [
+                      {
+                        id: 'export-cat-csv',
+                        label: `Export category CSV (${selectedCategory.name})`,
+                        icon: <FileSpreadsheet className="w-4 h-4 text-[#a1a1aa]" />,
+                        onSelect: () =>
+                          downloadFormulaCsvExport({
+                            categoryId: selectedCategory.id,
+                            filenameHint: `formulas_${selectedCategory.slug}`,
+                          }),
+                      },
+                    ]
+                  : []),
+                {
+                  id: 'refresh-fb',
+                  label: 'Refresh',
+                  icon: <RefreshCw className="w-4 h-4 text-[#a1a1aa]" />,
+                  onSelect: () => {
                     loadOverview(true);
                     if (selectedChapter?.id) loadChapterFormulas(selectedChapter.id, true);
-                  }}
-                  className="aqb-dropdown-item"
-                >
-                  <RefreshCw className="w-4 h-4 text-[var(--text-secondary)] shrink-0" />
-                  <span>Refresh</span>
-                </button>
-              </div>
-            )}
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
 

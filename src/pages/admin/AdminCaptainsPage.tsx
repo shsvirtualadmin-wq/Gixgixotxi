@@ -32,6 +32,7 @@ import {
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { GrandLineTestsAdminSection } from '@/components/admin/GrandLineTestsAdminSection';
+import { AdminOverlay } from '@/components/admin/AdminGlassPrimitives';
 
 const CAPTAINS_PAGE_SIZE = 20;
 
@@ -503,127 +504,108 @@ export function AdminCaptainsPage() {
       </div>
       )}
 
-      {/* Grant All Modal */}
-      {grantAllModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="relative w-full max-w-md rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border)]">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-800 dark:text-amber-300">
-                <KobanIcon size={24} />
-              </div>
-              <div>
-                <h3 className="font-sans font-bold text-base text-[var(--text)]">
-                  Grant to All Approved Captains
-                </h3>
-                <p className="text-xs text-[var(--muted)] font-mono">{currentMonthLabel} Allotment</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              This will grant <strong className="text-amber-800 dark:text-amber-300 font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
-            </p>
-
-            <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] max-h-48 overflow-y-auto divide-y divide-[var(--border)]">
-              <span className="text-[10px] uppercase font-mono text-[var(--muted)] block pb-1">
-                Captains to Credit ({pendingCaptainsCount}):
-              </span>
-              {pendingCaptainsCount === 0 ? (
-                <p className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold py-2">
-                  All approved captains have already received their {currentMonthLabel} allotment!
-                </p>
-              ) : (
-                captains
-                  .filter((c) => !allotmentStatuses[c.captainUid]?.granted)
-                  .map((c) => (
-                    <div key={c.captainUid} className="py-2 flex items-center justify-between text-xs">
-                      <span className="font-sans font-semibold text-[var(--text)]">{c.captainName}</span>
-                      <span className="font-mono text-amber-800 dark:text-amber-300 font-bold">+5,000</span>
-                    </div>
-                  ))
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setGrantAllModalOpen(false)}
-                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={grantingAll || pendingCaptainsCount === 0}
-                onClick={handleGrantAll}
-                className="relative overflow-hidden btn-red flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
-              >
-                <Sparkles size={14} />
-                <span>{grantingAll ? 'Crediting all captains...' : 'Confirm & Credit All'}</span>
-                {grantingAll && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Roster Drawer / Modal */}
-      {selectedCaptain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md">
-          <div className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <div>
-                <h3 className="font-sans font-bold text-base text-[var(--text)]">
-                  {selectedCaptain.captainName}'s Student Roster
-                </h3>
-                <p className="text-xs text-[var(--muted)] font-mono">
-                  Referral code: {selectedCaptain.captainCode}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedCaptain(null)}
-                className="text-[var(--muted)] hover:text-[var(--text)] transition-colors p-1 rounded-lg"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="divide-y divide-[var(--border)] max-h-72 overflow-y-auto">
-              {selectedCaptain.referredStudents.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--muted)]">
-                  No students have used this captain's referral code yet.
-                </div>
-              ) : (
-                selectedCaptain.referredStudents.map((st, i) => (
-                  <div key={i} className="py-2.5 flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-sans font-semibold text-[var(--text)]">
-                        {st.studentName || 'Student'}
-                      </div>
-                      <div className="text-[10px] text-[var(--muted)] font-mono">{st.studentEmail}</div>
-                    </div>
-                    <span className="text-[10px] text-[var(--muted)] font-mono">
-                      {st.dateJoined ? new Date(st.dateJoined).toLocaleDateString() : 'Active'}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-
+      {/* Grant All Modal (Solid Opaque) */}
+      <AdminOverlay
+        open={grantAllModalOpen}
+        onClose={() => !grantingAll && setGrantAllModalOpen(false)}
+        title="Grant to All Approved Captains"
+        subtitle={`${currentMonthLabel} Allotment`}
+        maxWidthClass="max-w-md"
+        footer={
+          <>
             <button
               type="button"
-              onClick={() => setSelectedCaptain(null)}
-              className="btn-outline w-full py-2.5 rounded-xl text-xs font-bold"
+              onClick={() => setGrantAllModalOpen(false)}
+              className="ag-ios-btn ag-ios-btn--secondary flex-1 min-h-[40px] py-2.5 px-4 rounded-full text-xs font-bold cursor-pointer"
             >
-              Close
+              Cancel
             </button>
+            <button
+              type="button"
+              disabled={grantingAll || pendingCaptainsCount === 0}
+              onClick={handleGrantAll}
+              className="ag-ios-btn ag-ios-btn--primary relative overflow-hidden flex-1 min-h-[40px] py-2.5 px-4 rounded-full text-xs font-bold text-white flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles size={14} />
+              <span>{grantingAll ? 'Crediting all captains...' : 'Confirm & Credit All'}</span>
+              {grantingAll && <ButtonLineLoader />}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-300 shrink-0">
+              <KobanIcon size={24} />
+            </div>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              This will grant <strong className="text-amber-300 font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
+            </p>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-[#101010] border border-[#2c2c2c] max-h-48 overflow-y-auto divide-y divide-[#262626]">
+            <span className="text-[10px] uppercase font-mono text-[var(--muted)] block pb-1">
+              Captains to Credit ({pendingCaptainsCount}):
+            </span>
+            {pendingCaptainsCount === 0 ? (
+              <p className="text-xs text-emerald-400 font-semibold py-2">
+                All approved captains have already received their {currentMonthLabel} allotment!
+              </p>
+            ) : (
+              captains
+                .filter((c) => !allotmentStatuses[c.captainUid]?.granted)
+                .map((c) => (
+                  <div key={c.captainUid} className="py-2 flex items-center justify-between text-xs">
+                    <span className="font-sans font-semibold text-white">{c.captainName}</span>
+                    <span className="font-mono text-amber-300 font-bold">+5,000</span>
+                  </div>
+                ))
+            )}
           </div>
         </div>
-      )}
+      </AdminOverlay>
+
+      {/* Roster Drawer / Modal (Solid Opaque) */}
+      <AdminOverlay
+        open={Boolean(selectedCaptain)}
+        onClose={() => setSelectedCaptain(null)}
+        title={selectedCaptain ? `${selectedCaptain.captainName}'s Student Roster` : 'Student Roster'}
+        subtitle={selectedCaptain ? `Referral code: ${selectedCaptain.captainCode}` : undefined}
+        maxWidthClass="max-w-lg"
+        footer={
+          <button
+            type="button"
+            onClick={() => setSelectedCaptain(null)}
+            className="ag-ios-btn ag-ios-btn--secondary w-full min-h-[40px] py-2.5 rounded-full text-xs font-bold cursor-pointer"
+          >
+            Close
+          </button>
+        }
+      >
+        {selectedCaptain && (
+          <div className="divide-y divide-[#262626] max-h-72 overflow-y-auto">
+            {selectedCaptain.referredStudents.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[var(--muted)]">
+                No students have used this captain's referral code yet.
+              </div>
+            ) : (
+              selectedCaptain.referredStudents.map((st, i) => (
+                <div key={i} className="py-2.5 flex items-center justify-between text-xs">
+                  <div>
+                    <div className="font-sans font-semibold text-white">
+                      {st.studentName || 'Student'}
+                    </div>
+                    <div className="text-[10px] text-[var(--muted)] font-mono">{st.studentEmail}</div>
+                  </div>
+                  <span className="text-[10px] text-[var(--muted)] font-mono">
+                    {st.dateJoined ? new Date(st.dateJoined).toLocaleDateString() : 'Active'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </AdminOverlay>
     </div>
   );
 }

@@ -51,16 +51,17 @@ export interface SchedulableGrandLineTest extends GrandLineScheduleTestLike {
  * Shared 1-second server-synced clock hook so status pills and countdowns
  * automatically transition (Scheduled → Live → Ended) without a page reload.
  */
-export function useServerSyncedClock(intervalMs = 1000): number {
+export function useServerSyncedClock(intervalMs = 1000, enabled = true): number {
   const [nowMs, setNowMs] = useState<number>(() => getServerNowMs());
 
   useEffect(() => {
+    if (!enabled) return;
     setNowMs(getServerNowMs());
     const id = window.setInterval(() => {
       setNowMs(getServerNowMs());
     }, intervalMs);
     return () => window.clearInterval(id);
-  }, [intervalMs]);
+  }, [intervalMs, enabled]);
 
   return nowMs;
 }
@@ -137,7 +138,7 @@ export const GrandLineScheduleSheet: React.FC<{
   onSaved?: (updated: AmbassadorCustomTest) => void;
 }> = ({ test, open, onClose, onSaved }) => {
   const { user, profile, isAdmin } = useAuth();
-  const nowMs = useServerSyncedClock(1000);
+  const nowMs = useServerSyncedClock(1000, open && Boolean(test));
 
   const [startLocalPkt, setStartLocalPkt] = useState<string>('');
   const [endLocalPkt, setEndLocalPkt] = useState<string>('');
@@ -151,13 +152,18 @@ export const GrandLineScheduleSheet: React.FC<{
 
   useEffect(() => {
     if (!open || !test) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
     document.body.setAttribute('data-fullscreen-modal-open', 'true');
     window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     return () => {
+      window.removeEventListener('keydown', onKeyDown);
       document.body.removeAttribute('data-fullscreen-modal-open');
       window.dispatchEvent(new CustomEvent('boardly:modal-change'));
     };
-  }, [open, test]);
+  }, [open, test, saving, onClose]);
 
   useEffect(() => {
     if (!open || !test) return;
@@ -347,7 +353,7 @@ export const GrandLineScheduleSheet: React.FC<{
   return createPortal(
     <div
       data-admin-sheet="grand-line-schedule"
-      className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/80 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="gl-schedule-sheet-title"
@@ -355,7 +361,7 @@ export const GrandLineScheduleSheet: React.FC<{
         if (e.target === e.currentTarget && !saving) onClose();
       }}
     >
-      <div className="w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-[28px] sm:rounded-[28px] bg-[var(--surface)] border border-[var(--border)] shadow-2xl overflow-hidden text-[var(--text)]">
+      <div className="w-full sm:max-w-lg max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-t-[24px] sm:rounded-[24px] bg-[#161616] border border-[#3a3a3a] shadow-[0_24px_64px_rgba(0,0,0,0.85)] overflow-hidden text-[#f4f4f6]">
         {/* Pinned Header */}
         <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4 border-b border-[var(--border)] shrink-0">
           <div className="min-w-0">
@@ -649,6 +655,15 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
     setCloseAllAttemptsNow(false);
   }, [test?.id, targetAction]);
 
+  useEffect(() => {
+    if (!test || !targetAction) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [test, targetAction, submitting, onClose]);
+
   if (!test || !targetAction || !isAdmin || typeof document === 'undefined') {
     return null;
   }
@@ -709,14 +724,14 @@ export const GrandLineQuickToggleConfirmModal: React.FC<{
   return createPortal(
     <div
       data-admin-sheet="grand-line-schedule"
-      className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/80 p-0 sm:p-4"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="w-full sm:max-w-md rounded-t-[28px] sm:rounded-[28px] bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl text-[var(--text)] space-y-4">
+      <div className="w-full sm:max-w-md rounded-t-[24px] sm:rounded-[24px] bg-[#161616] border border-[#3a3a3a] p-5 shadow-[0_24px_64px_rgba(0,0,0,0.85)] text-[#f4f4f6] space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div

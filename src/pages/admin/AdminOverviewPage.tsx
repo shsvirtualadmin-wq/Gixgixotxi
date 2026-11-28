@@ -61,6 +61,7 @@ import { clearGenericErrorToasts, dismissApiToast, showApiToast } from '@/lib/ap
 import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog } from '@/types';
 import {
+  AdminButton,
   DotHeading,
   GlassCard,
   Pill,
@@ -293,7 +294,7 @@ export function AdminOverviewPage() {
   const [radarFilter, setRadarFilter] = useState<RadarFilterId>('all');
   const [remindingUid, setRemindingUid] = useState<string | null>(null);
   const [remindedUids, setRemindedUids] = useState<Record<string, number>>({});
-  const [liveClockMs, setLiveClockMs] = useState<number>(() => Date.now());
+  const [liveClockMs] = useState<number>(() => Date.now());
 
   const isMountedRef = useRef(true);
   const requestIdsRef = useRef<Record<string, number>>({});
@@ -311,12 +312,8 @@ export function AdminOverviewPage() {
   useEffect(() => {
     isMountedRef.current = true;
     clearGenericErrorToasts();
-    const id = window.setInterval(() => {
-      setLiveClockMs(Date.now());
-    }, 15_000);
     return () => {
       isMountedRef.current = false;
-      window.clearInterval(id);
       clearGenericErrorToasts();
     };
   }, []);
@@ -904,20 +901,15 @@ export function AdminOverviewPage() {
           </p>
         </div>
 
-        <button
-          type="button"
+        <AdminButton
+          variant="secondary"
           onClick={() => loadData({ force: true })}
           disabled={isRefreshing}
-          className={`relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[14px] border text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer ${
-            glassEnabled
-              ? 'ag-flat-card hover:border-[#E8353B]/40'
-              : 'bg-[var(--card)] hover:bg-[var(--surface-hover)] border-[var(--border)]'
-          }`}
         >
           <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           <span>{isRefreshing ? 'Refreshing…' : 'Refresh'}</span>
           {isRefreshing && <ButtonLineLoader />}
-        </button>
+        </AdminButton>
       </div>
 
       <AdminDiagnosticBanner
@@ -930,7 +922,7 @@ export function AdminOverviewPage() {
       {/* ─── 6 INDEPENDENT STAT CARDS ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {/* 1. Registered users (includes active guests — shared with Users page) */}
-        <GlassCard variant="glass" padding="md" className="col-span-2 flex flex-col justify-between min-h-[144px]">
+        <GlassCard variant="hero" padding="md" className="col-span-2 flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Total accounts
@@ -2083,33 +2075,34 @@ export function AdminOverviewPage() {
 
       {/* ─── CONFIRMATION DIALOG FOR SEEDING ─────────────────────────────────── */}
       {isConfirmSeedOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+        >
           <div
-            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
+            className="ag-overlay-backdrop"
             onClick={() => setIsConfirmSeedOpen(false)}
           />
-          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">
-            <h3 className="font-heading font-bold text-[17px] text-[var(--text)]">
+          <div className="ag-overlay-panel w-full max-w-[420px] rounded-[24px] p-6 space-y-4">
+            <h3 className="font-bold text-[17px] text-[#f5f5f7]">
               Seed balanced question pool?
             </h3>
-            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+            <p className="text-[13px] text-[#b4b4be] leading-relaxed">
               This will add missing standard entrance test questions so every subject has at least 125 MCQs. Existing questions are never modified or overwritten.
             </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <AdminButton
+                variant="secondary"
                 onClick={() => setIsConfirmSeedOpen(false)}
-                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </AdminButton>
+              <AdminButton
+                variant="primary"
                 onClick={handleConfirmSeed}
-                className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90"
               >
                 Confirm and seed
-              </button>
+              </AdminButton>
             </div>
           </div>
         </div>
@@ -2119,19 +2112,20 @@ export function AdminOverviewPage() {
       {pendingRewardsMode && (
         <div
           data-testid="rewards-mode-confirm-dialog"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
         >
           <div
-            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
+            className="ag-overlay-backdrop"
             onClick={() => setPendingRewardsMode(null)}
           />
-          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">
-            <h3 className="font-heading font-bold text-[17px] text-[var(--text)]">
+          <div className="ag-overlay-panel w-full max-w-[420px] rounded-[24px] p-6 space-y-4">
+            <h3 className="font-bold text-[17px] text-[#f5f5f7]">
               Change Boardly Rewards mode?
             </h3>
-            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+            <p className="text-[13px] text-[#b4b4be] leading-relaxed">
               Are you sure you want to set Boardly Rewards mode to{' '}
-              <strong className="text-[var(--text)] font-bold">
+              <strong className="text-[#f5f5f7] font-bold">
                 {pendingRewardsMode === 'everyone'
                   ? 'Everyone (Live)'
                   : pendingRewardsMode === 'admin_only'
@@ -2140,23 +2134,21 @@ export function AdminOverviewPage() {
               </strong>
               ? This takes effect immediately.
             </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <AdminButton
+                variant="secondary"
                 data-testid="rewards-mode-cancel-btn"
                 onClick={() => setPendingRewardsMode(null)}
-                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] cursor-pointer"
               >
                 Cancel
-              </button>
-              <button
-                type="button"
+              </AdminButton>
+              <AdminButton
+                variant="primary"
                 data-testid="rewards-mode-confirm-btn"
                 onClick={handleConfirmRewardsModeChange}
-                className="px-4 py-2 rounded-[12px] bg-[#E8353B] hover:bg-[#D4292F] text-white text-[13px] font-heading font-bold cursor-pointer"
               >
                 Confirm Mode Change
-              </button>
+              </AdminButton>
             </div>
           </div>
         </div>

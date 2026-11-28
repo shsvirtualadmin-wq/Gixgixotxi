@@ -29,6 +29,7 @@ import { KobanIcon } from '@/components/koban/KobanIcon';
 import { usePlansConfig } from '@/hooks/usePlansConfig';
 import { getPlanDisplayLabel, getUserPlanTier } from '@/config/postLimits';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
+import { AdminOverlay } from '@/components/admin/AdminGlassPrimitives';
 import {
   fetchKobanRequests,
   approveKobanRequest,
@@ -1572,44 +1573,62 @@ export function AdminKobansPage() {
         )}
       </div>
 
-      {/* ─── MODAL: APPROVE REQUEST ─────────────────────────────────────────── */}
-      {approveTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="akb-approve-modal-title"
-        >
-          <div className="akb-glass-card w-full max-w-md space-y-4">
-            <h3
-              id="akb-approve-modal-title"
-              className="font-heading font-extrabold text-lg text-[var(--text)] m-0"
+      {/* ─── MODAL: APPROVE REQUEST (Solid Opaque) ──────────────────────────── */}
+      <AdminOverlay
+        open={Boolean(approveTarget)}
+        onClose={() => !approving && setApproveTarget(null)}
+        title="Approve Koban Payment"
+        maxWidthClass="max-w-md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setApproveTarget(null)}
+              className="ag-ios-btn ag-ios-btn--secondary flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold cursor-pointer"
             >
-              Approve Koban Payment
-            </h3>
-
-            <div className="p-3.5 rounded-2xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-1.5 text-xs font-mono">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={approving || editableAmount <= 0}
+              onClick={handleConfirmApprove}
+              className="ag-ios-btn ag-ios-btn--primary relative overflow-hidden flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold text-white inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <CheckCircle2 size={15} />
+              <span>
+                {approving
+                  ? 'Crediting...'
+                  : `Credit ${editableAmount.toLocaleString()} Kobans`}
+              </span>
+              {approving && <ButtonLineLoader />}
+            </button>
+          </>
+        }
+      >
+        {approveTarget && (
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-2xl bg-[#101010] border border-[#2c2c2c] space-y-1.5 text-xs font-mono">
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Student:</span>
-                <span className="text-[var(--text)] font-bold text-right">
+                <span className="text-white font-bold text-right">
                   {approveTarget.userName}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Email:</span>
-                <span className="text-[var(--text)] break-all text-right">
+                <span className="text-white break-all text-right">
                   {approveTarget.userEmail}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Transaction ID:</span>
-                <span className="text-[var(--text)] font-bold text-right">
+                <span className="text-white font-bold text-right">
                   {approveTarget.transactionId}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Method:</span>
-                <span className="text-[var(--text)] text-right">
+                <span className="text-white text-right">
                   {formatPaymentMethodLabel(approveTarget.paymentMethod)}
                 </span>
               </div>
@@ -1635,127 +1654,120 @@ export function AdminKobansPage() {
                 Equivalent PKR: PKR {Math.floor(editableAmount / 10)}
               </p>
             </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setApproveTarget(null)}
-                className="akb-btn akb-btn--glass flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={approving || editableAmount <= 0}
-                onClick={handleConfirmApprove}
-                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
-              >
-                <CheckCircle2 size={15} />
-                <span>
-                  {approving
-                    ? 'Crediting...'
-                    : `Credit ${editableAmount.toLocaleString()} Kobans`}
-                </span>
-                {approving && <ButtonLineLoader />}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AdminOverlay>
 
-      {/* ─── MODAL: REJECT REQUEST ──────────────────────────────────────────── */}
-      {rejectTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="akb-reject-modal-title"
-        >
-          <div className="akb-glass-card w-full max-w-md space-y-4">
-            <h3
-              id="akb-reject-modal-title"
-              className="font-heading font-extrabold text-lg text-[var(--text)] m-0"
+      {/* ─── MODAL: REJECT REQUEST (Solid Opaque) ───────────────────────────── */}
+      <AdminOverlay
+        open={Boolean(rejectTarget)}
+        onClose={() => !rejecting && setRejectTarget(null)}
+        title="Reject Koban Request"
+        maxWidthClass="max-w-md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setRejectTarget(null)}
+              className="ag-ios-btn ag-ios-btn--secondary flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold cursor-pointer"
             >
-              Reject Koban Request
-            </h3>
-            <p className="text-xs text-[var(--text-muted)] m-0">
-              Specify the reason for rejection. The student will receive an in-app notification with this reason.
-            </p>
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={rejecting}
+              onClick={handleConfirmReject}
+              className="ag-ios-btn ag-ios-btn--danger relative overflow-hidden flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold text-white inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <XCircle size={15} />
+              <span>{rejecting ? 'Rejecting...' : 'Confirm Rejection'}</span>
+              {rejecting && <ButtonLineLoader />}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--text-muted)] m-0">
+            Specify the reason for rejection. The student will receive an in-app notification with this reason.
+          </p>
 
-            <textarea
-              rows={3}
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              className="akb-input !min-h-[88px]"
-            />
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setRejectTarget(null)}
-                className="akb-btn akb-btn--glass flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={rejecting}
-                onClick={handleConfirmReject}
-                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
-              >
-                <XCircle size={15} />
-                <span>{rejecting ? 'Rejecting...' : 'Confirm Rejection'}</span>
-                {rejecting && <ButtonLineLoader />}
-              </button>
-            </div>
-          </div>
+          <textarea
+            rows={3}
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            className="akb-input !min-h-[88px]"
+          />
         </div>
-      )}
+      </AdminOverlay>
 
-      {/* ─── MODAL: CONFIRM BALANCE ADJUSTMENT ──────────────────────────────── */}
-      {adjustConfirmOpen && selectedUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/60 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="akb-confirm-adjust-title"
-        >
-          <div className="akb-glass-card w-full max-w-md space-y-4">
+      {/* ─── MODAL: CONFIRM BALANCE ADJUSTMENT (Solid Opaque) ───────────────── */}
+      <AdminOverlay
+        open={Boolean(adjustConfirmOpen && selectedUser)}
+        onClose={() => !adjusting && setAdjustConfirmOpen(false)}
+        title={
+          selectedUser
+            ? `${adjustMode === 'grant' ? 'Add' : 'Deduct'} ${parsedAmountNum.toLocaleString()} Kobans?`
+            : 'Confirm Balance Adjustment'
+        }
+        subtitle="Writes an immutable entry to the student's wallet ledger"
+        maxWidthClass="max-w-md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setAdjustConfirmOpen(false)}
+              disabled={adjusting}
+              className="ag-ios-btn ag-ios-btn--secondary flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={adjusting}
+              onClick={handleConfirmAdjustment}
+              className={`ag-ios-btn ${adjustMode === 'grant' ? 'ag-ios-btn--primary' : 'ag-ios-btn--danger'} relative overflow-hidden flex-1 min-h-[40px] px-4 py-2 rounded-full text-xs font-bold text-white inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50`}
+            >
+              <Send size={15} />
+              <span>
+                {adjusting
+                  ? 'Applying...'
+                  : `Confirm ${adjustMode === 'grant' ? 'Add' : 'Deduct'}`}
+              </span>
+              {adjusting && <ButtonLineLoader />}
+            </button>
+          </>
+        }
+      >
+        {selectedUser && (
+          <div className="space-y-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[var(--accent)]/12 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#E8353B]/15 border border-[#E8353B]/35 flex items-center justify-center text-[#E8353B] shrink-0">
                 <Sparkles size={19} />
               </div>
-              <div className="min-w-0">
-                <h3
-                  id="akb-confirm-adjust-title"
-                  className="font-heading font-extrabold text-base text-[var(--text)] m-0 leading-snug"
-                >
-                  {adjustMode === 'grant' ? 'Add' : 'Deduct'} {parsedAmountNum.toLocaleString()}{' '}
-                  Kobans {adjustMode === 'grant' ? 'to' : 'from'}{' '}
-                  {selectedUser.name || 'Student'} ({selectedUser.email || selectedUser.uid})?
-                </h3>
-                <p className="text-xs text-[var(--text-muted)] mt-1 mb-0">
-                  This writes an immutable entry to the student&rsquo;s wallet ledger.
-                </p>
-              </div>
+              <p className="text-xs text-[var(--text-secondary)] m-0 leading-relaxed">
+                {adjustMode === 'grant' ? 'Add' : 'Deduct'}{' '}
+                <strong className="text-white font-mono">{parsedAmountNum.toLocaleString()} Kobans</strong>{' '}
+                {adjustMode === 'grant' ? 'to' : 'from'}{' '}
+                <strong className="text-white">{selectedUser.name || 'Student'}</strong> ({selectedUser.email || selectedUser.uid}).
+              </p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-2 text-xs font-mono">
+            <div className="p-3.5 rounded-2xl bg-[#101010] border border-[#2c2c2c] space-y-2 text-xs font-mono">
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Student:</span>
-                <span className="font-bold text-[var(--text)] text-right">
+                <span className="font-bold text-white text-right">
                   {selectedUser.name || selectedUser.displayName}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Email:</span>
-                <span className="text-[var(--text)] break-all text-right">
+                <span className="text-white break-all text-right">
                   {selectedUser.email || selectedUser.uid}
                 </span>
               </div>
               <div className="flex justify-between gap-2 text-[var(--text-muted)]">
                 <span>Current Balance:</span>
-                <span className="text-[var(--text)] font-bold tabular-nums">
+                <span className="text-white font-bold tabular-nums">
                   {currentBalanceNum.toLocaleString()} Kobans
                 </span>
               </div>
@@ -1763,16 +1775,14 @@ export function AdminKobansPage() {
                 <span>Adjustment:</span>
                 <span
                   className={`font-bold tabular-nums ${
-                    adjustMode === 'grant'
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-red-600 dark:text-red-400'
+                    adjustMode === 'grant' ? 'text-emerald-400' : 'text-red-400'
                   }`}
                 >
                   {adjustMode === 'grant' ? '+' : '-'}
                   {parsedAmountNum.toLocaleString()} Kobans
                 </span>
               </div>
-              <div className="flex justify-between gap-2 pt-2 border-t border-[var(--border)] text-[var(--text)]">
+              <div className="flex justify-between gap-2 pt-2 border-t border-[#2c2c2c] text-white">
                 <span>New Balance Preview:</span>
                 <span className="font-extrabold tabular-nums">
                   {previewNewBalance.toLocaleString()} Kobans
@@ -1780,39 +1790,14 @@ export function AdminKobansPage() {
               </div>
               <div className="flex justify-between gap-2 pt-1 text-[var(--text-muted)]">
                 <span>Reason:</span>
-                <span className="text-[var(--text)] text-right break-words">
+                <span className="text-white text-right break-words">
                   {adjustReason.trim()}
                 </span>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setAdjustConfirmOpen(false)}
-                disabled={adjusting}
-                className="akb-btn akb-btn--glass flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={adjusting}
-                onClick={handleConfirmAdjustment}
-                className="relative overflow-hidden akb-btn akb-btn--primary flex-1"
-              >
-                <Send size={15} />
-                <span>
-                  {adjusting
-                    ? 'Applying...'
-                    : `Confirm ${adjustMode === 'grant' ? 'Add' : 'Deduct'}`}
-                </span>
-                {adjusting && <ButtonLineLoader />}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </AdminOverlay>
     </div>
   );
 }

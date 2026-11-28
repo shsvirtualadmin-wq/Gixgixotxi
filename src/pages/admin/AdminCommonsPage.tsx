@@ -6,6 +6,7 @@ import type { CommonsPost, CommonsReport } from '@/types/commons';
 import { LineLoader } from '@/components/ui/LineLoader';
 import { useAuth } from '@/contexts/AuthContext';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
+import { AdminConfirmDialog } from '@/components/admin/AdminGlassPrimitives';
 import type { AdminPermissionKey } from '@/constants/permissions';
 
 export function AdminCommonsPage() {
@@ -21,6 +22,11 @@ export function AdminCommonsPage() {
     targetId?: string;
     targetLabel?: string;
   } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    kind: 'delete' | 'ban';
+    post: CommonsPost;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const getAdminHeaders = useCallback(async () => {
     const token = await getBearerToken(false);
@@ -96,8 +102,12 @@ export function AdminCommonsPage() {
     }
   };
 
-  const handleDeletePost = async (post: CommonsPost) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${post.title}"?`)) return;
+  const handleDeletePost = (post: CommonsPost) => {
+    setConfirmAction({ kind: 'delete', post });
+  };
+
+  const executeDeletePost = async (post: CommonsPost) => {
+    setConfirmBusy(true);
     try {
       const headers = await getAdminHeaders();
       const resp = await fetch(`/api/posts/${encodeURIComponent(post.id)}`, {
@@ -112,10 +122,13 @@ export function AdminCommonsPage() {
       setActionNotice('Post permanently deleted from Cloudflare D1.');
     } catch (err: any) {
       setActionNotice(`Delete failed: ${err.message}`);
+    } finally {
+      setConfirmBusy(false);
+      setConfirmAction(null);
     }
   };
 
-  const handleBanAuthor = async (post: CommonsPost) => {
+  const handleBanAuthor = (post: CommonsPost) => {
     if (!hasPermission('users.suspend', post.id)) {
       setAccessRequestTarget({
         permission: 'users.suspend',
@@ -124,12 +137,13 @@ export function AdminCommonsPage() {
       });
       return;
     }
+    setConfirmAction({ kind: 'ban', post });
+  };
+
+  const executeBanAuthor = async (post: CommonsPost) => {
+    setConfirmBusy(true);
     try {
       const authorUid = (post as any).realAuthorUid || post.authorUid;
-      if (!window.confirm(`Ban author of "${post.title}" from publishing in Boardly Commons?`)) {
-        return;
-      }
-
       const headers = await getAdminHeaders();
       const resp = await fetch('/api/posts/moderation/ban', {
         method: 'POST',
@@ -147,6 +161,9 @@ export function AdminCommonsPage() {
       setActionNotice(`Author of "${post.title}" has been banned from posting.`);
     } catch (err: any) {
       setActionNotice(`Ban failed: ${err.message}`);
+    } finally {
+      setConfirmBusy(false);
+      setConfirmAction(null);
     }
   };
 
@@ -288,6 +305,34 @@ export function AdminCommonsPage() {
           </div>
         )}
       </div>
+
+      <AdminConfirmDialog
+        open={Boolean(confirmAction)}
+        onClose={() => !confirmBusy && setConfirmAction(null)}
+        onConfirm={() => {
+          if (!confirmAction) return;
+          if (confirmAction.kind === 'delete') {
+            void executeDeletePost(confirmAction.post);
+          } else {
+            void executeBanAuthor(confirmAction.post);
+          }
+        }}
+        title={
+          confirmAction?.kind === 'delete'
+            ? 'Permanently delete post?'
+            : 'Ban author from Boardly Commons?'
+        }
+        description={
+          confirmAction?.kind === 'delete'
+            ? `Are you sure you want to permanently delete "${confirmAction.post.title}"? This cannot be undone.`
+            : confirmAction
+            ? `Ban author of "${confirmAction.post.title}" from publishing in Boardly Commons?`
+            : undefined
+        }
+        confirmLabel={confirmAction?.kind === 'delete' ? 'Delete post' : 'Ban author'}
+        busy={confirmBusy}
+        danger
+      />
 
       {accessRequestTarget && (
         <RequestAccessSheet

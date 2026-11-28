@@ -30,6 +30,7 @@ import {
   Pill,
   StickyActionBar,
   Skeleton,
+  AdminConfirmDialog,
 } from '@/components/admin/AdminGlassPrimitives';
 import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 import { pluralize } from '@/utils/adminLabels';
@@ -692,48 +693,16 @@ export function AdminPlansPage() {
         onResetDefaults={() => setConfirmResetOpen(true)}
       />
 
-      {/* Confirm Reset to Defaults Modal */}
-      {confirmResetOpen && (
-        <div
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          className="fixed inset-0 z-[10030] flex items-center justify-center p-4"
-        >
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-md"
-            onClick={() => setConfirmResetOpen(false)}
-          />
-          <div
-            className={`relative w-full max-w-sm p-5 space-y-4 ${
-              glassEnabled
-                ? 'ag-sheet-panel rounded-[22px]'
-                : 'rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-2xl'
-            }`}
-          >
-            <DotHeading as="h3" size="section">
-              Reset plan settings to defaults?
-            </DotHeading>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              This will load the built-in default PKR prices, Koban costs, annual discount, and daily AI credit allowances into the form. You can review them before clicking Save.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setConfirmResetOpen(false)}
-                className="px-3.5 py-2 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleResetDefaults}
-                className="px-4 py-2 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white text-xs font-heading font-semibold cursor-pointer"
-              >
-                Load defaults
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm Reset to Defaults Modal (Solid Opaque) */}
+      <AdminConfirmDialog
+        open={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        onConfirm={handleResetDefaults}
+        title="Reset plan settings to defaults?"
+        description="This will load the built-in default PKR prices, Koban costs, annual discount, and daily AI credit allowances into the form. You can review them before clicking Save."
+        confirmLabel="Load defaults"
+        danger
+      />
     </div>
   );
 }

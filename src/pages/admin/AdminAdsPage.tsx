@@ -31,24 +31,32 @@ import {
   type BoardlyOffer,
 } from '@/config/ads';
 import {
-  fetchAdminAdsConfig,
   fetchAdminAdsStats,
   resetAdminAdsConfig,
   saveAdminAdsConfig,
   type AdminAdsStatsResponse,
 } from '@/services/adsConfigService';
+import {
+  getCachedAdminAds,
+  fetchAdminAdsSWR,
+  setCachedAdminAdsConfig,
+} from '@/services/adminTabCache';
 import { AdSlot } from '@/components/AdSlot';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
 import {
+  AdminButton,
+  AdminConfirmDialog,
+  AdminOverlay,
+  AdminStatGrid,
   DotHeading,
   GlassCard,
+  MonoLabel,
   Pill,
   Segmented,
   SkeletonListRows,
   SkeletonMetricCard,
   StickyActionBar,
 } from '@/components/admin/AdminGlassPrimitives';
-import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 import { formatAdSlotLabel } from '@/utils/adminLabels';
 
 type AdsTabId = 'global' | 'slots' | 'offers' | 'promo' | 'stats';
@@ -109,18 +117,22 @@ function ToggleSwitch({
 }
 
 export function AdminAdsPage() {
-  const { enabled: glassEnabled } = useAdminGlassFlag();
+  const initialAdsCache = getCachedAdminAds();
   const [activeTab, setActiveTab] = useState<AdsTabId>('global');
-  const [config, setConfig] = useState<AdsConfigDoc>(() => createDefaultAdsConfig());
-  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<AdsConfigDoc>(
+    () => initialAdsCache?.config ?? createDefaultAdsConfig()
+  );
+  const [loading, setLoading] = useState<boolean>(() => !initialAdsCache);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState<boolean>(() => Boolean(initialAdsCache));
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Confirm reset modal
+  // Confirm reset & delete offer modals
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [deleteOfferTarget, setDeleteOfferTarget] = useState<BoardlyOffer | null>(null);
 
   // Phone-frame slot preview modal
   const [previewSlotId, setPreviewSlotId] = useState<AdSlotId | null>(null);
@@ -132,14 +144,28 @@ export function AdminAdsPage() {
   // Stats tab state
   const [statsDays, setStatsDays] = useState<7 | 30>(7);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [statsData, setStatsData] = useState<AdminAdsStatsResponse | null>(null);
+  const [statsData, setStatsData] = useState<AdminAdsStatsResponse | null>(
+    () => initialAdsCache?.stats ?? null
+  );
 
-  const loadConfig = useCallback(async () => {
-    setLoading(true);
+  const loadConfig = useCallback(async (force = false) => {
+    const cached = getCachedAdminAds();
+    if (!cached) {
+      setLoading(true);
+    }
     setErrorMsg(null);
     try {
-      const data = await fetchAdminAdsConfig();
-      setConfig(data);
+      const data = await fetchAdminAdsSWR({
+        force,
+        onUpdate: (fresh) => {
+          setConfig(fresh.config);
+          if (fresh.stats) setStatsData((prev) => prev || fresh.stats);
+          setHasLoadedOnce(true);
+        },
+      });
+      setConfig(data.config);
+      if (data.stats) setStatsData((prev) => prev || data.stats);
+      setHasLoadedOnce(true);
       setHasUnsavedChanges(false);
     } catch (err) {
       setErrorMsg(sanitizeUserErrorMessage(err, 'Something went wrong. Please try again.', 'AdminAdsPage.load'));
@@ -149,7 +175,7 @@ export function AdminAdsPage() {
   }, []);
 
   useEffect(() => {
-    loadConfig();
+    void loadConfig(false);
   }, [loadConfig]);
 
   const loadStats = useCallback(async (days: 7 | 30) => {
@@ -166,7 +192,7 @@ export function AdminAdsPage() {
 
   useEffect(() => {
     if (activeTab === 'stats') {
-      loadStats(statsDays);
+      void loadStats(statsDays);
     }
   }, [activeTab, statsDays, loadStats]);
 
@@ -183,6 +209,7 @@ export function AdminAdsPage() {
     try {
       const saved = await saveAdminAdsConfig(config);
       setConfig(saved);
+      setCachedAdminAdsConfig(saved);
       setHasUnsavedChanges(false);
       setSavedNotice('Saved');
       window.setTimeout(() => setSavedNotice(null), 4000);
@@ -200,6 +227,7 @@ export function AdminAdsPage() {
     try {
       const resetDoc = await resetAdminAdsConfig();
       setConfig(resetDoc);
+      setCachedAdminAdsConfig(resetDoc);
       setHasUnsavedChanges(false);
       setConfirmResetOpen(false);
       setEditingOfferId(null);
@@ -341,75 +369,101 @@ export function AdminAdsPage() {
   const previewSlotConfig = previewSlotId ? config.slots[previewSlotId] : null;
 
   return (
-    <div data-admin-page="ads" className="space-y-6 pb-28 max-w-6xl mx-auto">
-      {/* Header + Save / Reset Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-mono uppercase tracking-widest text-[#E8353B] font-semibold">
-            Monetization &amp; Promotions
+    <div data-admin-page="ads" className="space-y-5 pb-28 max-w-6xl mx-auto">
+      {/* Question-Bank Hero Card */}
+      <GlassCard variant="hero" padding="lg" className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="space-y-1">
+            <MonoLabel>Monetization &amp; Promotions</MonoLabel>
+            <DotHeading as="h1" size="page">
+              Ads &amp; Offers Control
+            </DotHeading>
+            <p className="text-[13px] text-[var(--text-muted)] max-w-xl">
+              Control Google AdSense slots, Boardly offers, and promo codes live with no redeploy. Changes take effect within ~1 minute.
+            </p>
           </div>
-          <DotHeading as="h1" size="page" className="mt-0.5">
-            Ads &amp; Offers Control
-          </DotHeading>
-          <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1">
-            Control Google AdSense slots, Boardly offers, and promo codes live with no redeploy. Changes take effect within ~1 minute.
-          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton
+              variant="secondary"
+              onClick={() => setConfirmResetOpen(true)}
+              disabled={loading || saving || resetting}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset to defaults</span>
+            </AdminButton>
+
+            <AdminButton
+              variant="primary"
+              onClick={handleSave}
+              disabled={loading || saving}
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : savedNotice ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              <span>{saving ? 'Saving…' : savedNotice ? 'Saved' : 'Save changes'}</span>
+            </AdminButton>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setConfirmResetOpen(true)}
-            disabled={loading || saving || resetting}
-            className="inline-flex items-center gap-1.5 rounded-xl ag-flat-card px-3.5 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:text-red-500 hover:border-red-500/40 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span>Reset to defaults</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={loading || saving}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-colors cursor-pointer disabled:opacity-60"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : savedNotice ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            <span>{saving ? 'Saving...' : savedNotice ? 'Saved' : 'Save changes'}</span>
-          </button>
-        </div>
-      </div>
+        <AdminStatGrid
+          columns={4}
+          items={[
+            {
+              label: 'Master Switch',
+              value: loading && !hasLoadedOnce ? '—' : config.adsEnabled ? 'Active' : 'Paused',
+              tone: config.adsEnabled ? 'success' : 'warning',
+              sublabel: 'Global delivery',
+            },
+            {
+              label: 'Active Slots',
+              value: loading && !hasLoadedOnce ? '—' : `${enabledSlotsCount} / ${AD_SLOT_ORDER.length}`,
+              sublabel: 'Enabled placements',
+            },
+            {
+              label: 'Active Offers',
+              value: loading && !hasLoadedOnce ? '—' : `${activeOfferCount} / ${config.offers.length}`,
+              tone: 'accent',
+              sublabel: 'Live Boardly promos',
+            },
+            {
+              label: 'Checkout Promo',
+              value: config.promoCode.active ? config.promoCode.code || 'ON' : 'Off',
+              sublabel: config.promoCode.active ? `${config.promoCode.percentOff}% off` : 'Disabled',
+            },
+          ]}
+        />
+      </GlassCard>
 
       {/* Feedback Banners */}
       {savedNotice && (
-        <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-          <Check className="h-4 w-4 shrink-0" />
+        <div className="rounded-[16px] border border-emerald-500/40 bg-emerald-500/12 px-4 py-3 text-xs sm:text-sm font-semibold text-emerald-300 flex items-center gap-2">
+          <Check className="h-4 w-4 shrink-0 text-emerald-400" />
           <span>{savedNotice} — live settings will refresh for visitors within 60 seconds.</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="rounded-2xl border border-red-500/35 bg-red-500/10 px-4 py-2.5 text-xs sm:text-sm font-medium text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+        <div className="rounded-[16px] border border-red-500/40 bg-red-500/12 px-4 py-3 text-xs sm:text-sm font-medium text-red-300 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" />
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
             <span>{errorMsg}</span>
           </div>
-          <button
-            type="button"
-            onClick={loadConfig}
-            className="underline text-xs font-semibold cursor-pointer"
+          <AdminButton
+            variant="pill"
+            onClick={() => void loadConfig(true)}
+            className="!min-h-[34px] !py-1 !px-3"
           >
             Retry
-          </button>
+          </AdminButton>
         </div>
       )}
 
-      {/* Responsive Glass Segmented Tab Bar */}
+      {/* Question-Bank Pill Tab Bar */}
       <Segmented
         ariaLabel="Ads and offers sections"
         value={activeTab}
@@ -424,7 +478,7 @@ export function AdminAdsPage() {
         })}
       />
 
-      {loading ? (
+      {loading && !hasLoadedOnce ? (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <SkeletonMetricCard />
@@ -562,14 +616,14 @@ export function AdminAdsPage() {
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0">
-                        <button
-                          type="button"
+                        <AdminButton
+                          variant="secondary"
                           onClick={() => setPreviewSlotId(slotId)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] transition-colors cursor-pointer"
+                          className="!min-h-[38px] !py-1.5 !px-3 !text-xs"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>Preview</span>
-                        </button>
+                        </AdminButton>
                         <ToggleSwitch
                           checked={slot.enabled}
                           onChange={(next) => updateSlot(slotId, { enabled: next })}
@@ -695,14 +749,14 @@ export function AdminAdsPage() {
                 <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
                   Expired or inactive offers are automatically skipped and never shown to visitors.
                 </p>
-                <button
-                  type="button"
+                <AdminButton
+                  variant="primary"
                   onClick={handleAddOffer}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-3.5 py-2 text-xs font-semibold text-white transition-colors cursor-pointer shrink-0"
+                  className="!min-h-[40px] !py-2 !px-3.5 !text-xs shrink-0"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add offer</span>
-                </button>
+                </AdminButton>
               </div>
 
               <div className="space-y-3">
@@ -757,30 +811,32 @@ export function AdminAdsPage() {
                             onChange={(next) => updateOffer(offer.id, { active: next })}
                             label={`Toggle offer ${offer.id}`}
                           />
-                          <button
-                            type="button"
+                          <AdminButton
+                            variant="secondary"
                             onClick={() => setEditingOfferId(isEditing ? null : offer.id)}
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] cursor-pointer transition-colors"
+                            className="!min-h-[38px] !py-1.5 !px-3 !text-xs"
                           >
                             {isEditing ? 'Done' : 'Edit'}
-                          </button>
-                          <button
-                            type="button"
+                          </AdminButton>
+                          <AdminButton
+                            variant="icon"
                             onClick={() => handleDuplicateOffer(offer)}
                             title="Duplicate offer"
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 p-2 text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
+                            aria-label={`Duplicate ${offer.title}`}
+                            className="!w-10 !h-10 !min-w-[40px] !min-h-[40px]"
                           >
                             <Copy className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
+                          </AdminButton>
+                          <AdminButton
+                            variant="danger"
                             disabled={config.offers.length <= 1}
-                            onClick={() => handleDeleteOffer(offer.id)}
+                            onClick={() => setDeleteOfferTarget(offer)}
                             title="Delete offer"
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 p-2 text-red-500 hover:bg-red-500/10 cursor-pointer disabled:opacity-40"
+                            aria-label={`Delete ${offer.title}`}
+                            className="!min-h-[40px] !min-w-[40px] !px-2.5"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          </AdminButton>
                         </div>
                       </div>
 
@@ -1017,15 +1073,15 @@ export function AdminAdsPage() {
                       </button>
                     ))}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => loadStats(statsDays)}
+                  <AdminButton
+                    variant="secondary"
+                    onClick={() => void loadStats(statsDays)}
                     disabled={statsLoading}
-                    className="inline-flex items-center gap-1 rounded-xl ag-flat-card px-3 py-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer"
+                    className="!min-h-[38px] !py-1.5 !px-3 !text-xs"
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
                     <span>Refresh</span>
-                  </button>
+                  </AdminButton>
                 </div>
               </div>
 
@@ -1236,82 +1292,38 @@ export function AdminAdsPage() {
         disabled={loading || saving}
       />
 
-      {/* ================= PHONE-SIZE PREVIEW MODAL ================= */}
-      {previewSlotConfig && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${previewSlotConfig.id}`}
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          onClick={() => setPreviewSlotId(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className={`${
-              glassEnabled
-                ? 'ag-sheet-panel rounded-[28px]'
-                : 'rounded-3xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl'
-            } w-full max-w-[410px] overflow-hidden`}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--bg)]/50">
-              <div className="flex items-center gap-2 min-w-0">
-                <Smartphone className="h-4 w-4 text-[#E8353B] shrink-0" />
-                <span className="text-xs font-bold text-[var(--text)] truncate">
-                  {formatAdSlotLabel(previewSlotConfig.id, previewSlotConfig.name)}{' '}
-                  <code className="font-mono text-[10px] text-[var(--text-muted)] font-normal">
-                    {previewSlotConfig.id}
-                  </code>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewSlotId(null)}
-                className="p-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      {/* ================= PHONE-SIZE PREVIEW MODAL (SOLID OPAQUE) ================= */}
+      <AdminOverlay
+        open={Boolean(previewSlotConfig)}
+        onClose={() => setPreviewSlotId(null)}
+        mode="modal"
+        title={previewSlotConfig ? formatAdSlotLabel(previewSlotConfig.id, previewSlotConfig.name) : 'Slot Preview'}
+        subtitle={previewSlotConfig?.id}
+        maxWidthClass="max-w-[430px]"
+      >
+        {previewSlotConfig && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#2c2c30]">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#d4d4dc]">
+                <Smartphone className="h-4 w-4 text-[#E8353B]" />
+                <span>View as</span>
+              </span>
+              <Segmented
+                ariaLabel="Preview viewer type"
+                value={previewViewer}
+                onChange={setPreviewViewer}
+                options={[
+                  { value: 'guest', label: 'Guest' },
+                  { value: 'free', label: 'Free' },
+                  { value: 'paid', label: 'Pro/Plus' },
+                ]}
+              />
             </div>
 
-            <div className="px-4 py-2.5 border-b border-[var(--border)] bg-[var(--bg)]/40 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">View as</span>
-              <div
-                role="radiogroup"
-                aria-label="Preview viewer type"
-                className="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--bg)] p-0.5 gap-0.5"
-              >
-                {(
-                  [
-                    { id: 'guest', label: 'Guest' },
-                    { id: 'free', label: 'Free' },
-                    { id: 'paid', label: 'Pro/Plus' },
-                  ] as const
-                ).map((opt) => {
-                  const active = previewViewer === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={active}
-                      onClick={() => setPreviewViewer(opt.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
-                        active
-                          ? 'bg-[#E8353B] text-white shadow-sm'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text)]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="p-4 flex justify-center">
-              <div className="w-[375px] max-w-full rounded-[28px] border-2 border-[var(--border-strong)] bg-[var(--bg)] p-4 space-y-3 shadow-inner">
-                <div className="h-2 w-16 rounded-full bg-[var(--border-strong)] mx-auto mb-2" />
-                <div className="rounded-xl bg-[var(--surface-muted)]/60 h-14 flex items-center justify-center text-[11px] text-[var(--text-muted)]">
+            <div className="flex justify-center">
+              <div className="w-[375px] max-w-full rounded-[28px] border-2 border-[#3a3a3a] bg-[#0e0e10] p-4 space-y-3 shadow-inner">
+                <div className="h-1.5 w-16 rounded-full bg-[#3a3a3a] mx-auto mb-2" />
+                <div className="rounded-xl bg-[#1c1c20] h-14 flex items-center justify-center text-[11px] text-[#9c9ca6]">
                   Content above slot
                 </div>
                 <AdSlot
@@ -1322,61 +1334,46 @@ export function AdminAdsPage() {
                   previewAs={previewViewer}
                   compact
                 />
-                <div className="rounded-xl bg-[var(--surface-muted)]/60 h-14 flex items-center justify-center text-[11px] text-[var(--text-muted)]">
+                <div className="rounded-xl bg-[#1c1c20] h-14 flex items-center justify-center text-[11px] text-[#9c9ca6]">
                   Content below slot
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </AdminOverlay>
 
-      {/* ================= RESET CONFIRMATION MODAL ================= */}
-      {confirmResetOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Reset ad settings to defaults"
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          onClick={() => !resetting && setConfirmResetOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className={`${
-              glassEnabled
-                ? 'ag-sheet-panel rounded-[22px]'
-                : 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl'
-            } w-full max-w-md p-6 space-y-4`}
-          >
-            <DotHeading as="h3" size="section">
-              Reset all ad settings to defaults?
-            </DotHeading>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-              This will restore all 14 slots, all 9 default Boardly offers, global toggles, and the default <code className="font-mono font-bold">EARLY21</code> promo code. Any custom Google Slot IDs or edited offers will be overwritten.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                disabled={resetting}
-                onClick={() => setConfirmResetOpen(false)}
-                className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={resetting}
-                onClick={handleConfirmReset}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs font-semibold text-white cursor-pointer disabled:opacity-60 transition-colors"
-              >
-                {resetting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                <span>Yes, reset to defaults</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ================= DELETE OFFER CONFIRMATION (SOLID OPAQUE) ================= */}
+      <AdminConfirmDialog
+        open={Boolean(deleteOfferTarget)}
+        onClose={() => setDeleteOfferTarget(null)}
+        onConfirm={() => {
+          if (!deleteOfferTarget) return;
+          const id = deleteOfferTarget.id;
+          setDeleteOfferTarget(null);
+          handleDeleteOffer(id);
+        }}
+        title="Delete Boardly offer?"
+        description={
+          deleteOfferTarget
+            ? `Remove "${deleteOfferTarget.title}" (${deleteOfferTarget.id})? Any slot pointing to it will fall back to your first active offer. Remember to Save changes afterwards.`
+            : undefined
+        }
+        confirmLabel="Delete offer"
+        danger
+      />
+
+      {/* ================= RESET CONFIRMATION MODAL (SOLID OPAQUE) ================= */}
+      <AdminConfirmDialog
+        open={confirmResetOpen}
+        onClose={() => setConfirmResetOpen(false)}
+        onConfirm={() => void handleConfirmReset()}
+        title="Reset all ad settings to defaults?"
+        description="This will restore all 14 slots, all 9 default Boardly offers, global toggles, and the default EARLY21 promo code. Any custom Google Slot IDs or edited offers will be overwritten."
+        confirmLabel="Yes, reset to defaults"
+        busy={resetting}
+        danger
+      />
     </div>
   );
 }

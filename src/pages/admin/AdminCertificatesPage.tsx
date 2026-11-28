@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Award,
-  Search,
   RefreshCw,
   Download,
   ShieldAlert,
@@ -45,13 +44,20 @@ import {
 } from '../../components/admin/GrandLineScheduleSheet';
 import { GrandLineTestsAdminSection } from '../../components/admin/GrandLineTestsAdminSection';
 import {
+  AdminButton,
+  AdminConfirmDialog,
+  AdminEmptyState,
+  AdminOverlay,
+  AdminSearchFilterBar,
+  AdminStatGrid,
   DotHeading,
   GlassCard,
+  MonoLabel,
   Pill,
   Segmented,
   SkeletonListRows,
+  useDebouncedValue,
 } from '../../components/admin/AdminGlassPrimitives';
-import { useAdminGlassFlag } from '../../utils/adminGlassFlag';
 import {
   formatSignatureLabel,
   formatThemeLabel,
@@ -69,10 +75,10 @@ const CERTIFICATES_PAGE_SIZE = 20;
  * 3. Settings > Certificate Signature manager (upload or draw pad, white-bg removal, light/dark preview, version history).
  */
 export const AdminCertificatesPage: React.FC = () => {
-  const { enabled: glassEnabled } = useAdminGlassFlag();
   const { hasPermission, refreshActiveGrants } = useAuth();
   const canIssueCerts = hasPermission('certificates.issue');
   const [confirmRevokeCert, setConfirmRevokeCert] = useState<StudentCertificateRecord | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [requestAccessModal, setRequestAccessModal] = useState<{
     permission: PermissionKey;
     actionLabel: string;
@@ -80,7 +86,8 @@ export const AdminCertificatesPage: React.FC = () => {
     targetLabel?: string | null;
   } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const nowMs = useServerSyncedClock(1000);
+  // 60s cadence avoids 60x/min full-page re-renders while keeping mock status labels accurate
+  const nowMs = useServerSyncedClock(60_000);
   const initialTab =
     searchParams.get('tab') === 'signature'
       ? 'signature'
@@ -109,6 +116,7 @@ export const AdminCertificatesPage: React.FC = () => {
   );
 
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery, 400);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'revoked'>('all');
   const [selectedMockId, setSelectedMockId] = useState<string>(
     () => initialCertsCache?.mocks?.[0]?.id || ''
@@ -158,7 +166,7 @@ export const AdminCertificatesPage: React.FC = () => {
   const loadData = useCallback(
     async (force = false) => {
       const cached = getCachedAdminCertificates({
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
       });
       if (!cached) {
@@ -169,7 +177,7 @@ export const AdminCertificatesPage: React.FC = () => {
       }
       try {
         const res = await fetchAdminCertificatesSWR({
-          search: searchQuery || undefined,
+          search: debouncedSearch || undefined,
           status: statusFilter !== 'all' ? statusFilter : undefined,
           force,
           onUpdate: applyCertsData,
@@ -187,12 +195,25 @@ export const AdminCertificatesPage: React.FC = () => {
         }
       }
     },
-    [searchQuery, statusFilter, applyCertsData]
+    [debouncedSearch, statusFilter, applyCertsData]
   );
 
   useEffect(() => {
     void loadData(false);
   }, [loadData]);
+
+  useEffect(() => {
+    setVisibleCount(CERTIFICATES_PAGE_SIZE);
+  }, [debouncedSearch, statusFilter]);
+
+  const activeCertCount = useMemo(
+    () => certificates.filter((c) => c.status === 'active').length,
+    [certificates]
+  );
+  const revokedCertCount = useMemo(
+    () => certificates.filter((c) => c.status === 'revoked').length,
+    [certificates]
+  );
 
   const switchTab = (tab: 'certificates' | 'themes' | 'signature') => {
     setActiveTab(tab);
@@ -358,54 +379,82 @@ export const AdminCertificatesPage: React.FC = () => {
   const selectedMock = mocks.find((m) => m.id === selectedMockId) || mocks[0] || null;
 
   return (
-    <div data-admin-page="certificates" className="space-y-6 pb-24">
-      {/* Header */}
-      <div className="flex items-start sm:items-center justify-between gap-4 flex-wrap">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-widest text-[#E8353B] font-semibold">
-            Grand Line Excellence Credentials
+    <div data-admin-page="certificates" className="space-y-5 pb-24">
+      {/* Question-Bank Hero Card */}
+      <GlassCard variant="hero" padding="lg" className="space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <MonoLabel>Grand Line Excellence Credentials</MonoLabel>
+            <DotHeading as="h1" size="page">
+              Certificates &amp; Signature
+            </DotHeading>
           </div>
-          <DotHeading as="h1" size="page" className="mt-0.5">
-            Certificates &amp; Admin Signature
-          </DotHeading>
+
+          <Segmented
+            ariaLabel="Certificate management sections"
+            value={activeTab}
+            onChange={switchTab}
+            options={[
+              {
+                value: 'certificates',
+                label: 'Issued',
+                count: certificates.length,
+                icon: <Award size={14} />,
+              },
+              {
+                value: 'themes',
+                label: 'Mock Designs',
+                count: mocks.length,
+                icon: <Palette size={14} />,
+              },
+              {
+                value: 'signature',
+                label: 'Signature',
+                icon: <PenTool size={14} />,
+              },
+            ]}
+          />
         </div>
 
-        {/* Navigation Tabs */}
-        <Segmented
-          ariaLabel="Certificate management sections"
-          value={activeTab}
-          onChange={switchTab}
-          options={[
+        <AdminStatGrid
+          columns={4}
+          items={[
             {
-              value: 'certificates',
-              label: 'Issued',
-              count: certificates.length,
-              icon: <Award size={14} />,
+              label: 'Issued Total',
+              value: loading && !hasLoadedOnce ? '—' : certificates.length,
+              sublabel: 'Grand Line credentials',
             },
             {
-              value: 'themes',
-              label: 'Mock Designs',
-              count: mocks.length,
-              icon: <Palette size={14} />,
+              label: 'Active',
+              value: loading && !hasLoadedOnce ? '—' : activeCertCount,
+              tone: 'success',
+              sublabel: 'Verified online',
             },
             {
-              value: 'signature',
+              label: 'Revoked',
+              value: loading && !hasLoadedOnce ? '—' : revokedCertCount,
+              tone: revokedCertCount > 0 ? 'accent' : 'default',
+              sublabel: 'Withdrawn status',
+            },
+            {
               label: 'Signature',
-              icon: <PenTool size={14} />,
+              value: hasActiveSignature ? `v${activeSignature?.version || 1}` : 'Missing',
+              tone: hasActiveSignature ? 'default' : 'warning',
+              sublabel: hasActiveSignature ? activeSignature?.signatoryName || 'Ready' : 'Upload required',
             },
           ]}
         />
-      </div>
+      </GlassCard>
 
       {/* Global Warning Banner when no active signature is set */}
       {!loading && !hasActiveSignature && activeTab !== 'signature' && (
         <GlassCard
           variant="glass"
           padding="sm"
-          className="border-amber-500/40 bg-amber-500/10 flex items-center justify-between gap-3 flex-wrap"
+          className="border-amber-500/40 flex items-center justify-between gap-3 flex-wrap"
         >
           <div className="flex items-center gap-3">
-            <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <AlertCircle size={18} className="text-amber-400 shrink-0" />
             <div>
               <div className="text-xs sm:text-sm font-bold text-[var(--text)]">
                 Add your signature to finish certificates
@@ -415,13 +464,13 @@ export const AdminCertificatesPage: React.FC = () => {
               </p>
             </div>
           </div>
-          <button
-            type="button"
+          <AdminButton
+            variant="primary"
             onClick={() => switchTab('signature')}
-            className="min-h-[42px] px-4 py-2 rounded-xl bg-amber-500 text-black text-xs font-bold hover:opacity-90 cursor-pointer"
+            className="!min-h-[40px] !py-2 !px-3.5 !text-xs"
           >
             Open Signature Manager
-          </button>
+          </AdminButton>
         </GlassCard>
       )}
 
@@ -455,60 +504,58 @@ export const AdminCertificatesPage: React.FC = () => {
       {activeTab === 'certificates' && (
         <div className="space-y-4">
           {/* Search, Filter & Regenerate All Bar */}
-          <GlassCard
-            variant="glass"
-            padding="sm"
-            className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3"
-          >
-            <div className="flex flex-1 items-center gap-2.5 flex-wrap">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-                />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search student, serial (BDLY-GL01-0001), or mock..."
-                  className="w-full min-h-[42px] pl-9 pr-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 text-xs text-[var(--text)] focus:outline-none focus:border-[#E8353B]"
-                />
+          <GlassCard variant="glass" padding="md" className="space-y-3">
+            <AdminSearchFilterBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search student, serial (BDLY-GL01-0001), or mock…"
+              onOpenFilters={() => setFiltersOpen(true)}
+              activeFilterCount={statusFilter !== 'all' ? 1 : 0}
+            />
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(
+                  [
+                    { id: 'all', label: 'All Statuses' },
+                    { id: 'active', label: 'Active Only' },
+                    { id: 'revoked', label: 'Revoked Only' },
+                  ] as const
+                ).map((opt) => (
+                  <AdminButton
+                    key={opt.id}
+                    variant={statusFilter === opt.id ? 'primary' : 'pill'}
+                    onClick={() => setStatusFilter(opt.id)}
+                    className="!min-h-[36px] !py-1.5 !px-3 !text-xs"
+                  >
+                    {opt.label}
+                  </AdminButton>
+                ))}
               </div>
 
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                aria-label="Filter by certificate status"
-                className="min-h-[42px] px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 text-xs text-[var(--text)]"
-              >
-                <option value="all">All Statuses</option>
-                <option value="active">Active Only</option>
-                <option value="revoked">Revoked Only</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => void handleRegenerateAll()}
-                disabled={regeneratingAll || certificates.length === 0}
-                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
-              >
-                <RefreshCw size={13} className={regeneratingAll ? 'animate-spin' : ''} />
-                <span>
-                  {regeneratingAll
-                    ? 'Regenerating All...'
-                    : 'Regenerate All with Current Signature'}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void loadData(true)}
-                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-                <span>Refresh</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <AdminButton
+                  variant="secondary"
+                  onClick={() => void handleRegenerateAll()}
+                  disabled={regeneratingAll || certificates.length === 0}
+                  className="!min-h-[40px] !py-2 !px-3.5 !text-xs"
+                >
+                  <RefreshCw size={13} className={regeneratingAll ? 'animate-spin' : ''} />
+                  <span>
+                    {regeneratingAll
+                      ? 'Regenerating All…'
+                      : 'Regenerate All with Current Signature'}
+                  </span>
+                </AdminButton>
+                <AdminButton
+                  variant="secondary"
+                  onClick={() => void loadData(true)}
+                  className="!min-h-[40px] !py-2 !px-3.5 !text-xs"
+                >
+                  <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                  <span>Refresh</span>
+                </AdminButton>
+              </div>
             </div>
           </GlassCard>
 
@@ -516,14 +563,24 @@ export const AdminCertificatesPage: React.FC = () => {
           {loading && !hasLoadedOnce && certificates.length === 0 ? (
             <SkeletonListRows rows={4} />
           ) : certificates.length === 0 ? (
-            <GlassCard variant="flat" padding="lg" className="text-center space-y-2">
-              <div className="text-sm font-bold text-[var(--text)]">
-                No certificates matching your filter
-              </div>
-              <p className="text-xs text-[var(--text-muted)]">
-                When a Grand Line mock&apos;s results are finalised, 1st-position certificates appear here automatically.
-              </p>
-            </GlassCard>
+            <AdminEmptyState
+              icon={<Award size={22} />}
+              title="No certificates matching your filter"
+              description="When a Grand Line mock's results are finalised, 1st-position certificates appear here automatically."
+              action={
+                (searchQuery.trim() || statusFilter !== 'all') && (
+                  <AdminButton
+                    variant="secondary"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setStatusFilter('all');
+                    }}
+                  >
+                    Clear filters
+                  </AdminButton>
+                )
+              }
+            />
           ) : (
             <div className="space-y-2.5">
               {certificates.slice(0, visibleCount).map((cert) => {
@@ -579,8 +636,8 @@ export const AdminCertificatesPage: React.FC = () => {
 
                     {/* Row Actions */}
                     <div className="flex items-center gap-2 flex-wrap shrink-0">
-                      <button
-                        type="button"
+                      <AdminButton
+                        variant="primary"
                         onClick={() =>
                           void downloadCertificateFile({
                             certificateId: cert.id,
@@ -590,14 +647,14 @@ export const AdminCertificatesPage: React.FC = () => {
                             certificate: cert,
                           })
                         }
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                        className="!min-h-[40px] !py-1.5 !px-3 !text-xs"
                       >
                         <Download size={13} />
                         <span>PDF</span>
-                      </button>
+                      </AdminButton>
 
-                      <button
-                        type="button"
+                      <AdminButton
+                        variant="secondary"
                         onClick={() =>
                           void downloadCertificateFile({
                             certificateId: cert.id,
@@ -607,25 +664,25 @@ export const AdminCertificatesPage: React.FC = () => {
                             certificate: cert,
                           })
                         }
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                        className="!min-h-[40px] !py-1.5 !px-3 !text-xs"
                       >
                         <Download size={13} />
                         <span>PNG</span>
-                      </button>
+                      </AdminButton>
 
-                      <button
-                        type="button"
+                      <AdminButton
+                        variant="secondary"
                         disabled={isBusy}
                         onClick={() => void handleRegenerateOne(cert)}
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                        className="!min-h-[40px] !py-1.5 !px-3 !text-xs"
                         title="Regenerate with current signature and mock theme"
                       >
                         <RefreshCw size={13} className={isBusy ? 'animate-spin' : ''} />
                         <span>Regenerate</span>
-                      </button>
+                      </AdminButton>
 
-                      <button
-                        type="button"
+                      <AdminButton
+                        variant={cert.status === 'revoked' ? 'secondary' : 'danger'}
                         disabled={isBusy}
                         onClick={() => {
                           if (cert.status === 'revoked') {
@@ -634,11 +691,7 @@ export const AdminCertificatesPage: React.FC = () => {
                             setConfirmRevokeCert(cert);
                           }
                         }}
-                        className={`min-h-[40px] px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-                          cert.status === 'revoked'
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                            : 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400'
-                        }`}
+                        className="!min-h-[40px] !py-1.5 !px-3 !text-xs"
                       >
                         {cert.status === 'revoked' ? (
                           <>
@@ -651,11 +704,11 @@ export const AdminCertificatesPage: React.FC = () => {
                             <span>Revoke</span>
                           </>
                         )}
-                      </button>
+                      </AdminButton>
 
                       <Link
                         to={`/verify/${encodeURIComponent(cert.serial)}`}
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-mono text-[var(--text-muted)] hover:text-[var(--text)] inline-flex items-center gap-1"
+                        className="ag-ios-btn ag-ios-btn--pill !min-h-[40px] !py-1.5 !px-3 !text-xs font-mono no-underline"
                       >
                         <span>Verify</span>
                         <ExternalLink size={12} />
@@ -666,15 +719,14 @@ export const AdminCertificatesPage: React.FC = () => {
               })}
               {certificates.length > visibleCount && (
                 <div className="pt-2 flex justify-center">
-                  <button
-                    type="button"
+                  <AdminButton
+                    variant="secondary"
                     onClick={() =>
                       setVisibleCount((prev) => prev + CERTIFICATES_PAGE_SIZE)
                     }
-                    className="min-h-[40px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] cursor-pointer transition-colors"
                   >
                     Load more certificates ({certificates.length - visibleCount} remaining)
-                  </button>
+                  </AdminButton>
                 </div>
               )}
             </div>
@@ -799,15 +851,10 @@ export const AdminCertificatesPage: React.FC = () => {
                     }}
                   />
 
-                  <button
-                    type="button"
+                  <AdminButton
+                    variant={hasPermission('certificates.issue', selectedMock.id) ? 'primary' : 'secondary'}
                     disabled={busyId === selectedMock.id}
                     onClick={() => void handleFinaliseMock(selectedMock)}
-                    className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 transition-colors ${
-                      hasPermission('certificates.issue', selectedMock.id)
-                        ? 'bg-[#E8353B] hover:bg-[#D4292F] text-white'
-                        : 'bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 opacity-85'
-                    }`}
                   >
                     {hasPermission('certificates.issue', selectedMock.id) ? (
                       <Sparkles size={14} />
@@ -816,12 +863,12 @@ export const AdminCertificatesPage: React.FC = () => {
                     )}
                     <span>
                       {busyId === selectedMock.id
-                        ? 'Finalising & Issuing...'
+                        ? 'Finalising & Issuing…'
                         : selectedMock.resultsFinalised
                         ? 'Re-check & Issue 1st Position Certificates'
                         : 'Publish Results & Issue 1st Position Certificate'}
                     </span>
-                  </button>
+                  </AdminButton>
                 </div>
               </div>
 
@@ -879,55 +926,70 @@ export const AdminCertificatesPage: React.FC = () => {
         />
       )}
 
-      {/* Revoke Certificate Confirm Modal */}
-      {confirmRevokeCert && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm certificate revocation"
-          data-admin-glass-portal={glassEnabled ? '1' : '0'}
-          onClick={() => setConfirmRevokeCert(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className={`${
-              glassEnabled
-                ? 'ag-sheet-panel rounded-[22px]'
-                : 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl'
-            } w-full max-w-md p-6 space-y-4`}
-          >
-            <DotHeading as="h3" size="section">
-              Revoke certificate?
-            </DotHeading>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-              This will mark certificate{' '}
-              <code className="font-mono font-bold text-[var(--text)]">{confirmRevokeCert.serial}</code>{' '}
-              for <strong className="text-[var(--text)]">{confirmRevokeCert.studentName}</strong> as revoked on the public verification page. You can restore it later.
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setConfirmRevokeCert(null)}
-                className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text)] cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = confirmRevokeCert;
-                  setConfirmRevokeCert(null);
-                  void handleToggleRevoke(target);
-                }}
-                className="rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs font-semibold text-white cursor-pointer transition-colors"
-              >
-                Yes, revoke certificate
-              </button>
-            </div>
-          </div>
+      {/* Status Filter Sheet (Solid Opaque) */}
+      <AdminOverlay
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        mode="sheet"
+        title="Filter Certificates"
+        subtitle="Filter issued Grand Line credentials by verification status"
+        maxWidthClass="max-w-[440px]"
+        footer={
+          <>
+            <AdminButton
+              variant="secondary"
+              onClick={() => {
+                setStatusFilter('all');
+                setFiltersOpen(false);
+              }}
+            >
+              Reset
+            </AdminButton>
+            <AdminButton variant="primary" onClick={() => setFiltersOpen(false)}>
+              Apply
+            </AdminButton>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-2">
+          {(
+            [
+              { id: 'all', label: 'All Statuses' },
+              { id: 'active', label: 'Active Only' },
+              { id: 'revoked', label: 'Revoked Only' },
+            ] as const
+          ).map((opt) => (
+            <AdminButton
+              key={opt.id}
+              variant={statusFilter === opt.id ? 'primary' : 'secondary'}
+              onClick={() => setStatusFilter(opt.id)}
+              fullWidth
+            >
+              {opt.label}
+            </AdminButton>
+          ))}
         </div>
-      )}
+      </AdminOverlay>
+
+      {/* Revoke Certificate Confirm Dialog (Solid Opaque) */}
+      <AdminConfirmDialog
+        open={Boolean(confirmRevokeCert)}
+        onClose={() => setConfirmRevokeCert(null)}
+        onConfirm={() => {
+          if (!confirmRevokeCert) return;
+          const target = confirmRevokeCert;
+          setConfirmRevokeCert(null);
+          void handleToggleRevoke(target);
+        }}
+        title="Revoke certificate?"
+        description={
+          confirmRevokeCert
+            ? `This will mark certificate ${confirmRevokeCert.serial} for ${confirmRevokeCert.studentName} as revoked on the public verification page. You can restore it later.`
+            : undefined
+        }
+        confirmLabel="Yes, revoke certificate"
+        danger
+      />
 
       {requestAccessModal && (
         <RequestAccessSheet

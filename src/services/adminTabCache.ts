@@ -6,6 +6,8 @@ import {
   fetchAuditLogs,
   fetchUsersPaginated,
   getCachedAdminUsersState,
+  fetchAllApplications,
+  fetchPaymentRequests,
   type AdminStats,
 } from './adminService';
 import {
@@ -14,7 +16,7 @@ import {
   type RewardsHealthResponse,
 } from './rewardsService';
 import type { RewardsMode } from '@/lib/rewardsEngine';
-import type { AuditLog } from '@/types';
+import type { AuditLog, CaptainApplication, CrewApplication, KobanRequest, PaymentRequest } from '@/types';
 import type { CrewDoc, PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard, fetchCrewDetails } from './crewService';
 import {
@@ -27,7 +29,10 @@ import {
   getAllCaptainsAdminData,
   type CaptainAdminSummary,
 } from './referralService';
-import { getCaptainAllotmentStatus } from './kobanService';
+import {
+  getCaptainAllotmentStatus,
+  fetchKobanRequests,
+} from './kobanService';
 import {
   fetchUniversities,
   fetchLiveQuestionBankStats,
@@ -42,6 +47,24 @@ import type {
   D1McqRow,
   D1McqReportRow,
 } from '@/constants/d1Universities';
+import {
+  fetchAnnouncements,
+  fetchWelcomeAnnouncement,
+  type AnnouncementItem,
+} from './notificationService';
+import {
+  fetchCouponsPaginatedAdmin,
+  type CouponDoc,
+} from './couponService';
+import {
+  fetchAdminAdsConfig,
+  fetchAdminAdsStats,
+  type AdminAdsStatsResponse,
+} from './adsConfigService';
+import type { AdsConfigDoc } from '@/config/ads';
+import type { AccessRequestRecord, ActivePermissionGrant } from '@/constants/permissions';
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { api, apiRequest } from '@/lib/api';
 
 const SWR_TTL_MS = 60_000;
 
@@ -663,7 +686,471 @@ export async function fetchAdminUniversityMcqsSWR(params: {
 }
 
 // ============================================================================
-// 6. LAZY CHUNK & TAB DATA PREFETCHING (IDLE + HOVER/TOUCH)
+// 6. ADMIN APPLICATIONS SWR CACHE
+// ============================================================================
+export interface AdminApplicationsCacheData {
+  captains: CaptainApplication[];
+  crew: CrewApplication[];
+  updatedAt: number;
+}
+
+let applicationsCache: AdminApplicationsCacheData | null = null;
+let applicationsInFlight: Promise<AdminApplicationsCacheData> | null = null;
+
+export function getCachedAdminApplications(): AdminApplicationsCacheData | null {
+  return applicationsCache;
+}
+
+export function invalidateAdminApplicationsCache(): void {
+  if (applicationsCache) {
+    applicationsCache = { ...applicationsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminApplicationsSWR(options?: {
+  force?: boolean;
+  onUpdate?: (data: AdminApplicationsCacheData) => void;
+}): Promise<AdminApplicationsCacheData> {
+  const now = Date.now();
+  if (applicationsCache && !options?.force && now - applicationsCache.updatedAt < SWR_TTL_MS) {
+    return applicationsCache;
+  }
+  if (applicationsInFlight && !options?.force) {
+    return applicationsInFlight;
+  }
+  const runFetch = async (): Promise<AdminApplicationsCacheData> => {
+    const res = await fetchAllApplications();
+    const next: AdminApplicationsCacheData = {
+      captains: Array.isArray(res?.captains) ? res.captains : [],
+      crew: Array.isArray(res?.crew) ? res.crew : [],
+      updatedAt: Date.now(),
+    };
+    applicationsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  applicationsInFlight = runFetch().finally(() => {
+    applicationsInFlight = null;
+  });
+  if (applicationsCache && !options?.force) {
+    void applicationsInFlight.catch(() => {});
+    return applicationsCache;
+  }
+  return applicationsInFlight;
+}
+
+// ============================================================================
+// 7. ADMIN ANNOUNCEMENTS SWR CACHE
+// ============================================================================
+export interface AdminAnnouncementsCacheData {
+  items: AnnouncementItem[];
+  welcome: AnnouncementItem | null;
+  updatedAt: number;
+}
+
+let announcementsCache: AdminAnnouncementsCacheData | null = null;
+let announcementsInFlight: Promise<AdminAnnouncementsCacheData> | null = null;
+
+export function getCachedAdminAnnouncements(): AdminAnnouncementsCacheData | null {
+  return announcementsCache;
+}
+
+export function invalidateAdminAnnouncementsCache(): void {
+  if (announcementsCache) {
+    announcementsCache = { ...announcementsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminAnnouncementsSWR(options?: {
+  force?: boolean;
+  onUpdate?: (data: AdminAnnouncementsCacheData) => void;
+}): Promise<AdminAnnouncementsCacheData> {
+  const now = Date.now();
+  if (announcementsCache && !options?.force && now - announcementsCache.updatedAt < SWR_TTL_MS) {
+    return announcementsCache;
+  }
+  if (announcementsInFlight && !options?.force) {
+    return announcementsInFlight;
+  }
+  const runFetch = async (): Promise<AdminAnnouncementsCacheData> => {
+    const [items, welcomeRes] = await Promise.all([
+      fetchAnnouncements(50),
+      fetchWelcomeAnnouncement().catch(() => null),
+    ]);
+    const next: AdminAnnouncementsCacheData = {
+      items: Array.isArray(items) ? items : [],
+      welcome: welcomeRes?.announcement ?? announcementsCache?.welcome ?? null,
+      updatedAt: Date.now(),
+    };
+    announcementsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  announcementsInFlight = runFetch().finally(() => {
+    announcementsInFlight = null;
+  });
+  if (announcementsCache && !options?.force) {
+    void announcementsInFlight.catch(() => {});
+    return announcementsCache;
+  }
+  return announcementsInFlight;
+}
+
+// ============================================================================
+// 8. ADMIN PAYMENTS SWR CACHE
+// ============================================================================
+export interface AdminPaymentsCacheData {
+  payments: PaymentRequest[];
+  kobanRequests: KobanRequest[];
+  updatedAt: number;
+}
+
+let paymentsCache: AdminPaymentsCacheData | null = null;
+let paymentsInFlight: Promise<AdminPaymentsCacheData> | null = null;
+
+export function getCachedAdminPayments(): AdminPaymentsCacheData | null {
+  return paymentsCache;
+}
+
+export function invalidateAdminPaymentsCache(): void {
+  if (paymentsCache) {
+    paymentsCache = { ...paymentsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminPaymentsSWR(options?: {
+  force?: boolean;
+  onUpdate?: (data: AdminPaymentsCacheData) => void;
+}): Promise<AdminPaymentsCacheData> {
+  const now = Date.now();
+  if (paymentsCache && !options?.force && now - paymentsCache.updatedAt < SWR_TTL_MS) {
+    return paymentsCache;
+  }
+  if (paymentsInFlight && !options?.force) {
+    return paymentsInFlight;
+  }
+  const runFetch = async (): Promise<AdminPaymentsCacheData> => {
+    const [payments, kobanRequests] = await Promise.all([
+      fetchPaymentRequests('all'),
+      fetchKobanRequests('all').catch(() => paymentsCache?.kobanRequests || []),
+    ]);
+    const next: AdminPaymentsCacheData = {
+      payments: Array.isArray(payments) ? payments : [],
+      kobanRequests: Array.isArray(kobanRequests) ? kobanRequests : [],
+      updatedAt: Date.now(),
+    };
+    paymentsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  paymentsInFlight = runFetch().finally(() => {
+    paymentsInFlight = null;
+  });
+  if (paymentsCache && !options?.force) {
+    void paymentsInFlight.catch(() => {});
+    return paymentsCache;
+  }
+  return paymentsInFlight;
+}
+
+// ============================================================================
+// 9. ADMIN COUPONS SWR CACHE
+// ============================================================================
+export interface AdminCouponsCacheData {
+  coupons: CouponDoc[];
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+  updatedAt: number;
+}
+
+let couponsCache: AdminCouponsCacheData | null = null;
+let couponsInFlight: Promise<AdminCouponsCacheData> | null = null;
+
+export function getCachedAdminCoupons(): AdminCouponsCacheData | null {
+  return couponsCache;
+}
+
+export function invalidateAdminCouponsCache(): void {
+  if (couponsCache) {
+    couponsCache = { ...couponsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminCouponsSWR(options?: {
+  force?: boolean;
+  pageSize?: number;
+  onUpdate?: (data: AdminCouponsCacheData) => void;
+}): Promise<AdminCouponsCacheData> {
+  const now = Date.now();
+  if (couponsCache && !options?.force && now - couponsCache.updatedAt < SWR_TTL_MS) {
+    return couponsCache;
+  }
+  if (couponsInFlight && !options?.force) {
+    return couponsInFlight;
+  }
+  const runFetch = async (): Promise<AdminCouponsCacheData> => {
+    const res = await fetchCouponsPaginatedAdmin({
+      pageSize: options?.pageSize ?? 20,
+      cursor: null,
+    });
+    const next: AdminCouponsCacheData = {
+      coupons: Array.isArray(res.items) ? res.items : [],
+      lastDoc: res.lastDoc ?? null,
+      hasMore: Boolean(res.hasMore),
+      updatedAt: Date.now(),
+    };
+    couponsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  couponsInFlight = runFetch().finally(() => {
+    couponsInFlight = null;
+  });
+  if (couponsCache && !options?.force) {
+    void couponsInFlight.catch(() => {});
+    return couponsCache;
+  }
+  return couponsInFlight;
+}
+
+// ============================================================================
+// 10. ADMIN ADS SWR CACHE
+// ============================================================================
+export interface AdminAdsCacheData {
+  config: AdsConfigDoc;
+  stats: AdminAdsStatsResponse | null;
+  updatedAt: number;
+}
+
+let adsCache: AdminAdsCacheData | null = null;
+let adsInFlight: Promise<AdminAdsCacheData> | null = null;
+
+export function getCachedAdminAds(): AdminAdsCacheData | null {
+  return adsCache;
+}
+
+export function setCachedAdminAdsConfig(config: AdsConfigDoc): void {
+  adsCache = {
+    config,
+    stats: adsCache?.stats ?? null,
+    updatedAt: Date.now(),
+  };
+}
+
+export function invalidateAdminAdsCache(): void {
+  if (adsCache) {
+    adsCache = { ...adsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminAdsSWR(options?: {
+  force?: boolean;
+  onUpdate?: (data: AdminAdsCacheData) => void;
+}): Promise<AdminAdsCacheData> {
+  const now = Date.now();
+  if (adsCache && !options?.force && now - adsCache.updatedAt < SWR_TTL_MS) {
+    return adsCache;
+  }
+  if (adsInFlight && !options?.force) {
+    return adsInFlight;
+  }
+  const runFetch = async (): Promise<AdminAdsCacheData> => {
+    const [config, stats] = await Promise.all([
+      fetchAdminAdsConfig(),
+      fetchAdminAdsStats(30).catch(() => adsCache?.stats ?? null),
+    ]);
+    const next: AdminAdsCacheData = {
+      config,
+      stats,
+      updatedAt: Date.now(),
+    };
+    adsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  adsInFlight = runFetch().finally(() => {
+    adsInFlight = null;
+  });
+  if (adsCache && !options?.force) {
+    void adsInFlight.catch(() => {});
+    return adsCache;
+  }
+  return adsInFlight;
+}
+
+// ============================================================================
+// 11. ADMIN ACCESS REQUESTS SWR CACHE
+// ============================================================================
+export interface AdminAccessRequestsCacheData {
+  requests: AccessRequestRecord[];
+  grants: ActivePermissionGrant[];
+  migratedAccounts: Array<{
+    uid: string;
+    email: string;
+    displayName?: string;
+    previousRole: string;
+    newRole: string;
+  }>;
+  updatedAt: number;
+}
+
+let accessRequestsCache: AdminAccessRequestsCacheData | null = null;
+let accessRequestsInFlight: Promise<AdminAccessRequestsCacheData> | null = null;
+
+export function getCachedAdminAccessRequests(): AdminAccessRequestsCacheData | null {
+  return accessRequestsCache;
+}
+
+export function invalidateAdminAccessRequestsCache(): void {
+  if (accessRequestsCache) {
+    accessRequestsCache = { ...accessRequestsCache, updatedAt: 0 };
+  }
+}
+
+export async function fetchAdminAccessRequestsSWR(options?: {
+  force?: boolean;
+  onUpdate?: (data: AdminAccessRequestsCacheData) => void;
+}): Promise<AdminAccessRequestsCacheData> {
+  const now = Date.now();
+  if (
+    accessRequestsCache &&
+    !options?.force &&
+    now - accessRequestsCache.updatedAt < SWR_TTL_MS
+  ) {
+    return accessRequestsCache;
+  }
+  if (accessRequestsInFlight && !options?.force) {
+    return accessRequestsInFlight;
+  }
+  const runFetch = async (): Promise<AdminAccessRequestsCacheData> => {
+    const res = await api.get<{
+      ok?: boolean;
+      requests?: AccessRequestRecord[];
+      activeGrants?: ActivePermissionGrant[];
+      grants?: ActivePermissionGrant[];
+      migratedAccounts?: Array<{
+        uid: string;
+        email: string;
+        displayName?: string;
+        previousRole: string;
+        newRole: string;
+      }>;
+    }>('/api/admin/access-requests', { silentErrorToast: true });
+    const resolvedGrants = Array.isArray(res?.activeGrants)
+      ? res.activeGrants
+      : Array.isArray(res?.grants)
+        ? res.grants
+        : [];
+    const next: AdminAccessRequestsCacheData = {
+      requests: Array.isArray(res?.requests) ? res.requests : [],
+      grants: resolvedGrants,
+      migratedAccounts: Array.isArray(res?.migratedAccounts) ? res.migratedAccounts : [],
+      updatedAt: Date.now(),
+    };
+    accessRequestsCache = next;
+    options?.onUpdate?.(next);
+    return next;
+  };
+  accessRequestsInFlight = runFetch().finally(() => {
+    accessRequestsInFlight = null;
+  });
+  if (accessRequestsCache && !options?.force) {
+    void accessRequestsInFlight.catch(() => {});
+    return accessRequestsCache;
+  }
+  return accessRequestsInFlight;
+}
+
+// ============================================================================
+// 12. ADMIN NAV BADGES SWR CACHE (Combined, zero polling)
+// ============================================================================
+export interface AdminNavBadgesCacheData {
+  pendingRequestsCount: number;
+  pendingModerationCount: number;
+  updatedAt: number;
+}
+
+let navBadgesCache: AdminNavBadgesCacheData | null = null;
+let navBadgesInFlight: Promise<AdminNavBadgesCacheData> | null = null;
+const BADGES_TTL_MS = 90_000;
+
+export function getCachedAdminNavBadges(): AdminNavBadgesCacheData | null {
+  return navBadgesCache;
+}
+
+export function patchCachedModerationBadge(count: number): void {
+  navBadgesCache = {
+    pendingRequestsCount: navBadgesCache?.pendingRequestsCount ?? 0,
+    pendingModerationCount: Math.max(0, Math.floor(count)),
+    updatedAt: Date.now(),
+  };
+}
+
+export async function fetchAdminNavBadgesSWR(params: {
+  includeAccessRequests: boolean;
+  includeModeration: boolean;
+  force?: boolean;
+}): Promise<AdminNavBadgesCacheData> {
+  const now = Date.now();
+  if (navBadgesCache && !params.force && now - navBadgesCache.updatedAt < BADGES_TTL_MS) {
+    return navBadgesCache;
+  }
+  if (navBadgesInFlight && !params.force) {
+    return navBadgesInFlight;
+  }
+
+  const runFetch = async (): Promise<AdminNavBadgesCacheData> => {
+    const [reqCount, modCount] = await Promise.all([
+      params.includeAccessRequests
+        ? apiRequest<{ requests?: Array<{ status: string }> }>(
+            '/api/admin/access-requests?status=pending',
+            { method: 'GET', silentErrorToast: true }
+          )
+            .then((res) =>
+              Array.isArray(res?.requests)
+                ? res.requests.filter((r) => r.status === 'pending').length
+                : 0
+            )
+            .catch(() => navBadgesCache?.pendingRequestsCount ?? 0)
+        : Promise.resolve(0),
+      params.includeModeration
+        ? apiRequest<{
+            flaggedPosts?: unknown[];
+            reports?: Array<{ status?: string }>;
+          }>('/api/posts/moderation/queue', { method: 'GET', silentErrorToast: true })
+            .then((res) => {
+              const flagged = Array.isArray(res?.flaggedPosts) ? res.flaggedPosts.length : 0;
+              const pendingReports = Array.isArray(res?.reports)
+                ? res.reports.filter((r) => !r.status || r.status === 'pending').length
+                : 0;
+              return Math.max(flagged, pendingReports);
+            })
+            .catch(() => navBadgesCache?.pendingModerationCount ?? 0)
+        : Promise.resolve(0),
+    ]);
+
+    const next: AdminNavBadgesCacheData = {
+      pendingRequestsCount: reqCount,
+      pendingModerationCount: modCount,
+      updatedAt: Date.now(),
+    };
+    navBadgesCache = next;
+    return next;
+  };
+
+  navBadgesInFlight = runFetch().finally(() => {
+    navBadgesInFlight = null;
+  });
+
+  if (navBadgesCache && !params.force) {
+    void navBadgesInFlight.catch(() => {});
+    return navBadgesCache;
+  }
+  return navBadgesInFlight;
+}
+
+// ============================================================================
+// 13. LAZY CHUNK & TAB DATA PREFETCHING (IDLE + HOVER/TOUCH)
 // ============================================================================
 const prefetchedChunks = new Set<string>();
 let idlePrefetchScheduled = false;
@@ -671,17 +1158,23 @@ let idlePrefetchScheduled = false;
 const ADMIN_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   '/admin': () => import('@/pages/admin/AdminOverviewPage'),
   '/admin/users': () => import('@/pages/admin/AdminUsersPage'),
+  '/superadmin': () => import('@/pages/admin/AdminUsersPage'),
   '/admin/announcements': () => import('@/pages/admin/AdminAnnouncementsPage'),
   '/admin/crews': () => import('@/pages/admin/AdminCrewsPage'),
   '/admin/captains': () => import('@/pages/admin/AdminCaptainsPage'),
   '/admin/certificates': () => import('@/pages/admin/AdminCertificatesPage'),
   '/admin/signatures': () => import('@/pages/admin/AdminCertificatesPage'),
   '/admin/questions': () => import('@/pages/admin/AdminQuestionsPage'),
+  '/admin/formulas': () => import('@/pages/admin/AdminFormulasPage'),
+  '/admin/commons': () => import('@/pages/admin/AdminCommonsPage'),
   '/admin/pricing': () => import('@/pages/admin/AdminPricingPage'),
+  '/admin/plans': () => import('@/pages/admin/AdminPlansPage'),
   '/admin/kobans': () => import('@/pages/admin/AdminKobansPage'),
   '/admin/applications': () => import('@/pages/admin/AdminApplicationsPage'),
   '/admin/payments': () => import('@/pages/admin/AdminPaymentsPage'),
   '/admin/coupons': () => import('@/pages/admin/AdminCouponStudioPage'),
+  '/admin/ads': () => import('@/pages/admin/AdminAdsPage'),
+  '/admin/access-requests': () => import('@/pages/admin/AdminAccessRequestsPage'),
   '/admin/audit-logs': () => import('@/pages/admin/AdminAuditLogsPage'),
   '/admin/health': () => import('@/pages/admin/AdminHealthPage'),
 };
@@ -702,7 +1195,7 @@ export function prefetchAdminTabData(rawPath: string, uid?: string): void {
   const cleanPath = rawPath.split('?')[0].replace(/\/+$/, '') || '/admin';
   if (cleanPath === '/admin' && uid) {
     void fetchAdminOverviewSWR(uid).catch(() => {});
-  } else if (cleanPath === '/admin/users') {
+  } else if (cleanPath === '/admin/users' || cleanPath === '/superadmin') {
     if (!getCachedAdminUsersState()) {
       void fetchUsersPaginated({ limitCount: 20 }).catch(() => {});
     }
@@ -715,6 +1208,18 @@ export function prefetchAdminTabData(rawPath: string, uid?: string): void {
     void fetchAdminCertificatesSWR().catch(() => {});
   } else if (cleanPath === '/admin/captains') {
     void fetchAdminCaptainsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/applications') {
+    void fetchAdminApplicationsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/announcements') {
+    void fetchAdminAnnouncementsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/payments') {
+    void fetchAdminPaymentsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/coupons') {
+    void fetchAdminCouponsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/ads') {
+    void fetchAdminAdsSWR().catch(() => {});
+  } else if (cleanPath === '/admin/access-requests') {
+    void fetchAdminAccessRequestsSWR().catch(() => {});
   } else if (cleanPath === '/admin/questions') {
     void fetchAdminQuestionsInitSWR()
       .then((init) => {
@@ -734,7 +1239,7 @@ export function prefetchAdminRouteOnInteraction(rawPath: string, uid?: string): 
   prefetchAdminTabData(rawPath, uid);
 }
 
-export function scheduleIdleAdminPrefetchAll(_uid?: string, isSuperAdmin = false): () => void {
+export function scheduleIdleAdminPrefetchAll(uid?: string, isSuperAdmin = false): () => void {
   if (typeof window === 'undefined') return () => {};
   if (idlePrefetchScheduled) return () => {};
   idlePrefetchScheduled = true;
@@ -750,35 +1255,42 @@ export function scheduleIdleAdminPrefetchAll(_uid?: string, isSuperAdmin = false
   };
 
   const t1 = runIdleJob(() => {
-    // 1. Prefetch primary admin tab JS chunks on idle (data prefetches on tab hover/focus via prefetchAdminRouteOnInteraction)
-    const primaryPaths = isSuperAdmin
-      ? [
-          '/admin',
-          '/admin/users',
-          '/admin/crews',
-          '/admin/captains',
-          '/admin/certificates',
-          '/admin/questions',
-          '/admin/announcements',
-        ]
-      : ['/admin', '/admin/questions', '/admin/applications', '/admin/payments'];
+    // 1. Prefetch primary bottom-nav chunks immediately on idle
+    const primaryPaths = [
+      '/admin',
+      '/admin/questions',
+      '/admin/formulas',
+      '/admin/applications',
+      '/admin/certificates',
+      '/admin/users',
+      '/admin/payments',
+      '/admin/coupons',
+      '/admin/ads',
+      '/admin/announcements',
+      '/admin/access-requests',
+    ];
     for (const p of primaryPaths) {
       prefetchAdminTabChunk(p);
     }
-  }, 150);
+    // Warm lightweight SWR overview + applications caches so first switch is instant
+    if (uid && !overviewCache) {
+      void fetchAdminOverviewSWR(uid).catch(() => {});
+    }
+  }, 200);
 
   const t2 = runIdleJob(() => {
-    // 2. Prefetch remaining admin chunks only for superAdmin
+    // 2. Prefetch remaining admin chunks for superAdmin
     if (isSuperAdmin) {
       for (const p of Object.keys(ADMIN_CHUNK_LOADERS)) {
         prefetchAdminTabChunk(p);
       }
     }
-  }, 600);
+  }, 750);
 
   return () => {
     window.clearTimeout(t1);
     window.clearTimeout(t2);
   };
 }
+
 

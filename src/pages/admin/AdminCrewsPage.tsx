@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { AdminCrewsSkeleton } from '@/components/ui/Skeleton';
+import { AdminConfirmDialog, AdminOverlay } from '@/components/admin/AdminGlassPrimitives';
 
 const CREWS_PAGE_SIZE = 20;
 
@@ -55,6 +56,12 @@ export function AdminCrewsPage() {
   const [selectedCrewId, setSelectedCrewId] = useState<string | null>(null);
   const [crewDetails, setCrewDetails] = useState<CrewDoc | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [memberConfirm, setMemberConfirm] = useState<{
+    kind: 'remove' | 'promote';
+    uid: string;
+    name: string;
+  } | null>(null);
+  const [memberConfirmBusy, setMemberConfirmBusy] = useState(false);
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -194,37 +201,48 @@ export function AdminCrewsPage() {
     }
   };
 
-  const handleRemoveMember = async (targetUid: string, memberName: string) => {
+  const handleRemoveMember = (targetUid: string, memberName: string) => {
     if (!selectedCrewId || !user) return;
-    if (!window.confirm(`Are you sure you want to remove ${memberName} from this crew?`)) return;
-    try {
-      await removeMemberFromCrew(selectedCrewId, targetUid, {
-        uid: user.uid,
-        email: user.email || '',
-        isAdmin: true,
-      });
-      setActionSuccess(`Removed ${memberName} from crew.`);
-      loadCrewDetails(selectedCrewId);
-      loadCrews();
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to remove member');
-    }
+    setMemberConfirm({ kind: 'remove', uid: targetUid, name: memberName });
   };
 
-  const handlePromoteLeader = async (newLeaderUid: string, memberName: string) => {
+  const handlePromoteLeader = (newLeaderUid: string, memberName: string) => {
     if (!selectedCrewId || !user) return;
-    if (!window.confirm(`Transfer leadership of this crew to ${memberName}?`)) return;
+    setMemberConfirm({ kind: 'promote', uid: newLeaderUid, name: memberName });
+  };
+
+  const executeMemberConfirm = async () => {
+    if (!selectedCrewId || !user || !memberConfirm) return;
+    setMemberConfirmBusy(true);
     try {
-      await promoteMemberToLeader(selectedCrewId, newLeaderUid, {
-        uid: user.uid,
-        email: user.email || '',
-        isAdmin: true,
-      });
-      setActionSuccess(`Promoted ${memberName} to crew leader.`);
+      if (memberConfirm.kind === 'remove') {
+        await removeMemberFromCrew(selectedCrewId, memberConfirm.uid, {
+          uid: user.uid,
+          email: user.email || '',
+          isAdmin: true,
+        });
+        setActionSuccess(`Removed ${memberConfirm.name} from crew.`);
+      } else {
+        await promoteMemberToLeader(selectedCrewId, memberConfirm.uid, {
+          uid: user.uid,
+          email: user.email || '',
+          isAdmin: true,
+        });
+        setActionSuccess(`Promoted ${memberConfirm.name} to crew leader.`);
+      }
       loadCrewDetails(selectedCrewId);
       loadCrews();
     } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to promote leader');
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : memberConfirm.kind === 'remove'
+          ? 'Failed to remove member'
+          : 'Failed to promote leader'
+      );
+    } finally {
+      setMemberConfirmBusy(false);
+      setMemberConfirm(null);
     }
   };
 
@@ -830,98 +848,95 @@ export function AdminCrewsPage() {
         )}
       </div>
 
-      {/* ── Payment Management Modal ── */}
-      {paymentModalOpen && crewDetails && (
-        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-2xl max-w-md w-full p-6 space-y-5 text-white shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold font-heading">Manage Squad Payments</h3>
+      {/* ── Payment Management Modal (Solid Opaque) ── */}
+      <AdminOverlay
+        open={Boolean(paymentModalOpen && crewDetails)}
+        onClose={() => !paymentSubmitting && setPaymentModalOpen(false)}
+        title="Manage Squad Payments"
+        maxWidthClass="max-w-md"
+      >
+        {crewDetails && (
+          <form onSubmit={handlePaymentSubmit} className="space-y-4 text-xs">
+            <div>
+              <label className="block text-[var(--muted)] mb-1">Action</label>
+              <select
+                value={paymentAction}
+                onChange={(e) => setPaymentAction(e.target.value as 'mark_paid' | 'extend_month' | 'mark_unpaid')}
+                className="w-full px-3 py-2 rounded-xl bg-[#101010] border border-[#3a3a3a] text-white text-xs"
+              >
+                <option value="extend_month">Extend Large Crew by 1 Month (Add 30 Days)</option>
+                <option value="mark_paid">Mark Paid Active (Large Crew PKR 499/mo)</option>
+                <option value="mark_unpaid">Mark Unpaid (Revert to Free Tier)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[var(--muted)] mb-1">Mandatory Reason (Audit Log)</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Opay receipt TRX-99214 verified manually"
+                value={paymentReason}
+                onChange={(e) => setPaymentReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-[#101010] border border-[#3a3a3a] text-white text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[var(--muted)] mb-1">Amount (PKR)</label>
+              <input
+                type="number"
+                min={0}
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(Number(e.target.value) || 0)}
+                className="w-full px-3 py-2 rounded-xl bg-[#101010] border border-[#3a3a3a] text-white text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[var(--muted)] mb-1">Transaction ID (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. TRX-8849201"
+                value={paymentTxId}
+                onChange={(e) => setPaymentTxId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-[#101010] border border-[#3a3a3a] text-white text-xs font-mono"
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPaymentModalOpen(false)}
-                className="p-1 rounded text-[var(--muted)] hover:text-white"
+                className="ag-ios-btn ag-ios-btn--secondary min-h-[40px] px-4 py-2 rounded-full text-white text-xs font-bold cursor-pointer"
               >
-                <X size={18} />
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={paymentSubmitting}
+                className="ag-ios-btn ag-ios-btn--primary relative overflow-hidden min-h-[40px] px-4 py-2 rounded-full text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
+              >
+                {paymentSubmitting ? 'Updating...' : 'Confirm Action'}
+                {paymentSubmitting && <ButtonLineLoader />}
               </button>
             </div>
+          </form>
+        )}
+      </AdminOverlay>
 
-            <form onSubmit={handlePaymentSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-[var(--muted)] mb-1">Action</label>
-                <select
-                  value={paymentAction}
-                  onChange={(e) => setPaymentAction(e.target.value as 'mark_paid' | 'extend_month' | 'mark_unpaid')}
-                  className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs"
-                >
-                  <option value="extend_month">Extend Large Crew by 1 Month (Add 30 Days)</option>
-                  <option value="mark_paid">Mark Paid Active (Large Crew PKR 499/mo)</option>
-                  <option value="mark_unpaid">Mark Unpaid (Revert to Free Tier)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[var(--muted)] mb-1">Mandatory Reason (Audit Log)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Opay receipt TRX-99214 verified manually"
-                  value={paymentReason}
-                  onChange={(e) => setPaymentReason(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[var(--muted)] mb-1">Amount (PKR)</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(Number(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[var(--muted)] mb-1">Transaction ID (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. TRX-8849201"
-                  value={paymentTxId}
-                  onChange={(e) => setPaymentTxId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs font-mono"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-neutral-800 text-white text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={paymentSubmitting}
-                  className="relative overflow-hidden px-4 py-2 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white font-bold text-xs disabled:opacity-50"
-                >
-                  {paymentSubmitting ? 'Updating...' : 'Confirm Action'}
-                  {paymentSubmitting && <ButtonLineLoader />}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Disband Confirmation Modal ── */}
-      {disbandModalOpen && crewDetails && (
-        <div className="fixed inset-0 z-50 overlay-blur bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#0A0A0A] border border-red-500/50 rounded-2xl max-w-md w-full p-6 space-y-4 text-white shadow-2xl">
+      {/* ── Disband Confirmation Modal (Solid Opaque) ── */}
+      <AdminOverlay
+        open={Boolean(disbandModalOpen && crewDetails)}
+        onClose={() => !disbandSubmitting && setDisbandModalOpen(false)}
+        title="Disband Squad Room"
+        maxWidthClass="max-w-md"
+      >
+        {crewDetails && (
+          <div className="space-y-4">
             <div className="flex items-center gap-2 text-red-400">
-              <AlertTriangle size={20} />
-              <h3 className="text-base font-bold font-heading">Disband Squad Room</h3>
+              <AlertTriangle size={18} />
+              <span className="text-xs font-mono uppercase tracking-wider font-bold">Permanent action</span>
             </div>
 
             <p className="text-xs text-[var(--muted)] leading-relaxed">
@@ -936,21 +951,21 @@ export function AdminCrewsPage() {
                 placeholder="Type squad name here"
                 value={disbandTypedName}
                 onChange={(e) => setDisbandTypedName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.15)] text-white text-xs"
+                className="w-full px-3 py-2 rounded-xl bg-[#101010] border border-[#3a3a3a] text-white text-xs"
               />
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setDisbandModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-neutral-800 text-white text-xs"
+                  className="ag-ios-btn ag-ios-btn--secondary min-h-[40px] px-4 py-2 rounded-full text-white text-xs font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={disbandSubmitting || disbandTypedName.trim().toLowerCase() !== crewDetails.name.trim().toLowerCase()}
-                  className="relative overflow-hidden px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-xs disabled:opacity-40"
+                  className="ag-ios-btn ag-ios-btn--danger relative overflow-hidden min-h-[40px] px-4 py-2 rounded-full text-white font-bold text-xs disabled:opacity-40 cursor-pointer"
                 >
                   {disbandSubmitting ? 'Disbanding...' : 'Confirm Disband'}
                   {disbandSubmitting && <ButtonLineLoader />}
@@ -958,8 +973,30 @@ export function AdminCrewsPage() {
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </AdminOverlay>
+
+      {/* ── Member Remove / Promote Confirm Dialog (Solid Opaque) ── */}
+      <AdminConfirmDialog
+        open={Boolean(memberConfirm)}
+        onClose={() => !memberConfirmBusy && setMemberConfirm(null)}
+        onConfirm={() => void executeMemberConfirm()}
+        title={
+          memberConfirm?.kind === 'remove'
+            ? 'Remove member from crew?'
+            : 'Transfer crew leadership?'
+        }
+        description={
+          memberConfirm?.kind === 'remove'
+            ? `Are you sure you want to remove ${memberConfirm.name} from this crew?`
+            : memberConfirm
+            ? `Transfer leadership of this crew to ${memberConfirm.name}?`
+            : undefined
+        }
+        confirmLabel={memberConfirm?.kind === 'remove' ? 'Remove member' : 'Transfer leadership'}
+        busy={memberConfirmBusy}
+        danger={memberConfirm?.kind === 'remove'}
+      />
     </div>
   );
 }

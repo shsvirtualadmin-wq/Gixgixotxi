@@ -857,9 +857,9 @@ export function UserOverrideDrawer({
       data-admin-glass-portal={glassEnabled ? '1' : '0'}
       className="fixed inset-0 z-[10010] flex items-end md:items-stretch md:justify-end"
     >
-      {/* Backdrop */}
+      {/* Solid dark backdrop */}
       <div
-        className="fixed inset-0 overlay-blur bg-black/65 backdrop-blur-md"
+        className="fixed inset-0 bg-black/80"
         onClick={() => !saving && onClose()}
       />
 
@@ -900,17 +900,18 @@ export function UserOverrideDrawer({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="w-10 h-10 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer shrink-0"
+              className="ag-ios-btn ag-ios-btn--icon !w-10 !h-10 !min-w-[40px] !min-h-[40px] shrink-0"
               aria-label="Close user detail sheet"
             >
               <X size={18} />
             </button>
           </div>
 
-          {/* Quick-Jump Section Chips */}
+          {/* Pill Tab Bar (Plan, Role, Test attempts, Security) */}
           <div
             data-testid="user-override-quick-jump-chips"
-            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5"
+            role="tablist"
+            className="ag-segmented overflow-x-auto no-scrollbar max-w-full"
           >
             {(
               [
@@ -925,13 +926,19 @@ export function UserOverrideDrawer({
                 <button
                   key={chip.id}
                   type="button"
+                  role="tab"
+                  aria-selected={isActive}
                   data-testid={`user-override-jump-${chip.id}`}
                   onClick={() => scrollToSection(chip.id, 'smooth')}
-                  className={`px-3 py-1.5 rounded-full text-[12px] font-heading font-semibold border transition-colors shrink-0 cursor-pointer ${
-                    isActive
-                      ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                      : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
+                  className={
+                    glassEnabled
+                      ? 'ag-segmented-item !min-h-[38px] !py-1.5 !px-3.5 shrink-0'
+                      : `px-3 py-1.5 rounded-full text-[12px] font-heading font-semibold border transition-colors shrink-0 cursor-pointer ${
+                          isActive
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                            : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                        }`
+                  }
                 >
                   {chip.label}
                 </button>
@@ -1675,7 +1682,11 @@ export function UserOverrideDrawer({
               data-testid="user-override-cancel-btn"
               onClick={onClose}
               disabled={saving}
-              className="min-h-[42px] px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50"
+              className={
+                glassEnabled
+                  ? 'ag-ios-btn ag-ios-btn--secondary !min-h-[42px] !py-2 !px-4 !text-[13px]'
+                  : 'min-h-[42px] px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50'
+              }
             >
               Cancel
             </button>
@@ -1684,7 +1695,11 @@ export function UserOverrideDrawer({
               data-testid="user-override-save-btn"
               onClick={handleApplyOverrides}
               disabled={!isDirty || saving}
-              className="min-h-[42px] px-5 py-2 rounded-[12px] border border-[#E8353B] bg-[#E8353B] hover:bg-[#D4292F] text-white text-[13px] font-heading font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E8353B]/20"
+              className={
+                glassEnabled
+                  ? 'ag-ios-btn ag-ios-btn--primary !min-h-[42px] !py-2 !px-5 !text-[13px]'
+                  : 'min-h-[42px] px-5 py-2 rounded-[12px] border border-[#E8353B] bg-[#E8353B] hover:bg-[#D4292F] text-white text-[13px] font-heading font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E8353B]/20'
+              }
             >
               {saving && <Loader2 size={14} className="animate-spin shrink-0" />}
               <span>{saving ? 'Saving changes...' : 'Save changes'}</span>
@@ -1693,15 +1708,15 @@ export function UserOverrideDrawer({
         </div>
       </div>
 
-      {/* ─── ADMIN 2FA STEP-UP CONFIRMATION MODAL ────────────────────────────── */}
+      {/* ─── ADMIN 2FA STEP-UP CONFIRMATION MODAL (Solid Opaque #161616) ─────── */}
       {pending2faAction && (
         <div className="fixed inset-0 z-[10030] flex items-center justify-center p-4">
           <div
-            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
+            className="ag-overlay-backdrop"
             onClick={() => !submitting2faAction && setPending2faAction(null)}
           />
-          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 shadow-2xl">
-            <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+          <div className="ag-overlay-panel w-full max-w-[420px] rounded-[24px] p-5 space-y-4">
+            <h3 className="font-bold text-[16px] text-[#f5f5f7]">
               {pending2faAction === 'reset' && 'Reset two-step verification?'}
               {pending2faAction === 'approve_recovery' && 'Approve pending recovery now?'}
               {pending2faAction === 'cancel_recovery' && 'Cancel pending recovery request?'}
@@ -1770,12 +1785,12 @@ export function UserOverrideDrawer({
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 disabled={submitting2faAction}
                 onClick={() => setPending2faAction(null)}
-                className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                className="ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-2 !px-4 !text-[13px]"
               >
                 Cancel
               </button>
@@ -1783,7 +1798,7 @@ export function UserOverrideDrawer({
                 type="button"
                 disabled={submitting2faAction}
                 onClick={handleExecute2faAction}
-                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold disabled:opacity-50 cursor-pointer"
+                className="ag-ios-btn ag-ios-btn--primary !min-h-[40px] !py-2 !px-4 !text-[13px]"
               >
                 {submitting2faAction ? 'Verifying & applying...' : 'Confirm action'}
               </button>
@@ -1792,35 +1807,35 @@ export function UserOverrideDrawer({
         </div>
       )}
 
-      {/* ─── CONFIRMATION MODALS FOR DESTRUCTIVE ACTIONS ─────────────────────── */}
+      {/* ─── CONFIRMATION MODALS FOR DESTRUCTIVE ACTIONS (Solid Opaque #161616) ─── */}
       {confirmAction && (
         <div className="fixed inset-0 z-[10030] flex items-center justify-center p-4">
           <div
-            className="fixed inset-0 overlay-blur bg-black/60 backdrop-blur-md"
+            className="ag-overlay-backdrop"
             onClick={() => setConfirmAction(null)}
           />
-          <div className="relative w-full max-w-[380px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 shadow-2xl">
+          <div className="ag-overlay-panel w-full max-w-[400px] rounded-[24px] p-5 space-y-4">
             {confirmAction === 'role' && (
               <>
-                <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                <h3 className="font-bold text-[16px] text-[#f5f5f7]">
                   Change role to{' '}
                   {SYSTEM_ROLE_SELECTOR_ORDER.find((r) => r.key === pendingRole)?.label ||
                     pendingRole}
                   ?
                 </h3>
-                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                <p className="text-[13px] text-[#b4b4be] leading-relaxed">
                   You are about to select the role{' '}
-                  <strong className="text-[var(--text)]">
+                  <strong className="text-[#f5f5f7]">
                     {SYSTEM_ROLE_SELECTOR_ORDER.find((r) => r.key === pendingRole)?.label ||
                       pendingRole}
                   </strong>{' '}
                   for {displayName}. Click <strong>Save changes</strong> in the footer to persist.
                 </p>
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2.5 pt-2">
                   <button
                     type="button"
                     onClick={() => setConfirmAction(null)}
-                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                    className="ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     Cancel
                   </button>
@@ -1828,7 +1843,7 @@ export function UserOverrideDrawer({
                     type="button"
                     data-testid="confirm-role-change-btn"
                     onClick={handleConfirmRoleChange}
-                    className="px-3.5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold cursor-pointer"
+                    className="ag-ios-btn ag-ios-btn--primary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     Select role
                   </button>
@@ -1838,19 +1853,19 @@ export function UserOverrideDrawer({
 
             {confirmAction === 'suspend' && (
               <>
-                <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                <h3 className="font-bold text-[16px] text-[#f5f5f7]">
                   {isSuspended ? 'Unsuspend account?' : 'Suspend account?'}
                 </h3>
-                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                <p className="text-[13px] text-[#b4b4be] leading-relaxed">
                   {isSuspended
                     ? `This will mark ${displayName} for unsuspension. Click Save changes to apply.`
                     : `This will mark ${displayName} for suspension. Click Save changes to apply.`}
                 </p>
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2.5 pt-2">
                   <button
                     type="button"
                     onClick={() => setConfirmAction(null)}
-                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                    className="ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     Cancel
                   </button>
@@ -1858,11 +1873,7 @@ export function UserOverrideDrawer({
                     type="button"
                     data-testid="confirm-suspend-btn"
                     onClick={handleConfirmSuspend}
-                    className={`px-3.5 py-2 rounded-[12px] border text-[13px] font-heading font-semibold cursor-pointer ${
-                      isSuspended
-                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
-                        : 'border-[var(--red)] bg-[var(--red)] text-white'
-                    }`}
+                    className="ag-ios-btn ag-ios-btn--primary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     {isSuspended ? 'Confirm unsuspend' : 'Confirm suspend'}
                   </button>
@@ -1872,20 +1883,20 @@ export function UserOverrideDrawer({
 
             {confirmAction === 'delete' && (
               <>
-                <h3 className="font-heading font-bold text-[16px] text-[var(--red)]">
+                <h3 className="font-bold text-[16px] text-[#ff7379]">
                   Delete user account permanently?
                 </h3>
-                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                <p className="text-[13px] text-[#b4b4be] leading-relaxed">
                   This action is irreversible. All profile data and permissions for{' '}
-                  <strong className="text-[var(--text)]">{displayName}</strong> will be permanently
+                  <strong className="text-[#f5f5f7]">{displayName}</strong> will be permanently
                   erased.
                 </p>
-                <div className="flex items-center justify-end gap-2 pt-2">
+                <div className="flex items-center justify-end gap-2.5 pt-2">
                   <button
                     type="button"
                     onClick={() => setConfirmAction(null)}
                     disabled={deleteInProgress}
-                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                    className="ag-ios-btn ag-ios-btn--secondary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     Cancel
                   </button>
@@ -1894,7 +1905,7 @@ export function UserOverrideDrawer({
                     data-testid="confirm-permanent-delete-btn"
                     onClick={handleConfirmDelete}
                     disabled={deleteInProgress}
-                    className="px-3.5 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold disabled:opacity-50 cursor-pointer"
+                    className="ag-ios-btn ag-ios-btn--primary !min-h-[40px] !py-2 !px-4 !text-[13px]"
                   >
                     {deleteInProgress ? 'Deleting...' : 'Delete permanently'}
                   </button>
