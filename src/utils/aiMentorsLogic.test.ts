@@ -8,8 +8,11 @@ import {
   AI_MENTORS,
   AISHA_MENTOR_ID,
   buildGraphSvg,
+  calculateCallBilling,
   calculateMessageCreditCost,
+  canContinueCallMinute,
   extractStreamingPhysicsScene,
+  getCallRatePerMinute,
   getDepthBaseCostForMentor,
   getPktDateKey,
   getPktResetInfo,
@@ -36,6 +39,7 @@ import {
   isInAppBrowser,
   mapMicrophoneError,
   resolveVoiceLanguage,
+  selectVoiceForMentor,
 } from './voiceInput';
 import { isPreviewAdHost, resolveLandingAdVideoMode } from '../config/ads';
 
@@ -303,13 +307,12 @@ test('AI full-screen overlay, 44px close button, SVG sanitizer, invalid fallback
   assert.equal(isPhysicsVisualQuery('Salam!'), false);
   assert.equal(isPhysicsVisualQuery('Explain projectile motion at 30 degrees'), true);
 
-  // 5. Landing ad section never renders a blank box (poster fallback in preview or when URL missing/errored)
+  // 5. Landing ad card shows animated promo when unset, plays real video when set, and shows error+retry on failure
   assert.equal(isPreviewAdHost('ais-dev-abc.us-west1.run.app', true), true);
   assert.equal(isPreviewAdHost('boardly.cfd', false), false);
-  assert.equal(resolveLandingAdVideoMode({ videoUrl: '', isPreview: false }), 'poster');
-  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: true }), 'poster');
-  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: false, loadFailed: true }), 'poster');
-  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', isPreview: false, loadFailed: false }), 'video');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: '' }), 'animated');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', loadFailed: true }), 'error');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/ad.mp4', loadFailed: false }), 'video');
 });
 
 test('voice input error mapper returns exact friendly message for every microphone error type and in-app browser', () => {
@@ -515,3 +518,69 @@ test('mentor slug/alias resolution (all 6 mentors including Aisha) and chat titl
   const longTitle = buildChatTitle('Explain Kirchhoff voltage law and solve this 3-loop circuit problem in detail please');
   assert.ok(longTitle.length <= 48);
 });
+
+test('female voice selection, call credit exhaustion, per-started-minute billing, and animated landing ad fallback', () => {
+  // 1. Female voice selected when available; pitch raised to ~1.15 when only male/neutral voice exists
+  assert.equal(AI_MENTORS[AISHA_MENTOR_ID].voice, 'female');
+  assert.equal(AI_MENTORS[1].voice, 'male');
+  assert.equal(AI_MENTORS[3].voice, 'male');
+  const pickedFemale = selectVoiceForMentor({
+    voices: [
+      { name: 'Microsoft David Desktop', lang: 'en-US', default: true },
+      { name: 'Microsoft Zira Desktop', lang: 'en-US' },
+    ],
+    gender: 'female',
+    lang: 'en-US',
+  });
+  assert.equal(pickedFemale.voice?.name, 'Microsoft Zira Desktop');
+  assert.equal(pickedFemale.matchedGender, true);
+  assert.equal(pickedFemale.pitch, 1.0);
+
+  const fallbackPitch = selectVoiceForMentor({
+    voices: [{ name: 'Microsoft David Desktop', lang: 'en-US', default: true }],
+    gender: 'female',
+    lang: 'en-US',
+  });
+  assert.equal(fallbackPitch.matchedGender, false);
+  assert.equal(fallbackPitch.pitch, 1.15);
+
+  // 2. Call ends when credits run out or daily minutes hit 0
+  assert.deepEqual(
+    canContinueCallMinute({ creditsLeft: 2, isUnlimited: false, depthId: 1, callMinutesLeft: 5 }),
+    { ok: false, reason: 'INSUFFICIENT_CREDITS', needed: 3 }
+  );
+  assert.deepEqual(
+    canContinueCallMinute({ creditsLeft: 50, isUnlimited: false, depthId: 0, callMinutesLeft: 0 }),
+    { ok: false, reason: 'DAILY_LIMIT_REACHED', needed: 2 }
+  );
+  assert.equal(
+    canContinueCallMinute({ creditsLeft: 3, isUnlimited: false, depthId: 1, callMinutesLeft: 1 }).ok,
+    true
+  );
+
+  // 3. Call billing is strictly per started minute (Quick 2, Balanced 3, Deep 5, Max 8) and 0 if unanswered
+  assert.equal(getCallRatePerMinute(0), 2);
+  assert.equal(getCallRatePerMinute(1), 3);
+  assert.equal(getCallRatePerMinute(2), 5);
+  assert.equal(getCallRatePerMinute(3), 8);
+  assert.deepEqual(calculateCallBilling({ elapsedSec: 15, depthId: 1, answered: true }), {
+    startedMinutes: 1,
+    creditsCharged: 3,
+    ratePerMin: 3,
+  });
+  assert.deepEqual(calculateCallBilling({ elapsedSec: 61, depthId: 2, answered: true }), {
+    startedMinutes: 2,
+    creditsCharged: 10,
+    ratePerMin: 5,
+  });
+  assert.deepEqual(calculateCallBilling({ elapsedSec: 45, depthId: 3, answered: false }), {
+    startedMinutes: 0,
+    creditsCharged: 0,
+    ratePerMin: 8,
+  });
+
+  // 4. Ad card shows animated promo when no video URL is set, and real video when set
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: '' }), 'animated');
+  assert.equal(resolveLandingAdVideoMode({ videoUrl: 'https://cdn.boardly.cfd/promo.mp4' }), 'video');
+});
+

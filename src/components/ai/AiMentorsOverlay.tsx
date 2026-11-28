@@ -5,6 +5,7 @@ import {
   Menu,
   MessageCircleDashed,
   PenSquare,
+  Phone,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,6 +17,7 @@ import { getDisplayName } from '@/utils/displayName';
 import {
   AI_MENTORS,
   buildMentorGreeting,
+  getCallRatePerMinute,
   getMentorConfig,
   prepareApiContentsWithSummary,
   resolveAiDepthExecution,
@@ -44,7 +46,9 @@ import { AiUpgradeSheet } from './AiUpgradeSheet';
 import { AiDepthThinkingIndicator } from './AiDepthMotion';
 import { AiErrorBoundary } from './AiErrorBoundary';
 import { MentorAvatar } from './MentorAvatar';
-import { isAishaVisualPhysicsFlagEnabled } from '@/utils/aiFeatureFlags';
+import { AiVoiceCallModal } from './AiVoiceCallModal';
+import { isAiCallsFlagEnabled, isAishaVisualPhysicsFlagEnabled } from '@/utils/aiFeatureFlags';
+import { getVoiceCapabilities } from '@/utils/voiceInput';
 
 interface MentorThreadState {
   chatId: string;
@@ -126,6 +130,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
   const [mentorPickerOpen, setMentorPickerOpen] = useState(false);
   const [depthGaugeOpen, setDepthGaugeOpen] = useState(false);
   const [upgradeSheetReason, setUpgradeSheetReason] = useState<string | null>(null);
+  const [voiceCallOpen, setVoiceCallOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const activeSessionTokenRef = useRef<string>('');
@@ -137,6 +142,10 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
   const aishaVisualEnabled = isAishaVisualPhysicsFlagEnabled(
     plansConfig.aishaAnimationsEnabled
   );
+  const aiCallsEnabled = isAiCallsFlagEnabled(
+    plansConfig.aiCallsEnabled && credits.aiCallsEnabled
+  );
+  const voiceCaps = useMemo(() => getVoiceCapabilities(), []);
 
   const cancelInFlightRequest = useCallback(() => {
     if (safetyTimerRef.current !== null) {
@@ -230,7 +239,8 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         !mentorPickerOpen &&
         !depthGaugeOpen &&
         !upgradeSheetReason &&
-        !mobileHistoryOpen
+        !mobileHistoryOpen &&
+        !voiceCallOpen
       ) {
         e.preventDefault();
         onClose();
@@ -238,7 +248,7 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mentorPickerOpen, depthGaugeOpen, upgradeSheetReason, mobileHistoryOpen, onClose]);
+  }, [mentorPickerOpen, depthGaugeOpen, upgradeSheetReason, mobileHistoryOpen, voiceCallOpen, onClose]);
 
   const startFreshChat = useCallback(
     (targetMentor: AiMentorId) => {
@@ -603,6 +613,53 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
     navigate('/material');
   };
 
+  const handleAppendCallTurn = useCallback(
+    (userText: string, modelText: string) => {
+      const targetMentor = mentorId;
+      const now = Date.now();
+      const userMsg: StoredAiMessage = {
+        id: `call_u_${now}`,
+        role: 'user',
+        text: userText,
+        createdAt: now,
+      };
+      const modelMsg: StoredAiMessage = {
+        id: `call_m_${now + 1}`,
+        role: 'model',
+        text: modelText,
+        createdAt: now + 1,
+      };
+      let nextChatId = currentThread.chatId;
+      let nextMessages: StoredAiMessage[] = [];
+      setThreadsByMentor((prev) => {
+        const existing = prev[targetMentor] || makeInitialThread(targetMentor);
+        nextChatId = existing.chatId;
+        nextMessages = [...existing.messages, userMsg, modelMsg];
+        return {
+          ...prev,
+          [targetMentor]: { chatId: existing.chatId, messages: nextMessages },
+        };
+      });
+      if (!isTemporary && uid && !isGuest && !uid.startsWith('guest_')) {
+        window.setTimeout(() => {
+          if (nextMessages.length === 0) return;
+          void saveAiChatToFirestore({
+            uid,
+            chatId: nextChatId,
+            mentor: targetMentor,
+            messages: nextMessages,
+          })
+            .then((saved) => {
+              if (!saved) return;
+              setSavedChats((prev) => [saved, ...prev.filter((c) => c.id !== saved.id)].slice(0, 60));
+            })
+            .catch(() => {});
+        }, 0);
+      }
+    },
+    [currentThread.chatId, isGuest, isTemporary, makeInitialThread, mentorId, uid]
+  );
+
   const realHistoryCount = useMemo(
     () => currentThread.messages.filter((m) => !m.isGreeting && !m.isError).length,
     [currentThread.messages]
@@ -711,8 +768,42 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
               </div>
             </button>
 
-            {/* Right controls: Temporary-chat toggle + New-chat pencil */}
+            {/* Right controls: Voice Call + Temporary-chat toggle + New-chat pencil */}
             <div className="flex items-center gap-0.5 shrink-0">
+              {aiCallsEnabled &&
+                (voiceCaps.hasSpeechRecognition ? (
+                  <button
+                    type="button"
+                    data-ai-call-button="true"
+                    onClick={() => {
+                      cancelInFlightRequest();
+                      setVoiceCallOpen(true);
+                    }}
+                    aria-label={`Voice call ${mentor.name} (${credits.isUnlimited ? 'unlimited' : `${credits.callMinutesLeft} min left today`})`}
+                    title={`Call ${mentor.name} · ${credits.isUnlimited ? 'Unlimited' : `${credits.callMinutesLeft} min left today`} (${getCallRatePerMinute(depthId)} cr/min)`}
+                    className="flex h-10 items-center gap-1 rounded-full border-0 px-2.5 cursor-pointer transition-all hover:bg-[var(--surface-hover)] active:scale-95"
+                    style={{
+                      backgroundColor: `color-mix(in srgb, ${mentor.accent} 12%, transparent)`,
+                      color: mentor.accent,
+                    }}
+                  >
+                    <Phone className="h-[17px] w-[17px]" />
+                    {!credits.isUnlimited && (
+                      <span className="text-[11px] font-semibold tabular-nums">
+                        {credits.callMinutesLeft}m
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <span
+                    className="hidden sm:inline-block px-2 text-[10.5px] font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                    title="Voice calls require Chrome speech recognition"
+                  >
+                    Calls work in Chrome
+                  </span>
+                ))}
+
               <button
                 type="button"
                 onClick={handleToggleTemporary}
@@ -978,6 +1069,27 @@ export const AiMentorsOverlay: React.FC<AiMentorsOverlayProps> = ({
         onClose={() => setUpgradeSheetReason(null)}
         onUpgrade={handleUpgradeNavigate}
       />
+
+      {aiCallsEnabled && (
+        <AiErrorBoundary
+          scope="chat"
+          compact
+          onClose={() => setVoiceCallOpen(false)}
+        >
+          <AiVoiceCallModal
+            open={voiceCallOpen}
+            mentorId={mentorId}
+            depthId={depthId}
+            historyMessages={currentThread.messages}
+            creditsLeft={credits.creditsLeft}
+            isUnlimited={credits.isUnlimited}
+            callMinutesLeft={credits.callMinutesLeft}
+            onCreditsUpdated={applyServerUpdate}
+            onAppendCallTurn={handleAppendCallTurn}
+            onClose={() => setVoiceCallOpen(false)}
+          />
+        </AiErrorBoundary>
+      )}
     </div>
   );
 

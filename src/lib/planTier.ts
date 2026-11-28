@@ -30,6 +30,7 @@ export interface PlansConfigDoc {
   annualDiscountPercent: number; // e.g. 25 means -25% off 12 * monthly
   kobansPerPkr: number; // default 10
   aishaAnimationsEnabled?: boolean; // admin instant switch for Aisha animated physics mode
+  aiCallsEnabled?: boolean; // admin instant switch for AI voice calls
   updatedAt?: string | null;
   updatedBy?: string | null;
 }
@@ -51,6 +52,7 @@ export const DEFAULT_PLANS_CONFIG: PlansConfigDoc = {
   annualDiscountPercent: 25,
   kobansPerPkr: 10,
   aishaAnimationsEnabled: true,
+  aiCallsEnabled: true,
   updatedAt: null,
   updatedBy: null,
 };
@@ -528,6 +530,7 @@ export function normalizePlansConfig(raw?: Record<string, any> | null): PlansCon
       annualDiscountPercent: DEFAULT_PLANS_CONFIG.annualDiscountPercent,
       kobansPerPkr: DEFAULT_PLANS_CONFIG.kobansPerPkr,
       aishaAnimationsEnabled: true,
+      aiCallsEnabled: true,
       updatedAt: null,
       updatedBy: null,
     };
@@ -579,6 +582,8 @@ export function normalizePlansConfig(raw?: Record<string, any> | null): PlansCon
 
   const aishaAnimationsEnabled =
     typeof raw.aishaAnimationsEnabled === 'boolean' ? raw.aishaAnimationsEnabled : true;
+  const aiCallsEnabled =
+    typeof raw.aiCallsEnabled === 'boolean' ? raw.aiCallsEnabled : true;
 
   return {
     free: {
@@ -597,6 +602,7 @@ export function normalizePlansConfig(raw?: Record<string, any> | null): PlansCon
     annualDiscountPercent,
     kobansPerPkr,
     aishaAnimationsEnabled,
+    aiCallsEnabled,
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : null,
     updatedBy: typeof raw.updatedBy === 'string' ? raw.updatedBy : null,
   };

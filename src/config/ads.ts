@@ -409,11 +409,11 @@ export function isPreviewAdHost(
 
 export function resolveLandingAdVideoMode(params: {
   videoUrl?: string;
-  isPreview?: boolean;
   loadFailed?: boolean;
-}): 'video' | 'poster' {
+}): 'animated' | 'video' | 'error' {
   const cleanUrl = sanitizeSafeVideoUrl(params.videoUrl);
-  if (!cleanUrl || params.isPreview || params.loadFailed) return 'poster';
+  if (!cleanUrl) return 'animated';
+  if (params.loadFailed) return 'error';
   return 'video';
 }
 
@@ -637,7 +637,7 @@ export function normalizeAdsConfig(raw: any): AdsConfigDoc {
   };
 
   const landingAdVideoUrl = sanitizeSafeVideoUrl(
-    raw.landingAdVideoUrl ?? defaults.landingAdVideoUrl ?? ''
+    raw.landingAdVideoUrl || defaults.landingAdVideoUrl || ''
   );
 
   return {

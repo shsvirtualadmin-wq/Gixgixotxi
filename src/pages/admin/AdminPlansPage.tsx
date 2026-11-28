@@ -59,7 +59,11 @@ export function AdminPlansPage() {
   const [aishaAnimationsEnabled, setAishaAnimationsEnabled] = useState<boolean>(
     DEFAULT_PLANS_CONFIG.aishaAnimationsEnabled ?? true
   );
+  const [aiCallsEnabled, setAiCallsEnabled] = useState<boolean>(
+    DEFAULT_PLANS_CONFIG.aiCallsEnabled ?? true
+  );
   const [togglingAisha, setTogglingAisha] = useState(false);
+  const [togglingCalls, setTogglingCalls] = useState(false);
   const [aishaStats, setAishaStats] = useState<AishaAdminStats | null>(null);
   const [loadingAishaStats, setLoadingAishaStats] = useState(false);
 
@@ -80,6 +84,7 @@ export function AdminPlansPage() {
       setPlusCredits(String(config.plus.aiCreditsPerDay));
       setAnnualDiscountPct(String(config.annualDiscountPercent));
       setAishaAnimationsEnabled(config.aishaAnimationsEnabled !== false);
+      setAiCallsEnabled(config.aiCallsEnabled !== false);
     }
   }, [config, dirty]);
 
@@ -111,6 +116,7 @@ export function AdminPlansPage() {
         annualDiscountPercent: config.annualDiscountPercent,
         kobansPerPkr: config.kobansPerPkr || DEFAULT_PLANS_CONFIG.kobansPerPkr,
         aishaAnimationsEnabled: nextEnabled,
+        aiCallsEnabled,
         updatedBy: user?.email || 'superadmin',
       };
       await savePlansConfig(nextConfig, user?.email || 'superadmin');
@@ -128,6 +134,41 @@ export function AdminPlansPage() {
       setError(err instanceof Error ? err.message : 'Failed to update Aisha animations switch.');
     } finally {
       setTogglingAisha(false);
+    }
+  };
+
+  const handleToggleAiCalls = async () => {
+    if (togglingCalls) return;
+    const nextEnabled = !aiCallsEnabled;
+    setAiCallsEnabled(nextEnabled);
+    setTogglingCalls(true);
+    setError(null);
+    try {
+      const nextConfig: PlansConfigDoc = {
+        free: { aiCreditsPerDay: config.free.aiCreditsPerDay },
+        pro: { ...config.pro },
+        plus: { ...config.plus },
+        annualDiscountPercent: config.annualDiscountPercent,
+        kobansPerPkr: config.kobansPerPkr || DEFAULT_PLANS_CONFIG.kobansPerPkr,
+        aishaAnimationsEnabled,
+        aiCallsEnabled: nextEnabled,
+        updatedBy: user?.email || 'superadmin',
+      };
+      await savePlansConfig(nextConfig, user?.email || 'superadmin');
+      await logAdminAction(user?.email || 'superadmin', 'toggle_ai_calls', {
+        aiCallsEnabled: nextEnabled,
+      }).catch(() => {});
+      setNotice(
+        nextEnabled
+          ? 'AI calls turned ON.'
+          : 'AI calls turned OFF instantly.'
+      );
+      void refreshAishaStats();
+    } catch (err: unknown) {
+      setAiCallsEnabled(!nextEnabled);
+      setError(err instanceof Error ? err.message : 'Failed to update AI calls switch.');
+    } finally {
+      setTogglingCalls(false);
     }
   };
 
@@ -212,6 +253,7 @@ export function AdminPlansPage() {
       annualDiscountPercent: parsed.annualDiscountPct,
       kobansPerPkr: config.kobansPerPkr || DEFAULT_PLANS_CONFIG.kobansPerPkr,
       aishaAnimationsEnabled,
+      aiCallsEnabled,
       updatedBy: user?.email || 'superadmin',
     };
 
@@ -651,6 +693,87 @@ export function AdminPlansPage() {
               <div className="text-[11px] font-mono text-[var(--muted)]">Est. Cost (USD)</div>
               <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
                 ${aishaStats ? aishaStats.estimatedCostUsd.toFixed(4) : '0.0000'}
+              </div>
+            </div>
+          </div>
+        </GlassCard>
+
+        {/* AI Calls Instant Switch + Today's Call Totals */}
+        <GlassCard variant="glass" padding="md" className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="font-heading font-bold text-sm text-[var(--text)]">
+                  AI calls
+                </h2>
+                <Pill tone={aiCallsEnabled ? 'accent' : 'neutral'}>
+                  {aiCallsEnabled ? 'ON' : 'OFF'}
+                </Pill>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Voice call mode (Quick 2 · Balanced 3 · Deep 5 · Max 8 cr/min · daily cap 5 Free / 60 Paid min). Turning off disables AI calls instantly.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={aiCallsEnabled}
+                aria-label="AI calls"
+                disabled={togglingCalls}
+                onClick={() => void handleToggleAiCalls()}
+                className="relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50"
+                style={{
+                  backgroundColor: aiCallsEnabled ? '#E8353B' : 'var(--card-2)',
+                  borderColor: aiCallsEnabled ? '#E8353B' : 'var(--border)',
+                }}
+              >
+                <span
+                  className="inline-block h-6 w-6 rounded-full bg-white shadow-sm transition-transform"
+                  style={{
+                    transform: aiCallsEnabled ? 'translateX(26px)' : 'translateX(3px)',
+                  }}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void refreshAishaStats()}
+                disabled={loadingAishaStats}
+                aria-label="Refresh today's AI call stats"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[var(--muted)] cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={loadingAishaStats ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-[var(--border)]">
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Today&apos;s Calls</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats?.callStats ? aishaStats.callStats.totalCalls : 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Call Minutes</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats?.callStats ? aishaStats.callStats.totalMinutesBilled : 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Call Credits</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats?.callStats ? aishaStats.callStats.totalCreditsCharged : 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="text-[11px] font-mono text-[var(--muted)]">Total Length</div>
+              <div className="text-lg font-mono font-bold text-[var(--text)] tabular-nums">
+                {aishaStats?.callStats
+                  ? `${Math.floor(aishaStats.callStats.totalDurationSec / 60)}m ${aishaStats.callStats.totalDurationSec % 60}s`
+                  : '0m 0s'}
               </div>
             </div>
           </div>

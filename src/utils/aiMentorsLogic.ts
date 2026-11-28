@@ -94,6 +94,7 @@ export interface AiMentorConfig {
   slug: AiMentorSlug;
   aliases?: string[];
   name: string;
+  voice: 'female' | 'male';
   role: string;
   accent: string;
   emoji: string;
@@ -108,6 +109,66 @@ export const AI_CONFIG = aiConfig;
 export const AI_DEPTHS = aiConfig.DEPTHS as AiDepthConfig[];
 export const AI_MENTORS = aiConfig.MENTORS as AiMentorConfig[];
 export const AISHA_VISUAL_CONFIG = (aiConfig as any).AISHA_VISUAL_CONFIG;
+export const AI_CALL_CONFIG: {
+  creditsPerMinuteByDepth: Record<'quick' | 'balanced' | 'deep' | 'max', number>;
+  dailyMinuteLimits: { free: number; paid: number };
+  maxCallSeconds: number;
+  silenceTimeoutSeconds: number;
+  maxHistoryMessages: number;
+} = (aiConfig as any).AI_CALL_CONFIG || {
+  creditsPerMinuteByDepth: { quick: 2, balanced: 3, deep: 5, max: 8 },
+  dailyMinuteLimits: { free: 5, paid: 60 },
+  maxCallSeconds: 600,
+  silenceTimeoutSeconds: 30,
+  maxHistoryMessages: 10,
+};
+
+export function getCallRatePerMinute(depthId: number): number {
+  const depth = getDepthConfig(depthId);
+  return Number(AI_CALL_CONFIG.creditsPerMinuteByDepth[depth.key] ?? 3);
+}
+
+export function getDailyCallMinutesLimit(isPaid: boolean): number {
+  return isPaid ? AI_CALL_CONFIG.dailyMinuteLimits.paid : AI_CALL_CONFIG.dailyMinuteLimits.free;
+}
+
+/** Pure per-started-minute call billing helper (0 if call failed to connect or AI never answered). */
+export function calculateCallBilling(params: {
+  elapsedSec: number;
+  depthId: number;
+  answered: boolean;
+}): { startedMinutes: number; creditsCharged: number; ratePerMin: number } {
+  const ratePerMin = getCallRatePerMinute(params.depthId);
+  const secs = Math.max(0, Math.floor(Number(params.elapsedSec) || 0));
+  if (!params.answered || secs <= 0) {
+    return { startedMinutes: 0, creditsCharged: 0, ratePerMin };
+  }
+  const cappedSecs = Math.min(secs, AI_CALL_CONFIG.maxCallSeconds);
+  const startedMinutes = Math.max(1, Math.ceil(cappedSecs / 60));
+  return {
+    startedMinutes,
+    creditsCharged: startedMinutes * ratePerMin,
+    ratePerMin,
+  };
+}
+
+export function canContinueCallMinute(params: {
+  creditsLeft: number;
+  isUnlimited: boolean;
+  depthId: number;
+  callMinutesLeft: number;
+}): { ok: boolean; reason?: 'INSUFFICIENT_CREDITS' | 'DAILY_LIMIT_REACHED'; needed: number } {
+  const needed = getCallRatePerMinute(params.depthId);
+  if (params.isUnlimited) return { ok: true, needed: 0 };
+  if (params.callMinutesLeft <= 0) {
+    return { ok: false, reason: 'DAILY_LIMIT_REACHED', needed };
+  }
+  if (params.creditsLeft < needed) {
+    return { ok: false, reason: 'INSUFFICIENT_CREDITS', needed };
+  }
+  return { ok: true, needed };
+}
+
 export const FREE_AI_CREDITS_PER_DAY = aiConfig.FREE_CREDITS_PER_DAY;
 export const PRO_AI_CREDITS_PER_DAY = aiConfig.PRO_CREDITS_PER_DAY;
 export const PLUS_AI_CREDITS_PER_DAY =

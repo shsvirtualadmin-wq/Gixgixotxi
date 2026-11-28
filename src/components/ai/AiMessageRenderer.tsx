@@ -13,12 +13,14 @@ import {
 import {
   AISHA_MENTOR_ID,
   extractStreamingPhysicsScene,
+  getMentorConfig,
   parseStoredPhysicsScene,
   renderAiMarkdownWithKatex,
   stripLatexForSpeech,
   type AiMentorId,
   type PhysicsScene,
 } from '@/utils/aiMentorsLogic';
+import { speakWithMentorVoice, stopMentorSpeech } from '@/utils/voiceInput';
 
 // Lazy-load the SVG whiteboard renderer ONLY when an Aisha physics scene is rendered
 const LazyAishaPhysicsWhiteboard = lazy(() => import('./AishaPhysicsWhiteboard'));
@@ -149,13 +151,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
   // Cancel active speech if component unmounts
   useEffect(() => {
     return () => {
-      if (speaking && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-        } catch {
-          // Ignore
-        }
-      }
+      if (speaking) stopMentorSpeech();
     };
   }, [speaking]);
 
@@ -187,26 +183,25 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
 
   const handleListen = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      if (speaking) {
-        window.speechSynthesis.cancel();
-        setSpeaking(false);
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const plain = physicsScene
-        ? sceneToReadablePlainText(physicsScene)
-        : stripLatexForSpeech(text);
-      if (!plain) return;
-      const utter = new SpeechSynthesisUtterance(plain);
-      utter.rate = 1.0;
-      utter.onend = () => setSpeaking(false);
-      utter.onerror = () => setSpeaking(false);
-      setSpeaking(true);
-      window.speechSynthesis.speak(utter);
-    } catch {
+    if (speaking) {
+      stopMentorSpeech();
       setSpeaking(false);
+      return;
     }
+    const plain = physicsScene
+      ? sceneToReadablePlainText(physicsScene)
+      : stripLatexForSpeech(text);
+    if (!plain) return;
+    const mentor = getMentorConfig(mentorId ?? 0);
+    setSpeaking(true);
+    speakWithMentorVoice({
+      text: plain,
+      mentorSlug: mentor.slug,
+      gender: mentor.voice,
+      rate: 1.0,
+      onEnd: () => setSpeaking(false),
+      onError: () => setSpeaking(false),
+    });
   };
 
   const handleShare = async () => {

@@ -2,12 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Play, Pause, RotateCcw, Volume2, Square, Gauge, Sparkles } from 'lucide-react';
 import { ensureKatexLoaded } from '@/components/ui/MathText';
 import {
+  AISHA_MENTOR_ID,
   buildGraphSvg,
+  getMentorConfig,
   renderAiMarkdownWithKatex,
   sanitizeAnimationSvg,
   stripLatexForSpeech,
   type PhysicsScene,
 } from '@/utils/aiMentorsLogic';
+import { speakWithMentorVoice, stopMentorSpeech } from '@/utils/voiceInput';
 
 interface AishaPhysicsWhiteboardProps {
   scene: PhysicsScene;
@@ -191,17 +194,7 @@ export const AishaPhysicsWhiteboard: React.FC<AishaPhysicsWhiteboardProps> = ({
   }, [hasEquation, lazyKatex]);
 
   // Stop speech synthesis on unmount
-  useEffect(() => {
-    return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, []);
+  useEffect(() => () => stopMentorSpeech(), []);
 
   const srcDoc = useMemo(() => {
     if (!combinedSvg) return '';
@@ -245,26 +238,25 @@ export const AishaPhysicsWhiteboard: React.FC<AishaPhysicsWhiteboardProps> = ({
 
   const handleListen = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      if (speaking) {
-        window.speechSynthesis.cancel();
-        setSpeaking(false);
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const spoken = activeStep
-        ? stripLatexForSpeech(`${activeStep.narration}. ${activeStep.equation || ''}`)
-        : '';
-      if (!spoken) return;
-      const utter = new SpeechSynthesisUtterance(spoken);
-      utter.rate = speed;
-      utter.onend = () => setSpeaking(false);
-      utter.onerror = () => setSpeaking(false);
-      setSpeaking(true);
-      window.speechSynthesis.speak(utter);
-    } catch {
+    if (speaking) {
+      stopMentorSpeech();
       setSpeaking(false);
+      return;
     }
+    const spoken = activeStep
+      ? stripLatexForSpeech(`${activeStep.narration}. ${activeStep.equation || ''}`)
+      : '';
+    if (!spoken) return;
+    const aisha = getMentorConfig(AISHA_MENTOR_ID);
+    setSpeaking(true);
+    speakWithMentorVoice({
+      text: spoken,
+      mentorSlug: aisha.slug,
+      gender: aisha.voice,
+      rate: speed,
+      onEnd: () => setSpeaking(false),
+      onError: () => setSpeaking(false),
+    });
   }, [speaking, activeStep, speed]);
 
   const equationHtml = useMemo(() => {

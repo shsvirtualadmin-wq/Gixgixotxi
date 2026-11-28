@@ -135,6 +135,9 @@ export function useAiCredits() {
       creditsLeft: number;
       creditsUsed?: number;
       dailyLimit?: number;
+      callMinutesUsed?: number;
+      callMinutesLimit?: number;
+      callMinutesLeft?: number;
       isUnlimited?: boolean;
       resetAt?: string;
       dateKey?: string;
@@ -144,11 +147,18 @@ export function useAiCredits() {
         const nextLeft = patch.creditsLeft;
         const nextUsed =
           patch.creditsUsed ?? Math.max(0, nextLimit - nextLeft);
+        const nextCallLimit = patch.callMinutesLimit ?? prev.callMinutesLimit;
+        const nextCallUsed = patch.callMinutesUsed ?? prev.callMinutesUsed;
+        const nextCallLeft =
+          patch.callMinutesLeft ?? Math.max(0, nextCallLimit - nextCallUsed);
         const next: AiCreditsStatus = {
           ...prev,
           creditsLeft: nextLeft,
           creditsUsed: nextUsed,
           dailyLimit: nextLimit,
+          callMinutesUsed: nextCallUsed,
+          callMinutesLimit: nextCallLimit,
+          callMinutesLeft: nextCallLeft,
           isUnlimited: patch.isUnlimited ?? prev.isUnlimited,
           resetAt: patch.resetAt ?? prev.resetAt,
           dateKey: patch.dateKey ?? prev.dateKey,

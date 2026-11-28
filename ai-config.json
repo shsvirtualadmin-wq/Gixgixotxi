@@ -103,6 +103,7 @@
       "slug": "noor",
       "aliases": ["noor"],
       "name": "Noor",
+      "voice": "female",
       "role": "Doubt Solver",
       "accent": "#e11d1d",
       "emoji": "🔴",
@@ -117,6 +118,7 @@
       "slug": "zain",
       "aliases": ["zain", "zen"],
       "name": "Zain",
+      "voice": "male",
       "role": "MCQ Coach",
       "accent": "#2563eb",
       "emoji": "🔵",
@@ -131,6 +133,7 @@
       "slug": "sehar",
       "aliases": ["sehar", "seher"],
       "name": "Sehar",
+      "voice": "female",
       "role": "Study Planner",
       "accent": "#16a34a",
       "emoji": "🟢",
@@ -145,6 +148,7 @@
       "slug": "hamza",
       "aliases": ["hamza"],
       "name": "Hamza",
+      "voice": "male",
       "role": "Concept Teacher",
       "accent": "#d97706",
       "emoji": "🟠",
@@ -159,6 +163,7 @@
       "slug": "mahnoor",
       "aliases": ["mahnoor", "mahnur"],
       "name": "Mahnoor",
+      "voice": "female",
       "role": "Admissions Guide",
       "accent": "#7c3aed",
       "emoji": "🟣",
@@ -173,6 +178,7 @@
       "slug": "aisha",
       "aliases": ["aisha", "ayesha"],
       "name": "Aisha",
+      "voice": "female",
       "role": "Visual Physics Tutor",
       "accent": "#0ea5e9",
       "emoji": "⚫",
@@ -239,5 +245,20 @@
         "firstAttemptTimeoutMs": 12000
       }
     ]
+  },
+  "AI_CALL_CONFIG": {
+    "creditsPerMinuteByDepth": {
+      "quick": 2,
+      "balanced": 3,
+      "deep": 5,
+      "max": 8
+    },
+    "dailyMinuteLimits": {
+      "free": 5,
+      "paid": 60
+    },
+    "maxCallSeconds": 600,
+    "silenceTimeoutSeconds": 30,
+    "maxHistoryMessages": 10
   }
 }

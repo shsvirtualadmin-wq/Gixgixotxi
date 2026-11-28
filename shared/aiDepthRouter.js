@@ -148,6 +148,7 @@ export function resolveAiDepthExecution({
   env = null,
   isModelInCooldown = null,
   visualMode = false,
+  callMode = false,
   questionText = '',
   avoidPreviousRefusal = '',
 } = {}) {
@@ -159,6 +160,7 @@ export function resolveAiDepthExecution({
   const mentor = aiConfig.MENTORS[safeMentorId] || aiConfig.MENTORS[0];
   const depth = aiConfig.DEPTHS[safeDepthId] || aiConfig.DEPTHS[1];
   const isAisha = mentor.id === AISHA_MENTOR_ID;
+  const effectiveVisualMode = Boolean(isAisha && visualMode && !callMode);
   const aishaDepthCfg = isAisha
     ? aiConfig.AISHA_VISUAL_CONFIG?.depths?.[safeDepthId] || null
     : null;
@@ -176,7 +178,20 @@ export function resolveAiDepthExecution({
   let maxSteps = 0;
   let baseCost;
 
-  if (isAisha && aishaDepthCfg) {
+  if (callMode) {
+    // Low-latency voice call execution: ~2s first spoken word in Quick/Balanced, ~4s in Deep/Max
+    primaryModel =
+      safeDepthId <= 1
+        ? envFastModel || aiConfig.FAST_MODEL || 'gemini-3.1-flash-lite'
+        : envDefaultModel || depth.model || aiConfig.DEFAULT_MODEL || 'gemini-4-hydrogen';
+    depthFallbacks = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-4-hydrogen'];
+    rawThinkingLevel = safeDepthId === 0 ? 'NONE' : safeDepthId === 1 ? 'MINIMAL' : 'LOW';
+    maxOutputTokens = safeDepthId <= 1 ? 220 : 380;
+    maxHistoryMessages = Number(aiConfig.AI_CALL_CONFIG?.maxHistoryMessages || 10);
+    firstAttemptTimeoutMs = safeDepthId <= 1 ? 4000 : 6500;
+    const callRates = aiConfig.AI_CALL_CONFIG?.creditsPerMinuteByDepth || {};
+    baseCost = Number(callRates[depth.key] ?? 3);
+  } else if (isAisha && aishaDepthCfg) {
     primaryModel =
       safeDepthId <= 1
         ? envFastModel || aishaDepthCfg.model || aiConfig.FAST_MODEL || 'gemini-3.1-flash-lite'
@@ -187,7 +202,7 @@ export function resolveAiDepthExecution({
     maxHistoryMessages = Number(aishaDepthCfg.maxHistoryMessages || 10);
     firstAttemptTimeoutMs = Number(aishaDepthCfg.firstAttemptTimeoutMs || 6000);
     maxSteps = Number(aishaDepthCfg.maxSteps || 5);
-    baseCost = visualMode
+    baseCost = effectiveVisualMode
       ? Number(aishaDepthCfg.baseCost)
       : Number(depth.baseCost);
   } else {
@@ -234,11 +249,18 @@ export function resolveAiDepthExecution({
   let systemInstruction;
   let responseMimeType = null;
 
-  if (isAisha) {
+  if (callMode) {
+    systemInstruction =
+      `${mentorPrompt}\n` +
+      `VOICE CALL MODE (STRICT):\n` +
+      `- You are on a live phone call with a student. Speak naturally in short spoken sentences (around 40 words total unless the student explicitly asks for more detail).\n` +
+      `- NEVER use markdown, bullet points, asterisks, code blocks, JSON, SVG, animations, or LaTeX syntax (say "x squared" or "force equals mass times acceleration" in plain spoken words).\n` +
+      `- Match the student's language (English, Urdu, or Roman Urdu). Start answering immediately with no filler.`;
+  } else if (isAisha) {
     const antiRepeatLine = avoidPreviousRefusal
       ? `\n- Never repeat your previous reply word-for-word (avoid: "${String(avoidPreviousRefusal).slice(0, 120)}").`
       : '';
-    if (visualMode) {
+    if (effectiveVisualMode) {
       responseMimeType = 'application/json';
       const schemaRules = buildAishaVisualSchemaInstruction({
         maxSteps: maxSteps || 5,
@@ -284,7 +306,8 @@ export function resolveAiDepthExecution({
     maxHistoryMessages,
     firstAttemptTimeoutMs,
     maxSteps,
-    visualMode: Boolean(isAisha && visualMode),
+    visualMode: effectiveVisualMode,
+    callMode: Boolean(callMode),
     responseMimeType,
     depthInstruction,
     systemInstruction,
