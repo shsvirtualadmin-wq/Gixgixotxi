@@ -1,0 +1,337 @@
+/* ==========================================================================
+   BOARDLY /admin — iOS GLASS + NOTHING DOT-MATRIX DESIGN SYSTEM
+   ==========================================================================
+   Strictly scoped behind `[data-admin-glass="1"]` (and `[data-admin-glass-portal="1"]`
+   for portaled bottom nav, sheets, and drawers). Flipping the flag OFF immediately
+   restores the original /admin styling with zero residual overrides.
+
+   PERFORMANCE CONTRACT:
+   - backdrop-filter: blur(14px-18px) ONLY on bottom nav, sticky bars, sheets,
+     sidebar, and top-level GlassCards.
+   - Inside long lists (users, certificates, payments, coupons, formulas), use
+     flat translucent surfaces with NO backdrop-filter.
+   - Ambient bubbles: max 3 bubbles, pure CSS transform + opacity only,
+     one shared fixed layer behind the page, paused on tab hidden, static
+     radial gradients on prefers-reduced-motion or low-end devices.
+   ========================================================================== */
+
+[data-admin-shell="true"][data-admin-glass="1"],
+[data-admin-glass-portal="1"] {
+  --ag-accent: #E8353B;
+  --ag-accent-hover: #D4292F;
+  --ag-accent-soft: rgba(232, 53, 59, 0.14);
+  --ag-accent-border: rgba(232, 53, 59, 0.36);
+
+  /* Dark-mode defaults */
+  --ag-canvas: #07070b;
+  --ag-glass-bg: rgba(20, 21, 28, 0.68);
+  --ag-glass-strong: rgba(16, 17, 23, 0.82);
+  --ag-flat-bg: rgba(255, 255, 255, 0.045);
+  --ag-flat-hover: rgba(255, 255, 255, 0.075);
+  --ag-input-bg: rgba(255, 255, 255, 0.05);
+  --ag-border: rgba(255, 255, 255, 0.11);
+  --ag-border-strong: rgba(255, 255, 255, 0.18);
+  --ag-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --ag-shadow: 0 14px 36px -12px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --ag-shadow-bar: 0 12px 32px -8px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --ag-text: #f5f5f7;
+  --ag-text-secondary: rgba(245, 245, 247, 0.78);
+  --ag-text-muted: rgba(245, 245, 247, 0.54);
+  --ag-blur: 16px;
+  --ag-blur-sheet: 18px;
+  --ag-skeleton-base: rgba(255, 255, 255, 0.07);
+  --ag-skeleton-hi: rgba(255, 255, 255, 0.14);
+
+  /* Override semantic admin tokens inside the shell */
+  --accent: #E8353B;
+  --red: #E8353B;
+  --accent-hover: #D4292F;
+  --accent-soft: rgba(232, 53, 59, 0.14);
+}
+
+html[data-theme="light"] [data-admin-shell="true"][data-admin-glass="1"],
+html.light [data-admin-shell="true"][data-admin-glass="1"],
+html[data-theme="light"] [data-admin-glass-portal="1"],
+html.light [data-admin-glass-portal="1"] {
+  --ag-canvas: #f3f4f8;
+  --ag-glass-bg: rgba(255, 255, 255, 0.78);
+  --ag-glass-strong: rgba(255, 255, 255, 0.90);
+  --ag-flat-bg: rgba(255, 255, 255, 0.86);
+  --ag-flat-hover: rgba(255, 255, 255, 0.96);
+  --ag-input-bg: rgba(255, 255, 255, 0.92);
+  --ag-border: rgba(17, 19, 26, 0.09);
+  --ag-border-strong: rgba(17, 19, 26, 0.16);
+  --ag-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --ag-shadow: 0 10px 28px -10px rgba(15, 23, 42, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --ag-shadow-bar: 0 12px 30px -8px rgba(15, 23, 42, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.96);
+  --ag-text: #111318;
+  --ag-text-secondary: #374151;
+  --ag-text-muted: #5b606e;
+  --ag-skeleton-base: rgba(17, 19, 26, 0.07);
+  --ag-skeleton-hi: rgba(17, 19, 26, 0.13);
+}
+
+/* Shell background & bottom clearance */
+[data-admin-shell="true"][data-admin-glass="1"] {
+  background-color: var(--ag-canvas);
+  color: var(--ag-text);
+  position: relative;
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-main-viewport {
+  position: relative;
+  z-index: 1;
+  padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  [data-admin-shell="true"][data-admin-glass="1"] .ag-main-viewport {
+    padding-bottom: 56px;
+  }
+}
+
+/* ==========================================================================
+   AMBIENT BUBBLES (MAX 3, ONE FIXED LAYER, TRANSFORM & OPACITY ONLY)
+   ========================================================================== */
+.ag-ambient-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.ag-bubble {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+}
+
+.ag-bubble--1 {
+  top: -120px;
+  left: -80px;
+  width: 440px;
+  height: 440px;
+  background: radial-gradient(circle, rgba(232, 53, 59, 0.22) 0%, rgba(232, 53, 59, 0.06) 44%, transparent 72%);
+  animation: ag-float-1 22s ease-in-out infinite alternate;
+}
+
+.ag-bubble--2 {
+  top: 22%;
+  right: -130px;
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, rgba(120, 140, 255, 0.13) 0%, rgba(120, 140, 255, 0.03) 46%, transparent 72%);
+  animation: ag-float-2 26s ease-in-out infinite alternate;
+}
+
+.ag-bubble--3 {
+  bottom: -140px;
+  left: 34%;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(232, 53, 59, 0.12) 0%, rgba(255, 165, 110, 0.03) 45%, transparent 72%);
+  animation: ag-float-3 28s ease-in-out infinite alternate;
+}
+
+html[data-theme="light"] .ag-bubble--1,
+html.light .ag-bubble--1 {
+  background: radial-gradient(circle, rgba(232, 53, 59, 0.13) 0%, rgba(232, 53, 59, 0.03) 46%, transparent 72%);
+}
+
+html[data-theme="light"] .ag-bubble--2,
+html.light .ag-bubble--2 {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.10) 0%, rgba(59, 130, 246, 0.02) 48%, transparent 72%);
+}
+
+html[data-theme="light"] .ag-bubble--3,
+html.light .ag-bubble--3 {
+  background: radial-gradient(circle, rgba(232, 53, 59, 0.08) 0%, transparent 70%);
+}
+
+@keyframes ag-float-1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.86; }
+  100% { transform: translate3d(38px, 28px, 0) scale(1.06); opacity: 1; }
+}
+
+@keyframes ag-float-2 {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.8; }
+  100% { transform: translate3d(-34px, 32px, 0) scale(1.05); opacity: 0.96; }
+}
+
+@keyframes ag-float-3 {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.78; }
+  100% { transform: translate3d(26px, -24px, 0) scale(1.04); opacity: 0.95; }
+}
+
+/* Pause on hidden tab */
+.ag-ambient-layer[data-ag-paused="1"] .ag-bubble {
+  animation-play-state: paused !important;
+}
+
+/* Static gradients on low-end devices or prefers-reduced-motion */
+.ag-ambient-layer[data-ag-static="1"] .ag-bubble {
+  animation: none !important;
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-ambient-layer .ag-bubble {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+
+/* ==========================================================================
+   NOTHING-STYLE DOT-MATRIX HEADINGS & TABULAR METRICS
+   ========================================================================== */
+[data-admin-shell="true"][data-admin-glass="1"] .ag-dot-heading,
+[data-admin-glass-portal="1"] .ag-dot-heading {
+  font-family: 'Doto', var(--font-dot, 'DotGothic16'), ui-monospace, monospace;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-tabular,
+[data-admin-glass-portal="1"] .ag-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   GLASS SURFACES (BLUR 14-18px STRICTLY ON NAV, BARS, SHEETS, TOP CARDS)
+   ========================================================================== */
+[data-admin-shell="true"][data-admin-glass="1"] .ag-sidebar,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-mobile-header {
+  background: var(--ag-glass-strong);
+  backdrop-filter: blur(var(--ag-blur));
+  -webkit-backdrop-filter: blur(var(--ag-blur));
+  border-color: var(--ag-border);
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-glass-card,
+[data-admin-glass-portal="1"] .ag-glass-card {
+  background: var(--ag-glass-bg);
+  backdrop-filter: blur(var(--ag-blur));
+  -webkit-backdrop-filter: blur(var(--ag-blur));
+  border: 1px solid var(--ag-border);
+  box-shadow: var(--ag-shadow);
+  border-radius: 22px;
+}
+
+/* Flat translucent surface for rows/items inside long lists (NO backdrop-filter) */
+[data-admin-shell="true"][data-admin-glass="1"] .ag-flat-card,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-list-row,
+[data-admin-glass-portal="1"] .ag-flat-card,
+[data-admin-glass-portal="1"] .ag-list-row {
+  background: var(--ag-flat-bg);
+  border: 1px solid var(--ag-border);
+  box-shadow: var(--ag-highlight);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-list-row:hover {
+  background: var(--ag-flat-hover);
+}
+
+/* Bottom nav & Sticky Save bar */
+[data-admin-glass-portal="1"] .ag-bottom-nav,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-sticky-bar,
+[data-admin-glass-portal="1"] .ag-sticky-bar {
+  background: var(--ag-glass-strong);
+  backdrop-filter: blur(var(--ag-blur));
+  -webkit-backdrop-filter: blur(var(--ag-blur));
+  border: 1px solid var(--ag-border-strong);
+  box-shadow: var(--ag-shadow-bar);
+}
+
+/* Sheets & drawers */
+[data-admin-glass-portal="1"] .ag-sheet-panel,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-sheet-panel {
+  background: var(--ag-glass-strong);
+  backdrop-filter: blur(var(--ag-blur-sheet));
+  -webkit-backdrop-filter: blur(var(--ag-blur-sheet));
+  border-color: var(--ag-border-strong);
+  box-shadow: var(--ag-shadow-bar);
+}
+
+/* Segmented control */
+[data-admin-shell="true"][data-admin-glass="1"] .ag-segmented,
+[data-admin-glass-portal="1"] .ag-segmented {
+  background: var(--ag-flat-bg);
+  border: 1px solid var(--ag-border);
+  border-radius: 14px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-segmented-item,
+[data-admin-glass-portal="1"] .ag-segmented-item {
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 14px;
+  white-space: nowrap;
+  color: var(--ag-text-muted);
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  cursor: pointer;
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-segmented-item:hover,
+[data-admin-glass-portal="1"] .ag-segmented-item:hover {
+  color: var(--ag-text);
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-segmented-item[aria-selected="true"],
+[data-admin-glass-portal="1"] .ag-segmented-item[aria-selected="true"] {
+  background: var(--ag-accent);
+  color: #ffffff;
+  box-shadow: 0 6px 16px -4px rgba(232, 53, 59, 0.48);
+}
+
+/* Skeleton shimmer (opacity-only animation for 60fps) */
+@keyframes ag-skeleton-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.ag-skeleton {
+  border-radius: 10px;
+  background: var(--ag-skeleton-base, rgba(128, 128, 140, 0.16));
+  animation: ag-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-skeleton {
+    animation: none;
+  }
+}
+
+/* Clean inputs inside Field wrapper */
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field input,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field select,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field textarea,
+[data-admin-glass-portal="1"] .ag-field input,
+[data-admin-glass-portal="1"] .ag-field select,
+[data-admin-glass-portal="1"] .ag-field textarea {
+  background-color: var(--ag-input-bg);
+  border-color: var(--ag-border);
+  color: var(--ag-text);
+}
+
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field input:focus,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field select:focus,
+[data-admin-shell="true"][data-admin-glass="1"] .ag-field textarea:focus,
+[data-admin-glass-portal="1"] .ag-field input:focus,
+[data-admin-glass-portal="1"] .ag-field select:focus,
+[data-admin-glass-portal="1"] .ag-field textarea:focus {
+  border-color: var(--ag-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ag-accent-soft);
+}

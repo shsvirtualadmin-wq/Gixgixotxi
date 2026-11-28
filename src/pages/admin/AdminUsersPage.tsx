@@ -66,6 +66,15 @@ import {
   extractProfileSolvedCount,
   extractProfileStreakCount,
 } from '@/lib/adminUsersHelpers';
+import {
+  GlassCard,
+  DotHeading,
+  Pill,
+  Skeleton,
+  SkeletonListRows,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+import { formatRoleLabel, pluralize } from '@/utils/adminLabels';
 
 const PAGE_SIZE = 20;
 
@@ -135,7 +144,7 @@ function AdminCheckbox({ checked, indeterminate = false, ariaLabel, onChange }: 
       }}
       className={`press-scale inline-flex items-center justify-center w-[17px] h-[17px] rounded-[5px] border transition-all cursor-pointer shrink-0 ${
         checked || indeterminate
-          ? 'bg-[#D71921] border-[#D71921] text-white shadow-[0_2px_8px_rgba(215,25,33,0.4)]'
+          ? 'bg-[#E8353B] border-[#E8353B] text-white shadow-[0_2px_8px_rgba(232,53,59,0.4)]'
           : 'bg-white/[0.04] border-white/25 hover:border-white/50 text-transparent'
       }`}
     >
@@ -155,6 +164,7 @@ function UserActionsMenu({
   copiedUid,
   onCopyId,
 }: UserActionsMenuProps) {
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -218,6 +228,7 @@ function UserActionsMenu({
       role="menu"
       aria-label={`Actions for ${getUserDisplayName(u)}`}
       data-testid={`user-actions-menu-${u.uid}`}
+      data-admin-glass-portal={glassEnabled ? '1' : '0'}
       style={{
         position: 'fixed',
         top: `${top}px`,
@@ -225,13 +236,17 @@ function UserActionsMenu({
         width: `${menuWidth}px`,
         zIndex: 9999,
       }}
-      className="rounded-[18px] bg-[#141418]/95 backdrop-blur-xl border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.65)] p-1.5 text-[12px] font-heading text-[var(--text)]"
+      className={
+        glassEnabled
+          ? 'ag-sheet-panel rounded-[18px] p-1.5 text-[12px] font-heading text-[var(--text)]'
+          : 'rounded-[18px] bg-[#141418]/95 backdrop-blur-xl border border-white/15 shadow-[0_18px_48px_rgba(0,0,0,0.65)] p-1.5 text-[12px] font-heading text-[var(--text)]'
+      }
     >
-      <div className="px-2.5 py-1.5 border-b border-white/10 mb-1">
+      <div className="px-2.5 py-1.5 border-b border-[var(--border)] mb-1">
         <p className="font-semibold text-[12px] text-[var(--text)] truncate">
           {getUserDisplayName(u)}
         </p>
-        <p className="font-mono text-[10px] text-[#D71921] font-bold">{studentId}</p>
+        <p className="font-mono text-[10px] text-[#E8353B] font-bold">{studentId}</p>
       </div>
 
       <button
@@ -458,7 +473,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
       onClick={() => onSelect(u)}
       data-pressable
       data-testid={`admin-user-card-${u.uid}`}
-      className="press-scale p-4 rounded-[22px] bg-[var(--card)] border border-[var(--border)] hover:border-white/25 transition-all cursor-pointer flex flex-col gap-3"
+      className="press-scale p-4 rounded-[20px] ag-flat-card hover:border-[var(--accent)]/40 transition-colors cursor-pointer flex flex-col gap-3"
     >
       {/* Top row: Checkbox + Avatar + Name/Badge/Subtitle + Actions menu */}
       <div className="flex items-start justify-between gap-2.5 min-w-0">
@@ -513,7 +528,7 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
               </p>
             )}
             <div className="flex items-center gap-2 mt-0.5 min-w-0">
-              <span className="font-mono text-[11px] font-bold text-[#D71921] shrink-0">
+              <span className="font-mono text-[11px] font-bold text-[#E8353B] shrink-0">
                 {studentId}
               </span>
               <span
@@ -610,9 +625,9 @@ const AdminUserMobileCard = memo(function AdminUserMobileCard({
           </span>
 
           {!isGuestUser && (
-            <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
-              {u.role || 'Student'}
-            </span>
+            <Pill tone="neutral" className="text-[10px]">
+              {formatRoleLabel(u.role)}
+            </Pill>
           )}
         </div>
 
@@ -747,7 +762,7 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
       </td>
 
       {/* 3. Short ID */}
-      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono font-bold text-[#D71921] text-[12px] tabular-nums">
+      <td className="py-2.5 px-2.5 align-middle whitespace-nowrap font-mono font-bold text-[#E8353B] text-[12px] tabular-nums">
         {studentId}
       </td>
 
@@ -837,9 +852,9 @@ const AdminUserTableRow = memo(function AdminUserTableRow({
               {isSuspended ? 'Suspended' : 'Active'}
             </span>
             {!isGuestUser && u.role && u.role !== 'student' && (
-              <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/8 text-[var(--text)] border border-white/12">
-                {u.role}
-              </span>
+              <Pill tone="neutral" className="text-[9px] py-0.5 px-2">
+                {formatRoleLabel(u.role)}
+              </Pill>
             )}
           </div>
           {!isGuestUser && (
@@ -895,6 +910,7 @@ export function AdminUsersPage() {
     hasPermission,
     profileLoading,
   } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const hasAdminAccess = Boolean(
     isAdmin || authIsSuperAdmin || tokenClaims?.admin === true || tokenClaims?.superAdmin === true
   );
@@ -1103,7 +1119,7 @@ export function AdminUsersPage() {
           code: e?.code || 'USERS_FETCH_FAILED',
           message:
             e?.message ||
-            'Failed to load users from database. Please verify Firestore permissions.',
+            'Failed to load users. Please check your admin permissions and try again.',
           collection: e?.collection || 'users',
           operation: e?.operation || 'fetchUsersPaginated',
         });
@@ -1752,13 +1768,13 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div data-admin-page="users" className="flex flex-col gap-5 w-full max-w-full min-w-0">
+    <div data-admin-page="users" className="flex flex-col gap-5 w-full max-w-full min-w-0 pb-24 md:pb-6">
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div className="min-w-0">
-          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight leading-tight">
+          <DotHeading as="h1" size="page">
             All Users
-          </h1>
+          </DotHeading>
           <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
             Manage student registrations, roles, subscription plans, and account status.
           </p>
@@ -1771,10 +1787,10 @@ export function AdminUsersPage() {
               data-pressable
               onClick={handleCleanupOrphans}
               disabled={cleaningOrphans}
-              className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--red)]/45 text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
-              title="Find and remove orphan database profiles with no matching active Firebase Auth user"
+              className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[#E8353B]/45 text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+              title="Find and remove orphan profiles without an active sign-in account"
             >
-              <Trash2 size={13} className="text-[#D71921]" />
+              <Trash2 size={13} className="text-[#E8353B]" />
               <span>{cleaningOrphans ? 'Cleaning...' : 'Clean Up Orphans'}</span>
               {cleaningOrphans && <ButtonLineLoader />}
             </button>
@@ -1788,7 +1804,7 @@ export function AdminUsersPage() {
             className="press-scale relative overflow-hidden flex items-center justify-center gap-1.5 h-9 px-3 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
             title="Batch backfill student public profiles for privacy protection"
           >
-            <Shield size={13} className="text-[#D71921]" />
+            <Shield size={13} className="text-[#E8353B]" />
             <span>{backfillingProfiles ? 'Syncing...' : 'Backfill public profiles'}</span>
             {backfillingProfiles && <ButtonLineLoader />}
           </button>
@@ -1825,7 +1841,7 @@ export function AdminUsersPage() {
             disabled={loading}
             className="press-scale relative overflow-hidden flex items-center gap-1.5 h-9 px-3.5 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading font-semibold text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw size={13} className={loading ? 'animate-spin text-[#D71921]' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin text-[#E8353B]' : ''} />
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             {loading && <ButtonLineLoader />}
           </button>
@@ -1876,7 +1892,7 @@ export function AdminUsersPage() {
           onClick={() => setAdminTab('users')}
           className={`press-scale flex items-center gap-2 px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all cursor-pointer ${
             adminTab === 'users'
-              ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.3)]'
+              ? 'bg-[#E8353B] text-white shadow-[0_4px_14px_rgba(232,53,59,0.3)]'
               : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5'
           }`}
         >
@@ -1884,10 +1900,7 @@ export function AdminUsersPage() {
           <span data-testid="admin-users-tab-count" className="inline-flex items-center gap-1">
             <span>All Users</span>
             {isInitialLoading || (totalDirectoryCount === null && loadState !== 'error') ? (
-              <span
-                className="inline-block h-3.5 w-8 rounded bg-current/20 animate-pulse"
-                aria-label="Loading total users"
-              />
+              <Skeleton className="inline-block h-3.5 w-8 rounded" />
             ) : loadState === 'error' && allUsers.length === 0 ? (
               <span>(Error)</span>
             ) : (
@@ -1902,7 +1915,7 @@ export function AdminUsersPage() {
           onClick={() => setAdminTab('nameRequests')}
           className={`press-scale flex items-center gap-2 px-4 py-2 rounded-full text-xs font-heading font-semibold transition-all cursor-pointer ${
             adminTab === 'nameRequests'
-              ? 'bg-[#D71921] text-white shadow-[0_4px_14px_rgba(215,25,33,0.3)]'
+              ? 'bg-[#E8353B] text-white shadow-[0_4px_14px_rgba(232,53,59,0.3)]'
               : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-white/5'
           }`}
         >
@@ -1924,12 +1937,12 @@ export function AdminUsersPage() {
       ) : (
         <>
           {/* ─── SEARCH, SORT & FILTER CHIPS TOOLBAR ────────────────────────── */}
-          <div className="p-4 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
+          <GlassCard variant="glass" padding="md" className="flex flex-col gap-3.5">
             {/* Search + Sort Row */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <div
                 data-users-search-wrap
-                className="flex-1 flex items-center gap-2 px-3.5 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] transition-colors min-w-0"
+                className="flex-1 flex items-center gap-2 px-3.5 h-10 rounded-full bg-[var(--card-2)]/80 border border-[var(--border)] transition-colors min-w-0"
               >
                 <Search size={15} className="text-[var(--muted)] shrink-0" />
                 <input
@@ -2204,7 +2217,7 @@ export function AdminUsersPage() {
                 onClick={handleResetFilters}
                 className={`press-scale inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[12px] font-heading font-medium border transition-all ${
                   hasAnyModifier
-                    ? 'border-[#D71921]/50 bg-[#D71921]/10 text-[var(--text)] hover:bg-[#D71921]/20 cursor-pointer'
+                    ? 'border-[#E8353B]/50 bg-[#E8353B]/10 text-[var(--text)] hover:bg-[#E8353B]/20 cursor-pointer'
                     : 'border-[var(--border)] text-[var(--text-faint)] opacity-50 cursor-not-allowed'
                 }`}
               >
@@ -2212,20 +2225,22 @@ export function AdminUsersPage() {
                 <span>Reset filters</span>
               </button>
             </div>
-          </div>
+          </GlassCard>
 
           {/* ─── BULK ACTIONS BAR (appears when checkboxes selected) ────────── */}
           {selectedUids.size > 0 && isSuperAdmin && (
-            <div
+            <GlassCard
+              variant="glass"
+              padding="sm"
               data-testid="users-bulk-actions-bar"
-              className="p-3.5 rounded-[20px] bg-[var(--card)] border border-[#D71921]/45 shadow-[0_8px_28px_rgba(215,25,33,0.12)] flex items-center justify-between flex-wrap gap-3"
+              className="border-[#E8353B]/45 flex items-center justify-between flex-wrap gap-3"
             >
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-[#D71921] text-white font-mono text-[11px] font-bold">
+                <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-[#E8353B] text-white font-mono text-[11px] font-bold">
                   {selectedUids.size}
                 </span>
                 <span className="text-xs font-heading font-semibold text-[var(--text)]">
-                  user{selectedUids.size === 1 ? '' : 's'} selected
+                  {pluralize(selectedUids.size, 'user')} selected
                 </span>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -2267,42 +2282,13 @@ export function AdminUsersPage() {
                   Clear
                 </button>
               </div>
-            </div>
+            </GlassCard>
           )}
 
           {/* ─── MOBILE CARDS (< 768px) ─────────────────────────────────────── */}
           <div className="block md:hidden space-y-3" data-testid="admin-users-mobile-list">
             {isTableBusy ? (
-              <div className="space-y-3">
-                <LineLoader context="admin" message="Loading registered users..." />
-                {Array.from({ length: 5 }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-[22px] bg-[var(--card)] border border-[var(--border)] animate-pulse flex flex-col gap-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-hover)]" />
-                        <div className="space-y-2">
-                          <div className="h-4 w-32 rounded bg-[var(--surface-hover)]" />
-                          <div className="h-3 w-24 rounded bg-[var(--surface-hover)]" />
-                        </div>
-                      </div>
-                      <div className="w-8 h-8 rounded-full bg-[var(--surface-hover)]" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-[var(--border)]/60">
-                      <div className="space-y-1.5">
-                        <div className="h-3 w-28 rounded bg-[var(--surface-hover)]" />
-                        <div className="h-2.5 w-16 rounded bg-[var(--surface-hover)]" />
-                      </div>
-                      <div className="space-y-1.5 flex flex-col items-end">
-                        <div className="h-3 w-24 rounded bg-[var(--surface-hover)]" />
-                        <div className="h-2.5 w-20 rounded bg-[var(--surface-hover)]" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <SkeletonListRows rows={6} />
             ) : loadState === 'error' && allUsers.length === 0 ? (
               <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center space-y-3">
                 <p className="font-heading text-[14px] text-[var(--muted)]">
@@ -2361,14 +2347,18 @@ export function AdminUsersPage() {
             )}
           </div>
 
-          {/* ─── DESKTOP TABLE (>= 768px) — STICKY HEADER, INNER SCROLL ONLY ── */}
-          <div className="hidden md:block rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden w-full min-w-0">
+          {/* ─── DESKTOP TABLE (>= 768px) — FLAT TRANSLUCENT SURFACE (NO ROW BLUR) ── */}
+          <GlassCard
+            variant="flat"
+            padding="none"
+            className={`hidden md:block overflow-hidden w-full min-w-0 ${glassEnabled ? 'rounded-[22px]' : 'rounded-[24px]'}`}
+          >
             <div
               data-testid="admin-users-table-scroll"
               className="w-full overflow-x-auto max-h-[68vh] overflow-y-auto relative"
             >
               <table className="w-full min-w-[1000px] text-left border-collapse">
-                <thead className="sticky top-0 z-10 bg-[var(--card-2)]/95 backdrop-blur-md border-b border-[var(--border)]">
+                <thead className="sticky top-0 z-10 bg-[var(--card-2)] border-b border-[var(--border)]">
                   <tr className="text-[10.5px] font-mono uppercase tracking-wider text-[var(--muted)]">
                     <th className="w-[40px] pl-3.5 pr-1.5 py-3 text-center font-medium">
                       {isSuperAdmin && selectablePageUids.length > 0 ? (
@@ -2510,7 +2500,7 @@ export function AdminUsersPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </GlassCard>
 
           {/* ─── UNIFIED PAGE-BASED PAGINATION FOOTER (20 PER PAGE) ─────────── */}
           {!isTableBusy && paginationTotal > 0 && (
@@ -2564,7 +2554,7 @@ export function AdminUsersPage() {
                           onClick={() => void handleGoToPage(entry)}
                           className={`press-scale relative overflow-hidden inline-flex items-center justify-center min-w-[36px] h-9 px-2.5 rounded-[12px] border text-[12px] font-mono font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
                             entry === safePage
-                              ? 'border-[#D71921] bg-[#D71921] text-white'
+                              ? 'border-[#E8353B] bg-[#E8353B] text-white'
                               : 'border-[var(--border)] bg-[var(--card)] text-[var(--text)] hover:border-white/30'
                           }`}
                         >

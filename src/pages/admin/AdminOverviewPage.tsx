@@ -60,6 +60,15 @@ import {
 import { clearGenericErrorToasts, dismissApiToast, showApiToast } from '@/lib/api';
 import type { RewardsMode } from '@/lib/rewardsEngine';
 import type { AuditLog } from '@/types';
+import {
+  DotHeading,
+  GlassCard,
+  Pill,
+  Segmented,
+  Skeleton,
+} from '@/components/admin/AdminGlassPrimitives';
+import { formatAuditActionLabel, pluralize } from '@/utils/adminLabels';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 
 type RadarFilterId = 'all' | 'active' | 'at_risk' | 'inactive';
 
@@ -164,6 +173,7 @@ function isTransientCardError(parsed: { status: string | number; message: string
 
 export function AdminOverviewPage() {
   const { user, isAdmin, isSuperAdmin, profileLoading } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const initialOverview = getCachedAdminOverview();
   const initialUsersAndPlans = getCachedOverviewUsersAndPlansSnapshot();
   const initialLiveBank = getCachedLiveQuestionBankStats();
@@ -806,7 +816,7 @@ export function AdminOverviewPage() {
         const verifiedState = await fetchRewardsState(user?.uid);
         if (verifiedState.loadError) {
           setRewardsModeError(
-            `Saved change, but failed to re-read setting from D1 (${verifiedState.loadError}).`
+            `Saved change, but failed to verify updated setting (${verifiedState.loadError}).`
           );
           return;
         }
@@ -818,7 +828,7 @@ export function AdminOverviewPage() {
             : storedMode === 'admin_only'
             ? 'Admin only (testing)'
             : 'Off';
-        setRewardsModeSuccess(`Boardly Rewards mode updated to "${label}" in Cloudflare D1.`);
+        setRewardsModeSuccess(`Boardly Rewards mode updated to "${label}".`);
         const [logs, rHealth] = await Promise.all([
           fetchAuditLogs(5).catch(() => null),
           fetchRewardsHealth().catch(() => null),
@@ -886,9 +896,9 @@ export function AdminOverviewPage() {
       {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+          <DotHeading as="h1" size="page">
             Admin overview
-          </h1>
+          </DotHeading>
           <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
             System metrics, question bank management, and pending queues.
           </p>
@@ -898,10 +908,14 @@ export function AdminOverviewPage() {
           type="button"
           onClick={() => loadData({ force: true })}
           disabled={isRefreshing}
-          className="relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+          className={`relative overflow-hidden flex items-center gap-2 px-3.5 py-2 rounded-[14px] border text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer ${
+            glassEnabled
+              ? 'ag-flat-card hover:border-[#E8353B]/40'
+              : 'bg-[var(--card)] hover:bg-[var(--surface-hover)] border-[var(--border)]'
+          }`}
         >
           <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
-          <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          <span>{isRefreshing ? 'Refreshing…' : 'Refresh'}</span>
           {isRefreshing && <ButtonLineLoader />}
         </button>
       </div>
@@ -914,14 +928,14 @@ export function AdminOverviewPage() {
       />
 
       {/* ─── 6 INDEPENDENT STAT CARDS ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-        {/* 1. Registered users */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* 1. Registered users (includes active guests — shared with Users page) */}
+        <GlassCard variant="glass" padding="md" className="col-span-2 flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
-              Registered users
+              Total accounts
             </span>
-            <Users size={16} className="text-[var(--text)] shrink-0" />
+            <Users size={16} className="text-[#E8353B] shrink-0" />
           </div>
           {renderCardMetric(
             usersAndPlansCard,
@@ -931,9 +945,9 @@ export function AdminOverviewPage() {
           )}
           {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
             <div className="flex flex-wrap items-center gap-1.5 mb-2" aria-label="Loading user breakdown">
-              <span className="h-5 w-14 rounded bg-[var(--surface-hover)] animate-pulse" />
-              <span className="h-5 w-12 rounded bg-[var(--surface-hover)] animate-pulse" />
-              <span className="h-5 w-12 rounded bg-[var(--surface-hover)] animate-pulse" />
+              <Skeleton className="h-5 w-14 rounded-full" />
+              <Skeleton className="h-5 w-12 rounded-full" />
+              <Skeleton className="h-5 w-12 rounded-full" />
             </div>
           ) : usersAndPlansCard.data && !usersAndPlansCard.error ? (
             (() => {
@@ -949,26 +963,20 @@ export function AdminOverviewPage() {
                 typeof guestVal === 'number';
               if (!hasAnyPlanChip) return null;
               return (
-                <div className="flex flex-wrap items-center gap-1.5 mb-2 text-[10px] font-mono text-[var(--muted)]">
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
                   {typeof freeVal === 'number' && (
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                      Free: {freeVal.toLocaleString()}
-                    </span>
+                    <Pill tone="neutral">Free {freeVal.toLocaleString()}</Pill>
                   )}
                   {typeof proVal === 'number' && (
-                    <span className="px-1.5 py-0.5 rounded bg-[#D71921]/10 border border-[#D71921]/30 text-[#D71921]">
-                      Pro: {proVal.toLocaleString()}
-                    </span>
+                    <Pill tone="accent">Pro {proVal.toLocaleString()}</Pill>
                   )}
                   {typeof plusVal === 'number' && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/35 text-amber-700 dark:text-amber-300 font-bold">
-                      Plus: {plusVal.toLocaleString()}
-                    </span>
+                    <Pill tone="warning">Plus {plusVal.toLocaleString()}</Pill>
                   )}
                   {typeof guestVal === 'number' && (
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] border border-[var(--border)]">
-                      Guests: {guestVal.toLocaleString()}
-                    </span>
+                    <Pill tone="neutral">
+                      {pluralize(guestVal, 'guest', 'guests')}
+                    </Pill>
                   )}
                 </div>
               );
@@ -977,7 +985,7 @@ export function AdminOverviewPage() {
           {isSuperAdmin ? (
             <Link
               to="/admin/users"
-              className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+              className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 mt-auto pt-1 transition-colors"
             >
               <span>Manage users</span>
               <ArrowRight size={12} />
@@ -987,10 +995,10 @@ export function AdminOverviewPage() {
               Platform accounts
             </span>
           )}
-        </div>
+        </GlassCard>
 
         {/* 2. Questions in pool */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+        <GlassCard variant="glass" padding="md" className="flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Questions in pool
@@ -1004,27 +1012,27 @@ export function AdminOverviewPage() {
             'admin-overview-total-questions'
           )}
           {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
-            <div className="h-3.5 w-36 rounded bg-[var(--surface-hover)] animate-pulse mb-2" />
+            <Skeleton className="h-3.5 w-32 mb-2" />
           ) : questionBankCard.data &&
             !questionBankCard.error &&
             typeof questionBankCard.data.totalUniversities === 'number' &&
             typeof questionBankCard.data.liveUniversities === 'number' ? (
-            <div className="text-[11px] font-mono text-[var(--muted)] mb-2">
+            <div className="text-[11px] font-mono text-[var(--muted)] mb-2 ag-tabular">
               {questionBankCard.data.liveUniversities} of {questionBankCard.data.totalUniversities}{' '}
               universities live
             </div>
           ) : null}
           <Link
             to="/admin/questions"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+            className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 mt-auto pt-1 transition-colors"
           >
             <span>Inspect questions</span>
             <ArrowRight size={12} />
           </Link>
-        </div>
+        </GlassCard>
 
         {/* 3. Test attempts */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+        <GlassCard variant="glass" padding="md" className="flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Test attempts
@@ -1038,12 +1046,14 @@ export function AdminOverviewPage() {
             'admin-overview-total-attempts'
           )}
           <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
-            Student submissions
+            {attemptsCard.data
+              ? pluralize(attemptsCard.data.totalAttempts, 'submission')
+              : 'Student submissions'}
           </span>
-        </div>
+        </GlassCard>
 
         {/* 4. Pending applications */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+        <GlassCard variant="glass" padding="md" className="flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Pending applications
@@ -1058,15 +1068,15 @@ export function AdminOverviewPage() {
           )}
           <Link
             to="/admin/applications"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+            className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 mt-auto pt-1 transition-colors"
           >
             <span>Review queue</span>
             <ArrowRight size={12} />
           </Link>
-        </div>
+        </GlassCard>
 
         {/* 5. Pending payments */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+        <GlassCard variant="glass" padding="md" className="flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Pending payments
@@ -1081,15 +1091,15 @@ export function AdminOverviewPage() {
           )}
           <Link
             to="/admin/payments"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+            className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 mt-auto pt-1 transition-colors"
           >
             <span>Verify payments</span>
             <ArrowRight size={12} />
           </Link>
-        </div>
+        </GlassCard>
 
         {/* 6. Pending reviews */}
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+        <GlassCard variant="glass" padding="md" className="col-span-2 md:col-span-1 lg:col-span-2 flex flex-col justify-between min-h-[144px]">
           <div className="flex items-center justify-between gap-2">
             <span className="font-heading text-[13px] text-[var(--muted)]">
               Pending reviews
@@ -1104,29 +1114,29 @@ export function AdminOverviewPage() {
           )}
           <Link
             to="/admin/commons"
-            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+            className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 mt-auto pt-1 transition-colors"
           >
             <span>Moderate reviews</span>
             <ArrowRight size={12} />
           </Link>
-        </div>
+        </GlassCard>
       </div>
 
       {/* ─── SUBSCRIPTION ANALYTICS (FREE / PRO / PLUS) ──────────────────────── */}
-      <section className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-4">
+      <GlassCard variant="glass" padding="md" className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Sparkles size={16} className="text-amber-500" />
-            <h2 className="font-dot text-[16px] font-extrabold text-[var(--text)]">
+            <DotHeading as="h2" size="section">
               Boardly Plans Snapshot
-            </h2>
+            </DotHeading>
           </div>
           {isSuperAdmin && (
             <Link
               to="/admin/plans"
-              className="font-heading text-[12px] text-[var(--accent)] hover:underline inline-flex items-center gap-1"
+              className="font-heading text-[12px] text-[#E8353B] hover:underline inline-flex items-center gap-1"
             >
-              <span>Edit config/plans</span>
+              <span>Edit plans &amp; pricing</span>
               <ArrowRight size={12} />
             </Link>
           )}
@@ -1140,15 +1150,15 @@ export function AdminOverviewPage() {
           >
             {[
               { label: 'Active Free', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
-              { label: 'Active Pro', border: 'border-[#D71921]/30', labelClass: 'text-[#D71921]' },
+              { label: 'Active Pro', border: 'border-[#E8353B]/30', labelClass: 'text-[#E8353B]' },
               { label: 'Active Plus', border: 'border-amber-500/40', labelClass: 'text-amber-600 dark:text-amber-400' },
               { label: 'Expiring ≤7d', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
               { label: 'Pro / Plus PKR', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
               { label: 'Pro → Plus', border: 'border-[var(--border)]', labelClass: 'text-[var(--muted)]' },
             ].map((tile) => (
-              <div key={tile.label} className={`p-3 rounded-2xl bg-[var(--card-2)] border ${tile.border}`}>
+              <div key={tile.label} className={`ag-flat-card p-3 rounded-2xl border ${tile.border}`}>
                 <div className={`font-mono text-[10px] uppercase ${tile.labelClass}`}>{tile.label}</div>
-                <div className="h-7 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-1" />
+                <Skeleton className="h-7 w-14 mt-1.5" />
               </div>
             ))}
           </div>
@@ -1159,7 +1169,7 @@ export function AdminOverviewPage() {
             return (
               <div
                 data-testid="plans-snapshot-error"
-                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between gap-3"
+                className="p-3.5 rounded-[16px] ag-flat-card border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <AlertTriangle size={14} className="shrink-0" />
@@ -1181,19 +1191,19 @@ export function AdminOverviewPage() {
           }
           return (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="ag-flat-card p-3 rounded-2xl border border-[var(--border)]">
                 <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Active Free</div>
                 <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
                   {plans.freeCount.toLocaleString()}
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[#D71921]/30">
-                <div className="font-mono text-[10px] uppercase text-[#D71921]">Active Pro</div>
+              <div className="ag-flat-card p-3 rounded-2xl border border-[#E8353B]/35">
+                <div className="font-mono text-[10px] uppercase text-[#E8353B]">Active Pro</div>
                 <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
                   {plans.proCount.toLocaleString()}
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-amber-500/40">
+              <div className="ag-flat-card p-3 rounded-2xl border border-amber-500/40">
                 <div className="font-mono text-[10px] uppercase text-amber-600 dark:text-amber-400">
                   Active Plus
                 </div>
@@ -1201,19 +1211,19 @@ export function AdminOverviewPage() {
                   {plans.plusCount.toLocaleString()}
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="ag-flat-card p-3 rounded-2xl border border-[var(--border)]">
                 <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Expiring ≤7d</div>
                 <div className="font-dot text-xl font-extrabold text-[var(--text)] mt-1 tabular-nums">
                   {plans.expiringSoonCount.toLocaleString()}
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="ag-flat-card p-3 rounded-2xl border border-[var(--border)]">
                 <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro / Plus PKR</div>
                 <div className="font-mono text-[12px] font-bold text-[var(--text)] mt-1.5 tabular-nums">
                   {`${plans.proRevenuePkr.toLocaleString()} / ${plans.plusRevenuePkr.toLocaleString()}`}
                 </div>
               </div>
-              <div className="p-3 rounded-2xl bg-[var(--card-2)] border border-[var(--border)]">
+              <div className="ag-flat-card p-3 rounded-2xl border border-[var(--border)]">
                 <div className="font-mono text-[10px] uppercase text-[var(--muted)]">Pro → Plus</div>
                 <div className="font-dot text-xl font-extrabold text-amber-600 dark:text-amber-400 mt-1 tabular-nums">
                   {plans.proToPlusConversions.toLocaleString()}
@@ -1222,82 +1232,44 @@ export function AdminOverviewPage() {
             </div>
           );
         })()}
-      </section>
+      </GlassCard>
 
       {/* ─── WINGMATES RADAR (ALL USERS LIVE FEED + FILTERS + SEND REMINDER) ─── */}
-      <section
+      <GlassCard
+        variant="glass"
+        padding="md"
         data-testid="wingmates-radar-section"
         aria-labelledby="wingmates-radar-heading"
-        className="p-5 rounded-[28px] border flex flex-col gap-4"
-        style={{
-          backgroundColor: 'var(--pill-card-bg)',
-          borderColor: 'var(--pill-card-border)',
-          color: 'var(--text)',
-        }}
+        className="flex flex-col gap-4"
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <span
-              className="block font-mono text-[10px] font-bold uppercase tracking-widest"
-              style={{ color: 'var(--text-muted)' }}
-            >
+            <span className="block font-mono text-[10px] font-bold uppercase tracking-widest text-[var(--muted)]">
               Cockpit Live Feed · All Students
             </span>
-            <h2
-              id="wingmates-radar-heading"
-              className="font-dot text-[18px] sm:text-[20px] font-black mt-0.5"
-              style={{ color: 'var(--text)' }}
-            >
-              Wingmates Radar
-            </h2>
+            <DotHeading as="h2" size="section" className="mt-0.5">
+              <span id="wingmates-radar-heading">Wingmates Radar</span>
+            </DotHeading>
           </div>
 
-          <div className="flex items-center flex-wrap gap-1.5" role="group" aria-label="Wingmates Radar filters">
-            {(
-              [
-                { id: 'all', label: 'All' },
-                { id: 'active', label: 'Active' },
-                { id: 'at_risk', label: 'At risk' },
-                { id: 'inactive', label: 'Inactive' },
-              ] as const
-            ).map((f) => {
-              const isSelected = radarFilter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  type="button"
-                  data-testid={`wingmates-radar-filter-${f.id}`}
-                  onClick={() => setRadarFilter(f.id)}
-                  className="px-3.5 py-1.5 rounded-full font-mono text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-opacity duration-150"
-                  style={
-                    isSelected
-                      ? {
-                          backgroundColor: 'var(--accent)',
-                          color: 'var(--rw-on-red)',
-                          border: '1px solid var(--accent)',
-                        }
-                      : {
-                          backgroundColor: 'var(--pill-chip-bg)',
-                          color: 'var(--text-muted)',
-                          border: '1px solid var(--pill-chip-border)',
-                        }
-                  }
-                >
-                  {f.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center flex-wrap gap-2">
+            <Segmented<RadarFilterId>
+              ariaLabel="Wingmates Radar filters"
+              value={radarFilter}
+              onChange={setRadarFilter}
+              options={[
+                { value: 'all', label: 'All' },
+                { value: 'active', label: 'Active' },
+                { value: 'at_risk', label: 'At risk' },
+                { value: 'inactive', label: 'Inactive' },
+              ]}
+            />
 
             <button
               type="button"
               onClick={() => void loadWingmatesRadar()}
               disabled={radarLoading}
-              className="p-2 rounded-full border cursor-pointer disabled:opacity-50"
-              style={{
-                backgroundColor: 'var(--pill-chip-bg)',
-                borderColor: 'var(--pill-chip-border)',
-                color: 'var(--text)',
-              }}
+              className="p-2 rounded-full ag-flat-card text-[var(--text)] cursor-pointer disabled:opacity-50"
               title="Refresh Wingmates Radar"
             >
               <RefreshCw size={13} className={radarLoading ? 'animate-spin' : ''} />
@@ -1565,33 +1537,30 @@ export function AdminOverviewPage() {
             );
           })()
         )}
-      </section>
+      </GlassCard>
 
       {/* ─── REGISTERED USERS PREVIEW (SUPER ADMIN ONLY) ───────────────────── */}
       {isSuperAdmin && (
-        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3">
+        <GlassCard variant="glass" padding="md" className="flex flex-col gap-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <Users size={16} className="text-red-500 shrink-0" />
-              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-1.5">
+              <Users size={16} className="text-[#E8353B] shrink-0" />
+              <DotHeading as="h2" size="section" className="flex items-center gap-1.5">
                 <span>Users directory</span>
                 {(profileLoading || usersAndPlansCard.loading) && !usersAndPlansCard.data ? (
-                  <span
-                    className="inline-block h-4 w-10 rounded-md bg-[var(--surface-hover)] animate-pulse"
-                    aria-label="Loading user count"
-                  />
+                  <Skeleton className="inline-block h-4 w-10" />
                 ) : usersAndPlansCard.error || !usersAndPlansCard.data ? (
                   <span className="text-xs font-mono text-[var(--red)]">(Error)</span>
                 ) : (
-                  <span className="tabular-nums">
+                  <span className="tabular-nums ag-tabular">
                     ({usersAndPlansCard.data.users.totalUsers.toLocaleString()})
                   </span>
                 )}
-              </h2>
+              </DotHeading>
             </div>
             <Link
               to="/admin/users"
-              className="font-heading text-[12px] font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+              className="font-heading text-[12px] font-bold text-[#E8353B] hover:underline flex items-center gap-1"
             >
               <span>Open full users directory</span>
               <ArrowRight size={13} />
@@ -1680,28 +1649,28 @@ export function AdminOverviewPage() {
               })}
             </div>
           )}
-        </div>
+        </GlassCard>
       )}
 
-      {/* ─── QUESTIONS PER SUBJECT BREAKDOWN ─────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+      {/* ─── QUESTIONS PER SUBJECT BREAKDOWN (ONE UNIFIED LIST, NOT 40 CARDS) ── */}
+      <GlassCard variant="glass" padding="md" className="flex flex-col gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <DotHeading as="h2" size="section">
             Questions by subject
-          </h2>
+          </DotHeading>
           <div className="flex items-center gap-2">
             {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
-              <span className="h-3.5 w-28 rounded bg-[var(--surface-hover)] animate-pulse" />
+              <Skeleton className="h-3.5 w-28" />
             ) : questionBankCard.data && typeof questionBankCard.data.totalQuestions === 'number' ? (
-              <span className="font-heading text-[12px] text-[var(--muted)]">
+              <Pill tone="neutral">
                 Live counts · {questionBankCard.data.totalQuestions.toLocaleString()} MCQs
-              </span>
+              </Pill>
             ) : null}
             <button
               type="button"
               onClick={() => void loadQuestionBankCard(true)}
               disabled={questionBankCard.loading}
-              className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
               title="Refresh subject counts"
             >
               <RefreshCw size={13} className={questionBankCard.loading ? 'animate-spin' : ''} />
@@ -1710,21 +1679,19 @@ export function AdminOverviewPage() {
         </div>
 
         {(profileLoading || questionBankCard.loading) && !questionBankCard.data ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
+          <div className="ag-flat-card rounded-[18px] divide-y divide-[var(--border)] overflow-hidden">
             {CORE_SUBJECTS.map((subj) => (
               <div
                 key={subj}
-                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+                className="px-4 py-3 flex items-center justify-between gap-4"
               >
-                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
-                  {subj}
-                </span>
-                <span className="h-6 w-14 rounded-lg bg-[var(--surface-hover)] animate-pulse mt-2" />
+                <span className="font-heading text-[13px] text-[var(--muted)]">{subj}</span>
+                <Skeleton className="h-4 w-12" />
               </div>
             ))}
           </div>
         ) : questionBankCard.error || !questionBankCard.data ? (
-          <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+          <div className="p-3 rounded-[14px] ag-flat-card border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
             <span>
               {questionBankCard.error
                 ? `${questionBankCard.error.source} (${questionBankCard.error.status}): ${questionBankCard.error.message}`
@@ -1739,7 +1706,7 @@ export function AdminOverviewPage() {
             </button>
           </div>
         ) : questionBankCard.data && questionBankCard.data.subjects.length === 0 ? (
-          <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)] text-xs font-mono flex items-center justify-between">
+          <div className="p-3 rounded-[14px] ag-flat-card border border-[var(--border)] text-[var(--muted)] text-xs font-mono flex items-center justify-between">
             <span>
               {questionBankCard.data.totalQuestions > 0
                 ? 'Subject breakdown unavailable for this question bank snapshot.'
@@ -1754,42 +1721,39 @@ export function AdminOverviewPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-2.5">
-            {(questionBankCard.data?.subjects ?? []).map((entry) => (
-              <div
-                key={entry.subject}
-                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
-              >
-                <span
-                  title={entry.subject}
-                  className="font-heading text-[12px] text-[var(--muted)] truncate"
+          <div className="ag-flat-card rounded-[18px] overflow-hidden">
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 border-collapse">
+              {(questionBankCard.data?.subjects ?? []).map((entry) => (
+                <li
+                  key={entry.subject}
+                  className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-[var(--border)] hover:bg-[var(--surface-hover)]/40 transition-colors"
                 >
-                  {entry.subject}
-                </span>
-                <span className="tabular-nums text-[22px] font-bold text-[var(--text)] mt-2">
-                  {entry.count.toLocaleString()}
-                </span>
-              </div>
-            ))}
+                  <span className="font-heading text-[13px] text-[var(--text)]">
+                    {entry.subject}
+                  </span>
+                  <span className="tabular-nums ag-tabular text-[14px] font-bold text-[var(--text)] shrink-0">
+                    {entry.count.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-      </div>
+      </GlassCard>
 
       {/* ─── SUPERADMIN-ONLY CONTROLS ────────────────────────────────────────── */}
       {isSuperAdmin && (
         <>
           {/* Broadcast Announcements */}
-          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <GlassCard variant="glass" padding="md" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#E8353B]/12 border border-[#E8353B]/30 flex items-center justify-center text-[#E8353B] shrink-0">
                 <Megaphone size={20} />
               </div>
               <div>
-                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-                  <span>Superadmin Announcements</span>
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                    Broadcast
-                  </span>
+                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2 flex-wrap">
+                  <DotHeading as="div" size="section">Superadmin Announcements</DotHeading>
+                  <Pill tone="accent">Broadcast</Pill>
                 </h2>
                 <p className="text-[12px] text-[var(--muted)] mt-0.5">
                   Post announcements to every Boardly student. Appears instantly in their in-app Notifications page.
@@ -1798,25 +1762,23 @@ export function AdminOverviewPage() {
             </div>
             <Link
               to="/admin/announcements"
-              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer whitespace-nowrap"
             >
               <span>Post &amp; Manage Announcements</span>
               <ArrowRight size={14} />
             </Link>
-          </div>
+          </GlassCard>
 
           {/* Store Pricing Control */}
-          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <GlassCard variant="glass" padding="md" className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#E8353B]/12 border border-[#E8353B]/30 flex items-center justify-center text-[#E8353B] shrink-0">
                 <KobanIcon size={20} decorative />
               </div>
               <div>
-                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-                  <span>Store Pricing &amp; Cosmetics Manager</span>
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                    Super Admin
-                  </span>
+                <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2 flex-wrap">
+                  <DotHeading as="div" size="section">Store Pricing &amp; Cosmetics Manager</DotHeading>
+                  <Pill tone="accent">Super Admin</Pill>
                 </h2>
                 <p className="text-[12px] text-[var(--muted)] mt-0.5">
                   Bulk update Koban prices with batched writes, preview before applying, toggle active items, and audit price history.
@@ -1825,36 +1787,36 @@ export function AdminOverviewPage() {
             </div>
             <Link
               to="/admin/pricing"
-              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer whitespace-nowrap"
             >
               <span>Open Store Pricing</span>
               <ArrowRight size={14} />
             </Link>
-          </div>
+          </GlassCard>
 
-          {/* Boardly Rewards D1 Mode Switch */}
-          <div
+          {/* Boardly Rewards Mode Switch */}
+          <GlassCard
+            variant="glass"
+            padding="md"
             data-testid="admin-rewards-mode-card"
-            className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
+            className="flex flex-col gap-4"
           >
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-[#E8353B]/12 border border-[#E8353B]/30 flex items-center justify-center text-[#E8353B] shrink-0">
                   <Gift size={20} />
                 </div>
                 <div>
-                  <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
-                    <span>Rewards</span>
-                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                      Super Admin · Cloudflare D1
-                    </span>
+                  <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2 flex-wrap">
+                    <DotHeading as="div" size="section">Rewards</DotHeading>
+                    <Pill tone="accent">Super Admin</Pill>
                   </h2>
                   <p className="text-[12px] text-[var(--muted)] mt-0.5">
                     Control who can claim daily check-ins, MCQ milestones, and referral bonuses on{' '}
                     <Link to="/rewards" className="text-[var(--text)] underline">
                       /rewards
                     </Link>
-                    . Stored in D1 <code className="font-mono">reward_settings</code>.
+                    . Changes apply immediately.
                   </p>
                 </div>
               </div>
@@ -1862,19 +1824,19 @@ export function AdminOverviewPage() {
               {(profileLoading || rewardsModeLoading) && !rewardsMode ? (
                 <div
                   data-testid="rewards-mode-loading"
-                  className="inline-flex items-center gap-1.5 p-1.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+                  className="inline-flex items-center gap-1.5 p-1.5 rounded-[14px] ag-flat-card shrink-0"
                   aria-label="Loading rewards mode"
                 >
-                  <span className="h-8 w-14 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
-                  <span className="h-8 w-32 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
-                  <span className="h-8 w-20 rounded-[10px] bg-[var(--surface-hover)] animate-pulse" />
+                  <Skeleton className="h-8 w-14 rounded-[10px]" />
+                  <Skeleton className="h-8 w-32 rounded-[10px]" />
+                  <Skeleton className="h-8 w-20 rounded-[10px]" />
                 </div>
               ) : (
                 <div
                   role="group"
                   aria-label="Rewards mode switch"
                   data-testid="rewards-mode-segmented-control"
-                  className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] shrink-0"
+                  className="inline-flex flex-wrap sm:flex-nowrap items-center gap-1 p-1 rounded-[14px] ag-flat-card shrink-0"
                 >
                   {(
                     [
@@ -1891,9 +1853,9 @@ export function AdminOverviewPage() {
                         data-testid={`rewards-mode-btn-${opt.id}`}
                         disabled={updatingRewardsMode}
                         onClick={() => handleSelectRewardsMode(opt.id)}
-                        className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer ${
+                        className={`px-3.5 py-2 rounded-[10px] text-[12px] font-heading font-bold transition-all cursor-pointer whitespace-nowrap ${
                           active
-                            ? 'bg-[#D71921] text-white shadow-sm'
+                            ? 'bg-[#E8353B] text-white shadow-sm'
                             : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]'
                         }`}
                       >
@@ -1907,11 +1869,11 @@ export function AdminOverviewPage() {
 
             <div
               data-testid="admin-rewards-health-panel"
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]"
+              className="ag-flat-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-[16px]"
             >
               <div className="flex items-start sm:items-center gap-2.5 min-w-0">
                 {(profileLoading || rewardsHealthLoading) && !rewardsHealth ? (
-                  <span className="h-4 w-4 rounded-full bg-[var(--surface-hover)] animate-pulse shrink-0" />
+                  <Skeleton className="h-4 w-4 rounded-full shrink-0" />
                 ) : rewardsHealth?.ok ? (
                   <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5 sm:mt-0" />
                 ) : (
@@ -1920,12 +1882,12 @@ export function AdminOverviewPage() {
                 <div className="min-w-0 text-[12px]">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-heading font-semibold text-[var(--text)]">
-                      Firestore Credit Health:
+                      Reward credit health:
                     </span>
                     {(profileLoading || rewardsHealthLoading) && !rewardsHealth ? (
                       <span
                         data-testid="admin-rewards-health-loading"
-                        className="inline-block h-5 w-20 rounded-full bg-[var(--surface-hover)] animate-pulse"
+                        className="inline-block h-5 w-20 rounded-full ag-skeleton"
                         aria-label="Loading rewards health"
                       />
                     ) : (
@@ -1933,17 +1895,17 @@ export function AdminOverviewPage() {
                         data-testid="admin-rewards-health-status"
                         className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full border ${
                           rewardsHealth?.ok
-                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                            ? 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
+                            : 'bg-amber-500/15 text-amber-500 border-amber-500/30'
                         }`}
                       >
                         {checkingRewardsHealth
-                          ? 'checking...'
+                          ? 'Checking…'
                           : rewardsHealth
                           ? rewardsHealth.ok
-                            ? 'ok'
+                            ? 'Healthy'
                             : rewardsHealth.reason
-                          : 'unavailable'}
+                          : 'Unavailable'}
                       </span>
                     )}
                   </div>
@@ -1958,7 +1920,7 @@ export function AdminOverviewPage() {
                 className="px-3 py-1.5 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[11px] font-heading font-bold text-[var(--text)] flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw size={12} className={checkingRewardsHealth ? 'animate-spin' : ''} />
-                <span>{checkingRewardsHealth ? 'Checking...' : 'Check Health'}</span>
+                <span>{checkingRewardsHealth ? 'Checking…' : 'Check Health'}</span>
               </button>
             </div>
 
@@ -1981,10 +1943,10 @@ export function AdminOverviewPage() {
                 <span>{rewardsModeError}</span>
               </div>
             )}
-          </div>
+          </GlassCard>
 
           {/* Seed Balanced Question Pool Tool */}
-          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+          <GlassCard variant="glass" padding="md" className="flex flex-col gap-4">
             <div className="flex items-start justify-between flex-wrap gap-4">
               <div className="max-w-[680px]">
                 <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] mb-1">
@@ -2043,17 +2005,17 @@ export function AdminOverviewPage() {
                 <span>{seedError}</span>
               </div>
             )}
-          </div>
+          </GlassCard>
 
           {/* Audit Trail Card */}
-          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+          <GlassCard variant="glass" padding="md" className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+              <DotHeading as="h2" size="section">
                 Recent audit trail
-              </h2>
+              </DotHeading>
               <Link
                 to="/admin/audit-logs"
-                className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1"
+                className="font-heading text-[12px] text-[var(--text)] hover:text-[#E8353B] flex items-center gap-1 transition-colors"
               >
                 <span>View all logs</span>
                 <ArrowRight size={12} />
@@ -2065,18 +2027,18 @@ export function AdminOverviewPage() {
                 {[0, 1, 2].map((idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 animate-pulse"
+                    className="ag-list-row p-3 rounded-[16px] flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-2.5 flex-1">
-                      <span className="h-5 w-24 rounded-full bg-[var(--surface-hover)]" />
-                      <span className="h-4 w-40 rounded bg-[var(--surface-hover)]" />
+                      <Skeleton className="h-5 w-32 rounded-full" />
+                      <Skeleton className="h-4 w-40" />
                     </div>
-                    <span className="h-3.5 w-16 rounded bg-[var(--surface-hover)]" />
+                    <Skeleton className="h-3.5 w-16" />
                   </div>
                 ))}
               </div>
             ) : recentLogsCard.error && !recentLogsCard.data ? (
-              <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
+              <div className="p-3 rounded-[14px] ag-flat-card border border-[var(--red)]/40 text-[var(--red)] text-xs font-mono flex items-center justify-between">
                 <span>
                   {recentLogsCard.error.source} ({recentLogsCard.error.status}):{' '}
                   {recentLogsCard.error.message}
@@ -2098,24 +2060,24 @@ export function AdminOverviewPage() {
                 {recentLogsCard.data.map((log, i) => (
                   <div
                     key={log.id || i}
-                    className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 text-[13px] font-heading"
+                    className="ag-list-row p-3 rounded-[16px] flex items-center justify-between gap-3 text-[13px] font-heading"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] shrink-0">
-                        {log.action}
-                      </span>
+                    <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
+                      <Pill tone="neutral" title={log.action}>
+                        {formatAuditActionLabel(log.action)}
+                      </Pill>
                       <span className="text-[var(--text)] truncate">
                         {log.targetEmail || log.targetUid || log.adminEmail}
                       </span>
                     </div>
-                    <span className="text-[12px] text-[var(--muted)] shrink-0">
+                    <span className="text-[12px] text-[var(--muted)] shrink-0 ag-tabular">
                       {formatLogTime(log)}
                     </span>
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </GlassCard>
         </>
       )}
 
@@ -2176,7 +2138,7 @@ export function AdminOverviewPage() {
                   ? 'Admin only (testing)'
                   : 'Off'}
               </strong>
-              ? This takes effect immediately via Cloudflare D1.
+              ? This takes effect immediately.
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
@@ -2191,7 +2153,7 @@ export function AdminOverviewPage() {
                 type="button"
                 data-testid="rewards-mode-confirm-btn"
                 onClick={handleConfirmRewardsModeChange}
-                className="px-4 py-2 rounded-[12px] bg-[#D71921] hover:bg-red-600 text-white text-[13px] font-heading font-bold cursor-pointer"
+                className="px-4 py-2 rounded-[12px] bg-[#E8353B] hover:bg-[#D4292F] text-white text-[13px] font-heading font-bold cursor-pointer"
               >
                 Confirm Mode Change
               </button>

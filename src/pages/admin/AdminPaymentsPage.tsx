@@ -50,6 +50,12 @@ import {
   getBillingFromPlanId,
   computeAnnualPrice,
 } from '@/lib/planTier';
+import {
+  GlassCard,
+  DotHeading,
+  SkeletonListRows,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 
 const TAB_ITEMS: Array<{
   id: 'plans' | 'kobans' | 'coupons';
@@ -63,6 +69,7 @@ const TAB_ITEMS: Array<{
 
 export function AdminPaymentsPage() {
   const { user, isAdmin, isSuperAdmin, tokenClaims, profileLoading } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const hasAdminAccess = Boolean(
     isAdmin || isSuperAdmin || tokenClaims?.admin === true || tokenClaims?.superAdmin === true
   );
@@ -513,13 +520,13 @@ export function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* ─── PAGE HEADER (Nothing OS Dot-Matrix + Liquid Glass Refresh Pill) ── */}
+      {/* ─── PAGE HEADER (Nothing OS Dot-Matrix + Glass Refresh Pill) ── */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="font-dot text-[22px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            <DotHeading as="h1" size="page">
               Payments &amp; Promos
-            </h1>
+            </DotHeading>
             <p className="font-heading text-xs sm:text-[13px] text-[var(--text-muted)] mt-1">
               Verify {PAYMENT_METHODS_PAIR_LABEL} receipts for Pro plans, Kobans economy, and promo
               coupon redemptions.
@@ -533,7 +540,7 @@ export function AdminPaymentsPage() {
             {...getBubbleTouchHandlers({ disabled: loading })}
             className="bubble-touch lg-nothing-pill min-h-[44px] px-4 py-2 text-xs sm:text-[13px] font-heading font-semibold text-[var(--text)] inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-[#D71921]' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin text-[#E8353B]' : ''} />
             <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             {loading && <ButtonLineLoader />}
           </button>
@@ -550,10 +557,10 @@ export function AdminPaymentsPage() {
       />
 
       {bannerNotice && (
-        <div className="lg-nothing-card px-4 py-3 text-xs font-heading text-emerald-300 flex items-center gap-2.5 border-emerald-500/40">
+        <GlassCard variant="glass" padding="sm" className="text-xs font-heading text-emerald-500 dark:text-emerald-300 flex items-center gap-2.5 border-emerald-500/40">
           <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
           <span>{bannerNotice}</span>
-        </div>
+        </GlassCard>
       )}
 
       {/* ─── SHARED LIQUID GLASS TAB BAR (Spring Sliding Pill, Single Row) ── */}
@@ -561,12 +568,14 @@ export function AdminPaymentsPage() {
         <div
           role="tablist"
           aria-label="Payments and coupons sections"
-          className="relative grid grid-cols-3 p-1.5 lg-nothing-pill w-full lg:w-auto lg:min-w-[480px] select-none"
+          className={`relative grid grid-cols-3 p-1.5 w-full lg:w-auto lg:min-w-[480px] select-none ${
+            glassEnabled ? 'ag-segmented' : 'lg-nothing-pill'
+          }`}
         >
           {/* Sliding Spring Active Highlight Indicator */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full bg-[#D71921] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_22px_rgba(215,25,33,0.42)] transition-transform duration-300 ease-[cubic-bezier(0.22,1.35,0.36,1)]"
+            className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full bg-[#E8353B] shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_22px_rgba(232,53,59,0.42)] transition-transform duration-300 ease-[cubic-bezier(0.22,1.35,0.36,1)]"
             style={{
               width: 'calc((100% - 0.75rem) / 3)',
               transform: `translate3d(${activeTabIndex * 100}%, 0, 0)`,
@@ -614,7 +623,7 @@ export function AdminPaymentsPage() {
                 {...getBubbleTouchHandlers({ ripple: statusFilter === id })}
                 className={`bubble-touch min-h-[44px] text-xs font-mono px-3.5 py-2 rounded-full border transition-colors cursor-pointer whitespace-nowrap ${
                   statusFilter === id
-                    ? 'border-[#D71921] bg-[#D71921] text-white font-semibold shadow-sm'
+                    ? 'border-[#E8353B] bg-[#E8353B] text-white font-semibold shadow-sm'
                     : 'lg-nothing-pill text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
@@ -644,11 +653,11 @@ export function AdminPaymentsPage() {
       {paymentType === 'plans' && (
         <div className="space-y-3.5">
           {loading ? (
-            <LineLoader context="admin" message="Loading payment verification queue..." />
+            <SkeletonListRows rows={4} />
           ) : filteredPlanRequests.length === 0 ? (
-            <div className="p-10 lg-nothing-card text-center text-xs text-[var(--text-muted)]">
+            <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
               No plan subscription payments found matching this filter.
-            </div>
+            </GlassCard>
           ) : (
             filteredPlanRequests.map((req) => {
               const reqAny = req as Record<string, any>;
@@ -678,7 +687,9 @@ export function AdminPaymentsPage() {
                 <div
                   key={req.id}
                   {...getBubbleTouchHandlers()}
-                  className="bubble-touch p-5 sm:p-6 lg-nothing-card flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className={`bubble-touch p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
+                  }`}
                 >
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -822,17 +833,19 @@ export function AdminPaymentsPage() {
       {paymentType === 'kobans' && (
         <div className="space-y-3.5">
           {loading ? (
-            <LineLoader context="admin" message="Loading payment verification queue..." />
+            <SkeletonListRows rows={4} />
           ) : filteredKobanRequests.length === 0 ? (
-            <div className="p-10 lg-nothing-card text-center text-xs text-[var(--text-muted)]">
+            <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
               No Koban purchase requests found matching this filter.
-            </div>
+            </GlassCard>
           ) : (
             filteredKobanRequests.map((req) => (
               <div
                 key={req.id}
                 {...getBubbleTouchHandlers()}
-                className="bubble-touch p-5 sm:p-6 lg-nothing-card flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className={`bubble-touch p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
+                }`}
               >
                 <div className="space-y-1.5 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -925,16 +938,16 @@ export function AdminPaymentsPage() {
         </div>
       )}
 
-      {/* ─── COUPONS & PROMO REDEMPTIONS TAB (iOS 27 Liquid Glass + Nothing OS) ─ */}
+      {/* ─── COUPONS & PROMO REDEMPTIONS TAB ───────────────────────────────── */}
       {paymentType === 'coupons' && (
         <div className="space-y-6">
           {/* 1. Create Coupon Glass Card */}
-          <div className="lg-nothing-card p-5 sm:p-6 space-y-4">
+          <GlassCard variant="glass" padding="lg" className="space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="font-dot text-base sm:text-lg font-extrabold text-[var(--text)] tracking-tight flex items-center gap-2">
-                <Plus size={16} className="text-[#D71921]" />
+              <DotHeading as="h2" size="section" className="flex items-center gap-2">
+                <Plus size={16} className="text-[#E8353B]" />
                 <span>Create Coupon Code</span>
-              </h2>
+              </DotHeading>
               <span className="font-mono text-[11px] text-[var(--text-muted)]">
                 100% or BOARDLY-1Y-* = 1 YEAR FREE PRO
               </span>
@@ -1056,25 +1069,25 @@ export function AdminPaymentsPage() {
                 </button>
               </div>
             </div>
-          </div>
+          </GlassCard>
 
           {/* 2. Promo & Coupon Codes Grid */}
           <div className="space-y-3.5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-dot text-base sm:text-lg font-extrabold text-[var(--text)] tracking-tight">
+              <DotHeading as="h3" size="section">
                 Promo &amp; Coupon Codes
-              </h3>
+              </DotHeading>
               <span className="font-mono text-xs tabular-nums text-[var(--text-muted)]">
                 {couponsList.filter((c) => c.active).length} active / {couponsList.length} total
               </span>
             </div>
 
             {loading ? (
-              <LineLoader context="admin" message="Loading coupons & redemption counts..." />
+              <SkeletonListRows rows={4} />
             ) : couponsList.length === 0 ? (
-              <div className="p-8 lg-nothing-card text-center text-xs text-[var(--text-muted)]">
+              <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
                 No coupons configured yet.
-              </div>
+              </GlassCard>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {couponsList.map((c) => {
@@ -1091,9 +1104,9 @@ export function AdminPaymentsPage() {
                       key={c.code}
                       data-coupon-code={c.code}
                       {...getBubbleTouchHandlers()}
-                      className={`bubble-touch lg-nothing-card p-5 flex flex-col justify-between gap-4 transition-opacity ${
-                        c.active ? 'opacity-100' : 'opacity-80'
-                      }`}
+                      className={`bubble-touch p-5 flex flex-col justify-between gap-4 transition-opacity ${
+                        glassEnabled ? 'ag-flat-card rounded-[20px]' : 'lg-nothing-card'
+                      } ${c.active ? 'opacity-100' : 'opacity-80'}`}
                     >
                       {/* Top row: Code in mono + Status Pill + Type Badge */}
                       <div className="flex items-start justify-between gap-3">
@@ -1215,23 +1228,29 @@ export function AdminPaymentsPage() {
             )}
           </div>
 
-          {/* 3. Recent Coupon Redemptions Glass List */}
+          {/* 3. Recent Coupon Redemptions List (flat translucent, no blur inside list) */}
           <div className="space-y-3.5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="font-dot text-base sm:text-lg font-extrabold text-[var(--text)] tracking-tight">
+              <DotHeading as="h3" size="section">
                 Recent Coupon Redemptions ({couponRedemptions.length})
-              </h3>
+              </DotHeading>
               <span className="font-mono text-[11px] text-[var(--text-muted)]">
                 Tap time for full date
               </span>
             </div>
 
             {couponRedemptions.length === 0 ? (
-              <div className="p-8 lg-nothing-card text-center text-xs text-[var(--text-muted)]">
+              <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
                 No coupon redemptions recorded yet.
-              </div>
+              </GlassCard>
             ) : (
-              <div className="lg-nothing-card overflow-hidden divide-y divide-white/10">
+              <GlassCard
+                variant="flat"
+                padding="none"
+                className={`overflow-hidden divide-y divide-[var(--border)]/60 ${
+                  glassEnabled ? '' : 'lg-nothing-card'
+                }`}
+              >
                 {couponRedemptions.slice(0, 25).map((r) => {
                   const showFullDate = Boolean(expandedRedemptionIds[r.id]);
                   return (
@@ -1276,7 +1295,7 @@ export function AdminPaymentsPage() {
                     </div>
                   );
                 })}
-              </div>
+              </GlassCard>
             )}
           </div>
         </div>
@@ -1284,11 +1303,18 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: REJECT PLAN REQUEST ─────────────────────────────────────── */}
       {planRejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md">
-          <div className="relative w-full max-w-md lg-nothing-card p-6 space-y-4">
-            <h3 className="font-dot font-extrabold text-base text-[var(--text)]">
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+        >
+          <div
+            className={`relative w-full max-w-md p-6 space-y-4 ${
+              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
+            }`}
+          >
+            <DotHeading as="h3" size="section">
               Reject Plan Payment
-            </h3>
+            </DotHeading>
             <textarea
               rows={3}
               value={planRejectReason}
@@ -1320,11 +1346,18 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: APPROVE KOBAN REQUEST ───────────────────────────────────── */}
       {kobanApproveTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md">
-          <div className="relative w-full max-w-md lg-nothing-card p-6 space-y-5">
-            <h3 className="font-dot font-extrabold text-base text-[var(--text)]">
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+        >
+          <div
+            className={`relative w-full max-w-md p-6 space-y-5 ${
+              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
+            }`}
+          >
+            <DotHeading as="h3" size="section">
               Approve Koban Payment
-            </h3>
+            </DotHeading>
 
             <div className="p-3.5 rounded-2xl bg-black/25 border border-white/10 space-y-1.5 text-xs font-mono">
               <div className="flex justify-between text-[var(--text-muted)]">
@@ -1398,11 +1431,18 @@ export function AdminPaymentsPage() {
 
       {/* ─── MODAL: REJECT KOBAN REQUEST ────────────────────────────────────── */}
       {kobanRejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md">
-          <div className="relative w-full max-w-md lg-nothing-card p-6 space-y-4">
-            <h3 className="font-dot font-extrabold text-base text-[var(--text)]">
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 overlay-blur bg-black/65 backdrop-blur-md"
+        >
+          <div
+            className={`relative w-full max-w-md p-6 space-y-4 ${
+              glassEnabled ? 'ag-sheet-panel rounded-[24px]' : 'lg-nothing-card'
+            }`}
+          >
+            <DotHeading as="h3" size="section">
               Reject Koban Request
-            </h3>
+            </DotHeading>
             <textarea
               rows={3}
               value={kobanRejectReason}

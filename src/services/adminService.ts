@@ -31,6 +31,7 @@ import { auth, db, functions } from '@/lib/firebase';
 import { resolveCosmeticItemId } from '@/components/ui/BoardlyAvatar';
 import { getDisplayName } from '@/utils/displayName';
 import { resolveUserJoinedAtMs } from '@/utils/userDate';
+import { computeAdminUserTotals } from '@/utils/adminUserCounts';
 import { resolvePlusBadgeId } from '@/lib/plusBadgeDesigns';
 import type {
   UserProfile,
@@ -601,10 +602,16 @@ function computeUserDirectoryBreakdown(
 
 function syncCachedStatsWithUsersDirectory(dir: CachedAdminUsersDirectory) {
   if (!cachedAdminStats) return;
+  const totals = computeAdminUserTotals({
+    registeredCount: dir.firestoreTotalCount ?? null,
+    freeCount: dir.freeCount ?? cachedAdminStats.freeCount ?? null,
+    proCount: dir.proCount,
+    plusCount: dir.plusCount ?? cachedAdminStats.plusCount ?? null,
+    guestCount: dir.guestCount,
+    loadedUsersCount: dir.totalCount,
+  });
   const authoritativeTotal =
-    typeof dir.firestoreTotalCount === 'number' && Number.isFinite(dir.firestoreTotalCount)
-      ? dir.firestoreTotalCount
-      : cachedAdminStats.totalUsers;
+    totals.totalUsers > 0 ? totals.totalUsers : cachedAdminStats.totalUsers;
   cachedAdminStats = {
     ...cachedAdminStats,
     totalUsers: authoritativeTotal,
@@ -1608,13 +1615,13 @@ export async function fetchOverviewUsersAndPlansSnapshot(options?: {
   const run = async (): Promise<OverviewUsersAndPlansSnapshot> => {
     const usersCol = collection(db, 'users');
 
-    // 1. Authoritative total registered users count from firestore:users (throws on failure)
-    const totalUsers = await fetchFirestoreUsersTotalCount(force);
+    // 1. Authoritative registered users count from firestore:users (throws on failure)
+    const registeredUsers = await fetchFirestoreUsersTotalCount(force);
 
     // 2. Fetch plans breakdown, preview users, guest count, and captain count in parallel
-    //    using the exact same `totalUsers` value so every Overview widget agrees atomically.
+    //    using the exact same registered count, then combine with active guests via shared helper.
     const [plansRes, previewUsers, guestsRes, captainCountRes] = await Promise.all([
-      computePlanAnalyticsWithTotal(totalUsers).then(
+      computePlanAnalyticsWithTotal(registeredUsers).then(
         (data) => ({ ok: true as const, data }),
         (err: any) => ({
           ok: false as const,
@@ -1628,7 +1635,7 @@ export async function fetchOverviewUsersAndPlansSnapshot(options?: {
                 },
         })
       ),
-      fetchOverviewPreviewUsers(totalUsers, force),
+      fetchOverviewPreviewUsers(registeredUsers, force),
       fetchAdminJsonWithRetry<{ ok?: boolean; guests?: any[] }>('/api/auth/guests', undefined, 6000)
         .then((res) =>
           res.ok && Array.isArray(res.data?.guests)
@@ -1642,10 +1649,18 @@ export async function fetchOverviewUsersAndPlansSnapshot(options?: {
     const plans = plansRes.ok ? plansRes.data : null;
     const plansError = plansRes.ok ? null : plansRes.error;
 
+    const sharedTotals = computeAdminUserTotals({
+      registeredCount: registeredUsers,
+      freeCount: plans ? plans.freeCount : null,
+      proCount: plans ? plans.proCount : null,
+      plusCount: plans ? plans.plusCount : null,
+      guestCount: guestsRes,
+    });
+
     const usersData: OverviewUsersCardData = {
-      totalUsers,
+      totalUsers: sharedTotals.totalUsers,
       studentCount:
-        captainCountRes !== null ? Math.max(0, totalUsers - captainCountRes) : null,
+        captainCountRes !== null ? Math.max(0, registeredUsers - captainCountRes) : null,
       captainCount: captainCountRes,
       freeCount: plans ? plans.freeCount : null,
       proCount: plans ? plans.proCount : null,
@@ -2693,10 +2708,11 @@ export async function fetchUsersPaginated(options?: {
 
       const estimatedTotal = hasSearch
         ? sortedUsers.length
-        : Math.max(
-            (firestoreCount ?? 0) + (isFirstPage ? guestUsers.length : 0),
-            sortedUsers.length
-          );
+        : computeAdminUserTotals({
+            registeredCount: firestoreCount,
+            guestCount: isFirstPage ? guestUsers.length : 0,
+            loadedUsersCount: sortedUsers.length,
+          }).totalUsers;
 
       const hasMore = !hasSearch && firestoreHasMore;
       const queryTimeMs = Math.round(performance.now() - startTime);

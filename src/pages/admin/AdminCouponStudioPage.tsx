@@ -36,6 +36,13 @@ import {
   type CouponType,
   type CheckoutItemPricing,
 } from '@/utils/couponEngine';
+import {
+  GlassCard,
+  DotHeading,
+  Pill,
+  SkeletonListRows,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 
 type StudioTab = 'create' | 'coupons' | 'test';
 
@@ -106,6 +113,7 @@ function getStatusBadgeStyle(status: ReturnType<typeof getCouponStatusLabel>): {
 
 export function AdminCouponStudioPage() {
   const { user } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const { config: plansConfig } = usePlansConfig();
 
   const [activeTab, setActiveTab] = useState<StudioTab>('create');
@@ -354,43 +362,35 @@ export function AdminCouponStudioPage() {
   };
 
   return (
-    <div data-admin-page="coupons" className="mx-auto w-full max-w-[1120px] space-y-5 pb-14">
+    <div data-admin-page="coupons" className="mx-auto w-full max-w-[1120px] space-y-5 pb-24 md:pb-12">
       {/* Header */}
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D71921]">
-            Admin · Billing Controls
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#E8353B]">
+            Admin &middot; Billing Controls
           </p>
-          <h1
-            className="font-dot mt-1 text-[28px] sm:text-[34px] leading-none tracking-[0.04em]"
-            style={{ color: 'var(--text)' }}
-          >
-            COUPON STUDIO
-          </h1>
+          <DotHeading as="h1" size="page" className="mt-1">
+            Coupon Studio
+          </DotHeading>
           <p className="mt-2 text-[13px]" style={{ color: 'var(--text-muted)' }}>
             Create single-use promo codes, manage redemptions, and dry-run checkout pricing.
           </p>
         </div>
 
-        <div
-          className="inline-flex items-center gap-2 self-start rounded-full px-3.5 py-1.5 text-[12px] font-medium"
-          style={{
-            backgroundColor: 'rgba(215, 25, 33, 0.12)',
-            border: '1px solid rgba(215, 25, 33, 0.28)',
-            color: '#f87171',
-          }}
-        >
+        <Pill tone="accent" className="self-start py-1.5 px-3.5 text-[12px]">
           <Lock className="h-3.5 w-3.5 shrink-0" />
           <span>1 use per account enforced</span>
-        </div>
+        </Pill>
       </header>
 
-      {/* Sticky 3-Tab Bar — ONLY surface using backdrop-filter blur */}
+      {/* Sticky 3-Tab Bar */}
       <div className="sticky top-[62px] z-20 -mx-1 px-1 py-1">
         <div
           role="tablist"
           aria-label="Coupon Studio tabs"
-          className="cs-sticky-tabs grid grid-cols-3 gap-1.5 rounded-full p-1.5"
+          className={`grid grid-cols-3 gap-1.5 rounded-full p-1.5 ${
+            glassEnabled ? 'ag-sticky-bar' : 'cs-sticky-tabs'
+          }`}
         >
           {(
             [
@@ -412,7 +412,7 @@ export function AdminCouponStudioPage() {
                 style={
                   active
                     ? {
-                        backgroundColor: '#D71921',
+                        backgroundColor: '#E8353B',
                         color: '#ffffff',
                       }
                     : {
@@ -434,13 +434,16 @@ export function AdminCouponStudioPage() {
           ===================================================================== */}
       {activeTab === 'create' && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.28fr)_minmax(0,0.82fr)]">
-          <form onSubmit={(e) => void handleCreateSubmit(e)} className="cs-surface rounded-[24px] p-5 sm:p-6 space-y-5">
+          <form
+            onSubmit={(e) => void handleCreateSubmit(e)}
+            className={`${glassEnabled ? 'ag-glass-card rounded-[22px]' : 'cs-surface rounded-[24px]'} p-5 sm:p-6 space-y-5`}
+          >
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-dot text-[18px] tracking-[0.04em]" style={{ color: 'var(--text)' }}>
-                NEW COUPON
-              </h2>
-              <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                coupons/{normalizedDraftCode || 'CODE'}
+              <DotHeading as="h2" size="section">
+                New Coupon
+              </DotHeading>
+              <span className="text-[12px] font-mono tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {normalizedDraftCode || 'CODE'}
               </span>
             </div>
 
@@ -695,11 +698,11 @@ export function AdminCouponStudioPage() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                    <Lock className="h-3.5 w-3.5 shrink-0 text-[#D71921]" />
+                    <Lock className="h-3.5 w-3.5 shrink-0 text-[#E8353B]" />
                     <span>One use per account</span>
                   </div>
                   <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                    Locked on · enforced atomically by redemption document ID = account UID.
+                    Locked on &middot; each student account can redeem a given code once.
                   </p>
                 </div>
                 <div
@@ -708,7 +711,7 @@ export function AdminCouponStudioPage() {
                   aria-disabled="true"
                   title="One use per account is permanently enforced"
                   className="cs-switch relative inline-flex h-[28px] w-[48px] shrink-0 items-center rounded-full p-0.5 opacity-80 cursor-not-allowed"
-                  style={{ backgroundColor: '#D71921' }}
+                  style={{ backgroundColor: '#E8353B' }}
                 >
                   <span
                     className="flex h-[24px] w-[24px] items-center justify-center rounded-full bg-white"
@@ -780,7 +783,7 @@ export function AdminCouponStudioPage() {
               type="submit"
               disabled={creating || !normalizedDraftCode || !isCodeFormatValid}
               className="cs-press flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
-              style={{ backgroundColor: '#D71921' }}
+              style={{ backgroundColor: '#E8353B' }}
             >
               <Plus className="h-4 w-4" />
               <span>{creating ? 'Creating coupon…' : 'Create coupon'}</span>
@@ -788,7 +791,7 @@ export function AdminCouponStudioPage() {
           </form>
 
           {/* Live Preview Ticket */}
-          <aside className="cs-surface rounded-[24px] p-5 sm:p-6 flex flex-col justify-between gap-5">
+          <aside className={`${glassEnabled ? 'ag-glass-card rounded-[22px]' : 'cs-surface rounded-[24px]'} p-5 sm:p-6 flex flex-col justify-between gap-5`}>
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-muted)' }}>
@@ -910,18 +913,18 @@ export function AdminCouponStudioPage() {
       )}
 
       {/* =====================================================================
-          TAB 2: COUPONS LIST (Paginated 20 per page, no hard delete)
+          TAB 2: COUPONS LIST (Paginated 20 per page, flat surface, no list blur)
           ===================================================================== */}
       {activeTab === 'coupons' && (
-        <section className="cs-surface rounded-[24px] overflow-hidden">
+        <GlassCard variant="flat" padding="none" className="overflow-hidden">
           <div
             className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
             style={{ borderBottom: '1px solid var(--border)' }}
           >
             <div>
-              <h2 className="font-dot text-[18px] tracking-[0.04em]" style={{ color: 'var(--text)' }}>
-                ALL COUPONS
-              </h2>
+              <DotHeading as="h2" size="section">
+                All Coupons
+              </DotHeading>
               <p className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
                 {listLoading
                   ? 'Loading page…'
@@ -939,7 +942,7 @@ export function AdminCouponStudioPage() {
                 color: 'var(--text)',
               }}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin text-[#E8353B]' : ''}`} />
               <span>Refresh</span>
             </button>
           </div>
@@ -960,14 +963,8 @@ export function AdminCouponStudioPage() {
           )}
 
           {listLoading ? (
-            <div className="divide-y p-5 space-y-3" style={{ borderColor: 'var(--border)' }}>
-              {Array.from({ length: 5 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="h-14 animate-pulse rounded-[14px]"
-                  style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
-                />
-              ))}
+            <div className="p-5">
+              <SkeletonListRows rows={5} />
             </div>
           ) : coupons.length === 0 ? (
             <div className="px-6 py-14 text-center space-y-3">
@@ -1241,7 +1238,7 @@ export function AdminCouponStudioPage() {
               )}
             </>
           )}
-        </section>
+        </GlassCard>
       )}
 
       {/* =====================================================================
@@ -1249,11 +1246,14 @@ export function AdminCouponStudioPage() {
           ===================================================================== */}
       {activeTab === 'test' && (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <form onSubmit={(e) => void handleRunDryTest(e)} className="cs-surface rounded-[24px] p-5 sm:p-6 space-y-4">
+          <form
+            onSubmit={(e) => void handleRunDryTest(e)}
+            className={`${glassEnabled ? 'ag-glass-card rounded-[22px]' : 'cs-surface rounded-[24px]'} p-5 sm:p-6 space-y-4`}
+          >
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-dot text-[18px] tracking-[0.04em]" style={{ color: 'var(--text)' }}>
-                DRY-RUN CHECKOUT
-              </h2>
+              <DotHeading as="h2" size="section">
+                Dry-Run Checkout
+              </DotHeading>
               <span
                 className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                 style={{
@@ -1321,14 +1321,14 @@ export function AdminCouponStudioPage() {
                 className="block text-[13px] font-semibold"
                 style={{ color: 'var(--text)' }}
               >
-                Account UID (checks redemptions/&#123;uid&#125;)
+                Account ID (checks prior redemption)
               </label>
               <input
                 id="cs-test-uid"
                 type="text"
                 value={testUidInput}
                 onChange={(e) => setTestUidInput(e.target.value)}
-                placeholder="Any Firebase UID or leave blank"
+                placeholder="Student account ID or leave blank"
                 className="h-[46px] w-full rounded-[14px] px-3.5 font-mono text-[13px] outline-none"
                 style={{
                   backgroundColor: 'var(--bg)',
@@ -1342,15 +1342,15 @@ export function AdminCouponStudioPage() {
               type="submit"
               disabled={testLoading}
               className="cs-press flex min-h-[48px] w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white cursor-pointer disabled:opacity-50"
-              style={{ backgroundColor: '#D71921' }}
+              style={{ backgroundColor: '#E8353B' }}
             >
               <FlaskConical className="h-4 w-4" />
-              <span>{testLoading ? 'Checking Firestore…' : 'Simulate checkout'}</span>
+              <span>{testLoading ? 'Checking eligibility…' : 'Simulate checkout'}</span>
             </button>
           </form>
 
           {/* Dry-run Output */}
-          <div className="cs-surface rounded-[24px] p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <GlassCard variant="glass" padding="lg" className="flex flex-col justify-between gap-4">
             <div className="space-y-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: 'var(--text-muted)' }}>
                 Simulation Result
@@ -1472,9 +1472,9 @@ export function AdminCouponStudioPage() {
             </div>
 
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Zero documents written. Uses the exact same read-only validator that powers the student Apply button.
+              Zero records modified. Uses the exact same read-only validator that powers the student Apply button.
             </p>
-          </div>
+          </GlassCard>
         </div>
       )}
     </div>

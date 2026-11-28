@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, Outlet, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
@@ -27,6 +27,7 @@ import {
   BookOpen,
   Sparkles,
   Ticket,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDisplayInitial, getDisplayName } from '@/utils/displayName';
@@ -48,6 +49,9 @@ import {
 } from '@/services/adminTabCache';
 import { apiRequest, clearGenericErrorToasts } from '@/lib/api';
 import type { PermissionKey } from '@/constants/permissions';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+import { AdminAmbientBubbles, BottomNav } from '@/components/admin/AdminGlassPrimitives';
+import '@/styles/adminGlass.css';
 
 const AdminKobanNavIcon = ({ size = 16, className = '' }: { size?: number; className?: string }) => (
   <KobanIcon size={typeof size === 'number' ? size : 16} decorative className={className} />
@@ -117,6 +121,7 @@ export function AdminLayout() {
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [pendingModerationCount, setPendingModerationCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const { enabled: glassEnabled, toggle: toggleAdminGlass } = useAdminGlassFlag();
 
   useBodyScrollLock(isMoreOpen, 'admin-more-sheet');
 
@@ -311,24 +316,55 @@ export function AdminLayout() {
       : isSecondaryActive
       ? mobilePrimaryNav.length
       : -1;
-  const mobileTabCount = mobilePrimaryNav.length + 1;
+  const isNavItemLocked = useCallback(
+    (item: AdminNavItem): boolean => {
+      if (isSuperAdmin) return false;
+      if (item.superAdminOnly) return true;
+      if (!item.permission) return false;
+      return !hasPermission(item.permission);
+    },
+    [isSuperAdmin, hasPermission]
+  );
 
-  const isNavItemLocked = (item: AdminNavItem): boolean => {
-    if (isSuperAdmin) return false;
-    if (item.superAdminOnly) return true;
-    if (!item.permission) return false;
-    return !hasPermission(item.permission);
-  };
+  const getPendingBadgeCount = useCallback(
+    (item: AdminNavItem): number => {
+      if (item.badgeKey === 'accessRequests') {
+        return isSuperAdmin ? pendingRequestsCount : 0;
+      }
+      if (item.badgeKey === 'moderation') {
+        return canModerateCommons ? pendingModerationCount : 0;
+      }
+      return 0;
+    },
+    [isSuperAdmin, pendingRequestsCount, canModerateCommons, pendingModerationCount]
+  );
 
-  const getPendingBadgeCount = (item: AdminNavItem): number => {
-    if (item.badgeKey === 'accessRequests') {
-      return isSuperAdmin ? pendingRequestsCount : 0;
-    }
-    if (item.badgeKey === 'moderation') {
-      return canModerateCommons ? pendingModerationCount : 0;
-    }
-    return 0;
-  };
+  const handlePrefetch = useCallback(
+    (to: string) => {
+      prefetchAdminRouteOnInteraction(to, user?.uid);
+    },
+    [user?.uid]
+  );
+
+  const handleOpenMore = useCallback(() => {
+    setIsMoreOpen(true);
+  }, []);
+
+  const bottomNavItems = useMemo(
+    () =>
+      mobilePrimaryNav.map((item) => {
+        const locked = isNavItemLocked(item);
+        return {
+          to: item.to,
+          label: item.label,
+          icon: item.icon,
+          end: item.end,
+          locked,
+          badgeCount: locked ? 0 : getPendingBadgeCount(item),
+        };
+      }),
+    [mobilePrimaryNav, isNavItemLocked, getPendingBadgeCount]
+  );
 
   // Fail-closed route guard before rendering any admin shell or children
   const adminAccess = evaluateAdminRouteAccess({
@@ -367,20 +403,35 @@ export function AdminLayout() {
   return (
     <div
       data-admin-shell="true"
+      data-admin-glass={glassEnabled ? '1' : '0'}
       className="min-h-[100dvh] bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip"
     >
+      <AdminAmbientBubbles enabled={glassEnabled} />
+
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
-      <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 glass border-r border-[var(--glass-border)] z-30">
+      <aside
+        className={`hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 border-r z-30 ${
+          glassEnabled
+            ? 'ag-sidebar border-[var(--ag-border)]'
+            : 'glass border-[var(--glass-border)]'
+        }`}
+      >
         {/* Sidebar Header */}
-        <div className="h-16 px-5 border-b border-[var(--glass-border)] flex items-center justify-between">
+        <div
+          className={`h-16 px-5 border-b flex items-center justify-between ${
+            glassEnabled ? 'border-[var(--ag-border)]' : 'border-[var(--glass-border)]'
+          }`}
+        >
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
             <Logo size="admin" />
           </Link>
           <span
             className={`text-[10px] font-heading font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
               isSuperAdmin
-                ? 'border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)]'
-                : 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                ? glassEnabled
+                  ? 'border-[#E8353B]/40 bg-[#E8353B]/12 text-[#E8353B]'
+                  : 'border-[var(--red)]/40 bg-[var(--red)]/10 text-[var(--red)]'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-500 dark:text-amber-400'
             }`}
           >
             {isSuperAdmin ? 'Super Admin' : 'Admin'}
@@ -406,20 +457,35 @@ export function AdminLayout() {
                     locked ? 'opacity-65' : ''
                   } ${
                     isActive
-                      ? 'glass-row text-[var(--text)] font-semibold border-[var(--glass-border)]'
+                      ? glassEnabled
+                        ? 'bg-[#E8353B]/12 text-[var(--text)] font-semibold border border-[#E8353B]/30'
+                        : 'glass-row text-[var(--text)] font-semibold border-[var(--glass-border)]'
                       : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] border border-transparent'
                   }`
                 }
               >
                 {({ isActive }) => (
                   <>
-                    <Icon size={16} className={isActive ? 'text-[#D71921]' : 'text-[var(--muted)]'} />
-                    <span className="flex-1 truncate">{label}</span>
+                    <Icon
+                      size={16}
+                      className={
+                        isActive
+                          ? glassEnabled
+                            ? 'text-[#E8353B]'
+                            : 'text-[#D71921]'
+                          : 'text-[var(--muted)]'
+                      }
+                    />
+                    <span className="flex-1 whitespace-nowrap">{label}</span>
                     {locked && (
                       <Lock size={12} className="text-amber-400 shrink-0" aria-label="Locked" />
                     )}
                     {badgeCount > 0 && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-[var(--red)] text-white text-[10px] font-bold leading-none shrink-0">
+                      <span
+                        className={`px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold leading-none shrink-0 ag-tabular ${
+                          glassEnabled ? 'bg-[#E8353B]' : 'bg-[var(--red)]'
+                        }`}
+                      >
                         {badgeCount}
                       </span>
                     )}
@@ -431,8 +497,18 @@ export function AdminLayout() {
         </nav>
 
         {/* Sidebar Footer with Signed-in Info & Avatar Menu Trigger */}
-        <div className="p-3 border-t border-[var(--border)]">
-          <div className="p-2.5 rounded-[18px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-2">
+        <div
+          className={`p-3 border-t ${
+            glassEnabled ? 'border-[var(--ag-border)]' : 'border-[var(--border)]'
+          }`}
+        >
+          <div
+            className={`p-2.5 rounded-[18px] border flex flex-col gap-2 ${
+              glassEnabled
+                ? 'ag-flat-card border-[var(--ag-border)]'
+                : 'bg-[var(--card)] border-[var(--border)]'
+            }`}
+          >
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[12px] font-heading font-bold text-[var(--text)] shrink-0">
                 {userInitial}
@@ -448,7 +524,9 @@ export function AdminLayout() {
                   <span
                     className={`inline-block text-[10px] font-heading px-1.5 py-0.5 rounded-full border ${
                       isSuperAdmin
-                        ? 'border-[var(--accent)]/40 text-[var(--accent)]'
+                        ? glassEnabled
+                          ? 'border-[#E8353B]/40 text-[#E8353B]'
+                          : 'border-[var(--accent)]/40 text-[var(--accent)]'
                         : 'border-amber-600/40 text-amber-700 dark:text-amber-400'
                     }`}
                   >
@@ -469,6 +547,15 @@ export function AdminLayout() {
               </Link>
               <button
                 type="button"
+                onClick={toggleAdminGlass}
+                className="flex items-center justify-center p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] rounded-[10px] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer"
+                title={glassEnabled ? 'Switch to classic admin UI' : 'Switch to glass admin UI'}
+                aria-label={glassEnabled ? 'Switch to classic admin UI' : 'Switch to glass admin UI'}
+              >
+                <Layers size={13} className={glassEnabled ? 'text-[#E8353B]' : ''} />
+              </button>
+              <button
+                type="button"
                 onClick={handleSignOut}
                 className="flex items-center justify-center p-1.5 text-[var(--text-muted)] hover:text-[var(--danger)] rounded-[10px] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer"
                 title="Sign out"
@@ -480,10 +567,12 @@ export function AdminLayout() {
         </div>
       </aside>
 
-      {/* ─── MOBILE TOP BAR (Matches Settings 56px solid sticky bar) ────────── */}
+      {/* ─── MOBILE TOP BAR (Sticky glass bar when flag enabled) ────────── */}
       <header
-        className={`md:hidden sticky top-0 z-30 bg-[var(--bg)] pt-[env(safe-area-inset-top,0px)] transition-colors ${
-          scrolled ? 'border-b border-[var(--border)]' : 'border-b border-transparent'
+        className={`md:hidden sticky top-0 z-30 pt-[env(safe-area-inset-top,0px)] transition-colors ${
+          glassEnabled
+            ? `ag-mobile-header border-b ${scrolled ? 'border-[var(--ag-border)]' : 'border-transparent'}`
+            : `bg-[var(--bg)] ${scrolled ? 'border-b border-[var(--border)]' : 'border-b border-transparent'}`
         }`}
       >
         <div className="h-[56px] px-4 flex items-center justify-between gap-2">
@@ -497,7 +586,11 @@ export function AdminLayout() {
           </button>
 
           <div className="min-w-0 flex-1 text-center">
-            <h1 className="text-[17px] font-semibold leading-tight text-[var(--text)] truncate">
+            <h1
+              className={`leading-tight text-[var(--text)] truncate ${
+                glassEnabled ? 'ag-dot-heading text-[18px]' : 'text-[17px] font-semibold'
+              }`}
+            >
               {mobileTitle}
             </h1>
           </div>
@@ -507,7 +600,9 @@ export function AdminLayout() {
               <Link
                 to="/admin/access-requests"
                 aria-label={`${pendingRequestsCount} pending access requests`}
-                className="w-10 h-10 rounded-full bg-[var(--accent)] text-white flex items-center justify-center text-[12px] font-bold shrink-0"
+                className={`w-10 h-10 rounded-full text-white flex items-center justify-center text-[12px] font-bold shrink-0 ag-tabular ${
+                  glassEnabled ? 'bg-[#E8353B]' : 'bg-[var(--accent)]'
+                }`}
               >
                 {pendingRequestsCount}
               </Link>
@@ -526,7 +621,7 @@ export function AdminLayout() {
       </header>
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
-      <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100dvh-3.5rem)] md:min-h-[100dvh] p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
+      <main className="ag-main-viewport flex-1 md:ml-[240px] min-w-0 min-h-[calc(100dvh-3.5rem)] md:min-h-[100dvh] p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-12 max-w-[1400px] w-full mx-auto overflow-x-hidden">
         {!isAdmin && !isSuperAdmin ? (
           <div className="flex items-center justify-center py-12 px-4">
             <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[32px] bg-[var(--card)] border border-[var(--border)] shadow-[var(--settings-card-shadow)] text-center">
@@ -566,119 +661,14 @@ export function AdminLayout() {
       </main>
 
       {/* ─── MOBILE FLOATING PILL BOTTOM NAV ──── */}
-      {typeof document !== 'undefined' &&
-        createPortal(
-          <div
-            data-admin-bottom-nav="true"
-            style={{ zIndex: 90 }}
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-            className="md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-[90] pointer-events-auto"
-            aria-label="Admin Navigation Bar"
-          >
-            <nav
-              role="tablist"
-              className="rounded-[32px] glass dashboard-glass-bar allow-backdrop-blur border p-1.5 flex items-center justify-between select-none relative h-[62px] pointer-events-auto"
-            >
-              {mobileActiveTabIdx >= 0 && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute top-1.5 bottom-1.5 left-1.5 rounded-full z-0"
-                  style={{
-                    width: `calc((100% - 12px) / ${mobileTabCount})`,
-                    transform: `translate3d(${mobileActiveTabIdx * 100}%, 0, 0)`,
-                    transition: 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
-                    backgroundColor: '#D71921',
-                    boxShadow:
-                      '0 8px 22px -4px rgba(215, 25, 33, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.30)',
-                  }}
-                />
-              )}
-              {mobilePrimaryNav.map((item) => {
-                const { to, label, icon: Icon, end } = item;
-                const locked = isNavItemLocked(item);
-                const badgeCount = locked ? 0 : getPendingBadgeCount(item);
-                return (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={end}
-                    title={label}
-                    aria-label={label}
-                    onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-                    onFocus={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-                    onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
-                    onClick={(e) => e.stopPropagation()}
-                    className={`relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1 ${
-                      locked ? 'opacity-65' : ''
-                    }`}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <span
-                          className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
-                            isActive
-                              ? 'text-white'
-                              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                          }`}
-                        >
-                          <div className="relative shrink-0 flex items-center justify-center">
-                            <Icon size={20} className={isActive ? 'text-white' : ''} />
-                            {locked && (
-                              <Lock
-                                size={9}
-                                className="absolute -top-1 -right-1.5 text-amber-400"
-                              />
-                            )}
-                            {badgeCount > 0 && (
-                              <span className="absolute -top-1.5 -right-2 px-1 py-0.2 rounded-full bg-[var(--red)] text-white text-[9px] font-bold">
-                                {badgeCount}
-                              </span>
-                            )}
-                          </div>
-                          <span className="sr-only">{label}</span>
-                        </span>
-                      </>
-                    )}
-                  </NavLink>
-                );
-              })}
-
-              {/* "More" button */}
-              <button
-                type="button"
-                role="tab"
-                data-admin-nav-tab="more"
-                aria-selected={isSecondaryActive}
-                title="More admin sections"
-                aria-label="More admin sections"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsMoreOpen(true);
-                }}
-                onTouchStart={(e) => e.stopPropagation()}
-                onTouchEnd={(e) => e.stopPropagation()}
-                className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
-              >
-                <span
-                  className={`relative z-10 flex items-center justify-center transition-colors max-w-full pointer-events-none ${
-                    isSecondaryActive
-                      ? 'text-white'
-                      : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                >
-                  <div className="relative shrink-0 flex items-center justify-center">
-                    <MoreHorizontal size={20} className={isSecondaryActive ? 'text-white' : ''} />
-                  </div>
-                  <span className="sr-only">More</span>
-                </span>
-              </button>
-            </nav>
-          </div>,
-          document.body
-        )}
+      <BottomNav
+        items={bottomNavItems}
+        activeTabIndex={mobileActiveTabIdx}
+        isMoreActive={isSecondaryActive}
+        onPrefetch={handlePrefetch}
+        onOpenMore={handleOpenMore}
+        glassEnabled={glassEnabled}
+      />
 
       {/* ─── MOBILE "MORE" BOTTOM SHEET (Portaled to body at z-[9999]) ─── */}
       {isMoreOpen &&
@@ -689,6 +679,7 @@ export function AdminLayout() {
             aria-modal="true"
             aria-label="More admin sections"
             data-fullscreen-modal="true"
+            data-admin-glass-portal={glassEnabled ? '1' : '0'}
             style={{ zIndex: 9999, pointerEvents: 'auto' }}
             onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
@@ -716,13 +707,23 @@ export function AdminLayout() {
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
               onTouchEnd={(e) => e.stopPropagation()}
-              className="relative z-10 pointer-events-auto w-full max-w-[640px] max-h-[90dvh] rounded-t-[24px] bg-[var(--card)] border-t border-x border-[var(--border)] shadow-2xl px-4 pt-3 pb-[calc(24px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto overscroll-contain"
+              className={`relative z-10 pointer-events-auto w-full max-w-[640px] max-h-[90dvh] rounded-t-[24px] border-t border-x shadow-2xl px-4 pt-3 pb-[calc(24px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4 overflow-y-auto overscroll-contain ${
+                glassEnabled
+                  ? 'ag-sheet-panel border-[var(--ag-border-strong)]'
+                  : 'bg-[var(--card)] border-[var(--border)]'
+              }`}
             >
               {/* Drag handle 36x4px */}
               <div className="w-9 h-1 rounded-full bg-[var(--border)] mx-auto shrink-0" />
 
               <div className="flex items-center justify-between pb-2 border-b border-[var(--border)] shrink-0">
-                <h2 className="text-[17px] font-semibold text-[var(--text)]">
+                <h2
+                  className={
+                    glassEnabled
+                      ? 'ag-dot-heading text-[18px] text-[var(--text)]'
+                      : 'text-[17px] font-semibold text-[var(--text)]'
+                  }
+                >
                   More admin sections
                 </h2>
                 <button
@@ -739,8 +740,12 @@ export function AdminLayout() {
                 </button>
               </div>
 
-              {/* Grouped Settings-style card list */}
-              <div className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
+              {/* Grouped Settings-style card list (flat translucent, no backdrop-filter on list) */}
+              <div
+                className={`rounded-[22px] border overflow-hidden divide-y divide-[var(--border)] ${
+                  glassEnabled ? 'ag-flat-card' : 'bg-[var(--card)] border-[var(--border)]'
+                }`}
+              >
                 {[...visiblePrimaryNav.slice(5), ...visibleSecondaryNav].map((item) => {
                   const { to, label, icon: Icon } = item;
                   const locked = isNavItemLocked(item);
@@ -753,18 +758,24 @@ export function AdminLayout() {
                       onMouseEnter={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                       onTouchStart={() => prefetchAdminRouteOnInteraction(to, user?.uid)}
                       onClick={() => setIsMoreOpen(false)}
-                      className={`min-h-[56px] px-5 flex items-center justify-between gap-3 text-[16px] transition-colors hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] ${
+                      className={`min-h-[54px] px-5 flex items-center justify-between gap-3 text-[15px] transition-colors hover:bg-[var(--settings-row-hover)] active:bg-[var(--settings-row-active)] ${
                         locked ? 'opacity-50' : ''
-                      } ${active ? 'text-[var(--accent)] font-semibold' : 'text-[var(--text)]'}`}
+                      } ${
+                        active
+                          ? glassEnabled
+                            ? 'text-[#E8353B] font-semibold'
+                            : 'text-[var(--accent)] font-semibold'
+                          : 'text-[var(--text)]'
+                      }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
-                        <Icon size={22} className="shrink-0" />
-                        <span className="truncate">{label}</span>
+                        <Icon size={20} className="shrink-0" />
+                        <span>{label}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {locked && <Lock size={14} className="text-amber-600 dark:text-amber-400" />}
                         {badgeCount > 0 && (
-                          <span className="px-1.5 py-0.5 rounded-full bg-[var(--red)] text-white text-[11px] font-bold leading-none shrink-0">
+                          <span className="px-1.5 py-0.5 rounded-full bg-[#E8353B] text-white text-[11px] font-bold leading-none shrink-0 ag-tabular">
                             {badgeCount}
                           </span>
                         )}
@@ -775,14 +786,26 @@ export function AdminLayout() {
                 })}
               </div>
 
-              <div className="space-y-3 pt-1">
+              <div className="space-y-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={toggleAdminGlass}
+                  className="w-full min-h-[52px] px-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-[15px] text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <Layers size={20} className={glassEnabled ? 'text-[#E8353B]' : ''} />
+                    <span>{glassEnabled ? 'Admin appearance: Glass' : 'Admin appearance: Classic'}</span>
+                  </div>
+                  <span className="text-[12px] font-semibold text-[var(--text-muted)]">Switch</span>
+                </button>
+
                 <Link
                   to="/dashboard"
                   onClick={() => setIsMoreOpen(false)}
-                  className="min-h-[56px] px-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-[16px] text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors"
+                  className="min-h-[52px] px-5 rounded-full bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-[15px] text-[var(--text)] hover:bg-[var(--settings-row-hover)] transition-colors"
                 >
                   <div className="flex items-center gap-3.5">
-                    <ExternalLink size={22} />
+                    <ExternalLink size={20} />
                     <span>Student view</span>
                   </div>
                   <ChevronRight size={18} className="text-[var(--text-muted)]" />
@@ -791,9 +814,9 @@ export function AdminLayout() {
                 <button
                   type="button"
                   onClick={handleSignOut}
-                  className="w-full min-h-[56px] px-5 rounded-full bg-[var(--card)] border border-[var(--danger-border)] text-[var(--danger)] flex items-center justify-center gap-2.5 text-[16px] font-medium hover:bg-[var(--danger)]/5 transition-colors cursor-pointer"
+                  className="w-full min-h-[52px] px-5 rounded-full bg-[var(--card)] border border-[var(--danger-border)] text-[var(--danger)] flex items-center justify-center gap-2.5 text-[15px] font-medium hover:bg-[var(--danger)]/5 transition-colors cursor-pointer"
                 >
-                  <LogOut size={20} />
+                  <LogOut size={19} />
                   <span>Sign out</span>
                 </button>
               </div>

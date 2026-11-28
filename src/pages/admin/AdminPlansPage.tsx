@@ -23,9 +23,20 @@ import {
 import { logAdminAction } from '@/services/adminService';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 import { ButtonLineLoader } from '@/components/ui/LineLoader';
+import {
+  GlassCard,
+  DotHeading,
+  Field,
+  Pill,
+  StickyActionBar,
+  Skeleton,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+import { pluralize } from '@/utils/adminLabels';
 
 export function AdminPlansPage() {
   const { user } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const { config, loading } = usePlansConfig();
 
   const [freeCredits, setFreeCredits] = useState<string>(String(DEFAULT_PLANS_CONFIG.free.aiCreditsPerDay));
@@ -45,6 +56,7 @@ export function AdminPlansPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   useEffect(() => {
     if (!dirty) {
@@ -109,8 +121,7 @@ export function AdminPlansPage() {
     return list;
   }, [parsed]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitSave = async () => {
     setError(null);
     setNotice(null);
 
@@ -152,12 +163,31 @@ export function AdminPlansPage() {
         { previous: config, next: nextConfig }
       ).catch(() => {});
       setDirty(false);
-      setNotice('Saved config/plans. Billing, AI Mentor limits, and checkout are now live.');
+      setNotice('Plan settings saved. Billing, AI Mentor limits, and checkout are now live.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save plan settings.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitSave();
+  };
+
+  const handleDiscardChanges = () => {
+    setFreeCredits(String(config.free.aiCreditsPerDay));
+    setProPricePkr(String(config.pro.pricePkrMonthly));
+    setProPriceKobans(String(config.pro.priceKobansMonthly));
+    setProCredits(String(config.pro.aiCreditsPerDay));
+    setPlusPricePkr(String(config.plus.pricePkrMonthly));
+    setPlusPriceKobans(String(config.plus.priceKobansMonthly));
+    setPlusCredits(String(config.plus.aiCreditsPerDay));
+    setAnnualDiscountPct(String(config.annualDiscountPercent));
+    setDirty(false);
+    setError(null);
+    setNotice(null);
   };
 
   const handleResetDefaults = () => {
@@ -170,24 +200,25 @@ export function AdminPlansPage() {
     setPlusCredits(String(DEFAULT_PLANS_CONFIG.plus.aiCreditsPerDay));
     setAnnualDiscountPct(String(DEFAULT_PLANS_CONFIG.annualDiscountPercent));
     setDirty(true);
+    setConfirmResetOpen(false);
     setNotice(null);
     setError(null);
   };
 
   return (
-    <div data-admin-page="plans" className="space-y-6 max-w-5xl pb-16">
+    <div data-admin-page="plans" className="space-y-6 max-w-5xl pb-28 md:pb-24">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-[#D71921]" />
+            <span className="w-2 h-2 rounded-full bg-[#E8353B]" />
             <span className="font-mono text-[11px] uppercase tracking-widest text-[var(--muted)]">
-              Firestore · config/plans
+              Subscription &amp; Billing Controls
             </span>
           </div>
-          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+          <DotHeading as="h1" size="page">
             Plans &amp; Pricing
-          </h1>
+          </DotHeading>
           <p className="font-heading text-xs sm:text-sm text-[var(--muted)] mt-1">
             Single source of truth for Free, Boardly Pro, and Boardly Plus pricing, Koban costs, annual discount, and daily AI Mentor allowances.
           </p>
@@ -195,11 +226,11 @@ export function AdminPlansPage() {
 
         <button
           type="button"
-          onClick={handleResetDefaults}
+          onClick={() => setConfirmResetOpen(true)}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-xs font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer self-start sm:self-auto"
         >
           <RotateCcw size={14} />
-          <span>Reset Defaults</span>
+          <span>Reset to defaults</span>
         </button>
       </div>
 
@@ -237,7 +268,7 @@ export function AdminPlansPage() {
       <form onSubmit={handleSave} className="space-y-5">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* FREE CARD */}
-          <section className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+          <GlassCard variant="glass" padding="md" className="flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[var(--muted)]">
@@ -248,102 +279,102 @@ export function AdminPlansPage() {
                   <p className="text-[11px] font-mono text-[var(--muted)]">Quick &amp; Balanced only</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-                Rank 0
-              </span>
+              <Pill tone="neutral">Tier 0</Pill>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                AI Mentor Credits / Day
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={500}
-                value={freeCredits}
-                onChange={(e) => {
-                  setFreeCredits(e.target.value);
-                  setDirty(true);
-                }}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
-              />
-            </div>
+            <Field label="AI Mentor Credits / Day">
+              {loading ? (
+                <Skeleton className="h-10 w-full rounded-xl" />
+              ) : (
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={freeCredits}
+                  onChange={(e) => {
+                    setFreeCredits(e.target.value);
+                    setDirty(true);
+                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
+                />
+              )}
+            </Field>
 
             <div className="mt-auto pt-3 border-t border-[var(--border)] text-[11px] font-mono text-[var(--muted)] space-y-1">
-              <div>PKR 0 / month · Always free</div>
+              <div>PKR 0 / month &middot; Always free</div>
               <div>Deep &amp; Max thinking: Locked</div>
             </div>
-          </section>
+          </GlassCard>
 
           {/* PRO CARD */}
-          <section className="p-5 rounded-[24px] bg-[var(--card)] border border-[#D71921]/40 flex flex-col gap-4">
+          <GlassCard variant="glass" padding="md" className="border-[#E8353B]/40 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-xl bg-[#D71921]/15 border border-[#D71921]/35 flex items-center justify-center text-[#D71921]">
+                <span className="w-8 h-8 rounded-xl bg-[#E8353B]/15 border border-[#E8353B]/35 flex items-center justify-center text-[#E8353B]">
                   <Crown size={16} />
                 </span>
                 <div>
                   <h2 className="font-heading font-bold text-sm text-[var(--text)]">Boardly Pro</h2>
-                  <p className="text-[11px] font-mono text-[var(--muted)]">Popular · Deep &amp; Max</p>
+                  <p className="text-[11px] font-mono text-[var(--muted)]">Popular &middot; Deep &amp; Max</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#D71921]/15 text-[#D71921] font-bold">
-                Rank 1
-              </span>
+              <Pill tone="accent">Tier 1</Pill>
             </div>
 
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Monthly Price (PKR)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100000}
-                  value={proPricePkr}
-                  onChange={(e) => {
-                    setProPricePkr(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
-                />
-              </div>
+              <Field label="Monthly Price (PKR)">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={proPricePkr}
+                    onChange={(e) => {
+                      setProPricePkr(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
+                  />
+                )}
+              </Field>
 
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Monthly Price (Kobans)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000000}
-                  value={proPriceKobans}
-                  onChange={(e) => {
-                    setProPriceKobans(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
-                />
-              </div>
+              <Field label="Monthly Price (Kobans)">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000000}
+                    value={proPriceKobans}
+                    onChange={(e) => {
+                      setProPriceKobans(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
+                  />
+                )}
+              </Field>
 
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  AI Mentor Credits / Day
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={5000}
-                  value={proCredits}
-                  onChange={(e) => {
-                    setProCredits(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
-                />
-              </div>
+              <Field label="AI Mentor Credits / Day">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={5000}
+                    value={proCredits}
+                    onChange={(e) => {
+                      setProCredits(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
+                  />
+                )}
+              </Field>
             </div>
 
             <div className="mt-auto pt-3 border-t border-[var(--border)] text-[11px] font-mono text-[var(--muted)] space-y-1">
@@ -359,10 +390,10 @@ export function AdminPlansPage() {
                 </strong>
               </div>
             </div>
-          </section>
+          </GlassCard>
 
           {/* PLUS CARD */}
-          <section className="p-5 rounded-[24px] bg-[var(--card)] border border-amber-500/45 flex flex-col gap-4">
+          <GlassCard variant="glass" padding="md" className="border-amber-500/45 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-500">
@@ -370,65 +401,66 @@ export function AdminPlansPage() {
                 </span>
                 <div>
                   <h2 className="font-heading font-bold text-sm text-[var(--text)]">Boardly Plus</h2>
-                  <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400">Best value · 2× AI</p>
+                  <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400">Best value &middot; 2&times; AI</p>
                 </div>
               </div>
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-bold">
-                Rank 2
-              </span>
+              <Pill tone="warning">Tier 2</Pill>
             </div>
 
             <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Monthly Price (PKR)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100000}
-                  value={plusPricePkr}
-                  onChange={(e) => {
-                    setPlusPricePkr(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <Field label="Monthly Price (PKR)">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={plusPricePkr}
+                    onChange={(e) => {
+                      setPlusPricePkr(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
+                  />
+                )}
+              </Field>
 
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  Monthly Price (Kobans)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={1000000}
-                  value={plusPriceKobans}
-                  onChange={(e) => {
-                    setPlusPriceKobans(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <Field label="Monthly Price (Kobans)">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000000}
+                    value={plusPriceKobans}
+                    onChange={(e) => {
+                      setPlusPriceKobans(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
+                  />
+                )}
+              </Field>
 
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-                  AI Mentor Credits / Day
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={5000}
-                  value={plusCredits}
-                  onChange={(e) => {
-                    setPlusCredits(e.target.value);
-                    setDirty(true);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <Field label="AI Mentor Credits / Day">
+                {loading ? (
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                ) : (
+                  <input
+                    type="number"
+                    min={1}
+                    max={5000}
+                    value={plusCredits}
+                    onChange={(e) => {
+                      setPlusCredits(e.target.value);
+                      setDirty(true);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none focus:border-amber-500"
+                  />
+                )}
+              </Field>
             </div>
 
             <div className="mt-auto pt-3 border-t border-[var(--border)] text-[11px] font-mono text-[var(--muted)] space-y-1">
@@ -444,48 +476,50 @@ export function AdminPlansPage() {
                 </strong>
               </div>
             </div>
-          </section>
+          </GlassCard>
         </div>
 
-        {/* Annual Discount & Pro->Plus Credit Preview */}
-        <section className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
+        {/* Annual Discount & Pro->Plus Upgrade Credit Summary (Plain English with live prices) */}
+        <GlassCard variant="glass" padding="md" className="grid grid-cols-1 md:grid-cols-2 gap-5 items-center">
           <div className="space-y-2">
-            <label className="block text-[11px] font-mono uppercase tracking-wider text-[var(--muted)]">
-              Annual Billing Discount (%)
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={0}
-                max={90}
-                value={annualDiscountPct}
-                onChange={(e) => {
-                  setAnnualDiscountPct(e.target.value);
-                  setDirty(true);
-                }}
-                className="w-32 px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
-              />
-              <span className="text-xs font-heading text-[var(--muted)]">
-                Applied to Monthly × 12 for both Pro and Plus (PKR &amp; Kobans).
-              </span>
-            </div>
+            <Field label="Annual Billing Discount (%)">
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={90}
+                  value={annualDiscountPct}
+                  onChange={(e) => {
+                    setAnnualDiscountPct(e.target.value);
+                    setDirty(true);
+                  }}
+                  className="w-32 px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm font-mono font-bold text-[var(--text)] focus:outline-none"
+                />
+                <span className="text-xs font-heading text-[var(--muted)]">
+                  Saves {parsed.annualDiscountPct}% off 12 monthly payments on Pro (PKR {parsed.proAnnualPkr.toLocaleString()}/yr) and Plus (PKR {parsed.plusAnnualPkr.toLocaleString()}/yr).
+                </span>
+              </div>
+            </Field>
           </div>
 
-          <div className="p-3.5 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] text-xs font-mono text-[var(--muted)] space-y-1">
-            <div className="text-[var(--text)] font-bold">Pro → Plus Upgrade Credit Formula</div>
-            <div>
-              extraPlusDays = floor(remainingProDays × {parsed.proPricePkr} / {parsed.plusPricePkr})
-            </div>
-            <div className="text-[11px]">
-              Example: 15 unused Pro days → <strong className="text-amber-600 dark:text-amber-400">+{parsed.sampleProToPlusDays} bonus Plus days</strong>
-            </div>
+          <div className="p-4 rounded-[16px] ag-flat-card text-xs font-heading text-[var(--muted)] space-y-1.5 leading-relaxed">
+            <div className="text-[var(--text)] font-bold">Pro to Plus upgrade credit</div>
+            <p>
+              When a student upgrades from Pro (PKR {parsed.proPricePkr.toLocaleString()}/mo) to Plus (PKR{' '}
+              {parsed.plusPricePkr.toLocaleString()}/mo), their unused Pro days convert automatically by price ratio.
+              For example, 15 remaining Pro days add{' '}
+              <strong className="text-amber-600 dark:text-amber-400">
+                {pluralize(parsed.sampleProToPlusDays, 'bonus Plus day')}
+              </strong>
+              .
+            </p>
           </div>
-        </section>
+        </GlassCard>
 
-        {/* Save Bar */}
+        {/* Status Footer + Fallback Submit Button (when not using floating bar or for keyboard submit) */}
         <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
           <div className="text-xs font-mono text-[var(--muted)] flex items-center gap-2">
-            {loading && <RefreshCw size={13} className="animate-spin" />}
+            {loading && <RefreshCw size={13} className="animate-spin text-[#E8353B]" />}
             <span>
               {config.updatedBy
                 ? `Last updated by ${config.updatedBy}`
@@ -493,17 +527,73 @@ export function AdminPlansPage() {
             </span>
           </div>
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="relative overflow-hidden inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#D71921] hover:bg-[#b8141b] text-white text-xs font-heading font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer min-w-[180px]"
-          >
-            <Save size={15} />
-            <span>{saving ? 'Saving config/plans...' : 'Save Plan Settings'}</span>
-            {saving && <ButtonLineLoader />}
-          </button>
+          {!glassEnabled && (
+            <button
+              type="submit"
+              disabled={saving}
+              className="relative overflow-hidden inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#E8353B] hover:bg-[#D4292F] text-white text-xs font-heading font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer min-w-[180px]"
+            >
+              <Save size={15} />
+              <span>{saving ? 'Saving plan settings...' : 'Save Plan Settings'}</span>
+              {saving && <ButtonLineLoader />}
+            </button>
+          )}
         </div>
       </form>
+
+      {/* Sticky Save Bar — appears ONLY when unsaved changes exist, visually separated from Reset */}
+      <StickyActionBar
+        visible={dirty}
+        message="You have unsaved plan pricing changes"
+        saving={saving}
+        saveLabel="Save Plan Settings"
+        onSave={() => void submitSave()}
+        onDiscard={handleDiscardChanges}
+        onResetDefaults={() => setConfirmResetOpen(true)}
+      />
+
+      {/* Confirm Reset to Defaults Modal */}
+      {confirmResetOpen && (
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-[10030] flex items-center justify-center p-4"
+        >
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-md"
+            onClick={() => setConfirmResetOpen(false)}
+          />
+          <div
+            className={`relative w-full max-w-sm p-5 space-y-4 ${
+              glassEnabled
+                ? 'ag-sheet-panel rounded-[22px]'
+                : 'rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-2xl'
+            }`}
+          >
+            <DotHeading as="h3" size="section">
+              Reset plan settings to defaults?
+            </DotHeading>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              This will load the built-in default PKR prices, Koban costs, annual discount, and daily AI credit allowances into the form. You can review them before clicking Save.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmResetOpen(false)}
+                className="px-3.5 py-2 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDefaults}
+                className="px-4 py-2 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white text-xs font-heading font-semibold cursor-pointer"
+              >
+                Load defaults
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

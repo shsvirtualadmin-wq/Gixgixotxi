@@ -13,11 +13,15 @@ import {
   Lock,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { LineLoader, ButtonLineLoader } from '@/components/ui/LineLoader';
+import { ButtonLineLoader } from '@/components/ui/LineLoader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { RequestAccessSheet } from '@/components/admin/RequestAccessSheet';
+import {
+  DotHeading,
+  GlassCard,
+  Pill,
+  SkeletonListRows,
+} from '@/components/admin/AdminGlassPrimitives';
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -188,22 +192,19 @@ export function AdminAnnouncementsPage() {
   };
 
   return (
-    <div data-admin-page="announcements" className="space-y-6 max-w-4xl">
+    <div data-admin-page="announcements" className="space-y-6 max-w-4xl pb-24">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[var(--red)]" />
-            <span className="text-xs font-mono uppercase tracking-widest text-[var(--red)]">
-              SUPERADMIN BROADCAST
+            <span className="w-2 h-2 rounded-full bg-[#E8353B]" />
+            <span className="text-[11px] font-mono uppercase tracking-widest text-[#E8353B] font-semibold">
+              Super Admin Broadcast
             </span>
           </div>
-          <h1
-            className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] tracking-tight mt-1"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
+          <DotHeading as="h1" size="page" className="mt-1">
             Announcements Manager
-          </h1>
+          </DotHeading>
           <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
             Edit the pinned Welcome to Boardly notification and publish broadcast announcements to all students.
           </p>
@@ -213,31 +214,31 @@ export function AdminAnnouncementsPage() {
           type="button"
           onClick={loadData}
           disabled={loading}
-          className="p-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)] transition-colors self-start sm:self-auto cursor-pointer"
+          className="p-2.5 rounded-xl ag-flat-card text-[var(--muted)] hover:text-[var(--text)] transition-colors self-start sm:self-auto cursor-pointer"
           title="Refresh"
         >
-          <RotateCcw size={16} />
+          <RotateCcw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       {/* ── Success and Error Banners ── */}
       {successMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2.5">
-          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/35 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2.5">
+          <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="p-4 rounded-2xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2.5">
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/35 text-red-700 dark:text-red-300 text-xs flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle size={16} className="text-red-400 shrink-0" />
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
             <span>{errorMsg}</span>
           </div>
           <button
             type="button"
             onClick={loadData}
-            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 font-semibold cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-600 dark:text-red-200 font-semibold cursor-pointer"
           >
             Retry
           </button>
@@ -245,13 +246,16 @@ export function AdminAnnouncementsPage() {
       )}
 
       {!canManageAnnouncements && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2.5 text-xs text-amber-200">
-            <Lock size={16} className="text-amber-400 shrink-0" />
+        <GlassCard
+          variant="glass"
+          padding="sm"
+          className="bg-amber-500/10 border-amber-500/30 flex items-center justify-between gap-3 flex-wrap"
+        >
+          <div className="flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-200">
+            <Lock size={16} className="text-amber-500 shrink-0" />
             <span>
-              Broadcasting announcements requires{' '}
-              <span className="font-mono font-bold text-amber-300">announcements.manage</span>{' '}
-              approval from the Super Admin.
+              Broadcasting announcements requires approval from the Super Admin{' '}
+              <span className="font-mono text-[11px] opacity-75">(announcements.manage)</span>.
             </span>
           </div>
           <button
@@ -262,27 +266,24 @@ export function AdminAnnouncementsPage() {
             <Lock size={13} />
             <span>Request Access</span>
           </button>
-        </div>
+        </GlassCard>
       )}
 
       {/* ── Pinned Welcome to Boardly Announcement Editor ── */}
-      <Card className="p-6 sm:p-7 space-y-5 bg-[var(--card)] border-[var(--border)]">
+      <GlassCard variant="glass" padding="lg" className="space-y-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">
               <Pin size={19} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2
-                  className="text-base sm:text-lg font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  Pinned Welcome Notification ("Welcome to Boardly")
-                </h2>
-                <Badge color="amber">Pinned</Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <DotHeading as="h2" size="section">
+                  Pinned Welcome Notification
+                </DotHeading>
+                <Pill tone="warning">Pinned</Pill>
               </div>
-              <p className="text-xs text-[var(--muted)]">
+              <p className="text-xs text-[var(--muted)] mt-0.5">
                 Delivered automatically once as an unread notification to every new and existing student when they open their dashboard.
               </p>
             </div>
@@ -292,7 +293,7 @@ export function AdminAnnouncementsPage() {
         <form onSubmit={handleSaveWelcome} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-              Welcome Title <span className="text-[var(--red)]">*</span>
+              Welcome Title <span className="text-[#E8353B]">*</span>
             </label>
             <input
               type="text"
@@ -301,13 +302,13 @@ export function AdminAnnouncementsPage() {
               placeholder="Welcome to Boardly"
               maxLength={120}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)]/70 border border-[var(--border)] text-[var(--text)] text-sm outline-none focus:border-[#E8353B]"
             />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-              Welcome Message <span className="text-[var(--red)]">*</span>
+              Welcome Message <span className="text-[#E8353B]">*</span>
             </label>
             <textarea
               value={welcomeMessage}
@@ -316,20 +317,20 @@ export function AdminAnnouncementsPage() {
               rows={5}
               maxLength={2500}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none resize-y"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)]/70 border border-[var(--border)] text-[var(--text)] text-sm outline-none focus:border-[#E8353B] resize-y"
             />
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
             <span className="text-xs text-[var(--muted)] flex items-center gap-1.5">
-              <Shield size={13} className="text-[var(--red)]" />
-              <span>Stored in D1 &amp; Firestore (`welcome_to_boardly`)</span>
+              <Shield size={13} className="text-[#E8353B]" />
+              <span>Pinned welcome notice for all students</span>
             </span>
 
             <button
               type="submit"
               disabled={savingWelcome || !welcomeTitle.trim() || !welcomeMessage.trim()}
-              className="relative overflow-hidden btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[200px]"
+              className="relative overflow-hidden bg-[#E8353B] hover:bg-[#D4292F] text-white font-semibold text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[200px] transition-colors"
             >
               <Save size={15} />
               <span>{savingWelcome ? 'Saving welcome notice...' : 'Save Welcome Announcement'}</span>
@@ -337,23 +338,20 @@ export function AdminAnnouncementsPage() {
             </button>
           </div>
         </form>
-      </Card>
+      </GlassCard>
 
       {/* ── Post Announcement Form ── */}
-      <Card className="p-6 sm:p-7 space-y-5 bg-[var(--card)] border-[var(--border)]">
+      <GlassCard variant="glass" padding="lg" className="space-y-5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-[var(--red)]/10 border border-[var(--red)]/30 text-[var(--red)] flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-2xl bg-[#E8353B]/12 border border-[#E8353B]/30 text-[#E8353B] flex items-center justify-center shrink-0">
             <Megaphone size={20} />
           </div>
           <div>
-            <h2
-              className="text-base sm:text-lg font-bold text-[var(--text)]"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
+            <DotHeading as="h2" size="section">
               Post New Broadcast Announcement
-            </h2>
-            <p className="text-xs text-[var(--muted)]">
-              This will broadcast to every user on Boardly.
+            </DotHeading>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              This will broadcast to every user in the selected audience on Boardly.
             </p>
           </div>
         </div>
@@ -361,7 +359,7 @@ export function AdminAnnouncementsPage() {
         <form onSubmit={handlePost} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-              Title <span className="text-[var(--red)]">*</span>
+              Title <span className="text-[#E8353B]">*</span>
             </label>
             <input
               type="text"
@@ -370,16 +368,16 @@ export function AdminAnnouncementsPage() {
               placeholder="e.g. Platform update: New chemistry practice sets added"
               maxLength={120}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)]/70 border border-[var(--border)] text-[var(--text)] text-sm outline-none focus:border-[#E8353B]"
             />
-            <div className="text-[11px] text-[var(--muted)] mt-1 text-right">
+            <div className="text-[11px] text-[var(--muted)] mt-1 text-right ag-tabular">
               {title.length}/120
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-[var(--text)] mb-1.5">
-              Message <span className="text-[var(--red)]">*</span>
+              Message <span className="text-[#E8353B]">*</span>
             </label>
             <textarea
               value={message}
@@ -388,9 +386,9 @@ export function AdminAnnouncementsPage() {
               rows={4}
               maxLength={2000}
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-sm outline-none resize-y"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg)]/70 border border-[var(--border)] text-[var(--text)] text-sm outline-none focus:border-[#E8353B] resize-y"
             />
-            <div className="text-[11px] text-[var(--muted)] mt-1 text-right">
+            <div className="text-[11px] text-[var(--muted)] mt-1 text-right ag-tabular">
               {message.length}/2000
             </div>
           </div>
@@ -417,8 +415,8 @@ export function AdminAnnouncementsPage() {
                     targetAudience === aud.id
                       ? aud.id === 'plus'
                         ? 'bg-amber-500 text-black border-amber-500'
-                        : 'bg-[var(--red)] text-white border-[var(--red)]'
-                      : 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
+                        : 'bg-[#E8353B] text-white border-[#E8353B]'
+                      : 'bg-[var(--bg)]/60 text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
                   }`}
                 >
                   {aud.label}
@@ -427,16 +425,16 @@ export function AdminAnnouncementsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-2">
             <span className="text-xs text-[var(--muted)] flex items-center gap-1.5">
-              <Shield size={13} className="text-[var(--red)]" />
+              <Shield size={13} className="text-[#E8353B]" />
               <span>Signed as {user?.email || 'Superadmin'}</span>
             </span>
 
             <button
               type="submit"
               disabled={submitting || !title.trim() || !message.trim()}
-              className="relative overflow-hidden btn-red text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[170px]"
+              className="relative overflow-hidden bg-[#E8353B] hover:bg-[#D4292F] text-white font-semibold text-xs px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 min-w-[170px] transition-colors"
             >
               <Plus size={15} />
               <span>{submitting ? 'Posting announcement...' : 'Post Announcement'}</span>
@@ -444,22 +442,19 @@ export function AdminAnnouncementsPage() {
             </button>
           </div>
         </form>
-      </Card>
+      </GlassCard>
 
-      {/* ── Active Announcements List ── */}
+      {/* ── Active Announcements List (flat translucent rows — zero backdrop-filter) ── */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2
-            className="text-base font-bold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
+          <DotHeading as="h2" size="section">
             Published Broadcasts ({loading && announcements.length === 0 ? '—' : announcements.length})
-          </h2>
-          <span className="text-xs text-[var(--muted)]">Visible to all users</span>
+          </DotHeading>
+          <span className="text-xs text-[var(--muted)]">Visible to targeted users</span>
         </div>
 
         {loading ? (
-          <LineLoader context="admin" message="Loading broadcast announcements..." />
+          <SkeletonListRows rows={3} />
         ) : announcements.length === 0 ? (
           <EmptyState
             icon={<Megaphone size={32} />}
@@ -467,7 +462,7 @@ export function AdminAnnouncementsPage() {
             description="The pinned Welcome to Boardly announcement is active above. Use the form to broadcast additional updates."
           />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {announcements.map((a) => {
               const isDeleting = deletingId === a.id;
               const dateStr =
@@ -481,17 +476,19 @@ export function AdminAnnouncementsPage() {
                   : 'Recently';
 
               return (
-                <div
+                <GlassCard
                   key={a.id}
-                  className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row sm:items-start justify-between gap-4"
+                  variant="flat"
+                  padding="md"
+                  className="flex flex-col sm:flex-row sm:items-start justify-between gap-4"
                 >
                   <div className="space-y-2 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge color="red">Announcement</Badge>
+                      <Pill tone="accent">Announcement</Pill>
                       {a.targetAudience && a.targetAudience !== 'all' && (
-                        <Badge color={a.targetAudience === 'plus' ? 'amber' : 'neutral'}>
+                        <Pill tone={a.targetAudience === 'plus' ? 'warning' : 'neutral'}>
                           Audience: {a.targetAudience.toUpperCase()}
-                        </Badge>
+                        </Pill>
                       )}
                       <h3
                         className="font-bold text-sm text-[var(--text)]"
@@ -518,7 +515,7 @@ export function AdminAnnouncementsPage() {
                     type="button"
                     onClick={() => handleDelete(a.id)}
                     disabled={isDeleting}
-                    className="relative overflow-hidden p-2.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors self-end sm:self-start cursor-pointer shrink-0"
+                    className="relative overflow-hidden p-2.5 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors self-end sm:self-start cursor-pointer shrink-0"
                     title="Delete announcement"
                   >
                     {isDeleting ? (
@@ -528,7 +525,7 @@ export function AdminAnnouncementsPage() {
                     )}
                     {isDeleting && <ButtonLineLoader />}
                   </button>
-                </div>
+                </GlassCard>
               );
             })}
           </div>

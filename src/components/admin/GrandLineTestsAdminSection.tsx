@@ -10,6 +10,13 @@ import {
   GrandLineAdminRowControls,
   useServerSyncedClock,
 } from './GrandLineScheduleSheet';
+import {
+  GlassCard,
+  DotHeading,
+  Pill,
+  SkeletonListRows,
+} from './AdminGlassPrimitives';
+import { pluralize } from '@/utils/adminLabels';
 
 export const GrandLineTestsAdminSection: React.FC = () => {
   const { isAdmin } = useAuth();
@@ -43,16 +50,21 @@ export const GrandLineTestsAdminSection: React.FC = () => {
   };
 
   return (
-    <div data-admin-section="grand-line-tests" className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4 sm:p-5 space-y-4">
+    <GlassCard
+      variant="glass"
+      padding="md"
+      data-admin-section="grand-line-tests"
+      className="space-y-4"
+    >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/15 text-[#dc2626] dark:text-[#f87171] border border-[#ef4444]/30">
+          <Pill tone="accent">
             <Compass size={11} />
-            <span>Grand Line Tests • Schedule &amp; Status (PKT)</span>
-          </div>
-          <h2 className="text-base sm:text-lg font-bold text-[var(--text)]">
+            <span>Grand Line Tests &bull; Schedule &amp; Status (PKT)</span>
+          </Pill>
+          <DotHeading as="h2" size="section">
             Grand Line Tests Management
-          </h2>
+          </DotHeading>
           <p className="text-xs text-[var(--text-muted)]">
             Control start/end schedules in Pakistan Standard Time (PKT, UTC+5) or manually set tests to Live, Ended, or Draft.
           </p>
@@ -62,17 +74,15 @@ export const GrandLineTestsAdminSection: React.FC = () => {
           type="button"
           onClick={loadTests}
           disabled={loading}
-          className="self-start sm:self-auto min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[var(--surface-2)] hover:border-[var(--accent)] border border-[var(--border)] text-xs font-bold text-[var(--text)] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+          className="self-start sm:self-auto min-h-[38px] px-3.5 py-1.5 rounded-xl bg-[var(--surface-2)] hover:border-[#E8353B] border border-[var(--border)] text-xs font-bold text-[var(--text)] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
         >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin text-[#E8353B]' : ''} />
           <span>Refresh</span>
         </button>
       </div>
 
       {loading && tests.length === 0 ? (
-        <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-          Loading Grand Line tests...
-        </div>
+        <SkeletonListRows rows={3} />
       ) : tests.length === 0 ? (
         <div className="py-8 text-center text-xs text-[var(--text-muted)]">
           No Grand Line tests found.
@@ -82,13 +92,13 @@ export const GrandLineTestsAdminSection: React.FC = () => {
           {tests.map((test) => (
             <div
               key={test.id}
-              className="p-3.5 sm:p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+              className="p-3.5 sm:p-4 rounded-[16px] ag-list-row flex flex-col lg:flex-row lg:items-center justify-between gap-3"
             >
               <div className="min-w-0 space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#ef4444]/15 text-[#dc2626] dark:text-[#f87171] border border-[#ef4444]/25">
+                  <Pill tone="accent" className="text-[10px]">
                     {test.subject}
-                  </span>
+                  </Pill>
                   <GrandLineStatusPills
                     test={test}
                     nowMs={nowMs}
@@ -103,13 +113,13 @@ export const GrandLineTestsAdminSection: React.FC = () => {
 
                 <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] flex-wrap">
                   <span>By {test.captainName || 'Captain'}</span>
-                  <span>•</span>
-                  <span>{test.questionCount} questions</span>
-                  <span>•</span>
-                  <span>{test.attemptsCount} attempts</span>
+                  <span>&bull;</span>
+                  <span>{pluralize(test.questionCount, 'question')}</span>
+                  <span>&bull;</span>
+                  <span>{pluralize(test.attemptsCount, 'attempt')}</span>
                   {test.reason && (
                     <>
-                      <span>•</span>
+                      <span>&bull;</span>
                       <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300/90 font-medium">
                         <FileText size={11} />
                         <span>Note: {test.reason}</span>
@@ -130,6 +140,6 @@ export const GrandLineTestsAdminSection: React.FC = () => {
           ))}
         </div>
       )}
-    </div>
+    </GlassCard>
   );
 };

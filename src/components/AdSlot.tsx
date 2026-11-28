@@ -22,9 +22,12 @@ import {
 } from '@/services/adsConfigService';
 import { PromoBanner } from '@/components/PromoBanner';
 
+type AdSenseQueue = Array<Record<string, unknown>> & { loaded?: boolean };
+type AdSenseScriptStatus = 'idle' | 'loading' | 'loaded' | 'failed';
+
 declare global {
   interface Window {
-    adsbygoogle?: Array<Record<string, unknown>>;
+    adsbygoogle?: AdSenseQueue;
     __boardlyAdSenseFailed?: boolean;
   }
 }
@@ -49,16 +52,71 @@ export interface AdSlotProps {
 
 const ADSENSE_SCRIPT_ID = 'boardly-adsense-script';
 const GOOGLE_FILL_TIMEOUT_MS = 3000;
+const GOOGLE_SCRIPT_LOAD_TIMEOUT_MS = 4500;
 
-function ensureAdSenseScriptLoaded(publisherId: string, onScriptError?: () => void) {
-  if (typeof document === 'undefined') return;
-  if (typeof window !== 'undefined' && window.__boardlyAdSenseFailed) {
+let adSenseScriptStatus: AdSenseScriptStatus = 'idle';
+const adSenseLoadListeners = new Set<() => void>();
+const adSenseErrorListeners = new Set<() => void>();
+
+function isAdSenseRuntimeReady(): boolean {
+  if (typeof window === 'undefined') return false;
+  const queue = window.adsbygoogle;
+  return Boolean(queue && (queue.loaded === true || !Array.isArray(queue)));
+}
+
+function flushAdSenseLoadListeners() {
+  adSenseScriptStatus = 'loaded';
+  const listeners = Array.from(adSenseLoadListeners);
+  adSenseLoadListeners.clear();
+  adSenseErrorListeners.clear();
+  for (const cb of listeners) {
+    cb();
+  }
+}
+
+function flushAdSenseErrorListeners() {
+  adSenseScriptStatus = 'failed';
+  if (typeof window !== 'undefined') {
+    window.__boardlyAdSenseFailed = true;
+  }
+  const listeners = Array.from(adSenseErrorListeners);
+  adSenseLoadListeners.clear();
+  adSenseErrorListeners.clear();
+  for (const cb of listeners) {
+    cb();
+  }
+}
+
+function ensureAdSenseScriptLoaded(
+  publisherId: string,
+  onScriptReady?: () => void,
+  onScriptError?: () => void
+): () => void {
+  if (typeof document === 'undefined') return () => {};
+  if (
+    (typeof window !== 'undefined' && window.__boardlyAdSenseFailed) ||
+    adSenseScriptStatus === 'failed'
+  ) {
     onScriptError?.();
-    return;
+    return () => {};
+  }
+
+  if (adSenseScriptStatus === 'loaded' || isAdSenseRuntimeReady()) {
+    adSenseScriptStatus = 'loaded';
+    onScriptReady?.();
+    return () => {};
   }
 
   const cleanPub = sanitizePublisherId(publisherId || ADSENSE_CLIENT_ID);
-  if (!cleanPub) return;
+  if (!cleanPub) return () => {};
+
+  if (onScriptReady) adSenseLoadListeners.add(onScriptReady);
+  if (onScriptError) adSenseErrorListeners.add(onScriptError);
+
+  const unsubscribe = () => {
+    if (onScriptReady) adSenseLoadListeners.delete(onScriptReady);
+    if (onScriptError) adSenseErrorListeners.delete(onScriptError);
+  };
 
   const existing = (document.getElementById(ADSENSE_SCRIPT_ID) ||
     document.querySelector(
@@ -66,18 +124,32 @@ function ensureAdSenseScriptLoaded(publisherId: string, onScriptError?: () => vo
     )) as HTMLScriptElement | null;
 
   if (existing) {
-    if (onScriptError) {
-      const handleError = () => {
-        if (typeof window !== 'undefined') {
-          window.__boardlyAdSenseFailed = true;
-        }
-        onScriptError();
-      };
-      existing.addEventListener('error', handleError, { once: true });
+    if (existing.dataset.boardlyLoaded === '1' || isAdSenseRuntimeReady()) {
+      flushAdSenseLoadListeners();
+      return () => {};
     }
-    return;
+    if (adSenseScriptStatus !== 'loading') {
+      adSenseScriptStatus = 'loading';
+      existing.addEventListener(
+        'load',
+        () => {
+          existing.dataset.boardlyLoaded = '1';
+          flushAdSenseLoadListeners();
+        },
+        { once: true }
+      );
+      existing.addEventListener(
+        'error',
+        () => {
+          flushAdSenseErrorListeners();
+        },
+        { once: true }
+      );
+    }
+    return unsubscribe;
   }
 
+  adSenseScriptStatus = 'loading';
   const script = document.createElement('script');
   script.id = ADSENSE_SCRIPT_ID;
   script.async = true;
@@ -85,31 +157,42 @@ function ensureAdSenseScriptLoaded(publisherId: string, onScriptError?: () => vo
   script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(
     cleanPub
   )}`;
+  script.onload = () => {
+    script.dataset.boardlyLoaded = '1';
+    flushAdSenseLoadListeners();
+  };
   script.onerror = () => {
-    if (typeof window !== 'undefined') {
-      window.__boardlyAdSenseFailed = true;
-    }
-    onScriptError?.();
+    flushAdSenseErrorListeners();
   };
   document.head.appendChild(script);
+  return unsubscribe;
 }
 
-function scheduleAdSenseScriptLoad(publisherId: string, onScriptError?: () => void): () => void {
+function scheduleAdSenseScriptLoad(
+  publisherId: string,
+  onScriptReady?: () => void,
+  onScriptError?: () => void
+): () => void {
   if (typeof window === 'undefined') return () => {};
   const existing =
     document.getElementById(ADSENSE_SCRIPT_ID) ||
     document.querySelector(
       'script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]'
     );
-  if (existing || window.__boardlyAdSenseFailed) {
-    ensureAdSenseScriptLoaded(publisherId, onScriptError);
-    return () => {};
+  if (
+    existing ||
+    window.__boardlyAdSenseFailed ||
+    adSenseScriptStatus !== 'idle' ||
+    isAdSenseRuntimeReady()
+  ) {
+    return ensureAdSenseScriptLoaded(publisherId, onScriptReady, onScriptError);
   }
 
   let cancelled = false;
+  let unsubscribeScript: (() => void) | null = null;
   const run = () => {
     if (!cancelled) {
-      ensureAdSenseScriptLoaded(publisherId, onScriptError);
+      unsubscribeScript = ensureAdSenseScriptLoaded(publisherId, onScriptReady, onScriptError);
     }
   };
 
@@ -125,6 +208,7 @@ function scheduleAdSenseScriptLoad(publisherId: string, onScriptError?: () => vo
       (
         window as Window & { cancelIdleCallback?: (id: number) => void }
       ).cancelIdleCallback?.(idleId);
+      unsubscribeScript?.();
     };
   }
 
@@ -132,6 +216,7 @@ function scheduleAdSenseScriptLoad(publisherId: string, onScriptError?: () => vo
   return () => {
     cancelled = true;
     window.clearTimeout(timerId);
+    unsubscribeScript?.();
   };
 }
 
@@ -237,7 +322,6 @@ export const AdSlot = memo(function AdSlot({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const insRef = useRef<HTMLModElement | null>(null);
-  const hasPushedRef = useRef(false);
 
   // Track mobile single-ad visibility permission (defaults to true)
   const [mobileAllowed, setMobileAllowed] = useState(true);
@@ -364,101 +448,226 @@ export const AdSlot = memo(function AdSlot({
   // Load Google AdSense and watch fill status (including cosmetic ad-blocker collapse + 3s timeout)
   useEffect(() => {
     if (!canAttemptGoogle) {
-      hasPushedRef.current = false;
       setGoogleState('idle');
       return;
     }
 
-    let cancelled = false;
-    const markUnfilled = () => {
-      if (!cancelled) setGoogleState('unfilled');
-    };
-
-    const cancelScheduledScript = scheduleAdSenseScriptLoad(cleanPublisherId, markUnfilled);
     if (typeof window !== 'undefined' && window.__boardlyAdSenseFailed) {
-      cancelScheduledScript();
       setGoogleState('unfilled');
       return;
     }
 
-    setGoogleState('pending');
+    let cancelled = false;
+    let rafId: number | null = null;
+    let fillTimeoutId: number | null = null;
+    let scriptTimeoutId: number | null = null;
+    let observer: MutationObserver | null = null;
+    let resizeObserver: ResizeObserver | null = null;
 
-    if (!hasPushedRef.current) {
-      hasPushedRef.current = true;
-      try {
-        (window.adsbygoogle = window.adsbygoogle || []).push({});
-      } catch {
-        setGoogleState('unfilled');
-        return;
+    const clearTimers = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
       }
-    }
+      if (fillTimeoutId !== null) {
+        window.clearTimeout(fillTimeoutId);
+        fillTimeoutId = null;
+      }
+      if (scriptTimeoutId !== null) {
+        window.clearTimeout(scriptTimeoutId);
+        scriptTimeoutId = null;
+      }
+    };
 
-    const insEl = insRef.current;
-    const isCosmeticallyBlocked = (): boolean => {
-      if (!insEl || typeof window === 'undefined') return false;
+    const markUnfilled = () => {
+      if (cancelled) return;
+      clearTimers();
+      setGoogleState('unfilled');
+    };
+
+    const isCosmeticallyBlocked = (el: HTMLModElement | null): boolean => {
+      if (!el || typeof window === 'undefined') return false;
       try {
-        const cs = window.getComputedStyle(insEl);
+        const cs = window.getComputedStyle(el);
         return cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0';
       } catch {
         return false;
       }
     };
 
+    const isLaidOutVisible = (el: HTMLModElement | null): boolean => {
+      if (!el || !el.isConnected) return false;
+      if (isCosmeticallyBlocked(el)) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0;
+    };
+
     const checkStatus = (): boolean => {
+      const insEl = insRef.current;
       if (!insEl || cancelled) return false;
-      if (isCosmeticallyBlocked()) {
-        setGoogleState('unfilled');
+      if (isCosmeticallyBlocked(insEl)) {
+        markUnfilled();
         return true;
       }
       const status = insEl.getAttribute('data-ad-status');
       if (status === 'filled') {
+        clearTimers();
         setGoogleState('filled');
         return true;
       }
       if (status === 'unfilled') {
-        setGoogleState('unfilled');
+        markUnfilled();
         return true;
       }
       return false;
     };
 
-    if (checkStatus()) return;
+    const startFillTimeout = () => {
+      if (cancelled || fillTimeoutId !== null) return;
+      fillTimeoutId = window.setTimeout(() => {
+        fillTimeoutId = null;
+        if (cancelled) return;
+        const insEl = insRef.current;
+        if (!insEl || isCosmeticallyBlocked(insEl)) {
+          setGoogleState('unfilled');
+          return;
+        }
+        const status = insEl.getAttribute('data-ad-status');
+        const hasIframe = Boolean(insEl.querySelector('iframe'));
+        if (
+          status === 'filled' ||
+          (hasIframe && status !== 'unfilled' && insEl.offsetHeight >= 40)
+        ) {
+          setGoogleState('filled');
+        } else {
+          setGoogleState('unfilled');
+        }
+      }, GOOGLE_FILL_TIMEOUT_MS);
+    };
 
-    let observer: MutationObserver | null = null;
-    if (insEl && typeof MutationObserver !== 'undefined') {
+    const tryPushAdUnit = () => {
+      if (cancelled) return;
+      const insEl = insRef.current;
+      if (!insEl || !insEl.isConnected) return;
+
+      if (checkStatus()) return;
+
+      // Do not push while hidden by responsive CSS (e.g., desktopOnly or mobileAllowed=false)
+      if (!isLaidOutVisible(insEl)) {
+        return;
+      }
+
+      // Already pushed or claimed by AdSense — just monitor status/timeout
+      if (
+        insEl.getAttribute('data-adsbygoogle-status') ||
+        insEl.dataset.boardlyPushed === '1'
+      ) {
+        startFillTimeout();
+        return;
+      }
+
+      // Never push before the AdSense runtime has actually loaded (prevents orphaned queue items)
+      if (!isAdSenseRuntimeReady() && adSenseScriptStatus !== 'loaded') {
+        return;
+      }
+
+      // Verify DOM has an uninitialized ins.adsbygoogle before calling push({})
+      if (
+        !insEl.classList.contains('adsbygoogle') ||
+        document.querySelectorAll('ins.adsbygoogle:not([data-adsbygoogle-status])').length === 0
+      ) {
+        checkStatus();
+        return;
+      }
+
+      insEl.dataset.boardlyPushed = '1';
+      startFillTimeout();
+      try {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      } catch {
+        markUnfilled();
+      }
+    };
+
+    const schedulePush = () => {
+      if (cancelled) return;
+      if (scriptTimeoutId !== null) {
+        window.clearTimeout(scriptTimeoutId);
+        scriptTimeoutId = null;
+      }
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      // Defer push to the next animation frame so React StrictMode unmount/remount cancels safely
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        tryPushAdUnit();
+      });
+    };
+
+    const initialIns = insRef.current;
+    if (initialIns && initialIns.getAttribute('data-ad-status') === 'filled') {
+      setGoogleState('filled');
+      return;
+    }
+
+    setGoogleState((prev) => (prev === 'filled' ? 'filled' : 'pending'));
+
+    if (initialIns && typeof MutationObserver !== 'undefined') {
       observer = new MutationObserver(() => {
         if (checkStatus() && observer) {
           observer.disconnect();
         }
       });
-      observer.observe(insEl, {
+      observer.observe(initialIns, {
         attributes: true,
         attributeFilter: ['data-ad-status', 'style', 'class'],
       });
     }
 
-    const timeoutId = window.setTimeout(() => {
-      if (cancelled) return;
-      if (!insEl || isCosmeticallyBlocked()) {
-        setGoogleState('unfilled');
-        return;
-      }
-      const status = insEl.getAttribute('data-ad-status');
-      const hasIframe = Boolean(insEl.querySelector('iframe'));
-      if (status === 'filled' || (hasIframe && status !== 'unfilled' && insEl.offsetHeight >= 40)) {
-        setGoogleState('filled');
-      } else {
-        setGoogleState('unfilled');
-      }
-    }, GOOGLE_FILL_TIMEOUT_MS);
+    // Watch the <ins> container so slots hidden by responsive CSS (desktopOnly or max-md:hidden) initialize once visible
+    const resizeTarget = initialIns?.parentElement || containerRef.current;
+    if (resizeTarget && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        if (cancelled) return;
+        const insEl = insRef.current;
+        if (
+          insEl &&
+          insEl.dataset.boardlyPushed !== '1' &&
+          !insEl.getAttribute('data-adsbygoogle-status') &&
+          (isAdSenseRuntimeReady() || adSenseScriptStatus === 'loaded') &&
+          isLaidOutVisible(insEl)
+        ) {
+          schedulePush();
+        }
+      });
+      resizeObserver.observe(resizeTarget);
+    }
+
+    // Fallback timeout if the AdSense script request stalls silently without firing load or error
+    if (!isAdSenseRuntimeReady() && adSenseScriptStatus !== 'loaded') {
+      scriptTimeoutId = window.setTimeout(() => {
+        scriptTimeoutId = null;
+        if (!cancelled && !isAdSenseRuntimeReady() && adSenseScriptStatus !== 'loaded') {
+          markUnfilled();
+        }
+      }, GOOGLE_SCRIPT_LOAD_TIMEOUT_MS);
+    }
+
+    const cancelScheduledScript = scheduleAdSenseScriptLoad(
+      cleanPublisherId,
+      schedulePush,
+      markUnfilled
+    );
 
     return () => {
       cancelled = true;
       cancelScheduledScript();
-      window.clearTimeout(timeoutId);
+      clearTimers();
       if (observer) observer.disconnect();
+      if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [canAttemptGoogle, cleanGoogleSlotId, cleanPublisherId]);
+  }, [canAttemptGoogle, cleanGoogleSlotId, cleanPublisherId, format]);
 
   const viewerRoleLabel = !user?.uid
     ? 'logged_out'
@@ -649,6 +858,7 @@ export const AdSlot = memo(function AdSlot({
       </span>
       <div className="w-full min-h-[90px] rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--surface)] transition-colors">
         <ins
+          key={`${cleanPublisherId}:${cleanGoogleSlotId}:${format}`}
           ref={insRef}
           className="adsbygoogle"
           style={{ display: 'block' }}

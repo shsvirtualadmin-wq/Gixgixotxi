@@ -43,6 +43,9 @@ import {
 import { useBodyScrollLock } from '@/utils/scrollLock';
 import { RequestAccessSheet } from './RequestAccessSheet';
 import { getPlan, parsePlanExpiryMs } from '@/lib/planTier';
+import { DotHeading, Pill, Skeleton } from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+import { formatAuditActionLabel, formatRoleLabel, pluralize } from '@/utils/adminLabels';
 
 export type UserOverrideSection = 'top' | 'plan' | 'role' | 'attempts' | 'security';
 
@@ -115,6 +118,7 @@ export function UserOverrideDrawer({
   onSuccess,
 }: UserOverrideDrawerProps) {
   const { isSuperAdmin: authIsSuperAdmin, hasPermission, refreshActiveGrants } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   // SECURITY: SuperAdmin comes strictly from verified Firebase Auth custom claims (token.superAdmin === true)
   const isSuperAdmin = Boolean(authIsSuperAdmin);
 
@@ -820,7 +824,7 @@ export function UserOverrideDrawer({
       onSuccess();
       if (result && !result.firebaseAuthDeleted && result.warning) {
         setError(
-          `Firestore & Cloudflare D1 records wiped. Firebase Auth notice: ${result.warning}`
+          `Account records removed. Authentication notice: ${result.warning}`
         );
       } else {
         onClose();
@@ -850,34 +854,41 @@ export function UserOverrideDrawer({
     <div
       data-testid="user-override-drawer"
       data-admin-sheet="user-override"
+      data-admin-glass-portal={glassEnabled ? '1' : '0'}
       className="fixed inset-0 z-[10010] flex items-end md:items-stretch md:justify-end"
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 overlay-blur bg-black/70 backdrop-blur-md"
+        className="fixed inset-0 overlay-blur bg-black/65 backdrop-blur-md"
         onClick={() => !saving && onClose()}
       />
 
       {/* Flex Column Sheet: Fixed Header + Quick-Jump Chips + Scrollable Body + Sticky Footer using dvh */}
-      <div className="relative w-full md:max-w-[720px] max-h-[90dvh] md:max-h-[100dvh] md:h-[100dvh] bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl">
+      <div
+        className={`relative w-full md:max-w-[720px] max-h-[90dvh] md:max-h-[100dvh] md:h-[100dvh] rounded-t-[24px] md:rounded-none flex flex-col z-10 overflow-hidden shadow-2xl ${
+          glassEnabled
+            ? 'ag-sheet-panel border-t md:border-t-0 md:border-l'
+            : 'bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)]'
+        }`}
+      >
         {/* Mobile grab handle 36x4px */}
         <div className="md:hidden w-9 h-1 bg-[var(--border)] rounded-full mx-auto mt-2.5 shrink-0" />
 
         {/* 1. FIXED HEADER */}
-        <div className="px-5 py-3.5 border-b border-[var(--border)] flex flex-col gap-2.5 shrink-0 bg-[var(--card)]">
+        <div className="px-5 py-3.5 border-b border-[var(--border)] flex flex-col gap-2.5 shrink-0 bg-transparent">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg)]/80 border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
                 {userInitial}
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] truncate">
+                  <DotHeading as="h2" size="section" className="truncate">
                     {displayName}
-                  </h2>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] shrink-0">
-                    {selectedRoleOption.shortLabel}
-                  </span>
+                  </DotHeading>
+                  <Pill tone="neutral" className="shrink-0">
+                    {formatRoleLabel(selectedRoleOption.key)}
+                  </Pill>
                 </div>
                 <p className="font-heading text-[12px] text-[var(--text-muted)] truncate">
                   {user.username ? `@${String(user.username).replace(/^@/, '')} · ` : ''}
@@ -1367,13 +1378,10 @@ export function UserOverrideDrawer({
             </div>
 
             {/* Role Description Card */}
-            <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] space-y-1">
+            <div className="p-3 rounded-[14px] ag-flat-card space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-[var(--text)]">
+                <span className="text-[12px] font-bold text-[var(--text)]">
                   {selectedRoleOption.label}
-                </span>
-                <span className="text-[10px] font-mono text-[var(--muted)]">
-                  key: {selectedRoleOption.key}
                 </span>
               </div>
               <p className="text-[11px] text-[var(--muted)] leading-relaxed">
@@ -1384,12 +1392,20 @@ export function UserOverrideDrawer({
 
           {/* SECTION 4: TEST ATTEMPTS */}
           <section ref={attemptsSectionRef} className="space-y-2 pt-1 border-t border-[var(--border)] scroll-mt-3">
-            <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
-              Test attempts
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-[11px] font-mono uppercase tracking-wider text-[var(--muted)] font-semibold">
+                Test attempts
+              </h3>
+              {!loadingAttempts && recentAttempts.length > 0 && (
+                <span className="text-[11px] font-mono text-[var(--muted)]">
+                  {pluralize(recentAttempts.length, 'attempt')}
+                </span>
+              )}
+            </div>
             {loadingAttempts ? (
-              <div className="p-2 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
-                <LineLoader context="admin" variant="inline" />
+              <div className="p-3 rounded-[16px] ag-flat-card space-y-2">
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-4 w-32" />
               </div>
             ) : attemptsError ? (
               <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-2 text-[12px] font-heading text-[var(--muted)]">
@@ -1571,11 +1587,11 @@ export function UserOverrideDrawer({
                     {securityAuditLogs.map((log) => (
                       <div
                         key={log.id}
-                        className="p-2.5 rounded-[10px] border bg-[var(--card-2)] border-[var(--border)] text-[11px] font-heading space-y-1"
+                        className="p-2.5 rounded-[10px] ag-list-row text-[11px] font-heading space-y-0.5"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono font-bold text-[11px] text-[var(--text)]">
-                            {log.eventType}
+                          <span className="font-semibold text-[11px] text-[var(--text)]">
+                            {formatAuditActionLabel(log.eventType)}
                           </span>
                           <span className="font-mono text-[10px] text-[var(--muted)]">
                             {new Date(log.createdAt).toLocaleString('en-GB')}
@@ -1646,27 +1662,34 @@ export function UserOverrideDrawer({
         {/* 3. STICKY FOOTER (Always visible, Save disabled until dirty, shows loading state) */}
         <div
           data-testid="user-override-sticky-footer"
-          className="sticky bottom-0 left-0 right-0 px-4 sm:px-5 py-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2.5 shrink-0 z-20"
+          className={`sticky bottom-0 left-0 right-0 px-4 sm:px-5 py-3.5 pb-[calc(14px+env(safe-area-inset-bottom,0px))] border-t border-[var(--border)] flex items-center justify-between gap-2.5 shrink-0 z-20 ${
+            glassEnabled ? 'ag-sticky-bar rounded-none border-x-0 border-b-0' : 'bg-[var(--card)]'
+          }`}
         >
-          <button
-            type="button"
-            data-testid="user-override-cancel-btn"
-            onClick={onClose}
-            disabled={saving}
-            className="min-h-[42px] px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            data-testid="user-override-save-btn"
-            onClick={handleApplyOverrides}
-            disabled={!isDirty || saving}
-            className="min-h-[42px] px-5 py-2 rounded-[12px] border border-[#D71921] bg-[#D71921] text-white text-[13px] font-heading font-bold hover:opacity-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#D71921]/20"
-          >
-            {saving && <Loader2 size={14} className="animate-spin shrink-0" />}
-            <span>{saving ? 'Saving changes...' : 'Save changes'}</span>
-          </button>
+          <span className="text-[11px] font-heading text-[var(--muted)]">
+            {isDirty ? 'Unsaved changes' : 'No pending changes'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="user-override-cancel-btn"
+              onClick={onClose}
+              disabled={saving}
+              className="min-h-[42px] px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="user-override-save-btn"
+              onClick={handleApplyOverrides}
+              disabled={!isDirty || saving}
+              className="min-h-[42px] px-5 py-2 rounded-[12px] border border-[#E8353B] bg-[#E8353B] hover:bg-[#D4292F] text-white text-[13px] font-heading font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E8353B]/20"
+            >
+              {saving && <Loader2 size={14} className="animate-spin shrink-0" />}
+              <span>{saving ? 'Saving changes...' : 'Save changes'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

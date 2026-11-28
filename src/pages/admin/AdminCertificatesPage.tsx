@@ -35,7 +35,6 @@ import {
   fetchAdminCertificatesSWR,
   invalidateAdminCertificatesCache,
 } from '../../services/adminTabCache';
-import { AdminCertificatesSkeleton } from '../../components/ui/Skeleton';
 import { SignatureUploader } from '../../components/certificates/SignatureUploader';
 import { ThemePicker } from '../../components/certificates/ThemePicker';
 import { formatCertificateDate } from '../../lib/certificateRenderer';
@@ -45,6 +44,19 @@ import {
   useServerSyncedClock,
 } from '../../components/admin/GrandLineScheduleSheet';
 import { GrandLineTestsAdminSection } from '../../components/admin/GrandLineTestsAdminSection';
+import {
+  DotHeading,
+  GlassCard,
+  Pill,
+  Segmented,
+  SkeletonListRows,
+} from '../../components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '../../utils/adminGlassFlag';
+import {
+  formatSignatureLabel,
+  formatThemeLabel,
+  pluralize,
+} from '../../utils/adminLabels';
 
 const CERTIFICATES_PAGE_SIZE = 20;
 
@@ -57,8 +69,10 @@ const CERTIFICATES_PAGE_SIZE = 20;
  * 3. Settings > Certificate Signature manager (upload or draw pad, white-bg removal, light/dark preview, version history).
  */
 export const AdminCertificatesPage: React.FC = () => {
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const { hasPermission, refreshActiveGrants } = useAuth();
   const canIssueCerts = hasPermission('certificates.issue');
+  const [confirmRevokeCert, setConfirmRevokeCert] = useState<StudentCertificateRecord | null>(null);
   const [requestAccessModal, setRequestAccessModal] = useState<{
     permission: PermissionKey;
     actionLabel: string;
@@ -165,7 +179,7 @@ export const AdminCertificatesPage: React.FC = () => {
         if (!isMountedRef.current) return;
         setNotice({
           type: 'error',
-          text: err?.message || 'Failed to load certificates from Cloudflare D1.',
+          text: err?.message || 'Failed to load certificates.',
         });
       } finally {
         if (isMountedRef.current) {
@@ -344,67 +358,52 @@ export const AdminCertificatesPage: React.FC = () => {
   const selectedMock = mocks.find((m) => m.id === selectedMockId) || mocks[0] || null;
 
   return (
-    <div data-admin-page="certificates" className="space-y-6">
+    <div data-admin-page="certificates" className="space-y-6 pb-24">
       {/* Header */}
       <div className="flex items-start sm:items-center justify-between gap-4 flex-wrap">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-widest text-[var(--accent)]">
-            GRAND LINE EXCELLENCE CREDENTIALS · CLOUDFLARE D1 + PRIVATE R2
+          <div className="font-mono text-[11px] uppercase tracking-widest text-[#E8353B] font-semibold">
+            Grand Line Excellence Credentials
           </div>
-          <h1
-            className="text-xl sm:text-2xl font-bold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
+          <DotHeading as="h1" size="page" className="mt-0.5">
             Certificates &amp; Admin Signature
-          </h1>
+          </DotHeading>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] flex-wrap">
-          <button
-            type="button"
-            onClick={() => switchTab('certificates')}
-            className={`min-h-[40px] px-3.5 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'certificates'
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            <Award size={14} />
-            <span>Issued Certificates ({certificates.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => switchTab('themes')}
-            className={`min-h-[40px] px-3.5 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'themes'
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            <Palette size={14} />
-            <span>Mock Certificate Designs ({mocks.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => switchTab('signature')}
-            className={`min-h-[40px] px-3.5 py-2 rounded-lg text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer ${
-              activeTab === 'signature'
-                ? 'bg-[var(--accent)] text-white'
-                : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-            }`}
-          >
-            <PenTool size={14} />
-            <span>Settings &gt; Certificate Signature</span>
-          </button>
-        </div>
+        <Segmented
+          ariaLabel="Certificate management sections"
+          value={activeTab}
+          onChange={switchTab}
+          options={[
+            {
+              value: 'certificates',
+              label: 'Issued',
+              count: certificates.length,
+              icon: <Award size={14} />,
+            },
+            {
+              value: 'themes',
+              label: 'Mock Designs',
+              count: mocks.length,
+              icon: <Palette size={14} />,
+            },
+            {
+              value: 'signature',
+              label: 'Signature',
+              icon: <PenTool size={14} />,
+            },
+          ]}
+        />
       </div>
 
       {/* Global Warning Banner when no active signature is set */}
       {!loading && !hasActiveSignature && activeTab !== 'signature' && (
-        <div className="p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 flex items-center justify-between gap-3 flex-wrap">
+        <GlassCard
+          variant="glass"
+          padding="sm"
+          className="border-amber-500/40 bg-amber-500/10 flex items-center justify-between gap-3 flex-wrap"
+        >
           <div className="flex items-center gap-3">
             <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
@@ -423,12 +422,12 @@ export const AdminCertificatesPage: React.FC = () => {
           >
             Open Signature Manager
           </button>
-        </div>
+        </GlassCard>
       )}
 
       {notice && (
         <div
-          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+          className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-2 ${
             notice.type === 'success'
               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
               : 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300'
@@ -456,7 +455,11 @@ export const AdminCertificatesPage: React.FC = () => {
       {activeTab === 'certificates' && (
         <div className="space-y-4">
           {/* Search, Filter & Regenerate All Bar */}
-          <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <GlassCard
+            variant="glass"
+            padding="sm"
+            className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3"
+          >
             <div className="flex flex-1 items-center gap-2.5 flex-wrap">
               <div className="relative flex-1 min-w-[220px]">
                 <Search
@@ -468,7 +471,7 @@ export const AdminCertificatesPage: React.FC = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search student, serial (BDLY-GL01-0001), or mock..."
-                  className="w-full min-h-[42px] pl-9 pr-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs text-[var(--text)] focus:outline-none"
+                  className="w-full min-h-[42px] pl-9 pr-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 text-xs text-[var(--text)] focus:outline-none focus:border-[#E8353B]"
                 />
               </div>
 
@@ -476,7 +479,7 @@ export const AdminCertificatesPage: React.FC = () => {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
                 aria-label="Filter by certificate status"
-                className="min-h-[42px] px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs text-[var(--text)]"
+                className="min-h-[42px] px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 text-xs text-[var(--text)]"
               >
                 <option value="all">All Statuses</option>
                 <option value="active">Active Only</option>
@@ -489,7 +492,7 @@ export const AdminCertificatesPage: React.FC = () => {
                 type="button"
                 onClick={() => void handleRegenerateAll()}
                 disabled={regeneratingAll || certificates.length === 0}
-                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
               >
                 <RefreshCw size={13} className={regeneratingAll ? 'animate-spin' : ''} />
                 <span>
@@ -501,55 +504,51 @@ export const AdminCertificatesPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => void loadData(true)}
-                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer"
+                className="min-h-[42px] px-3.5 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
                 <span>Refresh</span>
               </button>
             </div>
-          </div>
+          </GlassCard>
 
-          {/* Certificates Table / Cards */}
+          {/* Certificates List (flat translucent rows — zero backdrop-filter inside list) */}
           {loading && !hasLoadedOnce && certificates.length === 0 ? (
-            <AdminCertificatesSkeleton count={4} />
+            <SkeletonListRows rows={4} />
           ) : certificates.length === 0 ? (
-            <div className="p-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] text-center space-y-2">
+            <GlassCard variant="flat" padding="lg" className="text-center space-y-2">
               <div className="text-sm font-bold text-[var(--text)]">
                 No certificates matching your filter
               </div>
               <p className="text-xs text-[var(--text-muted)]">
-                When a Grand Line mock's results are finalised, 1st-position certificates appear here automatically.
+                When a Grand Line mock&apos;s results are finalised, 1st-position certificates appear here automatically.
               </p>
-            </div>
+            </GlassCard>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {certificates.slice(0, visibleCount).map((cert) => {
                 const isBusy = busyId === cert.id;
                 return (
-                  <div
+                  <GlassCard
                     key={cert.id}
-                    className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
+                    variant="flat"
+                    padding="sm"
+                    className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
                   >
-                    <div className="space-y-1 min-w-0">
+                    <div className="space-y-1.5 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-[var(--accent)]">
+                        <span className="font-mono text-xs font-bold text-[#E8353B]">
                           {cert.serial}
                         </span>
-                        <span
-                          className={`px-2 py-0.5 rounded font-mono text-[10px] uppercase ${
-                            cert.status === 'active'
-                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                              : 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30'
-                          }`}
-                        >
-                          {cert.status}
-                        </span>
-                        <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--surface-2)] text-[var(--text-muted)]">
-                          Theme: {cert.themeId}
-                        </span>
-                        <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--surface-2)] text-[var(--text-muted)]">
-                          Sig: v{cert.signatureVersion}
-                        </span>
+                        <Pill tone={cert.status === 'active' ? 'success' : 'danger'}>
+                          {cert.status === 'active' ? 'Active' : 'Revoked'}
+                        </Pill>
+                        <Pill tone="neutral" title={cert.themeId}>
+                          Theme: {formatThemeLabel(cert.themeId)}
+                        </Pill>
+                        <Pill tone="neutral">
+                          {formatSignatureLabel(cert.signatureVersion)}
+                        </Pill>
                       </div>
 
                       <div className="text-sm sm:text-base font-bold text-[var(--text)]">
@@ -561,7 +560,7 @@ export const AdminCertificatesPage: React.FC = () => {
                         ) : null}
                       </div>
 
-                      <div className="font-mono text-[11px] text-[var(--text-muted)] flex items-center gap-2 flex-wrap">
+                      <div className="font-mono text-[11px] text-[var(--text-muted)] flex items-center gap-2 flex-wrap ag-tabular">
                         <span>Mock: {cert.grandLineTitle}</span>
                         <span>·</span>
                         <span>
@@ -572,7 +571,7 @@ export const AdminCertificatesPage: React.FC = () => {
                           %)
                         </span>
                         <span>·</span>
-                        <span>Participants: {cert.participantsCount}</span>
+                        <span>{pluralize(cert.participantsCount, 'participant')}</span>
                         <span>·</span>
                         <span>Issued: {formatCertificateDate(cert.issuedAt)}</span>
                       </div>
@@ -591,7 +590,7 @@ export const AdminCertificatesPage: React.FC = () => {
                             certificate: cert,
                           })
                         }
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 inline-flex items-center gap-1.5 cursor-pointer"
+                        className="min-h-[40px] px-3 py-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <Download size={13} />
                         <span>PDF</span>
@@ -608,7 +607,7 @@ export const AdminCertificatesPage: React.FC = () => {
                             certificate: cert,
                           })
                         }
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer"
+                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
                         <Download size={13} />
                         <span>PNG</span>
@@ -618,7 +617,7 @@ export const AdminCertificatesPage: React.FC = () => {
                         type="button"
                         disabled={isBusy}
                         onClick={() => void handleRegenerateOne(cert)}
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                         title="Regenerate with current signature and mock theme"
                       >
                         <RefreshCw size={13} className={isBusy ? 'animate-spin' : ''} />
@@ -628,7 +627,13 @@ export const AdminCertificatesPage: React.FC = () => {
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => void handleToggleRevoke(cert)}
+                        onClick={() => {
+                          if (cert.status === 'revoked') {
+                            void handleToggleRevoke(cert);
+                          } else {
+                            setConfirmRevokeCert(cert);
+                          }
+                        }}
                         className={`min-h-[40px] px-3 py-1.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
                           cert.status === 'revoked'
                             ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
@@ -650,13 +655,13 @@ export const AdminCertificatesPage: React.FC = () => {
 
                       <Link
                         to={`/verify/${encodeURIComponent(cert.serial)}`}
-                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-mono text-[var(--text-muted)] hover:text-[var(--text)] inline-flex items-center gap-1"
+                        className="min-h-[40px] px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-mono text-[var(--text-muted)] hover:text-[var(--text)] inline-flex items-center gap-1"
                       >
                         <span>Verify</span>
                         <ExternalLink size={12} />
                       </Link>
                     </div>
-                  </div>
+                  </GlassCard>
                 );
               })}
               {certificates.length > visibleCount && (
@@ -666,7 +671,7 @@ export const AdminCertificatesPage: React.FC = () => {
                     onClick={() =>
                       setVisibleCount((prev) => prev + CERTIFICATES_PAGE_SIZE)
                     }
-                    className="min-h-[40px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] text-xs font-semibold text-[var(--text)] hover:border-[var(--accent)] cursor-pointer"
+                    className="min-h-[40px] px-4 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] cursor-pointer transition-colors"
                   >
                     Load more certificates ({certificates.length - visibleCount} remaining)
                   </button>
@@ -684,21 +689,19 @@ export const AdminCertificatesPage: React.FC = () => {
           <GrandLineTestsAdminSection />
 
           {/* Mock Selector Strip */}
-          <div className="p-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3">
+          <GlassCard variant="glass" padding="md" className="space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-                SELECT GRAND LINE MOCK ({mocks.length})
-              </div>
+              <DotHeading as="h2" size="section">
+                Select Grand Line Mock ({mocks.length})
+              </DotHeading>
               {mocks.length === 0 && (
-                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
-                  INTERACTIVE 9-THEME DESIGN PREVIEW MODE
-                </span>
+                <Pill tone="accent">9-theme preview mode</Pill>
               )}
             </div>
 
             {mocks.length === 0 ? (
               <div className="text-xs text-[var(--text-muted)]">
-                No Grand Line mocks have been created yet. You can preview all 9 certificate themes below with your active signature; once a Grand Line mock is created, select it here to save its theme to <code className="font-mono text-[var(--text)]">captain_tests.certificate_theme_id</code>.
+                No Grand Line mocks have been created yet. You can preview all 9 certificate themes below with your active signature; once a Grand Line mock is created, select it here to save its certificate theme.
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
@@ -708,17 +711,17 @@ export const AdminCertificatesPage: React.FC = () => {
                     <div
                       key={mock.id}
                       onClick={() => setSelectedMockId(mock.id)}
-                      className={`p-3.5 rounded-xl border transition-colors cursor-pointer space-y-2 ${
+                      className={`p-3.5 rounded-[16px] border transition-colors cursor-pointer space-y-2 ${
                         isSelected
-                          ? 'border-[var(--accent)] bg-[var(--surface-2)]'
-                          : 'border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text-muted)]'
+                          ? 'border-[#E8353B] bg-[#E8353B]/8'
+                          : 'ag-flat-card hover:border-[var(--text-muted)]'
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="text-xs sm:text-sm font-bold text-[var(--text)] line-clamp-1">
                           {mock.title}
                         </div>
-                        <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] shrink-0">
+                        <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-[var(--bg)]/70 border border-[var(--border)] text-[var(--text-muted)] shrink-0">
                           GL#{String(mock.mockNumber).padStart(2, '0')}
                         </span>
                       </div>
@@ -732,7 +735,12 @@ export const AdminCertificatesPage: React.FC = () => {
                       />
 
                       <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-[var(--text-muted)]">
-                        <span>Theme: {mock.certificateThemeId || 'Auto (Unique)'}</span>
+                        <span>
+                          Theme:{' '}
+                          {mock.certificateThemeId
+                            ? formatThemeLabel(mock.certificateThemeId)
+                            : 'Auto (Unique)'}
+                        </span>
                         <span>{mock.resultsFinalised ? 'Finalised' : 'Open'}</span>
                       </div>
                     </div>
@@ -740,19 +748,19 @@ export const AdminCertificatesPage: React.FC = () => {
                 })}
               </div>
             )}
-          </div>
+          </GlassCard>
 
           {/* ThemePicker & Publish/Finalise Action */}
           {selectedMock ? (
-            <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
+            <GlassCard variant="glass" padding="lg" className="space-y-5">
               <div className="flex items-start justify-between gap-3 flex-wrap border-b border-[var(--border)] pb-4">
                 <div className="space-y-1.5">
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
-                    GRAND LINE MOCK #{String(selectedMock.mockNumber).padStart(2, '0')} · {selectedMock.subject}
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-[#E8353B] font-semibold">
+                    Grand Line Mock #{String(selectedMock.mockNumber).padStart(2, '0')} · {selectedMock.subject}
                   </div>
-                  <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                  <DotHeading as="h3" size="section">
                     {selectedMock.title}
-                  </h3>
+                  </DotHeading>
                   <GrandLineStatusPills
                     test={selectedMock}
                     nowMs={nowMs}
@@ -795,9 +803,9 @@ export const AdminCertificatesPage: React.FC = () => {
                     type="button"
                     disabled={busyId === selectedMock.id}
                     onClick={() => void handleFinaliseMock(selectedMock)}
-                    className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                    className={`min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 transition-colors ${
                       hasPermission('certificates.issue', selectedMock.id)
-                        ? 'bg-[var(--accent)] text-white hover:opacity-90'
+                        ? 'bg-[#E8353B] hover:bg-[#D4292F] text-white'
                         : 'bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 opacity-85'
                     }`}
                   >
@@ -830,21 +838,21 @@ export const AdminCertificatesPage: React.FC = () => {
                 signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
                 signatureDataUrl={activeSignature?.previewDataUrl || null}
               />
-            </div>
+            </GlassCard>
           ) : (
-            <div className="p-4 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-5">
+            <GlassCard variant="glass" padding="lg" className="space-y-5">
               <div className="border-b border-[var(--border)] pb-4 flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
-                    ALL 9 CERTIFICATE THEMES · LIVE INTERACTIVE PREVIEW
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-[#E8353B] font-semibold">
+                    All 9 Certificate Themes · Live Interactive Preview
                   </div>
-                  <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
-                    Boardly Grand Line Mock (Theme Gallery &amp; Live Preview)
-                  </h3>
+                  <DotHeading as="h3" size="section" className="mt-0.5">
+                    Boardly Grand Line Mock (Theme Gallery)
+                  </DotHeading>
                 </div>
-                <span className="px-2.5 py-1 rounded-md font-mono text-[10px] uppercase tracking-wider bg-[var(--surface-2)] text-[var(--text)] border border-[var(--border)]">
-                  SELECTED: {defaultPreviewThemeId || 'auto (unique per student)'}
-                </span>
+                <Pill tone="neutral">
+                  Selected: {defaultPreviewThemeId ? formatThemeLabel(defaultPreviewThemeId) : 'Auto (Unique)'}
+                </Pill>
               </div>
 
               <ThemePicker
@@ -858,7 +866,7 @@ export const AdminCertificatesPage: React.FC = () => {
                 signatoryTitle={activeSignature?.signatoryTitle || 'Founder, Boardly'}
                 signatureDataUrl={activeSignature?.previewDataUrl || null}
               />
-            </div>
+            </GlassCard>
           )}
         </div>
       )}
@@ -869,6 +877,56 @@ export const AdminCertificatesPage: React.FC = () => {
           initialActiveSignature={activeSignature}
           onSignatureChanged={handleSignatureChanged}
         />
+      )}
+
+      {/* Revoke Certificate Confirm Modal */}
+      {confirmRevokeCert && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm certificate revocation"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          onClick={() => setConfirmRevokeCert(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`${
+              glassEnabled
+                ? 'ag-sheet-panel rounded-[22px]'
+                : 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl'
+            } w-full max-w-md p-6 space-y-4`}
+          >
+            <DotHeading as="h3" size="section">
+              Revoke certificate?
+            </DotHeading>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+              This will mark certificate{' '}
+              <code className="font-mono font-bold text-[var(--text)]">{confirmRevokeCert.serial}</code>{' '}
+              for <strong className="text-[var(--text)]">{confirmRevokeCert.studentName}</strong> as revoked on the public verification page. You can restore it later.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmRevokeCert(null)}
+                className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-semibold text-[var(--text)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = confirmRevokeCert;
+                  setConfirmRevokeCert(null);
+                  void handleToggleRevoke(target);
+                }}
+                className="rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs font-semibold text-white cursor-pointer transition-colors"
+              >
+                Yes, revoke certificate
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {requestAccessModal && (

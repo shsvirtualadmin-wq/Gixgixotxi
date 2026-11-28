@@ -67,6 +67,12 @@ import { convertGoogleSheetToCsvUrl } from '../../services/universityMcqService'
 import { MathText, validateMath } from '../../components/ui/MathText';
 import { ButtonLineLoader } from '../../components/ui/LineLoader';
 import { useBodyScrollLock } from '../../utils/scrollLock';
+import {
+  DotHeading,
+  GlassCard,
+  SkeletonListRows,
+} from '../../components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '../../utils/adminGlassFlag';
 
 type PrimaryTab = 'formulas' | 'health' | 'reports';
 
@@ -160,7 +166,7 @@ const AdminFormulaCard = React.memo(function AdminFormulaCard({
   onDelete,
 }: AdminFormulaCardProps) {
   return (
-    <article className="cv-auto-card aqb-glass-card p-3.5">
+    <article className="cv-auto-card ag-flat-card rounded-[18px] p-3.5">
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="aqb-pill aqb-pill--admin tabular-nums">
@@ -243,6 +249,7 @@ const AdminFormulaCard = React.memo(function AdminFormulaCard({
 });
 
 export const AdminFormulasPage: React.FC = () => {
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   // Primary tabs: Formulas | Health | Reports
   const [activeTab, setActiveTab] = useState<PrimaryTab>('formulas');
 
@@ -1051,7 +1058,7 @@ export const AdminFormulasPage: React.FC = () => {
   };
 
   return (
-    <div data-admin-page="formulas" className="aqb-page-shell">
+    <div data-admin-page="formulas" className="aqb-page-shell pb-24">
       <div className="aqb-container">
         {/* Feedback Banner */}
         {banner && (
@@ -1084,20 +1091,22 @@ export const AdminFormulasPage: React.FC = () => {
           </div>
         )}
 
-        {/* 1. Compact Glass Header (exact match to Question Bank) */}
-        <header className="aqb-glass-card p-4 sm:p-5">
+        {/* 1. Compact Glass Header */}
+        <GlassCard variant="glass" padding="md">
           <div className="flex items-center justify-between gap-2 min-w-0">
-            <h1 className="aqb-page-title">Formula Bank</h1>
+            <DotHeading as="h1" size="page">
+              Formula Bank
+            </DotHeading>
             <span className="aqb-admin-chip">Admin</span>
           </div>
           <p className="mt-1 text-[13.5px] text-[var(--text-secondary)] leading-snug">
             Manage formula sheets by category &amp; chapter.
           </p>
-          <p className="mt-2.5 text-xs font-bold tracking-tight text-[var(--text-muted)] tabular-nums">
+          <p className="mt-2.5 text-xs font-bold tracking-tight text-[var(--text-muted)] ag-tabular">
             {categories.length} categories · {chapters.length} chapters ·{' '}
             {totalFormulasAllCategories.toLocaleString()} formulas
           </p>
-        </header>
+        </GlassCard>
 
         {/* 2. Segmented Glass Tabs + Right-End Refresh Icon Button (exact match to Question Bank) */}
         <div className="aqb-tabs-row">
@@ -1348,8 +1357,8 @@ export const AdminFormulasPage: React.FC = () => {
                       <div className="text-base font-extrabold text-[var(--text)] truncate">
                         {selectedCategory.name}
                       </div>
-                      <div className="text-xs font-mono text-[var(--text-muted)] truncate">
-                        slug: {selectedCategory.slug}
+                      <div className="text-[11px] font-mono text-[var(--text-muted)] opacity-75 truncate">
+                        /{selectedCategory.slug}
                       </div>
                     </div>
                   </div>
@@ -1610,11 +1619,7 @@ export const AdminFormulasPage: React.FC = () => {
                     </div>
 
                     {loadingChapterFormulas ? (
-                      <div className="space-y-2.5">
-                        {Array.from({ length: 4 }).map((_, i) => (
-                          <div key={i} className="h-24 animate-pulse aqb-glass-card" />
-                        ))}
-                      </div>
+                      <SkeletonListRows rows={4} />
                     ) : filteredFormulas.length === 0 ? (
                       <div className="aqb-glass-card p-6 text-center">
                         <p className="text-sm font-bold text-[var(--text)]">
@@ -1680,9 +1685,7 @@ export const AdminFormulasPage: React.FC = () => {
         {activeTab === 'health' && (
           <div className="flex flex-col gap-3.5">
             {loadingHealth || !healthData ? (
-              <div className="aqb-glass-card p-6 text-center text-xs text-[var(--text-muted)]">
-                Scanning Formula Bank health...
-              </div>
+              <SkeletonListRows rows={4} />
             ) : (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -1932,17 +1935,15 @@ export const AdminFormulasPage: React.FC = () => {
             </div>
 
             {loadingReports ? (
-              <div className="aqb-glass-card p-6 text-center text-xs text-[var(--text-muted)]">
-                Loading student reports...
-              </div>
+              <SkeletonListRows rows={3} />
             ) : reports.length === 0 ? (
-              <div className="aqb-glass-card p-6 text-center text-xs text-[var(--text-muted)]">
+              <GlassCard variant="flat" padding="lg" className="text-center text-xs text-[var(--text-muted)]">
                 No formula error reports for filter &ldquo;{reportFilter}&rdquo;.
-              </div>
+              </GlassCard>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {reports.map((rep) => (
-                  <div key={rep.id} className="aqb-glass-card p-4 flex flex-col gap-2.5">
+                  <GlassCard key={rep.id} variant="flat" padding="sm" className="flex flex-col gap-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-extrabold text-[var(--text)]">
                         {rep.category_name} · {rep.chapter_title} · Formula #{rep.formula_no}
@@ -1990,16 +1991,16 @@ export const AdminFormulasPage: React.FC = () => {
                         <span>Ignore</span>
                       </button>
                     </div>
-                  </div>
+                  </GlassCard>
                 ))}
               </div>
             )}
 
-            {/* Recent R2 Bulk Import Audit Logs */}
+            {/* Recent Bulk Import Audit Logs */}
             {importLogs.length > 0 && (
-              <div className="aqb-glass-card p-4 flex flex-col gap-2">
+              <GlassCard variant="flat" padding="md" className="flex flex-col gap-2">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-[var(--text-muted)]">
-                  Recent Bulk Imports (R2 + D1 Audit)
+                  Recent Bulk Imports
                 </h3>
                 {importLogs.slice(0, 5).map((log) => (
                   <div
@@ -2011,11 +2012,11 @@ export const AdminFormulasPage: React.FC = () => {
                       {log.updated_count} updated, {log.skipped_count} skipped
                     </div>
                     <span className="font-mono text-[11px] text-[var(--text-muted)]">
-                      {log.csv_r2_key ? `R2: ${log.csv_r2_key}` : log.source_type.toUpperCase()}
+                      {log.csv_r2_key ? 'CSV archive' : log.source_type.toUpperCase()}
                     </span>
                   </div>
                 ))}
-              </div>
+              </GlassCard>
             )}
           </div>
         )}
@@ -2027,6 +2028,7 @@ export const AdminFormulasPage: React.FC = () => {
       {bulkModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           className="aqb-sheet-backdrop"
           onClick={() => !importingChunked && setBulkModalOpen(false)}
           role="dialog"
@@ -2625,6 +2627,7 @@ export const AdminFormulasPage: React.FC = () => {
       {categorySheetOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           className="aqb-sheet-backdrop"
           onClick={() => setCategorySheetOpen(false)}
         >
@@ -2747,6 +2750,7 @@ export const AdminFormulasPage: React.FC = () => {
       {categoryModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           className="aqb-sheet-backdrop"
           onClick={() => setCategoryModalOpen(false)}
         >
@@ -2834,6 +2838,7 @@ export const AdminFormulasPage: React.FC = () => {
       {chapterModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           className="aqb-sheet-backdrop"
           onClick={() => setChapterModalOpen(false)}
         >
@@ -2929,6 +2934,7 @@ export const AdminFormulasPage: React.FC = () => {
       {formulaModalOpen && typeof document !== 'undefined' && createPortal(
         <div
           data-fullscreen-modal="true"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           className="aqb-sheet-backdrop"
           onClick={() => setFormulaModalOpen(false)}
         >

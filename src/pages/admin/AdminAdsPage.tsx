@@ -39,6 +39,17 @@ import {
 } from '@/services/adsConfigService';
 import { AdSlot } from '@/components/AdSlot';
 import { sanitizeUserErrorMessage } from '@/utils/safeErrorMessage';
+import {
+  DotHeading,
+  GlassCard,
+  Pill,
+  Segmented,
+  SkeletonListRows,
+  SkeletonMetricCard,
+  StickyActionBar,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
+import { formatAdSlotLabel } from '@/utils/adminLabels';
 
 type AdsTabId = 'global' | 'slots' | 'offers' | 'promo' | 'stats';
 
@@ -85,7 +96,7 @@ function ToggleSwitch({
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-[#D71921]' : 'bg-[var(--border-strong)]'
+        checked ? 'bg-[#E8353B]' : 'bg-[var(--border-strong)]'
       }`}
     >
       <span
@@ -98,6 +109,7 @@ function ToggleSwitch({
 }
 
 export function AdminAdsPage() {
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const [activeTab, setActiveTab] = useState<AdsTabId>('global');
   const [config, setConfig] = useState<AdsConfigDoc>(() => createDefaultAdsConfig());
   const [loading, setLoading] = useState(true);
@@ -329,16 +341,16 @@ export function AdminAdsPage() {
   const previewSlotConfig = previewSlotId ? config.slots[previewSlotId] : null;
 
   return (
-    <div className="space-y-6 pb-20 max-w-6xl mx-auto">
+    <div data-admin-page="ads" className="space-y-6 pb-28 max-w-6xl mx-auto">
       {/* Header + Save / Reset Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1
-            className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
+          <div className="text-[11px] font-mono uppercase tracking-widest text-[#E8353B] font-semibold">
+            Monetization &amp; Promotions
+          </div>
+          <DotHeading as="h1" size="page" className="mt-0.5">
             Ads &amp; Offers Control
-          </h1>
+          </DotHeading>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-1">
             Control Google AdSense slots, Boardly offers, and promo codes live with no redeploy. Changes take effect within ~1 minute.
           </p>
@@ -349,7 +361,7 @@ export function AdminAdsPage() {
             type="button"
             onClick={() => setConfirmResetOpen(true)}
             disabled={loading || saving || resetting}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text)] hover:border-[var(--border-strong)] transition-colors cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-xl ag-flat-card px-3.5 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:text-red-500 hover:border-red-500/40 transition-colors cursor-pointer disabled:opacity-50"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span>Reset to defaults</span>
@@ -359,7 +371,7 @@ export function AdminAdsPage() {
             type="button"
             onClick={handleSave}
             disabled={loading || saving}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#D71921] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm hover:opacity-95 transition-opacity cursor-pointer disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-colors cursor-pointer disabled:opacity-60"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -375,14 +387,14 @@ export function AdminAdsPage() {
 
       {/* Feedback Banners */}
       {savedNotice && (
-        <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+        <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
           <Check className="h-4 w-4 shrink-0" />
           <span>{savedNotice} — live settings will refresh for visitors within 60 seconds.</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="rounded-xl border border-red-500/35 bg-red-500/10 px-4 py-2.5 text-xs sm:text-sm font-medium text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+        <div className="rounded-2xl border border-red-500/35 bg-red-500/10 px-4 py-2.5 text-xs sm:text-sm font-medium text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{errorMsg}</span>
@@ -397,46 +409,29 @@ export function AdminAdsPage() {
         </div>
       )}
 
-      {hasUnsavedChanges && !savedNotice && (
-        <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2">
-          <span>You have unsaved changes.</span>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="font-bold underline cursor-pointer"
-          >
-            Save now
-          </button>
-        </div>
-      )}
-
-      {/* Responsive Tab Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-[var(--border)]">
-        {tabs.map((tab) => {
+      {/* Responsive Glass Segmented Tab Bar */}
+      <Segmented
+        ariaLabel="Ads and offers sections"
+        value={activeTab}
+        onChange={setActiveTab}
+        options={tabs.map((tab) => {
           const Icon = tab.icon;
-          const active = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center gap-2 rounded-t-xl px-4 py-2.5 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors cursor-pointer border-b-2 ${
-                active
-                  ? 'border-[#D71921] text-[var(--text)] bg-[var(--surface)]'
-                  : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text)]'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
+          return {
+            value: tab.id,
+            label: tab.label,
+            icon: <Icon className="h-3.5 w-3.5" />,
+          };
         })}
-      </div>
+      />
 
       {loading ? (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-10 flex items-center justify-center gap-3 text-sm text-[var(--text-secondary)]">
-          <Loader2 className="h-5 w-5 animate-spin text-[#D71921]" />
-          <span>Loading ad settings...</span>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+            <SkeletonMetricCard />
+          </div>
+          <SkeletonListRows rows={3} />
         </div>
       ) : (
         <>
@@ -444,27 +439,27 @@ export function AdminAdsPage() {
           {activeTab === 'global' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                <GlassCard variant="glass" padding="sm">
                   <p className="text-xs text-[var(--text-muted)]">Master Status</p>
                   <p className="mt-1 text-lg font-bold text-[var(--text)]">
                     {config.adsEnabled ? 'Ads Active' : 'All Ads Paused'}
                   </p>
-                </div>
-                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                </GlassCard>
+                <GlassCard variant="glass" padding="sm">
                   <p className="text-xs text-[var(--text-muted)]">Active Slots</p>
-                  <p className="mt-1 text-lg font-bold text-[var(--text)]">
+                  <p className="mt-1 text-lg font-bold text-[var(--text)] ag-tabular">
                     {enabledSlotsCount} / {AD_SLOT_ORDER.length}
                   </p>
-                </div>
-                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                </GlassCard>
+                <GlassCard variant="glass" padding="sm">
                   <p className="text-xs text-[var(--text-muted)]">Active Boardly Offers</p>
-                  <p className="mt-1 text-lg font-bold text-[var(--text)]">
+                  <p className="mt-1 text-lg font-bold text-[var(--text)] ag-tabular">
                     {activeOfferCount} / {config.offers.length}
                   </p>
-                </div>
+                </GlassCard>
               </div>
 
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6 space-y-6">
+              <GlassCard variant="glass" padding="lg" className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-[var(--text)]">
@@ -501,7 +496,7 @@ export function AdminAdsPage() {
                       updateConfig((p) => ({ ...p, publisherId: e.target.value.trim() }))
                     }
                     placeholder="ca-pub-6994939022289204"
-                    className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm font-mono text-[var(--text)] focus:outline-none"
+                    className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3.5 py-2.5 text-sm font-mono text-[var(--text)] focus:outline-none focus:border-[#E8353B]"
                   />
                 </div>
 
@@ -524,40 +519,43 @@ export function AdminAdsPage() {
                     label="Show Boardly offers when Google has no ad"
                   />
                 </div>
-              </div>
+              </GlassCard>
             </div>
           )}
 
-          {/* ================= TAB 2: SLOTS ================= */}
+          {/* ================= TAB 2: SLOTS (flat translucent rows — zero backdrop-filter inside list) ================= */}
           {activeTab === 'slots' && (
             <div className="space-y-3">
               {AD_SLOT_ORDER.map((slotId) => {
                 const slot = config.slots[slotId];
                 if (!slot) return null;
                 const isBoardlyOnly = Boolean(slot.boardlyOnly);
+                const readableSlotName = formatAdSlotLabel(slot.id, slot.name);
 
                 return (
-                  <div
+                  <GlassCard
                     key={slotId}
-                    className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 space-y-4"
+                    variant="flat"
+                    padding="md"
+                    className="space-y-4"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <code className="rounded-lg bg-[var(--surface-muted)] px-2 py-0.5 text-xs font-mono font-bold text-[var(--text)]">
+                          <span className="text-sm font-bold text-[var(--text)]">
+                            {readableSlotName}
+                          </span>
+                          <code className="text-[10px] font-mono text-[var(--text-muted)] opacity-80">
                             {slot.id}
                           </code>
-                          <span className="text-sm font-bold text-[var(--text)]">{slot.name}</span>
                           {isBoardlyOnly && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                            <Pill tone="warning">
                               <Lock className="h-3 w-3" />
                               Boardly only
-                            </span>
+                            </Pill>
                           )}
                           {slot.desktopOnly && (
-                            <span className="rounded-full bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
-                              Desktop only
-                            </span>
+                            <Pill tone="neutral">Desktop only</Pill>
                           )}
                         </div>
                         <p className="text-xs text-[var(--text-secondary)] mt-1">{slot.location}</p>
@@ -567,7 +565,7 @@ export function AdminAdsPage() {
                         <button
                           type="button"
                           onClick={() => setPreviewSlotId(slotId)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#D71921] transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] transition-colors cursor-pointer"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           <span>Preview</span>
@@ -592,7 +590,7 @@ export function AdminAdsPage() {
                           onChange={(e) =>
                             updateSlot(slotId, { mode: e.target.value as AdSlotMode })
                           }
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)] disabled:opacity-60"
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)] disabled:opacity-60"
                         >
                           <option value="auto">Auto (Google → Boardly)</option>
                           <option value="google">Google only</option>
@@ -615,7 +613,7 @@ export function AdminAdsPage() {
                             })
                           }
                           placeholder={isBoardlyOnly ? 'Disabled on Store' : 'Paste numeric slot ID'}
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-mono text-[var(--text)] disabled:opacity-50"
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs font-mono text-[var(--text)] disabled:opacity-50"
                         />
                       </div>
 
@@ -633,11 +631,11 @@ export function AdminAdsPage() {
                               ? updateSlot(slotId, { primaryOfferId: e.target.value })
                               : updateSlot(slotId, { fallbackOfferId: e.target.value })
                           }
-                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                          className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                         >
                           {config.offers.map((o) => (
                             <option key={o.id} value={o.id}>
-                              {o.id} — {o.title}
+                              {o.title} ({o.id})
                             </option>
                           ))}
                         </select>
@@ -660,7 +658,7 @@ export function AdminAdsPage() {
                               const n = Math.max(2, Math.min(50, Number(e.target.value) || 2));
                               updateSlot(slotId, { everyN: n });
                             }}
-                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-mono text-[var(--text)]"
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs font-mono text-[var(--text)]"
                           />
                         </div>
                       ) : (
@@ -673,24 +671,24 @@ export function AdminAdsPage() {
                             onChange={(e) =>
                               updateSlot(slotId, { primaryOfferId: e.target.value })
                             }
-                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                            className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                           >
                             {config.offers.map((o) => (
                               <option key={o.id} value={o.id}>
-                                {o.id} — {o.title}
+                                {o.title} ({o.id})
                               </option>
                             ))}
                           </select>
                         </div>
                       )}
                     </div>
-                  </div>
+                  </GlassCard>
                 );
               })}
             </div>
           )}
 
-          {/* ================= TAB 3: BOARDLY OFFERS ================= */}
+          {/* ================= TAB 3: BOARDLY OFFERS (flat translucent rows) ================= */}
           {activeTab === 'offers' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
@@ -700,7 +698,7 @@ export function AdminAdsPage() {
                 <button
                   type="button"
                   onClick={handleAddOffer}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#D71921] px-3.5 py-2 text-xs font-semibold text-white hover:opacity-95 cursor-pointer shrink-0"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-3.5 py-2 text-xs font-semibold text-white transition-colors cursor-pointer shrink-0"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add offer</span>
@@ -713,38 +711,40 @@ export function AdminAdsPage() {
                   const isEditing = editingOfferId === offer.id;
 
                   return (
-                    <div
+                    <GlassCard
                       key={offer.id}
-                      className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 space-y-4"
+                      variant="flat"
+                      padding="md"
+                      className="space-y-4"
                     >
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                         <div className="min-w-0 space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <code className="rounded-lg bg-[var(--surface-muted)] px-2 py-0.5 text-xs font-mono font-bold text-[var(--text)]">
-                              {offer.id}
-                            </code>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                            <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
+                              {offer.title}
+                            </h3>
+                            <Pill
+                              tone={
                                 status.tone === 'active'
-                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  ? 'success'
                                   : status.tone === 'scheduled'
-                                  ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                                  ? 'info'
                                   : status.tone === 'expired'
-                                  ? 'bg-red-500/15 text-red-600 dark:text-red-400'
-                                  : 'bg-[var(--surface-muted)] text-[var(--text-muted)]'
-                              }`}
+                                  ? 'danger'
+                                  : 'neutral'
+                              }
                             >
                               {status.label}
-                            </span>
+                            </Pill>
+                            <code className="text-[10px] font-mono text-[var(--text-muted)] opacity-80">
+                              {offer.id}
+                            </code>
                             {(offer.startDate || offer.endDate) && (
                               <span className="text-[11px] font-mono text-[var(--text-muted)]">
                                 {offer.startDate || 'Now'} → {offer.endDate || 'No end'}
                               </span>
                             )}
                           </div>
-                          <h3 className="text-sm sm:text-base font-bold text-[var(--text)]">
-                            {offer.title}
-                          </h3>
                           <p className="text-xs text-[var(--text-secondary)]">
                             {offer.text} · <span className="font-semibold">{offer.buttonLabel}</span>{' '}
                             (<code className="font-mono">{offer.link}</code>)
@@ -760,7 +760,7 @@ export function AdminAdsPage() {
                           <button
                             type="button"
                             onClick={() => setEditingOfferId(isEditing ? null : offer.id)}
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#D71921] cursor-pointer"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-1.5 text-xs font-semibold text-[var(--text)] hover:border-[#E8353B] cursor-pointer transition-colors"
                           >
                             {isEditing ? 'Done' : 'Edit'}
                           </button>
@@ -768,7 +768,7 @@ export function AdminAdsPage() {
                             type="button"
                             onClick={() => handleDuplicateOffer(offer)}
                             title="Duplicate offer"
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 p-2 text-[var(--text-secondary)] hover:text-[var(--text)] cursor-pointer"
                           >
                             <Copy className="h-3.5 w-3.5" />
                           </button>
@@ -777,7 +777,7 @@ export function AdminAdsPage() {
                             disabled={config.offers.length <= 1}
                             onClick={() => handleDeleteOffer(offer.id)}
                             title="Delete offer"
-                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)] p-2 text-red-500 hover:bg-red-500/10 cursor-pointer disabled:opacity-40"
+                            className="rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 p-2 text-red-500 hover:bg-red-500/10 cursor-pointer disabled:opacity-40"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -795,7 +795,7 @@ export function AdminAdsPage() {
                               value={offer.title}
                               onChange={(e) => updateOffer(offer.id, { title: e.target.value })}
                               maxLength={140}
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                             />
                           </div>
 
@@ -810,7 +810,7 @@ export function AdminAdsPage() {
                                 updateOffer(offer.id, { buttonLabel: e.target.value })
                               }
                               maxLength={48}
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                             />
                           </div>
 
@@ -823,7 +823,7 @@ export function AdminAdsPage() {
                               value={offer.text}
                               onChange={(e) => updateOffer(offer.id, { text: e.target.value })}
                               maxLength={260}
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                             />
                           </div>
 
@@ -836,7 +836,7 @@ export function AdminAdsPage() {
                               value={offer.link}
                               onChange={(e) => updateOffer(offer.id, { link: e.target.value })}
                               placeholder="/pricing"
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs font-mono text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs font-mono text-[var(--text)]"
                             />
                           </div>
 
@@ -850,7 +850,7 @@ export function AdminAdsPage() {
                               onChange={(e) =>
                                 updateOffer(offer.id, { startDate: e.target.value || null })
                               }
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                             />
                           </div>
 
@@ -864,12 +864,12 @@ export function AdminAdsPage() {
                               onChange={(e) =>
                                 updateOffer(offer.id, { endDate: e.target.value || null })
                               }
-                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)]"
+                              className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3 py-2 text-xs text-[var(--text)]"
                             />
                           </div>
                         </div>
                       )}
-                    </div>
+                    </GlassCard>
                   );
                 })}
               </div>
@@ -878,10 +878,12 @@ export function AdminAdsPage() {
 
           {/* ================= TAB 4: PROMO CODE ================= */}
           {activeTab === 'promo' && (
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-6 space-y-6 max-w-2xl">
+            <GlassCard variant="glass" padding="lg" className="space-y-6 max-w-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-bold text-[var(--text)]">Checkout Promo Code</h2>
+                  <DotHeading as="h2" size="section">
+                    Checkout Promo Code
+                  </DotHeading>
                   <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                     Validated on the server during Pro &amp; Plus checkout. Editing here updates live checkout validation immediately after saving.
                   </p>
@@ -917,7 +919,7 @@ export function AdminAdsPage() {
                       }))
                     }
                     placeholder="EARLY21"
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm font-mono font-bold text-[var(--text)] uppercase"
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3.5 py-2.5 text-sm font-mono font-bold text-[var(--text)] uppercase"
                   />
                 </div>
 
@@ -935,7 +937,7 @@ export function AdminAdsPage() {
                         promoCode: { ...p.promoCode, percentOff: pct },
                       }));
                     }}
-                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm font-mono text-[var(--text)]"
+                    className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3.5 py-2.5 text-sm font-mono text-[var(--text)]"
                   />
                 </div>
               </div>
@@ -952,15 +954,15 @@ export function AdminAdsPage() {
                         key={tier}
                         className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs sm:text-sm font-semibold cursor-pointer transition-colors ${
                           checked
-                            ? 'border-[#D71921] bg-[#D71921]/10 text-[var(--text)]'
-                            : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-secondary)]'
+                            ? 'border-[#E8353B] bg-[#E8353B]/10 text-[var(--text)]'
+                            : 'border-[var(--border)] bg-[var(--bg)]/70 text-[var(--text-secondary)]'
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => togglePromoPlan(tier)}
-                          className="accent-[#D71921]"
+                          className="accent-[#E8353B]"
                         />
                         <span>{tier === 'pro' ? 'Boardly Pro' : 'Boardly Plus'}</span>
                       </label>
@@ -982,13 +984,13 @@ export function AdminAdsPage() {
                       promoCode: { ...p.promoCode, endDate: e.target.value || null },
                     }))
                   }
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--text)]"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--bg)]/70 px-3.5 py-2.5 text-sm text-[var(--text)]"
                 />
                 <p className="text-[11px] text-[var(--text-muted)]">
                   Leave empty for no expiration date.
                 </p>
               </div>
-            </div>
+            </GlassCard>
           )}
 
           {/* ================= TAB 5: STATS ================= */}
@@ -999,7 +1001,7 @@ export function AdminAdsPage() {
                   Boardly offers only. Counts daily impressions and clicks with zero personal data stored.
                 </p>
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1">
+                  <div className="inline-flex rounded-xl border border-[var(--border)] bg-[var(--bg)]/60 p-1">
                     {([7, 30] as const).map((d) => (
                       <button
                         key={d}
@@ -1007,7 +1009,7 @@ export function AdminAdsPage() {
                         onClick={() => setStatsDays(d)}
                         className={`rounded-lg px-3 py-1 text-xs font-semibold cursor-pointer transition-colors ${
                           statsDays === d
-                            ? 'bg-[#D71921] text-white'
+                            ? 'bg-[#E8353B] text-white'
                             : 'text-[var(--text-secondary)] hover:text-[var(--text)]'
                         }`}
                       >
@@ -1019,7 +1021,7 @@ export function AdminAdsPage() {
                     type="button"
                     onClick={() => loadStats(statsDays)}
                     disabled={statsLoading}
-                    className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-xl ag-flat-card px-3 py-1.5 text-xs font-semibold text-[var(--text)] cursor-pointer"
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${statsLoading ? 'animate-spin' : ''}`} />
                     <span>Refresh</span>
@@ -1028,43 +1030,48 @@ export function AdminAdsPage() {
               </div>
 
               {statsLoading && !statsData ? (
-                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-center text-xs text-[var(--text-secondary)]">
-                  Loading stats...
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <SkeletonMetricCard />
+                    <SkeletonMetricCard />
+                    <SkeletonMetricCard />
+                  </div>
+                  <SkeletonListRows rows={3} />
                 </div>
               ) : (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                    <GlassCard variant="glass" padding="sm">
                       <p className="text-xs text-[var(--text-muted)]">Impressions ({statsDays}d)</p>
-                      <p className="mt-1 text-2xl font-extrabold text-[var(--text)] font-mono">
+                      <DotHeading as="div" size="metric" className="mt-1">
                         {(statsData?.totals.impressions || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                      </DotHeading>
+                    </GlassCard>
+                    <GlassCard variant="glass" padding="sm">
                       <p className="text-xs text-[var(--text-muted)]">Clicks ({statsDays}d)</p>
-                      <p className="mt-1 text-2xl font-extrabold text-[var(--text)] font-mono">
+                      <DotHeading as="div" size="metric" className="mt-1">
                         {(statsData?.totals.clicks || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+                      </DotHeading>
+                    </GlassCard>
+                    <GlassCard variant="glass" padding="sm">
                       <p className="text-xs text-[var(--text-muted)]">Click Rate (CTR)</p>
-                      <p className="mt-1 text-2xl font-extrabold text-[var(--text)] font-mono">
+                      <DotHeading as="div" size="metric" className="mt-1">
                         {formatCtr(
                           statsData?.totals.impressions || 0,
                           statsData?.totals.clicks || 0
                         )}
-                      </p>
-                    </div>
+                      </DotHeading>
+                    </GlassCard>
                   </div>
 
-                  {/* By Offer Table */}
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                  {/* By Offer Table (flat translucent surface — zero blur) */}
+                  <GlassCard variant="flat" padding="none" className="overflow-hidden">
                     <div className="px-4 py-3 border-b border-[var(--border)]">
                       <h3 className="text-sm font-bold text-[var(--text)]">By Offer</h3>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs sm:text-sm">
-                        <thead className="bg-[var(--surface-muted)]/60 text-[11px] uppercase text-[var(--text-muted)]">
+                        <thead className="bg-[var(--bg)]/50 text-[11px] uppercase text-[var(--text-muted)]">
                           <tr>
                             <th className="px-4 py-2.5">Offer</th>
                             <th className="px-4 py-2.5 text-right">Impressions</th>
@@ -1086,22 +1093,28 @@ export function AdminAdsPage() {
                             (statsData?.byOffer || []).map((row) => (
                               <tr key={row.offerId}>
                                 <td className="px-4 py-2.5">
-                                  <code className="font-mono text-xs font-bold text-[var(--text)]">
-                                    {row.offerId}
-                                  </code>
-                                  {offerTitleMap.get(row.offerId) && (
-                                    <span className="ml-2 text-xs text-[var(--text-secondary)]">
-                                      {offerTitleMap.get(row.offerId)}
-                                    </span>
+                                  {offerTitleMap.get(row.offerId) ? (
+                                    <>
+                                      <span className="font-semibold text-[var(--text)]">
+                                        {offerTitleMap.get(row.offerId)}
+                                      </span>
+                                      <code className="ml-2 font-mono text-[10px] text-[var(--text-muted)]">
+                                        {row.offerId}
+                                      </code>
+                                    </>
+                                  ) : (
+                                    <code className="font-mono text-xs font-bold text-[var(--text)]">
+                                      {row.offerId}
+                                    </code>
                                   )}
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular">
                                   {row.impressions.toLocaleString()}
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular">
                                   {row.clicks.toLocaleString()}
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono text-[var(--text-secondary)]">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular text-[var(--text-secondary)]">
                                   {formatCtr(row.impressions, row.clicks)}
                                 </td>
                               </tr>
@@ -1110,18 +1123,18 @@ export function AdminAdsPage() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </GlassCard>
 
                   {/* By Slot Table */}
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                  <GlassCard variant="flat" padding="none" className="overflow-hidden">
                     <div className="px-4 py-3 border-b border-[var(--border)]">
-                      <h3 className="text-sm font-bold text-[var(--text)]">By Slot</h3>
+                      <h3 className="text-sm font-bold text-[var(--text)]">By Placement</h3>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs sm:text-sm">
-                        <thead className="bg-[var(--surface-muted)]/60 text-[11px] uppercase text-[var(--text-muted)]">
+                        <thead className="bg-[var(--bg)]/50 text-[11px] uppercase text-[var(--text-muted)]">
                           <tr>
-                            <th className="px-4 py-2.5">Slot ID</th>
+                            <th className="px-4 py-2.5">Slot</th>
                             <th className="px-4 py-2.5 text-right">Impressions</th>
                             <th className="px-4 py-2.5 text-right">Clicks</th>
                             <th className="px-4 py-2.5 text-right">CTR</th>
@@ -1140,16 +1153,21 @@ export function AdminAdsPage() {
                           ) : (
                             (statsData?.bySlot || []).map((row) => (
                               <tr key={row.slotId}>
-                                <td className="px-4 py-2.5 font-mono text-xs font-bold text-[var(--text)]">
-                                  {row.slotId}
+                                <td className="px-4 py-2.5">
+                                  <span className="font-semibold text-[var(--text)]">
+                                    {formatAdSlotLabel(row.slotId)}
+                                  </span>
+                                  <code className="ml-2 font-mono text-[10px] text-[var(--text-muted)]">
+                                    {row.slotId}
+                                  </code>
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular">
                                   {row.impressions.toLocaleString()}
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular">
                                   {row.clicks.toLocaleString()}
                                 </td>
-                                <td className="px-4 py-2.5 text-right font-mono text-[var(--text-secondary)]">
+                                <td className="px-4 py-2.5 text-right font-mono ag-tabular text-[var(--text-secondary)]">
                                   {formatCtr(row.impressions, row.clicks)}
                                 </td>
                               </tr>
@@ -1158,17 +1176,17 @@ export function AdminAdsPage() {
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </GlassCard>
 
                   {/* Daily Breakdown Table */}
                   {(statsData?.daily || []).length > 0 && (
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden">
+                    <GlassCard variant="flat" padding="none" className="overflow-hidden">
                       <div className="px-4 py-3 border-b border-[var(--border)]">
                         <h3 className="text-sm font-bold text-[var(--text)]">Daily Log</h3>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                          <thead className="bg-[var(--surface-muted)]/60 text-[11px] uppercase text-[var(--text-muted)]">
+                          <thead className="bg-[var(--bg)]/50 text-[11px] uppercase text-[var(--text-muted)]">
                             <tr>
                               <th className="px-4 py-2">Date</th>
                               <th className="px-4 py-2">Slot</th>
@@ -1181,16 +1199,23 @@ export function AdminAdsPage() {
                             {(statsData?.daily || []).slice(0, 60).map((row) => (
                               <tr key={`${row.date}-${row.slotId}-${row.offerId}`}>
                                 <td className="px-4 py-2 font-mono">{row.date}</td>
-                                <td className="px-4 py-2 font-mono">{row.slotId}</td>
+                                <td className="px-4 py-2">
+                                  <span className="font-medium text-[var(--text)]">
+                                    {formatAdSlotLabel(row.slotId)}
+                                  </span>
+                                  <code className="ml-1.5 font-mono text-[10px] text-[var(--text-muted)]">
+                                    {row.slotId}
+                                  </code>
+                                </td>
                                 <td className="px-4 py-2 font-mono">{row.offerId}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.impressions}</td>
-                                <td className="px-4 py-2 text-right font-mono">{row.clicks}</td>
+                                <td className="px-4 py-2 text-right font-mono ag-tabular">{row.impressions}</td>
+                                <td className="px-4 py-2 text-right font-mono ag-tabular">{row.clicks}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
-                    </div>
+                    </GlassCard>
                   )}
                 </>
               )}
@@ -1199,24 +1224,44 @@ export function AdminAdsPage() {
         </>
       )}
 
+      {/* Sticky Save Bar (appears ONLY when dirty, visually separating Save from Reset to defaults) */}
+      <StickyActionBar
+        visible={hasUnsavedChanges && !savedNotice && !loading}
+        message="You have unsaved ad & offer changes"
+        saving={saving}
+        saveLabel="Save changes"
+        onSave={handleSave}
+        onResetDefaults={() => setConfirmResetOpen(true)}
+        resetLabel="Reset to defaults"
+        disabled={loading || saving}
+      />
+
       {/* ================= PHONE-SIZE PREVIEW MODAL ================= */}
       {previewSlotConfig && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label={`Preview ${previewSlotConfig.id}`}
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           onClick={() => setPreviewSlotId(null)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[410px] rounded-3xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl overflow-hidden"
+            className={`${
+              glassEnabled
+                ? 'ag-sheet-panel rounded-[28px]'
+                : 'rounded-3xl border border-[var(--border)] bg-[var(--bg)] shadow-2xl'
+            } w-full max-w-[410px] overflow-hidden`}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--surface)]">
-              <div className="flex items-center gap-2">
-                <Smartphone className="h-4 w-4 text-[#D71921]" />
-                <span className="text-xs font-bold text-[var(--text)]">
-                  Phone Preview · <code>{previewSlotConfig.id}</code>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-[var(--bg)]/50">
+              <div className="flex items-center gap-2 min-w-0">
+                <Smartphone className="h-4 w-4 text-[#E8353B] shrink-0" />
+                <span className="text-xs font-bold text-[var(--text)] truncate">
+                  {formatAdSlotLabel(previewSlotConfig.id, previewSlotConfig.name)}{' '}
+                  <code className="font-mono text-[10px] text-[var(--text-muted)] font-normal">
+                    {previewSlotConfig.id}
+                  </code>
                 </span>
               </div>
               <button
@@ -1228,7 +1273,7 @@ export function AdminAdsPage() {
               </button>
             </div>
 
-            <div className="px-4 py-2.5 border-b border-[var(--border)] bg-[var(--surface)]/70 flex items-center justify-between gap-2">
+            <div className="px-4 py-2.5 border-b border-[var(--border)] bg-[var(--bg)]/40 flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold text-[var(--text-secondary)]">View as</span>
               <div
                 role="radiogroup"
@@ -1252,7 +1297,7 @@ export function AdminAdsPage() {
                       onClick={() => setPreviewViewer(opt.id)}
                       className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                         active
-                          ? 'bg-[#D71921] text-white shadow-sm'
+                          ? 'bg-[#E8353B] text-white shadow-sm'
                           : 'text-[var(--text-secondary)] hover:text-[var(--text)]'
                       }`}
                     >
@@ -1292,14 +1337,21 @@ export function AdminAdsPage() {
           role="dialog"
           aria-modal="true"
           aria-label="Reset ad settings to defaults"
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
           onClick={() => !resetting && setConfirmResetOpen(false)}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4 shadow-2xl"
+            className={`${
+              glassEnabled
+                ? 'ag-sheet-panel rounded-[22px]'
+                : 'rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl'
+            } w-full max-w-md p-6 space-y-4`}
           >
-            <h3 className="text-base font-bold text-[var(--text)]">Reset all ad settings to defaults?</h3>
+            <DotHeading as="h3" size="section">
+              Reset all ad settings to defaults?
+            </DotHeading>
             <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
               This will restore all 14 slots, all 9 default Boardly offers, global toggles, and the default <code className="font-mono font-bold">EARLY21</code> promo code. Any custom Google Slot IDs or edited offers will be overwritten.
             </p>
@@ -1316,7 +1368,7 @@ export function AdminAdsPage() {
                 type="button"
                 disabled={resetting}
                 onClick={handleConfirmReset}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#D71921] px-4 py-2 text-xs font-semibold text-white cursor-pointer disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#E8353B] hover:bg-[#D4292F] px-4 py-2 text-xs font-semibold text-white cursor-pointer disabled:opacity-60 transition-colors"
               >
                 {resetting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>Yes, reset to defaults</span>

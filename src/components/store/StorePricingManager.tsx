@@ -40,6 +40,13 @@ import {
   type BulkPreviewResult,
   type PriceHistoryRecord,
 } from '@/services/storePricingService';
+import {
+  GlassCard,
+  DotHeading,
+  Pill,
+  SkeletonListRows,
+} from '@/components/admin/AdminGlassPrimitives';
+import { useAdminGlassFlag } from '@/utils/adminGlassFlag';
 
 interface StorePricingManagerProps {
   onBack?: () => void;
@@ -48,6 +55,7 @@ interface StorePricingManagerProps {
 
 export function StorePricingManager({ onBack, isModal = false }: StorePricingManagerProps) {
   const { user } = useAuth();
+  const { enabled: glassEnabled } = useAdminGlassFlag();
   const superAdminEmail = user?.email || 'shsvirtualadmin@gmail.com';
 
   const [activeTab, setActiveTab] = useState<'items' | 'bulk' | 'history'>('items');
@@ -126,7 +134,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
     setSeeding(true);
     try {
       const count = await seedStoreItemsIfEmpty(superAdminEmail);
-      showNotice('success', `Initialized ${count} cosmetics catalog items in Firestore store_items!`);
+      showNotice('success', `Synced ${count} cosmetics catalog items!`);
       await loadItems();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to seed store items';
@@ -267,22 +275,22 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
   };
 
   return (
-    <div data-admin-page="pricing" className={`w-full max-w-6xl mx-auto ${isModal ? 'p-4 sm:p-6' : 'p-3 sm:p-6'} space-y-6 text-[var(--text)]`}>
+    <div data-admin-page="pricing" className={`w-full max-w-6xl mx-auto ${isModal ? 'p-4 sm:p-6' : 'p-3 sm:p-6'} pb-24 md:pb-8 space-y-6 text-[var(--text)]`}>
       {/* ─── HEADER BAR ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500">
+            <div className="w-9 h-9 rounded-xl bg-[#E8353B]/12 border border-[#E8353B]/30 flex items-center justify-center text-[#E8353B]">
               <KobanIcon size={20} decorative />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-heading font-bold text-[var(--text)] flex items-center gap-2">
-                <span>Store Pricing Control</span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
-                  Super Admin
-                </span>
-              </h1>
-              <p className="text-xs text-[var(--muted)]">
+              <div className="flex items-center gap-2 flex-wrap">
+                <DotHeading as="h1" size="page">
+                  Store Pricing Control
+                </DotHeading>
+                <Pill tone="accent">Super Admin</Pill>
+              </div>
+              <p className="text-xs text-[var(--muted)] mt-0.5">
                 Manage Koban prices, execute atomic bulk price shifts, and toggle active store items
               </p>
             </div>
@@ -295,7 +303,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
             onClick={handleSeed}
             disabled={seeding}
             className="relative overflow-hidden px-3 py-2 rounded-xl text-xs font-heading font-semibold border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 min-w-[130px]"
-            title="Seed any missing catalog items into Firestore"
+            title="Sync any missing catalog items"
           >
             {seeding ? (
               <>
@@ -341,7 +349,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
       )}
 
       {/* ─── KOBAN MINIMUM RULE & GUARDRAILS NOTICE ─────────────────────────── */}
-      <div className="p-4 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <GlassCard variant="glass" padding="md" className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
             <ShieldCheck size={18} />
@@ -376,7 +384,7 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
             <span className="font-bold text-amber-400">{stats.avgPrice} 🪙</span>
           </div>
         </div>
-      </div>
+      </GlassCard>
 
       {/* ─── TAB NAVIGATION ──────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2 overflow-x-auto">
@@ -492,20 +500,14 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
             </div>
           </div>
 
-          {/* Items Table / Cards */}
+          {/* Items Table / Cards (flat surface inside list — no blur) */}
           {loading ? (
-            <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--border)]">
-              <LineLoader
-                variant="section"
-                context="admin"
-                message="Loading store catalog pricing..."
-              />
-            </div>
+            <SkeletonListRows rows={6} />
           ) : filteredItems.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] space-y-2">
+            <GlassCard variant="flat" padding="lg" className="text-center text-[var(--muted)] space-y-2">
               <p className="text-sm font-semibold">No store items match your filter.</p>
               <p className="text-xs">Try clearing filters or search query.</p>
-            </div>
+            </GlassCard>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredItems.map((item) => {
@@ -514,7 +516,9 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
                 return (
                   <div
                     key={item.id}
-                    className={`p-3.5 rounded-2xl bg-[var(--card)] border transition-all flex flex-col justify-between gap-3 shadow-xs ${
+                    className={`p-3.5 rounded-[18px] transition-colors flex flex-col justify-between gap-3 ${
+                      glassEnabled ? 'ag-flat-card' : 'bg-[var(--card)] border shadow-xs'
+                    } ${
                       !item.active
                         ? 'opacity-65 border-dashed border-zinc-700'
                         : 'border-[var(--border)] hover:border-zinc-600'
@@ -659,15 +663,15 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
           TAB 2: BULK PRICE MANAGER (BATCHED WRITES)
          ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'bulk' && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-md space-y-6">
+        <GlassCard variant="glass" padding="lg" className="space-y-6">
           <div className="space-y-1">
-            <h2 className="text-base font-heading font-bold text-[var(--text)] flex items-center gap-2">
-              <Layers size={18} className="text-red-500" />
+            <DotHeading as="h2" size="section" className="flex items-center gap-2">
+              <Layers size={18} className="text-[#E8353B]" />
               <span>Bulk Price Update Engine</span>
-            </h2>
+            </DotHeading>
             <p className="text-xs text-[var(--muted)]">
-              Update multiple store items in one batched transaction (Firestore writes are auto-chunked into batches of
-              up to 450). Previews show exact before and after prices with delta changes.
+              Update multiple store items in one batched transaction (changes are applied safely in automatic batches).
+              Previews show exact before and after prices with delta changes.
             </p>
           </div>
 
@@ -816,20 +820,20 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               <ArrowRight size={14} />
             </button>
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
           TAB 3: PRICE CHANGE HISTORY AUDIT LOG
          ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'history' && (
-        <div className="p-4 sm:p-6 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-md space-y-4">
+        <GlassCard variant="glass" padding="lg" className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <h2 className="text-base font-heading font-bold text-[var(--text)] flex items-center gap-2">
-                <History size={18} className="text-red-500" />
+              <DotHeading as="h2" size="section" className="flex items-center gap-2">
+                <History size={18} className="text-[#E8353B]" />
                 <span>Price Change Audit Log</span>
-              </h2>
+              </DotHeading>
               <p className="text-xs text-[var(--muted)]">
                 Chronological log of Super Admin price adjustments and bulk updates
               </p>
@@ -908,15 +912,24 @@ export function StorePricingManager({ onBack, isModal = false }: StorePricingMan
               })}
             </div>
           )}
-        </div>
+        </GlassCard>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
           BULK PREVIEW MODAL BEFORE CONFIRMATION
          ══════════════════════════════════════════════════════════════════════════ */}
       {showPreviewModal && bulkPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150 space-y-5 p-5 sm:p-6">
+        <div
+          data-admin-glass-portal={glassEnabled ? '1' : '0'}
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overlay-blur bg-black/60 backdrop-blur-md overflow-y-auto"
+        >
+          <div
+            className={`relative w-full max-w-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150 space-y-5 p-5 sm:p-6 ${
+              glassEnabled
+                ? 'ag-sheet-panel rounded-[24px]'
+                : 'bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl'
+            }`}
+          >
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] pb-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
