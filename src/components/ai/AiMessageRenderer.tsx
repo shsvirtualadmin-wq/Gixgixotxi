@@ -13,14 +13,12 @@ import {
 import {
   AISHA_MENTOR_ID,
   extractStreamingPhysicsScene,
-  getMentorConfig,
   parseStoredPhysicsScene,
   renderAiMarkdownWithKatex,
   stripLatexForSpeech,
   type AiMentorId,
   type PhysicsScene,
 } from '@/utils/aiMentorsLogic';
-import { speakWithMentorVoice, stopMentorSpeech } from '@/utils/voiceInput';
 
 // Lazy-load the SVG whiteboard renderer ONLY when an Aisha physics scene is rendered
 const LazyAishaPhysicsWhiteboard = lazy(() => import('./AishaPhysicsWhiteboard'));
@@ -92,12 +90,7 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     if (isStreaming && looksLikeSceneJson) {
       const partial = extractStreamingPhysicsScene(text, 12);
       if (partial && partial.steps.length > 0) {
-        return {
-          title: partial.title,
-          steps: partial.steps,
-          animationSvg: '',
-          totalDuration: partial.totalDuration,
-        };
+        return { title: partial.title, steps: partial.steps };
       }
       return null;
     }
@@ -111,22 +104,9 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
     isStreaming && looksLikeSceneJson && !physicsScene
   );
 
-  // Never leak raw JSON/SVG code to students if a stored/completed scene fails validation
-  const safeDisplayText = useMemo(() => {
-    if (physicsScene || waitingForFirstSceneStep) return '';
-    if (!isStreaming && looksLikeSceneJson) {
-      const partial = extractStreamingPhysicsScene(text, 12);
-      if (partial && partial.steps.length > 0) {
-        return partial.steps.map((s, i) => `${i + 1}. ${s.narration}`).join('\n\n');
-      }
-      return 'I had trouble rendering that physics animation. Please ask again or tap Regenerate for a clear step-by-step explanation.';
-    }
-    return text;
-  }, [physicsScene, waitingForFirstSceneStep, isStreaming, looksLikeSceneJson, text]);
-
   const needsMath = useMemo(
-    () => !physicsScene && !waitingForFirstSceneStep && hasMathNotation(safeDisplayText),
-    [physicsScene, waitingForFirstSceneStep, safeDisplayText]
+    () => !physicsScene && !waitingForFirstSceneStep && hasMathNotation(text),
+    [physicsScene, waitingForFirstSceneStep, text]
   );
 
   // Lazy-load KaTeX JS + CSS ONLY when this message actually contains math notation
@@ -151,14 +131,20 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
   // Cancel active speech if component unmounts
   useEffect(() => {
     return () => {
-      if (speaking) stopMentorSpeech();
+      if (speaking && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          // Ignore
+        }
+      }
     };
   }, [speaking]);
 
   const renderedHtml = useMemo(() => {
     if (physicsScene || waitingForFirstSceneStep) return '';
-    return renderAiMarkdownWithKatex(safeDisplayText, lazyKatex || undefined);
-  }, [physicsScene, waitingForFirstSceneStep, safeDisplayText, lazyKatex]);
+    return renderAiMarkdownWithKatex(text, lazyKatex || undefined);
+  }, [physicsScene, waitingForFirstSceneStep, text, lazyKatex]);
 
   const handleCopy = async (raw = false) => {
     try {
@@ -183,25 +169,26 @@ export const AiMessageRenderer: React.FC<AiMessageRendererProps> = ({
 
   const handleListen = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    if (speaking) {
-      stopMentorSpeech();
+    try {
+      if (speaking) {
+        window.speechSynthesis.cancel();
+        setSpeaking(false);
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const plain = physicsScene
+        ? sceneToReadablePlainText(physicsScene)
+        : stripLatexForSpeech(text);
+      if (!plain) return;
+      const utter = new SpeechSynthesisUtterance(plain);
+      utter.rate = 1.0;
+      utter.onend = () => setSpeaking(false);
+      utter.onerror = () => setSpeaking(false);
+      setSpeaking(true);
+      window.speechSynthesis.speak(utter);
+    } catch {
       setSpeaking(false);
-      return;
     }
-    const plain = physicsScene
-      ? sceneToReadablePlainText(physicsScene)
-      : stripLatexForSpeech(text);
-    if (!plain) return;
-    const mentor = getMentorConfig(mentorId ?? 0);
-    setSpeaking(true);
-    speakWithMentorVoice({
-      text: plain,
-      mentorSlug: mentor.slug,
-      gender: mentor.voice,
-      rate: 1.0,
-      onEnd: () => setSpeaking(false),
-      onError: () => setSpeaking(false),
-    });
   };
 
   const handleShare = async () => {

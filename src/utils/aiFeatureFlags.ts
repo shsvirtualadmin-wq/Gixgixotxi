@@ -14,7 +14,6 @@
 
 const AISHA_VISUAL_STORAGE_KEY = 'boardly_flag_aisha_visual';
 const VOICE_V2_STORAGE_KEY = 'boardly_flag_voice_v2';
-const AI_CALLS_STORAGE_KEY = 'boardly_flag_ai_calls';
 
 function parseBoolFlag(raw: string | null | undefined): boolean | null {
   if (raw === null || raw === undefined) return null;
@@ -51,9 +50,4 @@ export function isAishaVisualPhysicsFlagEnabled(adminAnimationsEnabled?: boolean
 
 export function isVoiceInputV2FlagEnabled(): boolean {
   return readFlag('voiceV2', VOICE_V2_STORAGE_KEY, 'VITE_VOICE_INPUT_V2', true);
-}
-
-export function isAiCallsFlagEnabled(adminCallsEnabled?: boolean): boolean {
-  if (adminCallsEnabled === false) return false;
-  return readFlag('aiCalls', AI_CALLS_STORAGE_KEY, 'VITE_AI_CALLS_ENABLED', true);
 }

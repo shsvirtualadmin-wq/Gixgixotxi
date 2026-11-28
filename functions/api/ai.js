@@ -51,8 +51,6 @@ const aishaDailyAnimatedUsage = new Map(); // `${uid}:${dateKey}` -> count
 const aishaLastRefusalByUser = new Map(); // uid -> last refusal string
 
 let aishaDailyStats = null;
-let aiCallDailyStats = null;
-const activeCallLedger = new Map(); // `${uid}:${callId}` -> { uid, dateKey, depthKey, rate, minutesCharged, creditsCharged, answered, refunded, createdAt }
 
 function ensureAishaDailyStats(dateKey) {
   if (!aishaDailyStats || aishaDailyStats.dateKey !== dateKey) {
@@ -68,66 +66,6 @@ function ensureAishaDailyStats(dateKey) {
     };
   }
   return aishaDailyStats;
-}
-
-function ensureAiCallDailyStats(dateKey) {
-  if (!aiCallDailyStats || aiCallDailyStats.dateKey !== dateKey) {
-    aiCallDailyStats = {
-      dateKey,
-      totalCalls: 0,
-      totalDurationSec: 0,
-      totalMinutesBilled: 0,
-      totalCreditsCharged: 0,
-      byDepth: { quick: 0, balanced: 0, deep: 0, max: 0 },
-      recentCalls: [],
-    };
-  }
-  return aiCallDailyStats;
-}
-
-function recordAiCallLog({ dateKey, mentorSlug, depthKey, durationSec, minutesBilled, creditsCharged, answered }) {
-  const stats = ensureAiCallDailyStats(dateKey);
-  const safeDur = Math.max(0, Math.min(600, Math.round(Number(durationSec) || 0)));
-  const safeMin = Math.max(0, Math.min(10, Math.round(Number(minutesBilled) || 0)));
-  const safeCred = Math.max(0, Math.round(Number(creditsCharged) || 0));
-  stats.totalCalls += 1;
-  stats.totalDurationSec += safeDur;
-  stats.totalMinutesBilled += safeMin;
-  stats.totalCreditsCharged += safeCred;
-  if (depthKey && Object.prototype.hasOwnProperty.call(stats.byDepth, depthKey)) {
-    stats.byDepth[depthKey] += 1;
-  }
-  stats.recentCalls.unshift({
-    ts: new Date().toISOString(),
-    mentor: String(mentorSlug || 'aisha').slice(0, 24),
-    depth: String(depthKey || 'balanced'),
-    durationSec: safeDur,
-    minutesBilled: safeMin,
-    creditsCharged: safeCred,
-    answered: Boolean(answered),
-  });
-  if (stats.recentCalls.length > 40) stats.recentCalls.length = 40;
-  console.log(
-    `[AI Call Log] date=${dateKey} mentor=${mentorSlug} depth=${depthKey} durationSec=${safeDur} minutes=${safeMin} credits=${safeCred} answered=${Boolean(answered)}`
-  );
-}
-
-function getCallRateForDepthKey(depthKey) {
-  const rates = aiConfig.AI_CALL_CONFIG?.creditsPerMinuteByDepth || { quick: 2, balanced: 3, deep: 5, max: 8 };
-  return Math.max(1, Number(rates[depthKey] ?? 3));
-}
-
-function getDailyCallMinutesCap(planInfo) {
-  if (planInfo?.isUnlimited) return 9999;
-  const limits = aiConfig.AI_CALL_CONFIG?.dailyMinuteLimits || { free: 5, paid: 60 };
-  return planInfo?.isPaid ? Number(limits.paid || 60) : Number(limits.free || 5);
-}
-
-function pruneCallLedger(now = Date.now()) {
-  if (activeCallLedger.size < 120) return;
-  for (const [k, v] of activeCallLedger.entries()) {
-    if (now - v.createdAt > 30 * 60 * 1000) activeCallLedger.delete(k);
-  }
 }
 
 function estimateGeminiCostUsd(modelName, inputTokens = 0, outputTokens = 0) {
@@ -608,7 +546,6 @@ async function atomicIncrementFirestoreCredits({
   docPath,
   delta,
   aishaAnimatedDelta = 0,
-  callMinutesDelta = 0,
   dailyLimit,
   dateKey,
   requestId,
@@ -624,16 +561,10 @@ async function atomicIncrementFirestoreCredits({
       increment: { integerValue: String(Math.trunc(delta)) },
     },
   ];
-  if (aishaAnimatedDelta !== 0) {
+  if (aishaAnimatedDelta > 0) {
     fieldTransforms.push({
       fieldPath: 'aishaAnimatedCount',
       increment: { integerValue: String(Math.trunc(aishaAnimatedDelta)) },
-    });
-  }
-  if (callMinutesDelta !== 0) {
-    fieldTransforms.push({
-      fieldPath: 'callMinutesUsed',
-      increment: { integerValue: String(Math.trunc(callMinutesDelta)) },
     });
   }
 
@@ -722,7 +653,6 @@ function getFallbackPlansCredits() {
     pro: Number(aiConfig.PRO_CREDITS_PER_DAY || 50),
     plus: Number(aiConfig.PLUS_CREDITS_PER_DAY || 100),
     aishaAnimationsEnabled: true,
-    aiCallsEnabled: true,
   };
 }
 
@@ -741,10 +671,6 @@ async function fetchPlansCreditsConfig(baseUrl, accessToken, bypassCache = false
       aishaAnimationsEnabled:
         typeof doc?.aishaAnimationsEnabled === 'boolean'
           ? doc.aishaAnimationsEnabled
-          : true,
-      aiCallsEnabled:
-        typeof doc?.aiCallsEnabled === 'boolean'
-          ? doc.aiCallsEnabled
           : true,
     };
     cachedPlansCredits = { credits, expiresAt: now + 30_000 };
@@ -1188,7 +1114,6 @@ export async function handleAiMentorsRequest(request, env) {
         return jsonResponse({ error: 'Admin access required.' }, 403);
       }
       let liveAishaEnabled = true;
-      let liveCallsEnabled = true;
       if (sa) {
         const saTokenRes = await saTokenPromise;
         if (typeof saTokenRes === 'string') {
@@ -1198,16 +1123,12 @@ export async function handleAiMentorsRequest(request, env) {
             true
           );
           liveAishaEnabled = cfg.aishaAnimationsEnabled !== false;
-          liveCallsEnabled = cfg.aiCallsEnabled !== false;
         }
       }
       const stats = ensureAishaDailyStats(dateKey);
-      const callStats = ensureAiCallDailyStats(dateKey);
       return jsonResponse({
         ...stats,
         aishaAnimationsEnabled: liveAishaEnabled,
-        aiCallsEnabled: liveCallsEnabled,
-        callStats,
       });
     }
   }
@@ -1289,16 +1210,6 @@ export async function handleAiMentorsRequest(request, env) {
     return jsonResponse({ error: 'Could not transcribe voice clip right now.' }, 502);
   }
 
-  // Detect call billing/logging actions (bypass chat payload validation)
-  const postAction = request.method === 'POST' ? String(body?.action || '').trim() : '';
-  const isCallAction =
-    postAction === 'call_charge' || postAction === 'call_refund' || postAction === 'call_end';
-  const isCallModeTurn = request.method === 'POST' && !isCallAction && body?.callMode === true;
-  const activeCallId =
-    typeof body?.callId === 'string'
-      ? body.callId.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)
-      : '';
-
   // Validate POST payload synchronously BEFORE any Firestore reads
   let mentorId = 0;
   let depthId = 1;
@@ -1311,7 +1222,7 @@ export async function handleAiMentorsRequest(request, env) {
   let sceneCacheHash = '';
   let cachedSceneEntry = null;
 
-  if (request.method === 'POST' && !isCallAction) {
+  if (request.method === 'POST') {
     const apiKeyCheck = resolveGeminiApiKey(env);
     if (!apiKeyCheck) {
       return jsonResponse(
@@ -1344,8 +1255,8 @@ export async function handleAiMentorsRequest(request, env) {
     validatedContents = validated.contents;
     latestUserText = getLatestUserTextFromContents(validatedContents);
 
-    // Parallel / synchronous cache lookup for Aisha physics scenes (<0.02ms; disabled during voice calls)
-    if (!isCallModeTurn && mentorId === AISHA_MENTOR_ID && latestUserText) {
+    // Parallel / synchronous cache lookup for Aisha physics scenes (<0.02ms)
+    if (mentorId === AISHA_MENTOR_ID && latestUserText) {
       sceneCacheHash = hashPhysicsQuestion(latestUserText, depthId);
       cachedSceneEntry = getCachedAishaScene(sceneCacheHash);
     }
@@ -1365,13 +1276,12 @@ export async function handleAiMentorsRequest(request, env) {
   let planInfo;
   let creditsUsed = 0;
   let aishaAnimatedUsed = 0;
-  let callMinutesUsed = 0;
 
   // 2. Superadmin Unlimited path: verified cryptographically from signed Firebase ID token.
   //    Still follows exact same DEPTH LAWS, simply skips credit deduction & Firestore overhead.
   if (authUser.isSuperAdmin) {
     let superAdminPlanCredits = getFallbackPlansCredits();
-    if (sa && (mentorId === AISHA_MENTOR_ID || isCallAction || isCallModeTurn || request.method === 'GET')) {
+    if (sa && mentorId === AISHA_MENTOR_ID) {
       const saTokenRes = await saTokenPromise;
       if (typeof saTokenRes === 'string') {
         superAdminPlanCredits = await fetchPlansCreditsConfig(
@@ -1417,8 +1327,7 @@ export async function handleAiMentorsRequest(request, env) {
 
     try {
       const usageCacheKey = `${authUser.uid}:${dateKey}`;
-      const cachedUsage =
-        request.method === 'POST' && !isCallAction ? dailyUsageCache.get(usageCacheKey) : null;
+      const cachedUsage = request.method === 'POST' ? dailyUsageCache.get(usageCacheKey) : null;
       const usageHit = cachedUsage && cachedUsage.expiresAt > Date.now();
 
       // Run plan resolution (cached 30s) and daily usage read (cached 20s on POST) in PARALLEL!
@@ -1428,7 +1337,6 @@ export async function handleAiMentorsRequest(request, env) {
           ? Promise.resolve({
               creditsUsed: cachedUsage.creditsUsed,
               aishaAnimatedCount: cachedUsage.aishaAnimatedCount || 0,
-              callMinutesUsed: cachedUsage.callMinutesUsed || 0,
             })
           : getFirestoreDoc(baseUrl, accessToken, usageDocPath).catch(() => null),
       ]);
@@ -1438,12 +1346,10 @@ export async function handleAiMentorsRequest(request, env) {
         Number(existingUsage?.aishaAnimatedCount || 0),
         aishaDailyAnimatedUsage.get(usageCacheKey) || 0
       );
-      callMinutesUsed = Math.max(0, Number(existingUsage?.callMinutesUsed || 0));
       if (!usageHit) {
         dailyUsageCache.set(usageCacheKey, {
           creditsUsed,
           aishaAnimatedCount: aishaAnimatedUsed,
-          callMinutesUsed,
           expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS,
         });
       }
@@ -1461,13 +1367,8 @@ export async function handleAiMentorsRequest(request, env) {
   const creditsLeft = planInfo.isUnlimited
     ? planInfo.dailyLimit
     : Math.max(0, planInfo.dailyLimit - effectiveCreditsUsed);
-  const callMinutesLimit = getDailyCallMinutesCap(planInfo);
-  const callMinutesLeft = planInfo.isUnlimited
-    ? callMinutesLimit
-    : Math.max(0, callMinutesLimit - callMinutesUsed);
-  const aiCallsEnabled = planInfo.planCredits?.aiCallsEnabled !== false;
 
-  // GET /api/ai -> Live credit, call-minutes & plan summary
+  // GET /api/ai -> Live credit & plan summary
   if (request.method === 'GET') {
     return jsonResponse({
       creditsUsed,
@@ -1475,10 +1376,6 @@ export async function handleAiMentorsRequest(request, env) {
         ? planInfo.dailyLimit
         : Math.max(0, planInfo.dailyLimit - creditsUsed),
       dailyLimit: planInfo.dailyLimit,
-      callMinutesUsed,
-      callMinutesLimit,
-      callMinutesLeft,
-      aiCallsEnabled,
       isUnlimited: planInfo.isUnlimited,
       isPro: planInfo.isPro,
       isPlus: Boolean(planInfo.isPlus),
@@ -1492,225 +1389,7 @@ export async function handleAiMentorsRequest(request, env) {
     });
   }
 
-  // ── 2B. Voice Call Billing, Refund & Logging Actions ──────────────────────
-  if (isCallAction) {
-    pruneCallLedger();
-    if (!activeCallId) {
-      return jsonResponse({ error: 'Missing callId.' }, 400);
-    }
-    const callLedgerKey = `${authUser.uid}:${activeCallId}`;
-
-    if (postAction === 'call_charge') {
-      if (!aiCallsEnabled) {
-        return jsonResponse(
-          { error: 'AI calls are currently turned off by admin.', code: 'AI_CALLS_DISABLED' },
-          403
-        );
-      }
-      const cDepthId = parseStrictDepthId(body?.depth);
-      if (cDepthId < 0 || cDepthId >= aiConfig.DEPTHS.length) {
-        return jsonResponse({ error: 'Invalid depth for call.' }, 400);
-      }
-      const cDepth = aiConfig.DEPTHS[cDepthId];
-      if (!cDepth.freeAllowed && !planInfo.deepMaxUnlocked) {
-        return jsonResponse(
-          {
-            error: `${cDepth.label} calls require Boardly Pro or Plus.`,
-            code: 'PRO_DEPTH_REQUIRED',
-            creditsLeft,
-            dailyLimit: planInfo.dailyLimit,
-            resetAt,
-          },
-          403
-        );
-      }
-      const minuteIndex = Math.max(1, Math.min(10, Math.floor(Number(body?.minuteIndex) || 1)));
-      const rate = getCallRateForDepthKey(cDepth.key);
-      const existingCall = activeCallLedger.get(callLedgerKey);
-      if (existingCall && existingCall.minutesCharged >= minuteIndex) {
-        return jsonResponse({
-          ok: true,
-          charged: 0,
-          ratePerMin: rate,
-          minutesCharged: existingCall.minutesCharged,
-          creditsLeft,
-          creditsUsed,
-          dailyLimit: planInfo.dailyLimit,
-          callMinutesUsed,
-          callMinutesLimit,
-          callMinutesLeft,
-          isUnlimited: planInfo.isUnlimited,
-          dateKey,
-          resetAt,
-        });
-      }
-      if (!planInfo.isUnlimited && callMinutesLeft < 1) {
-        return jsonResponse(
-          {
-            error: `You have used all ${callMinutesLimit} call minutes for today.`,
-            code: 'CALL_MINUTE_LIMIT_REACHED',
-            creditsLeft,
-            callMinutesLeft: 0,
-            callMinutesLimit,
-            resetAt,
-          },
-          402
-        );
-      }
-      if (!planInfo.isUnlimited && creditsLeft < rate) {
-        return jsonResponse(
-          {
-            error: 'Your credits have ended.',
-            code: 'INSUFFICIENT_CREDITS',
-            needed: rate,
-            creditsLeft,
-            dailyLimit: planInfo.dailyLimit,
-            callMinutesLeft,
-            resetAt,
-          },
-          402
-        );
-      }
-
-      let finalUsed = creditsUsed;
-      let nextCallMinutesUsed = callMinutesUsed + (planInfo.isUnlimited ? 0 : 1);
-      if (!planInfo.isUnlimited) {
-        const chargeReqId = `call_${activeCallId}_m${minuteIndex}`;
-        const updated = await atomicIncrementFirestoreCredits({
-          projectId,
-          databaseId,
-          accessToken,
-          docPath: usageDocPath,
-          delta: rate,
-          callMinutesDelta: 1,
-          dailyLimit: planInfo.dailyLimit,
-          dateKey,
-          requestId: chargeReqId,
-        });
-        finalUsed = typeof updated === 'number' && Number.isFinite(updated) ? updated : creditsUsed + rate;
-        dailyUsageCache.set(reserveKey, {
-          creditsUsed: finalUsed,
-          aishaAnimatedCount: aishaAnimatedUsed,
-          callMinutesUsed: nextCallMinutesUsed,
-          expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS,
-        });
-      }
-      const ledgerEntry = existingCall || {
-        uid: authUser.uid,
-        dateKey,
-        depthKey: cDepth.key,
-        rate,
-        minutesCharged: 0,
-        creditsCharged: 0,
-        answered: false,
-        refunded: false,
-        logged: false,
-        createdAt: Date.now(),
-      };
-      ledgerEntry.minutesCharged = minuteIndex;
-      ledgerEntry.creditsCharged += planInfo.isUnlimited ? 0 : rate;
-      activeCallLedger.set(callLedgerKey, ledgerEntry);
-
-      return jsonResponse({
-        ok: true,
-        charged: planInfo.isUnlimited ? 0 : rate,
-        ratePerMin: rate,
-        minutesCharged: minuteIndex,
-        creditsLeft: planInfo.isUnlimited ? planInfo.dailyLimit : Math.max(0, planInfo.dailyLimit - finalUsed),
-        creditsUsed: finalUsed,
-        dailyLimit: planInfo.dailyLimit,
-        callMinutesUsed: nextCallMinutesUsed,
-        callMinutesLimit,
-        callMinutesLeft: planInfo.isUnlimited ? callMinutesLimit : Math.max(0, callMinutesLimit - nextCallMinutesUsed),
-        isUnlimited: planInfo.isUnlimited,
-        dateKey,
-        resetAt,
-      });
-    }
-
-    if (postAction === 'call_refund') {
-      const entry = activeCallLedger.get(callLedgerKey);
-      if (!entry || entry.uid !== authUser.uid || entry.answered || entry.refunded || entry.minutesCharged !== 1) {
-        return jsonResponse({
-          ok: true,
-          refunded: 0,
-          creditsLeft,
-          creditsUsed,
-          dailyLimit: planInfo.dailyLimit,
-          callMinutesUsed,
-          callMinutesLimit,
-          callMinutesLeft,
-          isUnlimited: planInfo.isUnlimited,
-        });
-      }
-      entry.refunded = true;
-      const refundCredits = entry.creditsCharged;
-      entry.creditsCharged = 0;
-      entry.minutesCharged = 0;
-      let finalUsed = creditsUsed;
-      let nextCallMin = Math.max(0, callMinutesUsed - 1);
-      if (!planInfo.isUnlimited && refundCredits > 0) {
-        const updated = await atomicIncrementFirestoreCredits({
-          projectId,
-          databaseId,
-          accessToken,
-          docPath: usageDocPath,
-          delta: -refundCredits,
-          callMinutesDelta: -1,
-          dailyLimit: planInfo.dailyLimit,
-          dateKey,
-          requestId: `call_refund_${activeCallId}`,
-        }).catch(() => Math.max(0, creditsUsed - refundCredits));
-        finalUsed = Math.max(0, typeof updated === 'number' && Number.isFinite(updated) ? updated : creditsUsed - refundCredits);
-        dailyUsageCache.set(reserveKey, {
-          creditsUsed: finalUsed,
-          aishaAnimatedCount: aishaAnimatedUsed,
-          callMinutesUsed: nextCallMin,
-          expiresAt: Date.now() + DAILY_USAGE_CACHE_TTL_MS,
-        });
-      }
-      return jsonResponse({
-        ok: true,
-        refunded: refundCredits,
-        creditsLeft: planInfo.isUnlimited ? planInfo.dailyLimit : Math.max(0, planInfo.dailyLimit - finalUsed),
-        creditsUsed: finalUsed,
-        dailyLimit: planInfo.dailyLimit,
-        callMinutesUsed: nextCallMin,
-        callMinutesLimit,
-        callMinutesLeft: planInfo.isUnlimited ? callMinutesLimit : Math.max(0, callMinutesLimit - nextCallMin),
-        isUnlimited: planInfo.isUnlimited,
-      });
-    }
-
-    if (postAction === 'call_end') {
-      const entry = activeCallLedger.get(callLedgerKey);
-      if (!entry || !entry.logged) {
-        const cMentorId = parseStrictMentorId(body?.mentor);
-        const mentorObj = aiConfig.MENTORS[cMentorId >= 0 ? cMentorId : 0] || aiConfig.MENTORS[0];
-        const cDepthId = parseStrictDepthId(body?.depth);
-        const depthObj = aiConfig.DEPTHS[cDepthId >= 0 ? cDepthId : 1] || aiConfig.DEPTHS[1];
-        recordAiCallLog({
-          dateKey,
-          mentorSlug: mentorObj.slug,
-          depthKey: entry?.depthKey || depthObj.key,
-          durationSec: body?.durationSec,
-          minutesBilled: entry ? entry.minutesCharged : Number(body?.minutesBilled || 0),
-          creditsCharged: entry ? entry.creditsCharged : Number(body?.creditsCharged || 0),
-          answered: entry ? entry.answered : Boolean(body?.answered),
-        });
-        if (entry) entry.logged = true;
-      }
-      return jsonResponse({ ok: true });
-    }
-  }
-
   // 3. Enforce plan depth gate & determine Aisha visual mode + exact credit cost
-  if (isCallModeTurn && !aiCallsEnabled) {
-    return jsonResponse(
-      { error: 'AI calls are currently turned off by admin.', code: 'AI_CALLS_DISABLED' },
-      403
-    );
-  }
   if (!depthCfg.freeAllowed && !planInfo.deepMaxUnlocked) {
     return jsonResponse(
       {
@@ -1733,7 +1412,6 @@ export async function handleAiMentorsRequest(request, env) {
       : Number(aiConfig.AISHA_VISUAL_CONFIG?.dailyLimits?.free ?? 5);
   const aishaWithinDailyCap = aishaAnimatedUsed < aishaDailyLimit;
   const useAishaVisualMode =
-    !isCallModeTurn &&
     isAisha &&
     adminAishaAnimationsOn &&
     body?.visualEnabled !== false &&
@@ -1747,27 +1425,21 @@ export async function handleAiMentorsRequest(request, env) {
     env,
     isModelInCooldown: (m) => isModelInCooldown(m),
     visualMode: useAishaVisualMode,
-    callMode: isCallModeTurn,
     questionText: latestUserText,
     avoidPreviousRefusal: isAisha ? aishaLastRefusalByUser.get(authUser.uid) || '' : '',
   });
 
   const isSceneCacheHit = Boolean(useAishaVisualMode && cachedSceneEntry);
-  // Voice calls are billed per started minute via action='call_charge', never per message
-  const cost = isCallModeTurn
-    ? 0
-    : computeServerMessageCost(depthId, validatedContents, {
-        mentorId,
-        visualMode: useAishaVisualMode,
-        cacheHit: isSceneCacheHit,
-      });
-  const textFallbackCost = isCallModeTurn
-    ? 0
-    : computeServerMessageCost(depthId, validatedContents, {
-        mentorId,
-        visualMode: false,
-        cacheHit: false,
-      });
+  const cost = computeServerMessageCost(depthId, validatedContents, {
+    mentorId,
+    visualMode: useAishaVisualMode,
+    cacheHit: isSceneCacheHit,
+  });
+  const textFallbackCost = computeServerMessageCost(depthId, validatedContents, {
+    mentorId,
+    visualMode: false,
+    cacheHit: false,
+  });
 
   if (!planInfo.isUnlimited && creditsLeft < cost) {
     const pc = planInfo.planCredits || getFallbackPlansCredits();
@@ -2327,7 +1999,7 @@ export async function handleAiMentorsRequest(request, env) {
             role: 'user',
             parts: [
               {
-                text: `Previous output failed validation (${check.error}). Return ONLY valid raw JSON matching {"title":"...","steps":[{"from":0,"to":3,"narration":"...","equation":"..."}],"animationSvg":"<svg viewBox=\\"0 0 380 240\\">...</svg>"} (plus optional "graph" if a graph was requested) with at most ${executionPlan.maxSteps} steps, SVG under 5.5 KB, NO <script>, NO <foreignObject>, NO on* attributes, and NO external URLs.`,
+                text: `Return ONLY valid raw JSON matching {"title":"...","steps":[{"narration":"...","equation":"...","shapes":[...]}]} with at most ${executionPlan.maxSteps} steps and valid shapes inside 0..400 x 0..240.`,
               },
             ],
           },
@@ -2568,16 +2240,12 @@ export async function handleAiMentorsRequest(request, env) {
           if (!item.text) continue;
           if (tFirstToken === null) {
             tFirstToken = Date.now();
-            if (isCallModeTurn && activeCallId) {
-              const callEntry = activeCallLedger.get(`${authUser.uid}:${activeCallId}`);
-              if (callEntry) callEntry.answered = true;
-            }
             console.log(
-              `[AI Mentor Server] first-token requestId=${requestId} model=${usedModel} visual=${useAishaVisualMode} call=${isCallModeTurn} ttft=${tFirstToken - tStart}ms`
+              `[AI Mentor Server] first-token requestId=${requestId} model=${usedModel} visual=${useAishaVisualMode} ttft=${tFirstToken - tStart}ms`
             );
             // For non-visual mentors/text replies: fire atomic Firestore increment in parallel (0ms added to TTFT).
             // For Aisha visual mode: defer charge until full scene JSON validates (so invalid scenes NEVER charge).
-            if (!useAishaVisualMode && cost > 0) {
+            if (!useAishaVisualMode) {
               void triggerAtomicDeductionOnce();
             }
           }

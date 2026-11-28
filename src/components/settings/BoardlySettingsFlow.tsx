@@ -30,7 +30,6 @@ import {
   Trophy,
   User,
   Users,
-  Volume2,
 } from 'lucide-react';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -75,13 +74,6 @@ import {
   getSaveChatHistoryPref,
   setSaveChatHistoryPref,
 } from '@/services/aiMentorsService';
-import { AI_MENTORS } from '@/utils/aiMentorsLogic';
-import {
-  getSavedVoiceForMentor,
-  loadDeviceVoices,
-  setSavedVoiceForMentor,
-  speakWithMentorVoice,
-} from '@/utils/voiceInput';
 import { SettingsPage } from './SettingsPage';
 import { SettingsGroup } from './SettingsGroup';
 import { SettingsProgressRow, SettingsRow } from './SettingsRow';
@@ -412,45 +404,13 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
     [isPaid, user?.uid, isGuest, updateProfile]
   );
 
-  // Boardly AI Mentors privacy & voice controls
+  // Boardly AI Mentors privacy controls
   const [saveAiChatHistory, setSaveAiChatHistory] = useState<boolean>(() =>
     getSaveChatHistoryPref()
   );
   const [deleteAiChatsConfirmOpen, setDeleteAiChatsConfirmOpen] = useState(false);
   const [deletingAiChats, setDeletingAiChats] = useState(false);
   const [aiDataFeedback, setAiDataFeedback] = useState<string | null>(null);
-  const [deviceVoices, setDeviceVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [voiceMentorSlug, setVoiceMentorSlug] = useState<string>('aisha');
-  const [selectedVoiceKey, setSelectedVoiceKey] = useState<string>(() =>
-    getSavedVoiceForMentor('aisha')
-  );
-
-  useEffect(() => {
-    if (section !== 'boardly-ai' || typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      return;
-    }
-    let active = true;
-    const sync = () => {
-      if (!active) return;
-      setDeviceVoices(window.speechSynthesis.getVoices());
-    };
-    void loadDeviceVoices().then((v) => {
-      if (active) setDeviceVoices(v);
-    });
-    try {
-      window.speechSynthesis.addEventListener('voiceschanged', sync);
-    } catch {
-      // ignore
-    }
-    return () => {
-      active = false;
-      try {
-        window.speechSynthesis.removeEventListener('voiceschanged', sync);
-      } catch {
-        // ignore
-      }
-    };
-  }, [section]);
 
   // Notification preferences (persisted per user)
   const [notifPrefs, setNotifPrefs] = useState(() => {
@@ -800,83 +760,6 @@ export const BoardlySettingsFlow: React.FC<BoardlySettingsFlowProps> = ({
             }}
           />
         </SettingsGroup>
-
-        {typeof window !== 'undefined' && 'speechSynthesis' in window && (
-          <SettingsGroup
-            label="AI Voice"
-            helperText="Pick a voice on your device for Listen and voice calls. Auto selects a female voice for Aisha, Noor, Sehar and Mahnoor."
-          >
-            <div className="px-4 py-3.5 space-y-2.5">
-              <div className="flex items-center gap-2">
-                <Volume2 className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
-                <select
-                  aria-label="Select AI mentor"
-                  value={voiceMentorSlug}
-                  onChange={(e) => {
-                    const slug = e.target.value;
-                    setVoiceMentorSlug(slug);
-                    setSelectedVoiceKey(getSavedVoiceForMentor(slug));
-                  }}
-                  className="rounded-xl border px-2.5 py-1.5 text-[13px] font-medium"
-                  style={{
-                    backgroundColor: 'var(--surface)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--text)',
-                  }}
-                >
-                  {AI_MENTORS.map((m) => (
-                    <option key={m.slug} value={m.slug}>
-                      {m.name} ({m.voice})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const mentor = AI_MENTORS.find((m) => m.slug === voiceMentorSlug) || AI_MENTORS[5];
-                    speakWithMentorVoice({
-                      text: `Assalam-o-Alaikum! I am ${mentor.name}, ready to help you study.`,
-                      mentorSlug: mentor.slug,
-                      gender: mentor.voice,
-                    });
-                  }}
-                  className="ms-auto rounded-full border px-3 py-1 text-[12px] font-semibold cursor-pointer hover:opacity-90"
-                  style={{
-                    borderColor: 'var(--border)',
-                    color: 'var(--text)',
-                  }}
-                >
-                  Test
-                </button>
-              </div>
-              <select
-                aria-label="Choose device voice"
-                value={selectedVoiceKey}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedVoiceKey(val);
-                  setSavedVoiceForMentor(voiceMentorSlug, val);
-                }}
-                className="w-full rounded-xl border px-3 py-2 text-[13px]"
-                style={{
-                  backgroundColor: 'var(--surface)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)',
-                }}
-              >
-                <option value="">Auto (Recommended)</option>
-                {deviceVoices.map((v) => {
-                  const key = v.voiceURI || v.name;
-                  return (
-                    <option key={key} value={key}>
-                      {v.name} ({v.lang})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          </SettingsGroup>
-        )}
 
         <SettingsGroup danger>
           <SettingsRow

@@ -16,7 +16,6 @@ import {
   AI_MENTORS,
   FREE_AI_CREDITS_PER_DAY,
   buildChatTitle,
-  getDailyCallMinutesLimit,
   getDailyCreditsLimit,
   getPktDateKey,
   getPktResetInfo,
@@ -32,10 +31,6 @@ export interface AiCreditsStatus {
   creditsUsed: number;
   creditsLeft: number;
   dailyLimit: number;
-  callMinutesUsed: number;
-  callMinutesLimit: number;
-  callMinutesLeft: number;
-  aiCallsEnabled: boolean;
   isUnlimited: boolean;
   isPro: boolean;
   isPlus: boolean;
@@ -124,15 +119,10 @@ export function buildFallbackCreditsStatus(opts: {
   const dailyLimit = getDailyCreditsLimit(resolvedPlan, opts.plansConfig);
   const isPaid = resolvedPlan !== 'free' || opts.isSuperAdmin;
   const isPlus = resolvedPlan === 'plus' || opts.isSuperAdmin;
-  const callMinutesLimit = opts.isSuperAdmin ? 9999 : getDailyCallMinutesLimit(isPaid);
   return {
     creditsUsed: 0,
     creditsLeft: dailyLimit,
     dailyLimit,
-    callMinutesUsed: 0,
-    callMinutesLimit,
-    callMinutesLeft: callMinutesLimit,
-    aiCallsEnabled: opts.plansConfig?.aiCallsEnabled !== false,
     isUnlimited: opts.isSuperAdmin,
     isPro: isPaid,
     isPlus,
@@ -159,26 +149,11 @@ export function getCachedAiCreditsStatus(uid?: string | null): AiCreditsStatus |
       : cached.plan === 'pro' || cached.isPro
       ? 'pro'
       : 'free';
-  const isPaid = Boolean(cached.isPaid || cached.isPro || plan !== 'free' || cached.isSuperAdmin);
-  const callMinutesLimit =
-    typeof cached.callMinutesLimit === 'number'
-      ? cached.callMinutesLimit
-      : cached.isSuperAdmin
-      ? 9999
-      : getDailyCallMinutesLimit(isPaid);
-  const callMinutesUsed = Math.max(0, Number(cached.callMinutesUsed || 0));
   return {
     ...cached,
     plan,
     isPlus: Boolean(cached.isPlus || plan === 'plus'),
-    isPaid,
-    callMinutesUsed,
-    callMinutesLimit,
-    callMinutesLeft:
-      typeof cached.callMinutesLeft === 'number'
-        ? cached.callMinutesLeft
-        : Math.max(0, callMinutesLimit - callMinutesUsed),
-    aiCallsEnabled: cached.aiCallsEnabled !== false,
+    isPaid: Boolean(cached.isPaid || cached.isPro || plan !== 'free' || cached.isSuperAdmin),
   };
 }
 
@@ -230,19 +205,10 @@ export async function fetchAiCreditsStatus(
         : 'free';
     const isPaid = resolvedPlan !== 'free' || Boolean(data.isSuperAdmin);
     const isPlus = resolvedPlan === 'plus' || Boolean(data.isSuperAdmin);
-    const defaultCallLimit = data.isSuperAdmin ? 9999 : getDailyCallMinutesLimit(isPaid);
-    const callMinutesUsed = Math.max(0, Number(data.callMinutesUsed || 0));
-    const callMinutesLimit = Number(data.callMinutesLimit || defaultCallLimit);
     const status: AiCreditsStatus = {
       creditsUsed: Number(data.creditsUsed || 0),
       creditsLeft: Number(data.creditsLeft ?? data.dailyLimit ?? FREE_AI_CREDITS_PER_DAY),
       dailyLimit: Number(data.dailyLimit || getDailyCreditsLimit(resolvedPlan, fallbackOpts?.plansConfig)),
-      callMinutesUsed,
-      callMinutesLimit,
-      callMinutesLeft: Number(
-        data.callMinutesLeft ?? Math.max(0, callMinutesLimit - callMinutesUsed)
-      ),
-      aiCallsEnabled: data.aiCallsEnabled !== false,
       isUnlimited: Boolean(data.isUnlimited),
       isPro: isPaid,
       isPlus,
@@ -346,8 +312,6 @@ export async function sendAiMentorMessage(params: {
   requestId?: string;
   stream?: boolean;
   visualEnabled?: boolean;
-  callMode?: boolean;
-  callId?: string;
   onDelta?: (delta: string, fullText: string) => void;
   onMeta?: (meta: {
     model?: string;
@@ -426,8 +390,6 @@ export async function sendAiMentorMessage(params: {
         ...(typeof params.visualEnabled === 'boolean'
           ? { visualEnabled: params.visualEnabled }
           : {}),
-        ...(params.callMode ? { callMode: true } : {}),
-        ...(params.callId ? { callId: params.callId } : {}),
       }),
       signal: controller.signal,
     });
@@ -761,109 +723,17 @@ export async function transcribeVoiceAudio(params: {
   }
 }
 
-// ─── Voice Call Minute Billing, Refund & Logging (/api/ai) ───────────────────
-
-export interface AiCallBillingResponse {
-  ok: boolean;
-  charged?: number;
-  refunded?: number;
-  ratePerMin?: number;
-  minutesCharged?: number;
-  creditsLeft: number;
-  creditsUsed: number;
-  dailyLimit: number;
-  callMinutesUsed: number;
-  callMinutesLimit: number;
-  callMinutesLeft: number;
-  isUnlimited: boolean;
-  dateKey?: string;
-  resetAt?: string;
-}
-
-async function postAiCallAction(payload: Record<string, unknown>, keepalive = false): Promise<any> {
-  const token = await getIdTokenWithTimeout(8_000);
-  if (!token) {
-    throw new AiMentorApiError('Please sign in to start a voice call.', 401);
-  }
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-    keepalive,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new AiMentorApiError(data?.error || `Voice call request failed (HTTP ${res.status}).`, res.status, {
-      code: data?.code,
-      creditsLeft: typeof data?.creditsLeft === 'number' ? data.creditsLeft : undefined,
-      dailyLimit: typeof data?.dailyLimit === 'number' ? data.dailyLimit : undefined,
-      resetAt: typeof data?.resetAt === 'string' ? data.resetAt : undefined,
-    });
-  }
-  return data;
-}
-
-export function chargeAiCallMinute(params: {
-  callId: string;
-  mentor: AiMentorId;
-  depth: AiDepthId;
-  minuteIndex: number;
-}): Promise<AiCallBillingResponse> {
-  return postAiCallAction({ action: 'call_charge', ...params });
-}
-
-export function refundAiCallFirstMinute(callId: string): Promise<AiCallBillingResponse> {
-  return postAiCallAction({ action: 'call_refund', callId }, true);
-}
-
-export function logAiCallEnd(params: {
-  callId: string;
-  mentor: AiMentorId;
-  depth: AiDepthId;
-  durationSec: number;
-  minutesBilled: number;
-  creditsCharged: number;
-  answered: boolean;
-}): Promise<void> {
-  return postAiCallAction({ action: 'call_end', ...params }, true)
-    .then(() => undefined)
-    .catch(() => undefined);
-}
-
-// ─── Admin Aisha Visual & AI Calls Telemetry Summary (GET /api/ai?adminStats=1)
-
-export interface AiCallsAdminStats {
-  dateKey: string;
-  totalCalls: number;
-  totalDurationSec: number;
-  totalMinutesBilled: number;
-  totalCreditsCharged: number;
-  byDepth: Record<'quick' | 'balanced' | 'deep' | 'max', number>;
-  recentCalls?: Array<{
-    ts: string;
-    mentor: string;
-    depth: string;
-    durationSec: number;
-    minutesBilled: number;
-    creditsCharged: number;
-    answered: boolean;
-  }>;
-}
+// ─── Admin Aisha Visual Telemetry Summary (GET /api/ai?adminStats=1) ─────────
 
 export interface AishaAdminStats {
   dateKey: string;
   aishaAnimationsEnabled: boolean;
-  aiCallsEnabled?: boolean;
   totalVisualAnswers: number;
   cacheHits: number;
   textFallbacks: number;
   totalTokens: number;
   estimatedCostUsd: number;
   byDepth: Record<'quick' | 'balanced' | 'deep' | 'max', number>;
-  callStats?: AiCallsAdminStats;
   recentEntries?: Array<{
     ts: string;
     depth: string;

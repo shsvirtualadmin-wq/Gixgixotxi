@@ -14422,3 +14422,72 @@ html[dir="rtl"] select {
 .sdn-tab-btn {
   overflow: visible;
 }
+
+/* Aisha Physics Whiteboard animations (strictly transform, opacity, stroke-dashoffset) */
+@keyframes aishaWbStrokeDraw {
+  from {
+    stroke-dashoffset: var(--wb-len, 240);
+    opacity: 0.15;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes aishaWbPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes aishaWbFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.aisha-wb-stroke {
+  stroke-dashoffset: var(--wb-len, 240);
+  animation-name: aishaWbStrokeDraw;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: forwards;
+}
+
+.aisha-wb-pop {
+  opacity: 0;
+  animation-name: aishaWbPopIn;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: forwards;
+}
+
+.aisha-wb-fade {
+  opacity: 0;
+  animation-name: aishaWbFadeIn;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aisha-wb-stroke,
+  .aisha-wb-pop,
+  .aisha-wb-fade {
+    animation: none !important;
+    opacity: 1 !important;
+    stroke-dashoffset: 0 !important;
+    transform: none !important;
+  }
+}
+
+
+

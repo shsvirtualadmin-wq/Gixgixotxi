@@ -5,8 +5,6 @@ import {
   DEFAULT_AD_SLOTS,
   isAdBlockedRoute,
   isOfferActiveNow,
-  isPreviewAdHost,
-  resolveLandingAdVideoMode,
   sanitizeGoogleSlotId,
   sanitizePublisherId,
   type AdSlotConfig,
@@ -23,7 +21,6 @@ import {
   useAdsConfig,
 } from '@/services/adsConfigService';
 import { PromoBanner } from '@/components/PromoBanner';
-import { LandingPromoAnimation } from '@/components/ads/LandingPromoAnimation';
 
 type AdSenseQueue = Array<Record<string, unknown>> & { loaded?: boolean };
 type AdSenseScriptStatus = 'idle' | 'loading' | 'loaded' | 'failed';
@@ -325,15 +322,11 @@ export const AdSlot = memo(function AdSlot({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const insRef = useRef<HTMLModElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Track mobile single-ad visibility permission (defaults to true)
   const [mobileAllowed, setMobileAllowed] = useState(true);
   // Track Google AdSense fill state: 'idle' | 'pending' | 'filled' | 'unfilled'
   const [googleState, setGoogleState] = useState<'idle' | 'pending' | 'filled' | 'unfilled'>('idle');
-  const [videoFailed, setVideoFailed] = useState(false);
-  const [videoPlaying, setVideoPlaying] = useState(false);
-  const [videoRetryCount, setVideoRetryCount] = useState(0);
 
   const isWaitingForPlan = !isPreview && planLoading;
   const isPaidAdFree = !isPreview && rawIsPaidAdFree;
@@ -366,16 +359,11 @@ export const AdSlot = memo(function AdSlot({
     slotConfig && !slotConfig.boardlyOnly ? sanitizeGoogleSlotId(slotConfig.googleSlotId) : '';
   const cleanPublisherId = sanitizePublisherId(config.publisherId);
 
-  const isPreviewHost = isPreviewAdHost();
-  const isLandingVideoSlot = slotConfig?.id === 'home_faq';
-  const cleanLandingVideoUrl = isLandingVideoSlot ? (config.landingAdVideoUrl || '').trim() : '';
   const canAttemptGoogle =
     showAds &&
     !shouldHideCompletely &&
     !isWaitingForPlan &&
     !isPreview &&
-    !isPreviewHost &&
-    !isLandingVideoSlot &&
     (effectiveMode === 'google' || effectiveMode === 'auto') &&
     Boolean(cleanGoogleSlotId) &&
     Boolean(cleanPublisherId);
@@ -545,7 +533,11 @@ export const AdSlot = memo(function AdSlot({
           return;
         }
         const status = insEl.getAttribute('data-ad-status');
-        if (status === 'filled') {
+        const hasIframe = Boolean(insEl.querySelector('iframe'));
+        if (
+          status === 'filled' ||
+          (hasIframe && status !== 'unfilled' && insEl.offsetHeight >= 40)
+        ) {
           setGoogleState('filled');
         } else {
           setGoogleState('unfilled');
@@ -845,65 +837,6 @@ export const AdSlot = memo(function AdSlot({
     : 'visible';
 
   const activePromoEndDate = config.promoCode?.active ? config.promoCode.endDate : null;
-  const landingVideoMode = resolveLandingAdVideoMode({
-    videoUrl: cleanLandingVideoUrl,
-    loadFailed: videoFailed,
-  });
-
-  const handleVideoTapPlay = () => {
-    const el = videoRef.current;
-    if (!el) return;
-    const playPromise = el.play();
-    if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((err) => {
-        console.error('[LandingAdVideo] play() failed:', {
-          src: cleanLandingVideoUrl,
-          name: err?.name,
-          message: err?.message,
-          err,
-        });
-        if (err?.name !== 'AbortError' && err?.name !== 'NotAllowedError') {
-          setVideoFailed(true);
-        }
-      });
-    }
-  };
-
-  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement>) => {
-    const el = e.currentTarget;
-    const mediaErr = el.error;
-    const codeLabels: Record<number, string> = {
-      1: 'MEDIA_ERR_ABORTED',
-      2: 'MEDIA_ERR_NETWORK (network error, CORS, or private bucket)',
-      3: 'MEDIA_ERR_DECODE (corrupt file or decode failure)',
-      4: 'MEDIA_ERR_SRC_NOT_SUPPORTED (404 not found, private bucket/403, CORS, or unsupported format)',
-    };
-    console.error('[LandingAdVideo] Failed to load video:', {
-      src: el.currentSrc || cleanLandingVideoUrl,
-      code: mediaErr?.code ?? null,
-      reason: mediaErr?.code ? codeLabels[mediaErr.code] || 'UNKNOWN' : 'UNKNOWN',
-      message: mediaErr?.message || '',
-      networkState: el.networkState,
-      readyState: el.readyState,
-    });
-    setVideoPlaying(false);
-    setVideoFailed(true);
-  };
-
-  const handleVideoRetry = () => {
-    setVideoFailed(false);
-    setVideoPlaying(false);
-    setVideoRetryCount((c) => c + 1);
-    window.setTimeout(() => {
-      const el = videoRef.current;
-      if (!el) return;
-      el.load();
-      const p = el.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {});
-      }
-    }, 0);
-  };
 
   const innerContent = isWaitingForPlan ? (
     <AdSpacePlaceholder
@@ -911,71 +844,6 @@ export const AdSlot = memo(function AdSlot({
       compact={compact || Boolean(slotConfig.desktopOnly)}
       loading
     />
-  ) : isLandingVideoSlot ? (
-    <aside
-      aria-label="Boardly showcase video"
-      data-boardly-slot={slotConfig.id}
-      data-landing-ad-mode={landingVideoMode}
-      className="w-full min-w-0 flex flex-col gap-1.5"
-    >
-      <div className="relative w-full overflow-hidden rounded-2xl border border-[var(--border)] bg-[#0b0d13]">
-        {landingVideoMode === 'animated' ? (
-          <LandingPromoAnimation />
-        ) : landingVideoMode === 'error' ? (
-          <div className="relative w-full aspect-[16/9] max-h-[360px] overflow-hidden bg-[#0b0d13]">
-            <img
-              src="/boardly-ad-poster.jpg"
-              alt="Boardly video poster"
-              loading="lazy"
-              className="w-full h-full object-cover opacity-40"
-            />
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 px-4 text-center">
-              <span className="text-sm font-semibold text-white">
-                Video could not load
-              </span>
-              <button
-                type="button"
-                onClick={handleVideoRetry}
-                className="inline-flex items-center justify-center rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-[#0b0d13] shadow hover:bg-white/90 transition-colors cursor-pointer"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="relative w-full bg-[#0b0d13]">
-            <video
-              key={`${cleanLandingVideoUrl}:${videoRetryCount}`}
-              ref={videoRef}
-              src={cleanLandingVideoUrl}
-              poster="/boardly-ad-poster.jpg"
-              controls
-              playsInline
-              preload="metadata"
-              onPlay={() => setVideoPlaying(true)}
-              onPause={() => setVideoPlaying(false)}
-              onEnded={() => setVideoPlaying(false)}
-              onError={handleVideoError}
-              className="w-full max-h-[420px] object-cover block bg-[#0b0d13]"
-            />
-            {!videoPlaying && (
-              <button
-                type="button"
-                onClick={handleVideoTapPlay}
-                aria-label="Play video"
-                className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/20 transition-colors cursor-pointer"
-              >
-                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-[#0b0d13] shadow-lg transition-transform hover:scale-105">
-                  <svg viewBox="0 0 24 24" className="h-7 w-7 translate-x-0.5 fill-current">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </aside>
   ) : showGoogleUnit ? (
     <aside
       aria-label="Sponsored placement"
